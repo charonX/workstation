@@ -1,0 +1,251 @@
+<!--
+  UX-REF-FOR: REQ-DESIGN-005
+  STORY-ID: codex-harness-desktop
+  VERSION: v1
+  DATE: 2026-06-29
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Execution Logs — Codex Harness</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b21;
+      --panel-hover: #1f232a;
+      --border: #2a2f38;
+      --text: #e6e6e6;
+      --text-secondary: #8b929d;
+      --accent: #3b82f6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      grid-template-rows: 48px 1fr;
+      height: 100vh;
+    }
+    .topbar {
+      grid-column: 1 / -1;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 16px; }
+    .logo { font-weight: 700; font-size: 15px; letter-spacing: -0.3px; }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+    }
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: var(--text-secondary);
+    }
+    .main {
+      padding: 32px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 24px;
+    }
+    .page-title { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+    .page-subtitle { color: var(--text-secondary); font-size: 14px; }
+    .filters {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .filter-input {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-size: 13px;
+      min-width: 180px;
+    }
+    .execution-list {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .execution-row {
+      display: grid;
+      grid-template-columns: 40px 2fr 1fr 1fr 1fr 100px;
+      gap: 16px;
+      align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .execution-row:last-child { border-bottom: none; }
+    .execution-row:hover { background: var(--panel-hover); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-success { background: rgba(34,197,94,0.12); color: var(--success); }
+    .status-running { background: rgba(59,130,246,0.12); color: var(--accent); }
+    .status-failed { background: rgba(239,68,68,0.12); color: var(--danger); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-success { background: var(--success); }
+    .dot-running { background: var(--accent); }
+    .dot-failed { background: var(--danger); }
+    .log-detail {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      font-family: "SF Mono", Monaco, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      overflow-x: auto;
+    }
+    .log-line { margin-bottom: 4px; }
+    .log-time { color: #64748b; margin-right: 10px; }
+    .log-info { color: var(--accent); }
+    .log-success { color: var(--success); }
+    .log-error { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="logo">⚡ Codex Harness</span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="section-title">Workspace</div>
+      <div class="nav-item">📁 Projects</div>
+      <div class="nav-item">🔌 Skills Repository</div>
+      <div class="nav-item">⏱ Schedules</div>
+      <div class="nav-item" style="background:var(--panel-hover);color:var(--text)">📜 Execution Logs</div>
+    </aside>
+
+    <main class="main">
+      <div>
+        <div class="page-title">Execution Logs</div>
+        <div class="page-subtitle">History of flow executions across all projects</div>
+      </div>
+
+      <div class="filters">
+        <select class="filter-input">
+          <option>All Projects</option>
+          <option>DailyOps</option>
+          <option>TikTok Pilot</option>
+          <option>Trend Hunter</option>
+        </select>
+        <select class="filter-input">
+          <option>All Status</option>
+          <option>Success</option>
+          <option>Running</option>
+          <option>Failed</option>
+        </select>
+        <input class="filter-input" placeholder="Search flow..." />
+      </div>
+
+      <div class="execution-list">
+        <div class="execution-row" style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">
+          <div></div>
+          <div>Flow</div>
+          <div>Project</div>
+          <div>Started</div>
+          <div>Duration</div>
+          <div>Status</div>
+        </div>
+
+        <div class="execution-row">
+          <div>#42</div>
+          <div>Hot News Scraper</div>
+          <div>DailyOps</div>
+          <div>2026-06-29 09:00</div>
+          <div>3m 12s</div>
+          <div>
+            <span class="status status-success">
+              <span class="status-dot dot-success"></span>
+              Success
+            </span>
+          </div>
+        </div>
+
+        <div class="execution-row">
+          <div>#41</div>
+          <div>Trend Analysis</div>
+          <div>Trend Hunter</div>
+          <div>2026-06-29 08:30</div>
+          <div>—</div>
+          <div>
+            <span class="status status-running">
+              <span class="status-dot dot-running"></span>
+              Running
+            </span>
+          </div>
+        </div>
+
+        <div class="execution-row">
+          <div>#40</div>
+          <div>Hot News Scraper</div>
+          <div>DailyOps</div>
+          <div>2026-06-28 09:00</div>
+          <div>2m 45s</div>
+          <div>
+            <span class="status status-failed">
+              <span class="status-dot dot-failed"></span>
+              Failed
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Selected Execution: #42 — Hot News Scraper</div>
+        <div class="log-detail">
+          <div class="log-line"><span class="log-time">09:00:02</span><span class="log-info">[INFO]</span> Trigger fired: cron(0 9 * * *)</div>
+          <div class="log-line"><span class="log-time">09:00:03</span><span class="log-info">[INFO]</span> Node "Fetch News Skill" started</div>
+          <div class="log-line"><span class="log-time">09:01:15</span><span class="log-success">[OK]</span> Fetched 23 items from hackernews, rsshub</div>
+          <div class="log-line"><span class="log-time">09:01:16</span><span class="log-info">[INFO]</span> Node "Codex Judge" started</div>
+          <div class="log-line"><span class="log-time">09:02:58</span><span class="log-success">[OK]</span> Codex returned 5 selected items</div>
+          <div class="log-line"><span class="log-time">09:03:00</span><span class="log-info">[INFO]</span> Node "Save to File" started</div>
+          <div class="log-line"><span class="log-time">09:03:12</span><span class="log-success">[OK]</span> Saved to /workspace/DailyOps/out/2026-06-29.md</div>
+          <div class="log-line"><span class="log-time">09:03:12</span><span class="log-info">[INFO]</span> Execution completed in 3m 12s</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
