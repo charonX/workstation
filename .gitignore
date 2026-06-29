@@ -26,3 +26,6 @@ venv/
 build/
 dist/
 *.tmp
+
+# Claude Code skills (symlinked from workflow project)
+.claude/skills/
