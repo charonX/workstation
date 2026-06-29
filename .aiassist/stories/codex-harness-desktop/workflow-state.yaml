@@ -1,0 +1,10 @@
+story_id: codex-harness-desktop
+story_name: Codex Harness Desktop App
+current_phase: THINK
+blockers: []
+gates:
+  assertion_signoff: pending
+  feel_signoff: pending
+notes: |
+  原始需求已记录到 requirements.md。
+  下一步：运行 /demand-insight 开始需求访谈。
