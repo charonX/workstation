@@ -1,10 +1,9 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
-current_phase: THINK
+current_phase: DESIGN
 blockers: []
 gates:
   assertion_signoff: pending
   feel_signoff: pending
 notes: |
-  原始需求已记录到 requirements.md。
-  下一步：运行 /demand-insight 开始需求访谈。
+  PRD 已生成。下一步：运行 /ux-explore 进行原型设计。
