@@ -29,3 +29,8 @@ dist/
 
 # Claude Code skills (symlinked from workflow project)
 .claude/skills/
+
+# Generated/local artifacts
+.od-skills/
+.stitch/
+*.artifact.json

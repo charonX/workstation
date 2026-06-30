@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Harness · 项目与 Skill 控制中心</title>
+  <style>
+    /* ─── tokens ─── */
+    :root {
+      --bg:      oklch(14% 0.01 250);   /* 深色背景 */
+      --surface: oklch(18% 0.015 250);  /* 卡片/侧边栏表面 */
+      --surface-elevated: oklch(22% 0.02 250); /* 悬浮面板 */
+      --fg:      oklch(93% 0.01 250);   /* 高对比文字 */
+      --muted:   oklch(66% 0.01 250);   /* 辅助文字 */
+      --border:  oklch(28% 0.015 250);  /* 边框 */
+      --accent:  oklch(72% 0.18 142);   /* 电光绿主色 */
+
+      /* derived */
+      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+      --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
+      --red-soft:    rgba(248, 81, 73, 0.15);
+      --red-text:    rgb(248, 81, 73);
+
+      /* typography */
+      --font-display: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* ─── reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; }
+
+    /* ─── tauri window framework ─── */
+    .app-titlebar {
+      height: 38px;
+      background: color-mix(in oklch, var(--surface) 90%, black);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-inline: 16px;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+    .titlebar-drag {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .titlebar-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      -webkit-app-region: no-drag;
+    }
+    .control-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .control-btn.close { background: oklch(62% 0.18 28); }
+    .control-btn.minimize { background: oklch(78% 0.16 85); }
+    .control-btn.maximize { background: oklch(72% 0.18 142); }
+
+    .app-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─── sidebar ─── */
+    .sidebar {
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .sidebar-top {
+      padding: 16px;
+    }
+    .workspace-switcher {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .workspace-info h4 { margin: 0; font-size: 11px; color: var(--muted); font-family: var(--font-mono); text-transform: uppercase; }
+    .workspace-info p { margin: 2px 0 0; font-size: 13px; font-weight: 600; }
+    
+    .nav-group { margin-bottom: 20px; }
+    .nav-label { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; padding-left: 8px; letter-spacing: 0.05em; }
+    .nav-list { display: flex; flex-direction: column; gap: 4px; padding: 0; margin: 0; list-style: none; }
+    .nav-item a, .nav-item button {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--muted);
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item.active a, .nav-item.active button,
+    .nav-item a:hover, .nav-item button:hover {
+      color: var(--fg);
+      background: var(--fg-soft);
+    }
+    .nav-item.active {
+      border-left: 2px solid var(--accent);
+    }
+    .nav-item.active a, .nav-item.active button {
+      background: var(--fg-soft);
+      padding-left: 10px;
+    }
+
+    .sidebar-bottom {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+    /* ─── main layout ─── */
+    .main-viewport {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+    .view-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .view-title h2 { margin: 0; font-size: 20px; font-weight: 600; }
+    .view-title p { margin: 4px 0 0; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+    .view-actions { display: flex; gap: 10px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .btn-primary:hover { background: color-mix(in oklch, var(--accent) 88%, white); }
+    .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--fg); }
+    .btn-danger { background: var(--red-soft); color: var(--red-text); border-color: transparent; }
+    .btn-danger:hover { background: rgba(248, 81, 73, 0.25); }
+
+    .view-body {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      flex: 1;
+      min-height: 0;
+    }
+    @media (max-width: 1100px) {
+      .view-body { grid-template-columns: 1fr; }
+    }
+
+    /* ─── cards / lists ─── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    
+    /* skill lists */
+    .skill-list {
+      padding: 0;
+      margin: 0;
+      list-style: none;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .skill-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      transition: background 0.15s ease;
+    }
+    .skill-item:hover { background: var(--fg-soft); }
+    .skill-info { flex: 1; }
+    .skill-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .skill-file { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .skill-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .status-badge.linked { background: var(--accent-soft); color: var(--accent); }
+    .status-badge.unlinked { background: var(--border); color: var(--muted); }
+
+    /* table */
+    .log-table-container {
+      overflow-y: auto;
+      flex: 1;
+    }
+    .ds-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .ds-table th, .ds-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .ds-table th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; background: color-mix(in oklch, var(--surface) 90%, black); position: sticky; top: 0; z-index: 2; }
+    .ds-table tbody tr { transition: background 0.15s ease; cursor: pointer; }
+    .ds-table tbody tr:hover { background: var(--fg-soft); }
+    .ds-table tbody tr.selected { background: var(--accent-soft); }
+
+    .status-log { display: inline-flex; align-items: center; gap: 6px; }
+    .status-indicator-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-indicator-dot.success { background: var(--accent); }
+    .status-indicator-dot.running { background: oklch(78% 0.16 85); animation: pulse 1.5s infinite; }
+    .status-indicator-dot.failed { background: var(--red-text); }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    /* ─── bottom console panel ─── */
+    .console-panel {
+      grid-column: 1 / -1;
+      background: color-mix(in oklch, var(--surface) 80%, black);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      height: 240px;
+      overflow: hidden;
+    }
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .console-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+    .console-output {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .console-line { margin-bottom: 4px; }
+    .console-line.cmd { color: var(--fg); }
+    .console-line.info { color: var(--accent); }
+    .console-line.error { color: var(--red-text); }
+  </style>
+</head>
+<body>
+  <!-- Tauri Window Bar -->
+  <div class="app-titlebar">
+    <div class="titlebar-drag">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent);"><path d="m12 3-1.912 5.886H3.883l4.918 3.573L6.89 18.345 12 14.771l5.11 3.574-1.91-5.886 4.918-3.573h-6.205Z"/></svg>
+      Codex Harness Desktop App
+    </div>
+    <div class="titlebar-controls">
+      <div class="control-btn close" title="关闭"></div>
+      <div class="control-btn minimize" title="最小化"></div>
+      <div class="control-btn maximize" title="最大化"></div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="workspace-switcher">
+          <div class="workspace-info">
+            <h4>当前空间</h4>
+            <p>personal-ops</p>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">项目管理</div>
+          <ul class="nav-list">
+            <li class="nav-item active">
+              <button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                news-aggregator
+              </button>
+            </li>
+            <li class="nav-item">
+              <button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                tiktok-红人分析
+              </button>
+            </li>
+            <li class="nav-item">
+              <button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                添加/导入项目...
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">功能导航</div>
+          <ul class="nav-list">
+            <li class="nav-item active">
+              <a href="app-dashboard.html">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                Skill 与日志看板
+              </a>
+            </li>
+            <li class="nav-item">
+              <a href="app-editor.html">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                工作流节点编辑器
+              </a>
+            </li>
+            <li class="nav-item">
+              <button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                API 配置与密钥
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="status-indicator">
+          <div class="status-dot"></div>
+          <span>本地引擎运行中</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Viewport -->
+    <main class="main-viewport">
+      <div class="view-header">
+        <div class="view-title">
+          <h2>项目: news-aggregator</h2>
+          <p>PATH: /Users/zhanglei/charon/code/workspace/workstation/src/news-aggregator</p>
+        </div>
+        <div class="view-actions">
+          <a href="app-editor.html" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            编辑工作流
+          </a>
+          <button class="btn btn-secondary" onclick="syncSkills()">一键同步 Skill</button>
+        </div>
+      </div>
+
+      <div class="view-body">
+        <!-- Panel 1: Skill Library Management -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Skill 挂载管理 (软链接到项目)</h3>
+            <span class="meta">Skill 仓库: /Users/zhanglei/.claude/skills/</span>
+          </div>
+          <ul class="skill-list" id="skillList">
+            <li class="skill-item" id="skill-rss">
+              <div class="skill-info">
+                <div class="skill-name">
+                  <span>rss-fetcher</span>
+                  <span class="status-badge linked" id="badge-rss">已挂载</span>
+                </div>
+                <div class="skill-file">rss-fetcher.md</div>
+                <div class="skill-desc">解析指定 RSS 源或 XML 地址的最新文章数据，支持提取内容正文和元数据。</div>
+              </div>
+              <button class="btn btn-danger btn-sm" id="btn-rss" onclick="toggleSkill('rss')">解除挂载</button>
+            </li>
+            <li class="skill-item" id="skill-git">
+              <div class="skill-info">
+                <div class="skill-name">
+                  <span>git-committer</span>
+                  <span class="status-badge linked" id="badge-git">已挂载</span>
+                </div>
+                <div class="skill-file">git-committer.md</div>
+                <div class="skill-desc">自动暂存本地文件修改，提取代码差异，调用 AI 自动生成语义化的 Git Commit 信息并提交。</div>
+              </div>
+              <button class="btn btn-danger btn-sm" id="btn-git" onclick="toggleSkill('git')">解除挂载</button>
+            </li>
+            <li class="skill-item" id="skill-tiktok">
+              <div class="skill-info">
+                <div class="skill-name">
+                  <span>tiktok-analyzer</span>
+                  <span class="status-badge unlinked" id="badge-tiktok">未挂载</span>
+                </div>
+                <div class="skill-file">tiktok-analyzer.md</div>
+                <div class="skill-desc">抓取 TikTok 红人视频数据，自动计算平均播放量、互动率等核心运营指标。</div>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-tiktok" onclick="toggleSkill('tiktok')">一键挂载</button>
+            </li>
+            <li class="skill-item" id="skill-notion">
+              <div class="skill-info">
+                <div class="skill-name">
+                  <span>notion-sync</span>
+                  <span class="status-badge unlinked" id="badge-notion">未挂载</span>
+                </div>
+                <div class="skill-file">notion-sync.md</div>
+                <div class="skill-desc">将 AI 聚合的新闻数据格式化并一键导入到指定的 Notion 数据库中。</div>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-notion" onclick="toggleSkill('notion')">一键挂载</button>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Panel 2: SQLite Logs -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>SQLite 运行审计日志</h3>
+            <span class="meta">总执行: 42 次 · 异常: 2 次</span>
+          </div>
+          <div class="log-table-container">
+            <table class="ds-table">
+              <thead>
+                <tr>
+                  <th>运行 ID</th>
+                  <th>工作流名称</th>
+                  <th>触发机制</th>
+                  <th>状态</th>
+                  <th>耗时</th>
+                  <th>开始时间</th>
+                </tr>
+              </thead>
+              <tbody id="logTableBody">
+                <tr onclick="loadLog('run-1042')" class="selected">
+                  <td class="num">run-1042</td>
+                  <td>HN 热点简报</td>
+                  <td>定时触发 (*/30m)</td>
+                  <td>
+                    <span class="status-log">
+                      <span class="status-indicator-dot success"></span>
+                      成功
+                    </span>
+                  </td>
+                  <td class="num">45s</td>
+                  <td class="num">今日 10:30:12</td>
+                </tr>
+                <tr onclick="loadLog('run-1041')">
+                  <td class="num">run-1041</td>
+                  <td>HN 热点简报</td>
+                  <td>定时触发 (*/30m)</td>
+                  <td>
+                    <span class="status-log">
+                      <span class="status-indicator-dot success"></span>
+                      成功
+                    </span>
+                  </td>
+                  <td class="num">38s</td>
+                  <td class="num">今日 10:00:01</td>
+                </tr>
+                <tr onclick="loadLog('run-1040')">
+                  <td class="num">run-1040</td>
+                  <td>TikTok 红人监测</td>
+                  <td>手动触发</td>
+                  <td>
+                    <span class="status-log">
+                      <span class="status-indicator-dot running"></span>
+                      执行中
+                    </span>
+                  </td>
+                  <td class="num">--</td>
+                  <td class="num">今日 09:45:30</td>
+                </tr>
+                <tr onclick="loadLog('run-1039')">
+                  <td class="num">run-1039</td>
+                  <td>HN 热点简报</td>
+                  <td>定时触发 (*/30m)</td>
+                  <td>
+                    <span class="status-log">
+                      <span class="status-indicator-dot failed"></span>
+                      异常中断
+                    </span>
+                  </td>
+                  <td class="num">12s</td>
+                  <td class="num">今日 09:30:02</td>
+                </tr>
+                <tr onclick="loadLog('run-1038')">
+                  <td class="num">run-1038</td>
+                  <td>HN 热点简报</td>
+                  <td>定时触发 (*/30m)</td>
+                  <td>
+                    <span class="status-log">
+                      <span class="status-indicator-dot success"></span>
+                      成功
+                    </span>
+                  </td>
+                  <td class="num">48s</td>
+                  <td class="num">今日 09:00:03</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel 3: Terminal Console Output (Active Log Detail) -->
+        <div class="console-panel">
+          <div class="console-header">
+            <span class="console-title" id="consoleTitle">ACTIVE LOG: run-1042 (HN 热点简报)</span>
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="clearConsole()">清除输出</button>
+          </div>
+          <div class="console-output" id="consoleOutput">
+            <div class="console-line info">[10:30:12] [FlowEngine] 开始解析工作流配置: "HN 热点简报"...</div>
+            <div class="console-line info">[10:30:13] [FlowEngine] 触发器类型: 定时任务 (Cron)</div>
+            <div class="console-line cmd">[10:30:13] [Rust-Bridge] 正在建立子进程并启动 Claude Agent SDK...</div>
+            <div class="console-line">[10:30:15] [Agent-Adapter] Claude Agent 已初始化。正在挂载本地 Skills 软链接...</div>
+            <div class="console-line">[10:30:16] [Agent-Adapter] 挂载成功: rss-fetcher -> /Users/zhanglei/charon/code/workspace/workstation/src/news-aggregator/.claude/skills/rss-fetcher.md</div>
+            <div class="console-line cmd">[10:30:17] [Agent-Adapter] 启动执行指令: "抓取 Hacker News 前 10 热点资讯"</div>
+            <div class="console-line">[10:30:25] [rss-fetcher] 成功拉取 RSS XML 数据 (共 30 条)。</div>
+            <div class="console-line">[10:30:35] [Agent-Adapter] Claude 分析完成。提取到 3 条异常指标热点，写入本地 SQLite 日志。</div>
+            <div class="console-line cmd">[10:30:45] [SQLite-Client] 日志写入成功。插入行 ID: 298.</div>
+            <div class="console-line info">[10:30:57] [FlowEngine] 工作流执行完毕。结果已推送。耗时 45 秒。状态: SUCCESS</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // JS states for demonstration
+    const logsData = {
+      'run-1042': `[10:30:12] [FlowEngine] 开始解析工作流配置: "HN 热点简报"...
+[10:30:13] [FlowEngine] 触发器类型: 定时任务 (Cron)
+[10:30:13] [Rust-Bridge] 正在建立子进程并启动 Claude Agent SDK...
+[10:30:15] [Agent-Adapter] Claude Agent 已初始化。正在挂载本地 Skills 软链接...
+[10:30:16] [Agent-Adapter] 挂载成功: rss-fetcher -> /Users/zhanglei/charon/code/workspace/workstation/src/news-aggregator/.claude/skills/rss-fetcher.md
+[10:30:17] [Agent-Adapter] 启动执行指令: "抓取 Hacker News 前 10 热点资讯"
+[10:30:25] [rss-fetcher] 成功拉取 RSS XML 数据 (共 30 条)。
+[10:30:35] [Agent-Adapter] Claude 分析完成。提取到 3 条异常指标热点，写入本地 SQLite 日志。
+[10:30:45] [SQLite-Client] 日志写入成功。插入行 ID: 298.
+[10:30:57] [FlowEngine] 工作流执行完毕。结果已推送。耗时 45 秒。状态: SUCCESS`,
+      'run-1041': `[10:00:01] [FlowEngine] 开始解析工作流配置: "HN 热点简报"...
+[10:00:02] [FlowEngine] 触发器类型: 定时任务 (Cron)
+[10:00:02] [Rust-Bridge] 正在建立子进程并启动 Claude Agent SDK...
+[10:00:05] [Agent-Adapter] Claude Agent 已在线，挂载 Skill: rss-fetcher
+[10:00:20] [rss-fetcher] 成功拉取 RSS XML 数据 (共 30 条)。
+[10:00:35] [Agent-Adapter] 分析完成。状态: SUCCESS`,
+      'run-1040': `[09:45:30] [FlowEngine] 开始手动触发工作流: "TikTok 红人监测"...
+[09:45:31] [Rust-Bridge] 正在拉取最新的抖音/TikTok 监测脚本...
+[09:45:33] [Agent-Adapter] 正在连接 Codex App-Server (OpenAI) 代理端...
+[09:45:35] [Agent-Adapter] 代理端已连接。启动批量抓取与分析...
+[09:45:45] [tiktok-analyzer] 正在运行抓取模块... [已获取 15 个红人数据]
+[09:45:55] [tiktok-analyzer] 数据提取中...
+[09:46:05] [Agent-Adapter] 正在调用 Codex 大模型执行过滤和排序... [等待响应中]`,
+      'run-1039': `[09:30:02] [FlowEngine] 开始解析工作流配置: "HN 热点简报"...
+[09:30:03] [FlowEngine] 触发器类型: 定时任务 (Cron)
+[09:30:03] [Rust-Bridge] 正在启动 Claude Agent SDK...
+[09:30:08] [Agent-Adapter] 错误: API 凭证验证失败! 错误码: 401 Unauthorized
+[09:30:09] [Agent-Adapter] 尝试重试 (1/3)...
+[09:30:12] [Agent-Adapter] 错误: 无法解析 API KEY，认证失败。
+[09:30:14] [FlowEngine] 节点 "Claude Agent" 运行异常中断。状态: FAILED`,
+      'run-1038': `[09:00:03] [FlowEngine] 开始解析工作流配置: "HN 热点简报"...
+[09:00:04] [FlowEngine] 触发器类型: 定时任务 (Cron)
+[09:00:05] [Rust-Bridge] 启动 Claude Agent SDK...
+[09:00:15] [Agent-Adapter] 挂载成功: rss-fetcher
+[09:00:30] [rss-fetcher] 成功拉取数据。
+[09:00:48] [FlowEngine] 成功执行完成。`
+    };
+
+    function toggleSkill(skillId) {
+      const badge = document.getElementById(`badge-${skillId}`);
+      const btn = document.getElementById(`btn-${skillId}`);
+      
+      if (badge.classList.contains('linked')) {
+        // unlink
+        badge.classList.remove('linked');
+        badge.classList.add('unlinked');
+        badge.innerText = '未挂载';
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-secondary');
+        btn.innerText = '一键挂载';
+        appendConsole(`[SkillService] 已移除软链接: ${skillId}`);
+      } else {
+        // link
+        badge.classList.remove('unlinked');
+        badge.classList.add('linked');
+        badge.innerText = '已挂载';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-danger');
+        btn.innerText = '解除挂载';
+        appendConsole(`[SkillService] 成功创建软链接: ln -s /Users/zhanglei/.claude/skills/${skillId}.md .claude/skills/${skillId}.md`);
+      }
+    }
+
+    function syncSkills() {
+      appendConsole(`[SkillService] 正在同步 Skill 库目录，重新加载元数据...`);
+      setTimeout(() => {
+        appendConsole(`[SkillService] 同步完成。共发现 4 个有效 Skills。`);
+      }, 500);
+    }
+
+    function loadLog(runId) {
+      // update table select
+      const rows = document.querySelectorAll('#logTableBody tr');
+      rows.forEach(r => r.classList.remove('selected'));
+      
+      // find clicked
+      const clickedRow = Array.from(rows).find(r => r.cells[0].innerText === runId);
+      if (clickedRow) clickedRow.classList.add('selected');
+
+      // load logs
+      const title = document.getElementById('consoleTitle');
+      const output = document.getElementById('consoleOutput');
+      
+      title.innerText = `ACTIVE LOG: ${runId} (HN 热点简报)`;
+      
+      // format logs into styled output
+      const rawText = logsData[runId] || '';
+      output.innerHTML = '';
+      
+      rawText.split('\n').forEach(line => {
+        const div = document.createElement('div');
+        div.className = 'console-line';
+        if (line.includes('[FlowEngine]') || line.includes('SUCCESS') || line.includes('成功')) {
+          div.className += ' info';
+        } else if (line.includes('错误') || line.includes('FAILED') || line.includes('异常')) {
+          div.className += ' error';
+        } else if (line.includes('[Rust-Bridge]') || line.includes('[SQLite-Client]') || line.includes('指令')) {
+          div.className += ' cmd';
+        }
+        div.innerText = line;
+        output.appendChild(div);
+      });
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function appendConsole(line) {
+      const output = document.getElementById('consoleOutput');
+      const div = document.createElement('div');
+      div.className = 'console-line info';
+      const time = new Date().toTimeString().split(' ')[0];
+      div.innerText = `[${time}] ${line}`;
+      output.appendChild(div);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function clearConsole() {
+      document.getElementById('consoleOutput').innerHTML = '';
+    }
+  </script>
+</body>
+</html>

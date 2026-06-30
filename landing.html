@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Harness · 个人自动化 AI 工作流调度桌面客户端</title>
+  <style>
+    /* ─── tokens ─── */
+    :root {
+      --bg:      oklch(14% 0.01 250);   /* 深色背景 (GitHub-like #0d1117) */
+      --surface: oklch(18% 0.015 250);  /* 卡片表面 (#161b22) */
+      --fg:      oklch(93% 0.01 250);   /* 高对比文字 (#e6edf3) */
+      --muted:   oklch(66% 0.01 250);   /* 辅助文字 (#8d96a0) */
+      --border:  oklch(28% 0.015 250);  /* 边框 (#30363d) */
+      --accent:  oklch(72% 0.18 142);   /* 电光绿主色 (#2ea043 style) */
+
+      /* derived */
+      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+      --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
+
+      /* typography */
+      --font-display: 'Charter', Georgia, 'Times New Roman', serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+      /* scale */
+      --fs-h1: clamp(38px, 5vw, 60px);
+      --fs-h2: clamp(28px, 3.5vw, 40px);
+      --fs-h3: 20px;
+      --fs-lead: 18px;
+      --fs-body: 15px;
+      --fs-meta: 12px;
+
+      /* spacing */
+      --gap-xs: 8px;
+      --gap-sm: 12px;
+      --gap-md: 20px;
+      --gap-lg: 32px;
+      --gap-xl: 56px;
+      --gap-2xl: 96px;
+      --container: 1120px;
+      --gutter: 24px;
+
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* ─── reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--fs-body);
+      line-height: 1.55;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: transparent; }
+    p { text-wrap: pretty; }
+    h1, h2, h3, h4 { text-wrap: balance; }
+
+    /* ─── layout primitives ─── */
+    .container {
+      max-width: var(--container);
+      margin-inline: auto;
+      padding-inline: var(--gutter);
+    }
+    .section {
+      padding-block: clamp(48px, 8vw, var(--gap-2xl));
+    }
+    .section + .section { border-top: 1px solid var(--border); }
+    .stack { display: flex; flex-direction: column; }
+    .stack > * + * { margin-top: var(--gap-md); }
+    .row { display: flex; align-items: center; gap: var(--gap-md); }
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-md); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gap-lg); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-lg); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-md); }
+    .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap-xl); align-items: start; }
+    .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: var(--gap-xl); align-items: start; }
+    @media (max-width: 920px) {
+      .grid-2, .grid-3, .grid-4, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
+    }
+
+    /* ─── type ─── */
+    .h1, h1 { font-family: var(--font-display); font-size: var(--fs-h1); line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+    .h2, h2 { font-family: var(--font-display); font-size: var(--fs-h2); line-height: 1.15; letter-spacing: -0.015em; margin: 0; }
+    .h3, h3 { font-size: var(--fs-h3); font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; margin: 0; }
+    .lead   { font-size: var(--fs-lead); line-height: 1.55; color: var(--muted); max-width: 60ch; margin: 0; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 var(--gap-md);
+    }
+    .meta { font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--muted); }
+    .num  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* ─── chrome: nav + footer ─── */
+    .topnav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in oklch, var(--bg) 92%, transparent);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .topnav-inner { display: flex; align-items: center; justify-content: space-between; padding-block: 14px; }
+    .topnav .logo { font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg); display: flex; align-items: center; gap: 8px; }
+    .topnav nav { display: flex; gap: var(--gap-lg); }
+    .topnav nav a { font-size: 14px; color: var(--muted); }
+    .topnav nav a:hover { color: var(--fg); }
+    .pagefoot { padding-block: var(--gap-xl); color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+    .pagefoot .row-between { flex-wrap: wrap; gap: var(--gap-md); }
+
+    /* ─── buttons ─── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 18px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      transition: transform 0.05s ease, background 0.15s ease, border-color 0.15s ease;
+      text-decoration: none;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .btn-primary:hover { background: color-mix(in oklch, var(--accent) 88%, white); }
+    .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--fg); }
+    .btn-ghost { background: transparent; color: var(--muted); border-color: transparent; padding-inline: 8px; }
+    .btn-ghost:hover { color: var(--fg); }
+    .btn-arrow::after { content: '→'; transition: transform 0.15s ease; }
+    .btn-arrow:hover::after { transform: translateX(2px); }
+
+    /* ─── card / surface ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+    }
+    .card-flat { background: transparent; border: 0; padding: 0; }
+
+    /* ─── feature cell (icon + h3 + p) ─── */
+    .feature .feature-mark {
+      width: 36px; height: 36px;
+      display: grid; place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent);
+      margin-bottom: var(--gap-md);
+      background: var(--surface);
+    }
+    .feature .feature-mark svg { width: 18px; height: 18px; }
+    .feature h3 { margin-bottom: 8px; font-family: var(--font-body); }
+    .feature p  { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+    /* ─── quote / testimonial ─── */
+    .quote {
+      font-family: var(--font-display);
+      font-size: clamp(20px, 2.4vw, 28px);
+      line-height: 1.35;
+      letter-spacing: -0.01em;
+      max-width: 36ch;
+      margin: 0;
+    }
+    .quote-author { color: var(--muted); font-size: 14px; margin-top: var(--gap-md); font-family: var(--font-mono); }
+    .quote-mark {
+      font-family: var(--font-display);
+      font-size: 120px; line-height: 0.7;
+      color: var(--accent); opacity: 0.15;
+      margin-bottom: -40px;
+    }
+
+    /* ─── interactive visual mockup ─── */
+    .mockup-window {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+    .mockup-header {
+      background: color-mix(in oklch, var(--surface) 80%, black);
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+    .dot.red { background: oklch(62% 0.18 28); }
+    .dot.yellow { background: oklch(78% 0.16 85); }
+    .dot.green { background: oklch(72% 0.18 142); }
+    .mockup-title { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-left: auto; margin-right: auto; }
+    .mockup-content {
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--fg);
+      background: var(--bg);
+      overflow-x: auto;
+    }
+
+    /* ─── flow diagram visualization ─── */
+    .flow-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      position: relative;
+    }
+    .flow-node {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+    .flow-node.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-soft);
+    }
+    .flow-node::after {
+      content: '';
+      position: absolute;
+      bottom: -16px;
+      left: 50%;
+      width: 2px;
+      height: 16px;
+      background: var(--border);
+      transform: translateX(-50%);
+    }
+    .flow-node:last-child::after { display: none; }
+    .node-icon { color: var(--accent); display: flex; align-items: center; justify-content: center; }
+    .node-title { font-weight: 600; font-family: var(--font-body); font-size: 13px; }
+    .node-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ─── hero details ─── */
+    .hero { padding-block: clamp(64px, 10vw, 120px); }
+    .hero-center { text-align: center; max-width: 800px; margin-inline: auto; }
+    .hero h1 { margin-bottom: var(--gap-md); }
+    .hero .lead { margin-bottom: var(--gap-lg); margin-inline: auto; }
+    .hero-cta { display: inline-flex; gap: var(--gap-sm); flex-wrap: wrap; justify-content: center; }
+  </style>
+</head>
+<body>
+  <header class="topnav" data-od-id="topnav">
+    <div class="container topnav-inner">
+      <a href="index.html" class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);"><path d="m12 3-1.912 5.886H3.883l4.918 3.573L6.89 18.345 12 14.771l5.11 3.574-1.91-5.886 4.918-3.573h-6.205Z"/></svg>
+        Codex Harness
+      </a>
+      <nav>
+        <a href="#features">特性</a>
+        <a href="#architecture">架构</a>
+        <a href="app-dashboard.html">控制面板原型</a>
+        <a href="app-editor.html">编辑器原型</a>
+      </nav>
+      <a href="app-dashboard.html" class="btn btn-primary">启动控制台</a>
+    </div>
+  </header>
+
+  <main id="content">
+    <!-- Layout 1 — Hero Centered -->
+    <section class="section hero" data-od-id="hero">
+      <div class="container hero-center">
+        <p class="eyebrow">个人自动化工作流引擎</p>
+        <h1>用可视化节点编排，运行您的 Claude Code 与 AI 代理</h1>
+        <p class="lead">基于 Tauri 的本地桌面客户端。将本地 Skill 库直接软链接挂载到项目，通过 n8n 式拖拽编辑器实现定时、可远程观察的自动化工作流。</p>
+        <div class="hero-cta">
+          <a href="app-editor.html" class="btn btn-primary">立即体验编辑器</a>
+          <a href="app-dashboard.html" class="btn btn-secondary">管理项目与 Skill</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout 2 — Hero Split with Visual (Node Workflow Simulator) -->
+    <section class="section" data-od-id="hero-split">
+      <div class="container grid-2" style="align-items: center;">
+        <div>
+          <p class="eyebrow">可视化流程图</p>
+          <h2>将复杂的命令行 Skills GUI 化</h2>
+          <p class="lead" style="margin-top: 20px;">不需要每次都在终端中手动输入繁琐的命令。Codex Harness 提供可视化的节点编排，让您的 AI 代理在指定的时机与流程中自动运行，并在后台提供实时的执行看板。</p>
+          <div class="hero-cta" style="margin-top: 28px; justify-content: flex-start;">
+            <a href="app-editor.html" class="btn btn-primary btn-arrow">进入编辑器</a>
+          </div>
+        </div>
+        <div>
+          <div class="flow-preview">
+            <div class="flow-node">
+              <div class="node-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <div class="node-title">定时触发器 (Cron Trigger)</div>
+                <div class="node-meta">每 30 分钟执行一次 · 工作日 8:00 - 18:00</div>
+              </div>
+            </div>
+            <div class="flow-node active">
+              <div class="node-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              </div>
+              <div>
+                <div class="node-title">Claude Code Agent</div>
+                <div class="node-meta">提示词: "抓取 Hacker News 前 10 热点" · 挂载 Skill: rss-fetcher</div>
+              </div>
+            </div>
+            <div class="flow-node">
+              <div class="node-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6A1 1 0 0 0 17.7 9h2.3a1 1 0 0 0 .7-.3l2-2a1 1 0 0 0 0-1.4l-2-2a1 1 0 0 0-1.4 0l-2 2a1 1 0 0 0-.3.7v2.3a1 1 0 0 0-1.4 0H12v6H6a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-6h6v-6.3Z"/></svg>
+              </div>
+              <div>
+                <div class="node-title">Sentry Filter & Summary (Codex)</div>
+                <div class="node-meta">过滤出包含 "error" 的条目并生成简报</div>
+              </div>
+            </div>
+            <div class="flow-node">
+              <div class="node-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M22 4L12 14.01l-3-3"/></svg>
+              </div>
+              <div>
+                <div class="node-title">Webhook 消息发送</div>
+                <div class="node-meta">发送飞书机器人通知</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout 3 — Feature Triplet -->
+    <section class="section" id="features" data-od-id="features">
+      <div class="container stack" style="gap: 56px;">
+        <div style="max-width: 48ch;">
+          <p class="eyebrow">高效且稳定</p>
+          <h2>在首批使用中，您会爱上的三个设计</h2>
+        </div>
+        <div class="grid-3">
+          <div class="feature card">
+            <div class="feature-mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7h6v6M4 17L11 10l4 4 5-5"/></svg>
+            </div>
+            <h3>本地 Skill 库挂载</h3>
+            <p>通过软链接方式将统一开发的 Claude Code skills 挂载到项目目录下，在保持 Skill 代码单一来源的同时，完美实现跨项目的代码复用。</p>
+          </div>
+          <div class="feature card">
+            <div class="feature-mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+            </div>
+            <h3>n8n 式流程拖拽</h3>
+            <p>专为非线性自动化场景设计，配合 React Flow 拥有流畅的连线机制。直观管理 Agent 节点的前置条件与后续分流，编排无需书写胶水代码。</p>
+          </div>
+          <div class="feature card">
+            <div class="feature-mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            </div>
+            <h3>SQLite 运行日志</h3>
+            <p>应用底层引入轻量且高效的 SQLite 作为审计日志数据库。精确记录每一次定时执行的时间、执行路径、各节点的输入输出参数，方便随时回档排查。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout 5 — Pull Quote -->
+    <section class="section" data-od-id="quote">
+      <div class="container" style="max-width: 800px; text-align: center;">
+        <div class="quote-mark">“</div>
+        <blockquote class="quote">Codex Harness 将我们的本地 agent 脚本真正 GUI 化了。现在每天的热点抓取和榜单分析不需要人一直守着了，定时触发配合 Webhook，非常省心。</blockquote>
+        <p class="quote-author">— 独立开发者·张磊</p>
+      </div>
+    </section>
+
+    <!-- Layout 2-1 Split Detail (Technical Specs / Architecture) -->
+    <section class="section" id="architecture" data-od-id="details">
+      <div class="container grid-2-1">
+        <div class="stack" style="gap: 28px;">
+          <p class="eyebrow">底层架构设计</p>
+          <h2>让 Agent 执行稳如磐石</h2>
+          <p class="lead">通过在 Tauri 底层引入 Rust 子进程管理和本地文件系统操作，实现对外部 AI 工具的稳定监控与调度。</p>
+          <div class="grid-2" style="gap: 24px;">
+            <div class="card" style="padding: 20px;">
+              <h4 style="margin: 0 0 8px; font-size: 15px;">统一的 Agent 适配层</h4>
+              <p style="margin: 0; font-size: 13px; color: var(--muted);">适配 Claude Code Agent SDK 以及 Codex OpenAI app-server 协议，随时可以按需切换底层大模型。</p>
+            </div>
+            <div class="card" style="padding: 20px;">
+              <h4 style="margin: 0 0 8px; font-size: 15px;">Workspace 与 Git 深度集成</h4>
+              <p style="margin: 0; font-size: 13px; color: var(--muted);">项目支持直接克隆 Git 仓库，并在本地建立隔离环境，Claude Code skills 在多项目中独立且互不干扰。</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="mockup-window">
+            <div class="mockup-header">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="mockup-title">Flow Config (JSON)</span>
+            </div>
+            <pre class="mockup-content"><code>{
+  "id": "news_digest",
+  "name": "HN News Digest",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "cron",
+      "cron": "*/30 8-18 * * 1-5"
+    },
+    {
+      "id": "node_2",
+      "type": "claude_agent",
+      "skills": ["rss-fetcher"]
+    }
+  ],
+  "sqlite_logging": true
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout 6 — CTA Strip -->
+    <section class="section" data-od-id="cta-strip" style="text-align: center;">
+      <div class="container" style="max-width: 600px;">
+        <h2>释放双手，让 AI 代理自动按需执行</h2>
+        <p class="lead" style="margin: 16px auto 32px;">首个专为本地 Claude Code 和计算机操作量身定做的流程编排工具。</p>
+        <a href="app-editor.html" class="btn btn-primary">立即体验原型 (Editor)</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pagefoot" data-od-id="footer">
+    <div class="container row-between">
+      <span>© 2026 Codex Harness · 基于 Tauri + React 驱动</span>
+      <span class="meta">个人自动化开发工具 · 本地 SQLite 驱动</span>
+    </div>
+  </footer>
+</body>
+</html>

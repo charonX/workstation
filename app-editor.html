@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Harness · 工作流节点编辑器</title>
+  <style>
+    /* ─── tokens ─── */
+    :root {
+      --bg:      oklch(14% 0.01 250);   /* 深色背景 */
+      --surface: oklch(18% 0.015 250);  /* 节点与侧栏背景 */
+      --surface-elevated: oklch(22% 0.02 250); /* 高亮背景 */
+      --fg:      oklch(93% 0.01 250);   /* 高对比文字 */
+      --muted:   oklch(66% 0.01 250);   /* 辅助文字 */
+      --border:  oklch(28% 0.015 250);  /* 边框 */
+      --accent:  oklch(72% 0.18 142);   /* 电光绿主色 */
+
+      /* derived */
+      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+      --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
+      --red-soft:    rgba(248, 81, 73, 0.15);
+      --red-text:    rgb(248, 81, 73);
+
+      /* typography */
+      --font-display: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* ─── reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; }
+
+    /* ─── tauri window framework ─── */
+    .app-titlebar {
+      height: 38px;
+      background: color-mix(in oklch, var(--surface) 90%, black);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-inline: 16px;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+    .titlebar-drag {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .titlebar-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      -webkit-app-region: no-drag;
+    }
+    .control-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .control-btn.close { background: oklch(62% 0.18 28); }
+    .control-btn.minimize { background: oklch(78% 0.16 85); }
+    .control-btn.maximize { background: oklch(72% 0.18 142); }
+
+    /* ─── editor topbar ─── */
+    .editor-header {
+      height: 48px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-inline: 16px;
+      background: var(--surface);
+    }
+    .flow-info { display: flex; align-items: center; gap: 12px; }
+    .flow-title { font-size: 14px; font-weight: 600; }
+    .flow-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .header-actions { display: flex; gap: 8px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .btn-primary:hover { background: color-mix(in oklch, var(--accent) 88%, white); }
+    .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--fg); }
+    .btn-danger { background: var(--red-soft); color: var(--red-text); border-color: transparent; }
+    .btn-danger:hover { background: rgba(248, 81, 73, 0.25); }
+
+    /* ─── main workspace ─── */
+    .editor-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ─── left node palette ─── */
+    .node-palette {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    .palette-group-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 0.05em;
+    }
+    .palette-nodes {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .palette-node-item {
+      padding: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .palette-node-item:hover {
+      border-color: var(--accent);
+      background: var(--fg-soft);
+    }
+    .palette-node-item svg { color: var(--accent); }
+
+    /* ─── center canvas ─── */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 20px 20px;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 100px;
+    }
+    
+    .canvas-flow {
+      display: flex;
+      align-items: center;
+      gap: 80px;
+      position: relative;
+    }
+
+    /* svg connectors */
+    .svg-connections {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .canvas-node {
+      width: 200px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      position: relative;
+      z-index: 1;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .canvas-node:hover {
+      border-color: color-mix(in oklch, var(--border) 60%, var(--accent));
+    }
+    .canvas-node.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-soft);
+    }
+    .canvas-node-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .canvas-node-header svg { color: var(--accent); }
+    .canvas-node-content {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    /* Node connectors handles */
+    .handle {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 1px solid var(--bg);
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .handle.left { left: -5px; }
+    .handle.right { right: -5px; }
+
+    /* ─── right inspector panel ─── */
+    .inspector-panel {
+      width: 320px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .inspector-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .inspector-header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .inspector-header p { margin: 4px 0 0; font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+    .inspector-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--fg);
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      border-color: var(--accent);
+      outline: 2px solid var(--accent-soft);
+    }
+    .form-textarea { min-height: 80px; resize: vertical; font-family: var(--font-mono); font-size: 12px; }
+
+    .inspector-schedule-preview {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .schedule-title { font-weight: 600; color: var(--fg); margin-bottom: 6px; font-family: var(--font-body); font-size: 12px; }
+    .schedule-time { margin-top: 4px; display: flex; justify-content: space-between; }
+
+    /* ─── bottom drawer for live execution logs ─── */
+    .logs-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 220px;
+      right: 320px;
+      height: 200px;
+      background: color-mix(in oklch, var(--surface) 85%, black);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 10;
+    }
+    .logs-drawer.open { transform: translateY(0); }
+    .drawer-header {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-title { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .drawer-content {
+      flex: 1;
+      padding: 12px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+      overflow-y: auto;
+    }
+    .console-line { margin-bottom: 4px; }
+    .console-line.info { color: var(--accent); }
+    .console-line.cmd { color: var(--fg); }
+    .console-line.error { color: var(--red-text); }
+  </style>
+</head>
+<body>
+  <!-- Tauri Titlebar -->
+  <div class="app-titlebar">
+    <div class="titlebar-drag">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent);"><path d="m12 3-1.912 5.886H3.883l4.918 3.573L6.89 18.345 12 14.771l5.11 3.574-1.91-5.886 4.918-3.573h-6.205Z"/></svg>
+      Codex Harness Desktop App
+    </div>
+    <div class="titlebar-controls">
+      <div class="control-btn close" title="关闭"></div>
+      <div class="control-btn minimize" title="最小化"></div>
+      <div class="control-btn maximize" title="最大化"></div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="editor-header">
+    <div class="flow-info">
+      <a href="app-dashboard.html" style="color: var(--muted); display: flex; align-items: center; gap: 4px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        返回列表
+      </a>
+      <span class="border" style="width: 1px; height: 16px; background: var(--border);"></span>
+      <span class="flow-title" id="flowTitle">HN 热点简报 (news-aggregator)</span>
+      <span class="flow-status">已启用</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="runFlow()">立即运行</button>
+      <button class="btn btn-primary" onclick="saveFlow()">保存配置</button>
+    </div>
+  </header>
+
+  <div class="editor-body">
+    <!-- Left node palette -->
+    <aside class="node-palette">
+      <div>
+        <div class="palette-group-title">触发器 (Triggers)</div>
+        <div class="palette-nodes">
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            定时触发
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Webhook 触发
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            手动触发
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="palette-group-title">核心操作 (Actions)</div>
+        <div class="palette-nodes">
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            Claude Code
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Codex Agent
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Shell 脚本
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            SQLite 执行
+          </div>
+          <div class="palette-node-item" draggable="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M22 4L12 14.01l-3-3"/></svg>
+            消息通知
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Canvas area -->
+    <main class="canvas-container">
+      <div class="canvas-flow">
+        <!-- SVG Connections -->
+        <svg class="svg-connections" id="connectionsSvg">
+          <!-- We will draw bezier curves here dynamically -->
+        </svg>
+
+        <!-- Node 1 (Selected/Active) -->
+        <div class="canvas-node active" id="node-cron" onclick="selectNode('cron')">
+          <div class="handle right"></div>
+          <div class="canvas-node-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="node-cron-title-display">定时触发 (Cron)</span>
+          </div>
+          <div class="canvas-node-content" id="node-cron-content-display">
+            表达式: */30 8-18 * * 1-5<br>
+            状态: 已启用
+          </div>
+        </div>
+
+        <!-- Node 2 -->
+        <div class="canvas-node" id="node-claude" onclick="selectNode('claude')">
+          <div class="handle left"></div>
+          <div class="handle right"></div>
+          <div class="canvas-node-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            <span id="node-claude-title-display">Claude Code</span>
+          </div>
+          <div class="canvas-node-content" id="node-claude-content-display">
+            Skill: rss-fetcher<br>
+            提示词: 抓取 HN 前 10 热点...
+          </div>
+        </div>
+
+        <!-- Node 3 -->
+        <div class="canvas-node" id="node-codex" onclick="selectNode('codex')">
+          <div class="handle left"></div>
+          <div class="handle right"></div>
+          <div class="canvas-node-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span id="node-codex-title-display">Sentry Filter</span>
+          </div>
+          <div class="canvas-node-content" id="node-codex-content-display">
+            模型: gpt-4o<br>
+            提示词: 过滤异常指标数据...
+          </div>
+        </div>
+
+        <!-- Node 4 -->
+        <div class="canvas-node" id="node-webhook" onclick="selectNode('webhook')">
+          <div class="handle left"></div>
+          <div class="canvas-node-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M22 4L12 14.01l-3-3"/></svg>
+            <span id="node-webhook-title-display">飞书 Webhook 通知</span>
+          </div>
+          <div class="canvas-node-content" id="node-webhook-content-display">
+            目标: Feishu Bot<br>
+            类型: 异常卡片通知
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right inspector panel -->
+    <aside class="inspector-panel" id="inspectorPanel">
+      <!-- Node inspector content dynamically injected here -->
+      <div class="inspector-header">
+        <h3 id="inspectorTitle">配置: 定时触发 (Cron)</h3>
+        <p id="inspectorSubtitle">NODE TYPE: trigger_cron · ID: node_1</p>
+      </div>
+
+      <div class="inspector-body" id="inspectorBody">
+        <div class="form-group">
+          <label>节点显示名称</label>
+          <input type="text" class="form-input" id="nodeName" value="定时触发 (Cron)" oninput="updateNodeDisplay('name')">
+        </div>
+
+        <div class="form-group">
+          <label>触发类型</label>
+          <select class="form-select" id="triggerType">
+            <option value="cron">Cron 表达式</option>
+            <option value="interval">固定间隔</option>
+            <option value="manual">手动执行</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="cronExprGroup">
+          <label>Cron 表达式</label>
+          <input type="text" class="form-input" id="cronExpr" value="*/30 8-18 * * 1-5" style="font-family: var(--font-mono);" oninput="updateNodeDisplay('cron')">
+          <span class="meta" style="margin-top: 4px; display: block;" id="cronExplain">在工作日的 8:00 至 18:00 期间，每 30 分钟触发一次。</span>
+        </div>
+
+        <div class="inspector-schedule-preview">
+          <div class="schedule-title">SQLite 计划调度预测</div>
+          <div class="schedule-time"><span>下一次执行:</span><span class="num">今日 11:00:00</span></div>
+          <div class="schedule-time"><span>第二次执行:</span><span class="num">今日 11:30:00</span></div>
+          <div class="schedule-time"><span>第三次执行:</span><span class="num">今日 12:00:00</span></div>
+        </div>
+
+        <div style="margin-top: auto; display: flex; gap: 8px;">
+          <button class="btn btn-secondary" style="flex:1;">复位配置</button>
+          <button class="btn btn-danger" style="flex:1;">删除节点</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom logs drawer -->
+    <div class="logs-drawer" id="logsDrawer">
+      <div class="drawer-header">
+        <span class="drawer-title">工作流执行实时控制台</span>
+        <button class="btn btn-secondary" style="padding: 2px 6px; font-size: 10px;" onclick="closeDrawer()">关闭控制台</button>
+      </div>
+      <div class="drawer-content" id="drawerContent">
+        <!-- Live logs injected here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Draw SVG connections on load
+    window.onload = function() {
+      drawConnections();
+      window.addEventListener('resize', drawConnections);
+    };
+
+    function drawConnections() {
+      const svg = document.getElementById('connectionsSvg');
+      svg.innerHTML = '';
+      
+      const nodes = [
+        { from: 'node-cron', to: 'node-claude' },
+        { from: 'node-claude', to: 'node-codex' },
+        { from: 'node-codex', to: 'node-webhook' }
+      ];
+
+      const svgRect = svg.getBoundingClientRect();
+
+      nodes.forEach(conn => {
+        const fromEl = document.getElementById(conn.from);
+        const toEl = document.getElementById(conn.to);
+        
+        if (fromEl && toEl) {
+          const fromHandle = fromEl.querySelector('.handle.right');
+          const toHandle = toEl.querySelector('.handle.left');
+          
+          if (fromHandle && toHandle) {
+            const fRect = fromHandle.getBoundingClientRect();
+            const tRect = toHandle.getBoundingClientRect();
+
+            const x1 = fRect.left - svgRect.left + 4;
+            const y1 = fRect.top - svgRect.top + 4;
+            const x2 = tRect.left - svgRect.left + 4;
+            const y2 = tRect.top - svgRect.top + 4;
+
+            // draw bezier curve
+            const controlOffset = Math.abs(x2 - x1) * 0.5;
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const d = `M ${x1} ${y1} C ${x1 + controlOffset} ${y1}, ${x2 - controlOffset} ${y2}, ${x2} ${y2}`;
+            
+            path.setAttribute('d', d);
+            path.setAttribute('stroke', 'var(--border)');
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('fill', 'none');
+            svg.appendChild(path);
+          }
+        }
+      });
+    }
+
+    // Node state definitions
+    const nodesConfig = {
+      'cron': {
+        title: '定时触发 (Cron)',
+        type: 'trigger_cron',
+        id: 'node_1',
+        fields: {
+          name: '定时触发 (Cron)',
+          triggerType: 'cron',
+          cron: '*/30 8-18 * * 1-5'
+        }
+      },
+      'claude': {
+        title: 'Claude Code Agent',
+        type: 'action_claude',
+        id: 'node_2',
+        fields: {
+          name: 'Claude Code Agent',
+          skill: 'rss-fetcher',
+          prompt: '抓取 Hacker News 前 10 热点资讯，提取异常流量热帖数据。'
+        }
+      },
+      'codex': {
+        title: 'Sentry Filter',
+        type: 'action_codex',
+        id: 'node_3',
+        fields: {
+          name: 'Sentry Filter',
+          model: 'gpt-4o',
+          prompt: '分析提取到的内容，过滤出包含 API 挂载异常或连接超时错误相关的日志行。'
+        }
+      },
+      'webhook': {
+        title: '飞书 Webhook 通知',
+        type: 'action_webhook',
+        id: 'node_4',
+        fields: {
+          name: '飞书 Webhook 通知',
+          target: 'Feishu Bot',
+          payload: '{\n  "msg_type": "post",\n  "content": {\n    "post": {\n      "zh_cn": {\n        "title": "HN 流量监控警报",\n        "content": [ ... ]\n      }\n    }\n  }\n}'
+        }
+      }
+    };
+
+    let activeNodeId = 'cron';
+
+    function selectNode(nodeId) {
+      activeNodeId = nodeId;
+      
+      // Update canvas borders
+      const canvasNodes = document.querySelectorAll('.canvas-node');
+      canvasNodes.forEach(n => n.classList.remove('active'));
+      document.getElementById(`node-${nodeId}`).classList.add('active');
+
+      // Update right inspector panel
+      const node = nodesConfig[nodeId];
+      document.getElementById('inspectorTitle').innerText = `配置: ${node.title}`;
+      document.getElementById('inspectorSubtitle').innerText = `NODE TYPE: ${node.type} · ID: ${node.id}`;
+      
+      const body = document.getElementById('inspectorBody');
+      
+      if (nodeId === 'cron') {
+        body.innerHTML = `
+          <div class="form-group">
+            <label>节点显示名称</label>
+            <input type="text" class="form-input" id="nodeName" value="${node.fields.name}" oninput="updateNodeDisplay('name')">
+          </div>
+          <div class="form-group">
+            <label>触发类型</label>
+            <select class="form-select" id="triggerType">
+              <option value="cron" ${node.fields.triggerType === 'cron' ? 'selected' : ''}>Cron 表达式</option>
+              <option value="interval">固定间隔</option>
+              <option value="manual">手动执行</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cron 表达式</label>
+            <input type="text" class="form-input" id="cronExpr" value="${node.fields.cron}" style="font-family: var(--font-mono);" oninput="updateNodeDisplay('cron')">
+            <span class="meta" style="margin-top: 4px; display: block;" id="cronExplain">在工作日的 8:00 至 18:00 期间，每 30 分钟触发一次。</span>
+          </div>
+          <div class="inspector-schedule-preview">
+            <div class="schedule-title">SQLite 计划调度预测</div>
+            <div class="schedule-time"><span>下一次执行:</span><span class="num">今日 11:00:00</span></div>
+            <div class="schedule-time"><span>第二次执行:</span><span class="num">今日 11:30:00</span></div>
+            <div class="schedule-time"><span>第三次执行:</span><span class="num">今日 12:00:00</span></div>
+          </div>
+          <div style="margin-top: auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" style="flex:1;">复位配置</button>
+            <button class="btn btn-danger" style="flex:1;">删除节点</button>
+          </div>
+        `;
+      } else if (nodeId === 'claude') {
+        body.innerHTML = `
+          <div class="form-group">
+            <label>节点显示名称</label>
+            <input type="text" class="form-input" id="nodeName" value="${node.fields.name}" oninput="updateNodeDisplay('name')">
+          </div>
+          <div class="form-group">
+            <label>挂载的本地 Skill</label>
+            <select class="form-select" id="claudeSkill" onchange="updateNodeDisplay('skill')">
+              <option value="rss-fetcher" ${node.fields.skill === 'rss-fetcher' ? 'selected' : ''}>rss-fetcher (已挂载)</option>
+              <option value="git-committer" ${node.fields.skill === 'git-committer' ? 'selected' : ''}>git-committer (已挂载)</option>
+              <option value="tiktok-analyzer">tiktok-analyzer (未挂载)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>提示词指令 (System Prompt)</label>
+            <textarea class="form-textarea" id="claudePrompt" oninput="updateNodeDisplay('prompt')">${node.fields.prompt}</textarea>
+          </div>
+          <div style="margin-top: auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" style="flex:1;">配置密钥</button>
+            <button class="btn btn-danger" style="flex:1;">删除节点</button>
+          </div>
+        `;
+      } else if (nodeId === 'codex') {
+        body.innerHTML = `
+          <div class="form-group">
+            <label>节点显示名称</label>
+            <input type="text" class="form-input" id="nodeName" value="${node.fields.name}" oninput="updateNodeDisplay('name')">
+          </div>
+          <div class="form-group">
+            <label>模型选择</label>
+            <select class="form-select" id="codexModel" onchange="updateNodeDisplay('model')">
+              <option value="gpt-4o" ${node.fields.model === 'gpt-4o' ? 'selected' : ''}>gpt-4o</option>
+              <option value="claude-3-5-sonnet">claude-3.5-sonnet</option>
+              <option value="deepseek-coder">deepseek-coder (国产模型替代)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>过滤与分析指令</label>
+            <textarea class="form-textarea" id="codexPrompt" oninput="updateNodeDisplay('prompt')">${node.fields.prompt}</textarea>
+          </div>
+          <div style="margin-top: auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" style="flex:1;">导入模板</button>
+            <button class="btn btn-danger" style="flex:1;">删除节点</button>
+          </div>
+        `;
+      } else if (nodeId === 'webhook') {
+        body.innerHTML = `
+          <div class="form-group">
+            <label>节点显示名称</label>
+            <input type="text" class="form-input" id="nodeName" value="${node.fields.name}" oninput="updateNodeDisplay('name')">
+          </div>
+          <div class="form-group">
+            <label>发送通道</label>
+            <select class="form-select" id="webhookTarget" onchange="updateNodeDisplay('target')">
+              <option value="Feishu Bot" ${node.fields.target === 'Feishu Bot' ? 'selected' : ''}>飞书群机器人</option>
+              <option value="Slack Incoming">Slack Webhook</option>
+              <option value="Custom Email">邮件通知</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>通知内容卡片 (JSON)</label>
+            <textarea class="form-textarea" id="webhookPayload" style="height: 120px;">${node.fields.payload}</textarea>
+          </div>
+          <div style="margin-top: auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" style="flex:1;">发送测试</button>
+            <button class="btn btn-danger" style="flex:1;">删除节点</button>
+          </div>
+        `;
+      }
+    }
+
+    function updateNodeDisplay(field) {
+      const node = nodesConfig[activeNodeId];
+      if (field === 'name') {
+        const val = document.getElementById('nodeName').value;
+        node.fields.name = val;
+        node.title = val;
+        document.getElementById(`node-${activeNodeId}-title-display`).innerText = val;
+      } else if (field === 'cron') {
+        const val = document.getElementById('cronExpr').value;
+        node.fields.cron = val;
+        document.getElementById(`node-cron-content-display`).innerHTML = `表达式: ${val}<br>状态: 已启用`;
+        // Cron translation simplified mockup
+        const explain = document.getElementById('cronExplain');
+        if (val.includes('*/30')) {
+          explain.innerText = '在工作日的 8:00 至 18:00 期间，每 30 分钟触发一次。';
+        } else if (val.includes('*/10')) {
+          explain.innerText = '每隔 10 分钟触发一次。';
+        } else {
+          explain.innerText = `已配置 Cron 表达式: ${val}`;
+        }
+      } else if (field === 'skill') {
+        const val = document.getElementById('claudeSkill').value;
+        node.fields.skill = val;
+        document.getElementById(`node-claude-content-display`).innerHTML = `Skill: ${val}<br>提示词: ${node.fields.prompt.substring(0, 12)}...`;
+      } else if (field === 'prompt') {
+        let val = '';
+        if (activeNodeId === 'claude') {
+          val = document.getElementById('claudePrompt').value;
+          node.fields.prompt = val;
+          document.getElementById(`node-claude-content-display`).innerHTML = `Skill: ${node.fields.skill}<br>提示词: ${val.substring(0, 12)}...`;
+        } else if (activeNodeId === 'codex') {
+          val = document.getElementById('codexPrompt').value;
+          node.fields.prompt = val;
+          document.getElementById(`node-codex-content-display`).innerHTML = `模型: ${node.fields.model}<br>提示词: ${val.substring(0, 12)}...`;
+        }
+      } else if (field === 'model') {
+        const val = document.getElementById('codexModel').value;
+        node.fields.model = val;
+        document.getElementById(`node-codex-content-display`).innerHTML = `模型: ${val}<br>提示词: ${node.fields.prompt.substring(0, 12)}...`;
+      } else if (field === 'target') {
+        const val = document.getElementById('webhookTarget').value;
+        node.fields.target = val;
+        document.getElementById(`node-webhook-content-display`).innerHTML = `目标: ${val}<br>类型: 异常卡片通知`;
+      }
+    }
+
+    // Run flow logic demonstration
+    function runFlow() {
+      const drawer = document.getElementById('logsDrawer');
+      const content = document.getElementById('drawerContent');
+      
+      drawer.classList.add('open');
+      content.innerHTML = '';
+      
+      const lines = [
+        { text: '[FlowEngine] 手动调试执行开始...', type: 'info' },
+        { text: '[FlowEngine] 正在触发节点 1: "定时触发 (Cron)"', type: 'info' },
+        { text: '[Rust-Bridge] 启动子进程：Claude Agent SDK 准备就绪', type: 'cmd' },
+        { text: '[Agent-Adapter] 加载 Skill 库软链接 rss-fetcher...', type: '' },
+        { text: '[rss-fetcher] 提取源 Hacker News RSS... [成功]', type: '' },
+        { text: '[Agent-Adapter] 调用 Claude 引擎分析热度，响应耗时 8.2s', type: '' },
+        { text: '[FlowEngine] 节点 2 "Claude Code" 运行成功，数据流向 "Sentry Filter"', type: 'info' },
+        { text: '[Agent-Adapter] 挂载 OpenAI Codex gpt-4o 引擎分析指标...', type: '' },
+        { text: '[codex-node] 过滤分析成功：发现 0 个超时错误，2 个网络波动异常。', type: '' },
+        { text: '[FlowEngine] 节点 3 "Sentry Filter" 运行成功，数据流向 "飞书 Webhook 通知"', type: 'info' },
+        { text: '[webhook-node] 正在发起 HTTP POST 到 Feishu Bot...', type: 'cmd' },
+        { text: '[webhook-node] 飞书群机器人通知推送完毕，状态码: 200 OK', type: '' },
+        { text: '[FlowEngine] 工作流手动调试执行完毕，状态: SUCCESS', type: 'info' }
+      ];
+
+      let delay = 0;
+      lines.forEach(line => {
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = `console-line ${line.type}`;
+          div.innerText = `[${new Date().toTimeString().split(' ')[0]}] ${line.text}`;
+          content.appendChild(div);
+          content.scrollTop = content.scrollHeight;
+        }, delay);
+        delay += 600;
+      });
+    }
+
+    function closeDrawer() {
+      document.getElementById('logsDrawer').classList.remove('open');
+    }
+
+    function saveFlow() {
+      alert('工作流配置已成功写入本地应用配置文件。');
+    }
+  </script>
+</body>
+</html>

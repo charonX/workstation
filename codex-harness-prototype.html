@@ -1,0 +1,632 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Harness · 原型演示系统导航</title>
+  <style>
+    /* ─── tokens & themes ─── */
+    :root {
+      /* Dark Theme (Default) */
+      --bg: #0b0f14;
+      --surface: #11161d;
+      --surface-raised: #161c24;
+      --fg: #f0f3f6;
+      --fg-muted: #8b949e;
+      --border: #21262d;
+      --border-hover: #30363d;
+      --accent: #049fd9; /* Cisco Blue */
+      --accent-muted: rgba(4, 159, 217, 0.12);
+      --success: #2ea44f;
+      --success-muted: rgba(46, 164, 79, 0.15);
+      
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji";
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+      
+      --shadow: rgba(0, 0, 0, 0.4);
+      --grid-color: rgba(255, 255, 255, 0.025);
+      
+      --radius: 6px;
+      --radius-lg: 10px;
+      
+      --transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    [data-theme="light"] {
+      /* Light Theme */
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --surface-raised: #f3f4f6;
+      --fg: #24292f;
+      --fg-muted: #57606a;
+      --border: #d0d7de;
+      --border-hover: #8c959f;
+      --accent: #0969da; /* High contrast Cisco Blue variant */
+      --accent-muted: rgba(9, 105, 218, 0.1);
+      --success: #1a7f37;
+      --success-muted: rgba(26, 127, 55, 0.1);
+      
+      --shadow: rgba(140, 149, 159, 0.12);
+      --grid-color: rgba(0, 0, 0, 0.03);
+    }
+
+    /* ─── reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      position: relative;
+      /* 网格背景效果 */
+      background-image: radial-gradient(var(--grid-color) 1px, transparent 1px);
+      background-size: 16px 16px;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    /* ─── layout ─── */
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(var(--bg), 0.7);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      transition: border-color 0.3s ease;
+    }
+    
+    .nav-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-logo {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+    }
+    .brand-name {
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .daemon-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--success-muted);
+      color: var(--success);
+      padding: 2px 8px;
+      border-radius: 99px;
+      margin-left: 12px;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background-color: var(--success);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* 主题切换按钮 */
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 6px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    .theme-toggle:hover {
+      border-color: var(--border-hover);
+      background-color: var(--surface-raised);
+    }
+    .theme-toggle svg {
+      width: 16px;
+      height: 16px;
+    }
+    .theme-toggle .sun-icon { display: none; }
+    [data-theme="light"] .theme-toggle .moon-icon { display: none; }
+    [data-theme="light"] .theme-toggle .sun-icon { display: block; }
+
+    .main-wrapper {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* ─── hero section ─── */
+    .hero-area {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 40px;
+      align-items: center;
+      margin-bottom: 56px;
+    }
+    
+    @media (max-width: 900px) {
+      .hero-area {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+    }
+
+    .hero-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    
+    h1 {
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.2;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      letter-spacing: -0.02em;
+    }
+    
+    .lead {
+      font-size: 15px;
+      color: var(--fg-muted);
+      max-width: 58ch;
+      margin: 0;
+    }
+
+    /* ─── interactive preview console ─── */
+    .console-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 8px 30px var(--shadow);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 220px;
+    }
+    
+    .console-header {
+      background: var(--surface-raised);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--fg-muted);
+    }
+    
+    .console-title {
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .console-body {
+      padding: 12px 16px;
+      flex: 1;
+      overflow-y: auto;
+      color: #7ee787; /* Green terminal text */
+      background: rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    
+    [data-theme="light"] .console-body {
+      color: #116329;
+      background: #fafbfc;
+    }
+
+    .log-line {
+      margin: 0;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+    .log-time { color: var(--fg-muted); margin-right: 8px; }
+    
+    .console-action-bar {
+      padding: 8px 16px;
+      background: var(--surface-raised);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+    }
+    
+    .btn-small {
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      padding: 4px 12px;
+      border-radius: var(--radius);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-sans);
+    }
+    .btn-small:hover {
+      opacity: 0.9;
+    }
+
+    /* ─── navigation grid ─── */
+    .section-title {
+      font-size: 14px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--fg-muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+    }
+
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 64px;
+    }
+    
+    @media (max-width: 768px) {
+      .nav-grid { grid-template-columns: 1fr; }
+    }
+
+    .nav-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: var(--transition);
+      min-height: 220px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+    
+    /* 左侧装饰指示条 */
+    .nav-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background-color: transparent;
+      transition: var(--transition);
+    }
+    
+    .nav-card:hover {
+      border-color: var(--border-hover);
+      background-color: var(--surface-raised);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px var(--shadow);
+    }
+    
+    .nav-card:hover::before {
+      background-color: var(--accent);
+    }
+    
+    .card-top {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .card-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--fg);
+    }
+    
+    .card-desc {
+      font-size: 13px;
+      color: var(--fg-muted);
+      line-height: 1.45;
+      margin: 0;
+    }
+    
+    .card-action {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 16px;
+    }
+    
+    .card-action svg {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.15s ease;
+    }
+    
+    .nav-card:hover .card-action svg {
+      transform: translateX(4px);
+    }
+
+    /* ─── footer info strip ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 32px 24px;
+      margin-top: auto;
+      transition: border-color 0.3s ease, background-color 0.3s ease;
+    }
+    
+    .footer-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    
+    .meta-group {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    
+    .meta-item {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--fg-muted);
+    }
+    
+    .meta-label {
+      color: var(--fg);
+      font-weight: 600;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        <span class="brand-name">CODEX HARNESS</span>
+        <div class="daemon-status" id="daemon-badge">
+          <span class="status-dot"></span>
+          <span>Daemon: Active</span>
+        </div>
+      </div>
+      
+      <div class="nav-actions">
+        <!-- Theme Toggle -->
+        <button class="theme-toggle" id="theme-btn" aria-label="切换配色模式" title="切换深色/浅色模式">
+          <!-- Sun Icon -->
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <!-- Moon Icon -->
+          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    
+    <!-- Hero Block -->
+    <section class="hero-area">
+      <div class="hero-info">
+        <p class="eyebrow">Suite Launcher</p>
+        <h1>本地自动化工作流调度系统</h1>
+        <p class="lead">
+          Codex Harness 是一款专为开发者设计的本地工作流挂载器。支持一键将本地 Skill 挂载为可调度的 Cron 触发节点，并在本地 SQLite 数据库中完整记录调度日志。
+        </p>
+      </div>
+      
+      <!-- Interactive Terminal View -->
+      <div class="console-box">
+        <div class="console-header">
+          <span class="console-title">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            sqlite_logger.db
+          </span>
+          <span>[SQLite Engine]</span>
+        </div>
+        <div class="console-body" id="log-console">
+          <p class="log-line"><span class="log-time">[22:34:00]</span>INFO: Daemon initialized successfully.</p>
+          <p class="log-line"><span class="log-time">[22:34:01]</span>INFO: Bridge mapped to ~/.gemini/config/skills</p>
+          <p class="log-line"><span class="log-time">[22:34:05]</span>CRON: Cron Trigger initialized with: '*/5 * * * *'</p>
+        </div>
+        <div class="console-action-bar">
+          <button class="btn-small" id="trigger-test-btn">触发测试 (Trigger Test)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Page Entries Grid -->
+    <section>
+      <h2 class="section-title">原型子页面目录</h2>
+      <div class="nav-grid">
+        
+        <!-- Card 1: Landing -->
+        <a href="landing.html" class="nav-card">
+          <div class="card-top">
+            <span class="card-meta">Product Page</span>
+            <h3 class="card-title">产品落地页</h3>
+            <p class="card-desc">呈现 Codex Harness 的核心价值、技术栈组成以及客户端在系统内部的轻量挂载方案介绍。</p>
+          </div>
+          <span class="card-action">
+            浏览落地页
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </span>
+        </a>
+
+        <!-- Card 2: Dashboard -->
+        <a href="app-dashboard.html" class="nav-card">
+          <div class="card-top">
+            <span class="card-meta">Tauri Desktop</span>
+            <h3 class="card-title">管理控制台</h3>
+            <p class="card-desc">桌面端项目配置核心看板。在此进行本地 Skill 文件的软链接挂载，并实时追溯 SQLite 运行轨迹。</p>
+          </div>
+          <span class="card-action">
+            进入控制台
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </span>
+        </a>
+
+        <!-- Card 3: Editor -->
+        <a href="app-editor.html" class="nav-card">
+          <div class="card-top">
+            <span class="card-meta">n8n Engine</span>
+            <h3 class="card-title">连线编辑器</h3>
+            <p class="card-desc">针对 Cron Trigger 等节点的流程编排编辑器。提供可视化配置面板、输入输出模拟及现场执行调试。</p>
+          </div>
+          <span class="card-action">
+            打开编辑器
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </span>
+        </a>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-container">
+      <div class="meta-group">
+        <div class="meta-item"><span class="meta-label">调性定位:</span>科技工具型 (Tech-Utility)</div>
+        <div class="meta-item"><span class="meta-label">框架基准:</span>Cisco Core &amp; Sentry CSS Grid</div>
+        <div class="meta-item"><span class="meta-label">默认节点:</span>定时触发 (Cron Trigger)</div>
+      </div>
+      <div class="meta-item" style="font-size: 11px;">
+        Codex Harness Desktop Design Mockups.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Theme and Console Interactivity Script -->
+  <script>
+    // 1. Theme Toggle Controller
+    const themeBtn = document.getElementById('theme-btn');
+    const rootEl = document.documentElement;
+
+    // Load initial theme state from localStorage
+    const savedTheme = localStorage.getItem('od-theme') || 'dark';
+    rootEl.setAttribute('data-theme', savedTheme);
+
+    themeBtn.addEventListener('click', () => {
+      const currentTheme = rootEl.getAttribute('data-theme');
+      const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
+      rootEl.setAttribute('data-theme', nextTheme);
+      localStorage.setItem('od-theme', nextTheme);
+    });
+
+    // 2. Interactive Terminal Simulator
+    const consoleBody = document.getElementById('log-console');
+    const triggerBtn = document.getElementById('trigger-test-btn');
+    
+    const sampleLogs = [
+      "CRON_SCHEDULER: Evaluating active node mappings...",
+      "DATABASE: SQLite operation status: OK (0ms delay)",
+      "PROCESS: Spawned subprocess to execute skill task.",
+      "SKILL_RUNNER: Exited code 0. Action payload dispatched.",
+      "LOGGER: Appended 1 transaction entry to local ledger."
+    ];
+
+    triggerBtn.addEventListener('click', () => {
+      const date = new Date();
+      const timeStr = `[${date.toTimeString().split(' ')[0]}]`;
+      const randomLog = sampleLogs[Math.floor(Math.random() * sampleLogs.length)];
+      
+      const newLog = document.createElement('p');
+      newLog.className = 'log-line';
+      newLog.innerHTML = `<span class="log-time">${timeStr}</span><span style="color: var(--accent);">TEST_ACTION:</span> ${randomLog}`;
+      
+      consoleBody.appendChild(newLog);
+      
+      // Auto Scroll to Bottom
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    });
+  </script>
+</body>
+</html>
