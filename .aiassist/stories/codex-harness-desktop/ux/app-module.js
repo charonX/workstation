@@ -10,6 +10,7 @@ const state = {
   skills: [],
   selectedSkill: null,
   addProjectOpen: false,
+  addProjectSource: "local",
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -317,31 +318,53 @@ function skillModal() {
 
 function addProjectModal() {
   if (!state.addProjectOpen) return "";
+  const isLocal = state.addProjectSource === "local";
+  const sourceToggle = `
+    <div style="display:flex;gap:var(--ch-space-2);margin-bottom:var(--ch-space-4);background:var(--ch-surface-high);border:1px solid var(--ch-border);border-radius:var(--ch-radius-md);padding:4px">
+      <button type="button" onclick="actions.setAddProjectSource('local')" style="flex:1;background:${isLocal ? "var(--ch-accent)" : "transparent"};color:${isLocal ? "var(--ch-accent-text)" : "var(--ch-text-secondary)"};border:none;border-radius:var(--ch-radius-md);padding:6px 12px;font-size:var(--ch-text-base);cursor:pointer">Local Directory</button>
+      <button type="button" onclick="actions.setAddProjectSource('git')" style="flex:1;background:${isLocal ? "transparent" : "var(--ch-accent)"};color:${isLocal ? "var(--ch-text-secondary)" : "var(--ch-accent-text)"};border:none;border-radius:var(--ch-radius-md);padding:6px 12px;font-size:var(--ch-text-base);cursor:pointer">Git Repository</button>
+    </div>`;
+  const sourceFields = isLocal
+    ? `<div style="margin-bottom:var(--ch-space-4)">
+        <label style="${styles.label}">Directory Path</label>
+        <input id="add-project-path" style="${styles.input}" placeholder="${helpers.escape(state.workspaceRoot)}/my-project" />
+      </div>`
+    : `<div style="margin-bottom:var(--ch-space-4)">
+        <label style="${styles.label}">Repository URL</label>
+        <input id="add-project-repo" style="${styles.input}" placeholder="https://github.com/user/repo.git" />
+      </div>
+      <div style="margin-bottom:var(--ch-space-4)">
+        <label style="${styles.label}">Branch (optional)</label>
+        <input id="add-project-branch" style="${styles.input}" placeholder="main" />
+      </div>
+      <div style="margin-bottom:var(--ch-space-4)">
+        <label style="${styles.label}">Clone Directory</label>
+        <input id="add-project-path" style="${styles.input}" placeholder="${helpers.escape(state.workspaceRoot)}/repo" />
+      </div>`;
+
   return `
     <div onclick="actions.closeAddProjectModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
       <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:520px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
           <div>
             <div style="font-size:var(--ch-text-xl);font-weight:700">Add Project</div>
-            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">Create a project from a local directory</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">${isLocal ? "Create a project from a local directory" : "Clone a project from a Git repository"}</div>
           </div>
           <button onclick="actions.closeAddProjectModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
         </div>
         <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          ${sourceToggle}
           <div style="margin-bottom:var(--ch-space-4)">
             <label style="${styles.label}">Project Name</label>
             <input id="add-project-name" style="${styles.input}" placeholder="e.g. Hot News" />
           </div>
-          <div style="margin-bottom:var(--ch-space-4)">
-            <label style="${styles.label}">Directory Path</label>
-            <input id="add-project-path" style="${styles.input}" placeholder="${helpers.escape(state.workspaceRoot)}/my-project" />
-          </div>
+          ${sourceFields}
           <div style="margin-bottom:var(--ch-space-4)">
             <label style="${styles.label}">Description</label>
             <input id="add-project-desc" style="${styles.input}" placeholder="Short description" />
           </div>
           <div style="display:flex;gap:var(--ch-space-3)">
-            ${btnPrimary("Create Project", null, "onclick=\"actions.saveProject()\"")}
+            ${btnPrimary(isLocal ? "Create Project" : "Clone Project", null, "onclick=\"actions.saveProject()\"")}
             ${btnSecondary("Cancel", null, "onclick=\"actions.closeAddProjectModal()\"")}
           </div>
         </div>
@@ -591,22 +614,35 @@ const actions = {
   },
   openAddProjectModal() {
     state.addProjectOpen = true;
+    state.addProjectSource = "local";
     renderApp();
   },
   closeAddProjectModal() {
     state.addProjectOpen = false;
     renderApp();
   },
+  setAddProjectSource(source) {
+    state.addProjectSource = source;
+    renderApp();
+  },
   saveProject() {
     const nameInput = document.getElementById("add-project-name");
     const pathInput = document.getElementById("add-project-path");
     const descInput = document.getElementById("add-project-desc");
+    const repoInput = document.getElementById("add-project-repo");
+    const branchInput = document.getElementById("add-project-branch");
     const name = (nameInput?.value || "").trim();
     const path = (pathInput?.value || "").trim();
     const description = (descInput?.value || "").trim();
     if (!name) return;
+    const isLocal = state.addProjectSource === "local";
     const id = "p" + (mockData.projects.length + 1);
-    mockData.projects.push({ id, name, description, updatedAt: "just now" });
+    const project = { id, name, description, updatedAt: "just now", sourceType: isLocal ? "local" : "git", localPath: path || state.workspaceRoot + "/" + name };
+    if (!isLocal) {
+      project.repoUrl = (repoInput?.value || "").trim();
+      project.branch = (branchInput?.value || "").trim() || "main";
+    }
+    mockData.projects.push(project);
     state.addProjectOpen = false;
     renderApp();
   },
