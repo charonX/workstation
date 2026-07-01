@@ -6,6 +6,7 @@ const state = {
   activeScreen: "workspace",
   theme: "dark",
   projectFilter: "",
+  workspaceRoot: "~/codex-harness-workspace",
   skills: [],
   selectedSkill: null,
   selectedNode: null,
@@ -17,11 +18,11 @@ const state = {
 
 // === Mock Data ===
 const mockData = {
-  workspace: { name: "My Workspace", path: "~/codex-harness-workspace" },
+  workspace: { name: "My Workspace" },
   projects: [
-    { id: "p1", name: "热点新闻抓取", description: "定时抓取并总结热点新闻", updatedAt: "2h ago", sourceType: "local" },
-    { id: "p2", name: "TikTok 红人筛选", description: "分析榜单异常值并筛选红人", updatedAt: "1d ago", sourceType: "git" },
-    { id: "p3", name: "网站内容更新", description: "自动更新博客与文档站点", updatedAt: "3d ago", sourceType: "local" }
+    { id: "p1", name: "热点新闻抓取", description: "定时抓取并总结热点新闻", updatedAt: "2h ago" },
+    { id: "p2", name: "TikTok 红人筛选", description: "分析榜单异常值并筛选红人", updatedAt: "1d ago" },
+    { id: "p3", name: "网站内容更新", description: "自动更新博客与文档站点", updatedAt: "3d ago" }
   ],
   skills: [
     { id: "s1", name: "news-fetcher", description: "抓取新闻源并提取正文", repoPath: "~/.codex-harness/skills/news-fetcher", linkedTo: ["p1"] },
@@ -56,10 +57,10 @@ const mockData = {
     { category: "Output", items: ["Log", "Notification", "Save File"] }
   ],
   executions: [
-    { id: "e1", flowName: "热点新闻抓取", startedAt: "2026-07-01 08:00:12", endedAt: "2026-07-01 08:00:45", status: "success", duration: "33s", nodesRun: 6 },
-    { id: "e2", flowName: "热点新闻抓取", startedAt: "2026-06-30 08:00:05", endedAt: "2026-06-30 08:00:52", status: "success", duration: "47s", nodesRun: 6 },
-    { id: "e3", flowName: "热点新闻抓取", startedAt: "2026-06-29 08:00:00", endedAt: "2026-06-29 08:00:18", status: "error", duration: "18s", nodesRun: 3 },
-    { id: "e4", flowName: "TikTok 红人筛选", startedAt: "2026-06-28 20:15:00", endedAt: "2026-06-28 20:16:10", status: "success", duration: "70s", nodesRun: 8 }
+    { id: "e1", flowName: "热点新闻抓取", projectName: "热点新闻抓取", startedAt: "2026-07-01 08:00:12", endedAt: "2026-07-01 08:00:45", status: "success", duration: "33s", nodesRun: 6 },
+    { id: "e2", flowName: "热点新闻抓取", projectName: "热点新闻抓取", startedAt: "2026-06-30 08:00:05", endedAt: "2026-06-30 08:00:52", status: "success", duration: "47s", nodesRun: 6 },
+    { id: "e3", flowName: "热点新闻抓取", projectName: "热点新闻抓取", startedAt: "2026-06-29 08:00:00", endedAt: "2026-06-29 08:00:18", status: "error", duration: "18s", nodesRun: 3 },
+    { id: "e4", flowName: "TikTok 红人筛选", projectName: "TikTok 红人筛选", startedAt: "2026-06-28 20:15:00", endedAt: "2026-06-28 20:16:10", status: "success", duration: "70s", nodesRun: 8 }
   ],
   logs: [
     { time: "08:00:12", node: "Schedule Trigger", status: "success", message: "Cron matched, execution started" },
@@ -111,7 +112,8 @@ const iconSvgs = {
   trash: 'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
   zoomIn: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.35-4.35M11 8v6M8 11h6',
   zoomOut: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.35-4.35M8 11h6',
-  fit: 'M15 3h6v6M9 21H3v-6m18-6-7 7M3 15l7-7'
+  fit: 'M15 3h6v6M9 21H3v-6m18-6-7 7M3 15l7-7',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7-3h.01M4.22 4.22l.01.01M4.22 19.78l.01-.01M19.78 4.22l-.01.01M19.78 19.78l-.01-.01M12 2v2m0 16v2M2 12h2m16 0h2'
 };
 
 function icon(name, size = 16) {
@@ -165,7 +167,7 @@ function card(content) {
 
 // === Screens ===
 function topbar() {
-  const projectLabel = state.activeScreen === "flow" ? "热点新闻抓取" : "";
+  const projectLabel = state.activeScreen === "flows" ? "热点新闻抓取" : "";
   const themeIcon = state.theme === "dark" ? "sun" : "moon";
   return `<div style="grid-column:1 / -1;height:var(--ch-topbar-height);background:var(--ch-surface);border-bottom:1px solid var(--ch-border);display:flex;align-items:center;justify-content:space-between;padding:0 var(--ch-space-4);flex-shrink:0">
     <div style="display:flex;align-items:center;gap:var(--ch-space-4)">
@@ -183,9 +185,10 @@ function topbar() {
 function sidebar() {
   const items = [
     { id: "workspace", label: "Workspace", icon: "folder" },
+    { id: "flows", label: "Flows", icon: "flow" },
+    { id: "tasks", label: "Tasks", icon: "logs" },
     { id: "skills", label: "Skills", icon: "cube" },
-    { id: "flow", label: "Flow Editor", icon: "flow" },
-    { id: "logs", label: "Executions", icon: "logs" }
+    { id: "settings", label: "Settings", icon: "settings" }
   ];
   return `<div style="width:var(--ch-sidebar-width);background:var(--ch-surface);border-right:1px solid var(--ch-border);padding:var(--ch-space-4);display:flex;flex-direction:column;gap:var(--ch-space-2);overflow-y:auto">
     <div style="font-size:var(--ch-text-xs);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ch-text-secondary);margin-top:var(--ch-space-4);margin-bottom:var(--ch-space-2)">Workspace</div>
@@ -199,10 +202,9 @@ function sidebar() {
 function workspaceScreen() {
   const projects = mockData.projects.filter(p => p.name.toLowerCase().includes(state.projectFilter.toLowerCase()));
   const cards = projects.map(p => card(`
-    <div onclick="actions.navigate('flow')" style="cursor:pointer">
+    <div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--ch-space-3)">
         <div style="font-size:var(--ch-text-lg);font-weight:600">${helpers.escape(p.name)}</div>
-        ${badge(p.sourceType, p.sourceType === "git" ? "var(--ch-skill)" : "var(--ch-text-secondary)")}
       </div>
       <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-base);margin-bottom:var(--ch-space-3)">${helpers.escape(p.description)}</div>
       <div style="color:var(--ch-text-tertiary);font-size:var(--ch-text-sm)">Updated ${p.updatedAt}</div>
@@ -213,9 +215,9 @@ function workspaceScreen() {
     <div style="${styles.pageHeader}">
       <div>
         <div style="${styles.pageTitle}">Workspace</div>
-        <div style="${styles.pageSubtitle}">${mockData.workspace.name} · ${mockData.workspace.path}</div>
+        <div style="${styles.pageSubtitle}">${mockData.workspace.name} · ${helpers.escape(state.workspaceRoot)}</div>
       </div>
-      <div style="display:flex;gap:var(--ch-space-3)">${btnSecondary("Clone from Git", "git")}${btnPrimary("New Project", "plus")}</div>
+      ${btnPrimary("Add Project", "plus")}
     </div>
     <div style="display:flex;gap:var(--ch-space-4);margin-bottom:var(--ch-space-5)">
       <input style="${styles.input};width:300px" placeholder="Filter projects..." value="${helpers.escape(state.projectFilter)}" oninput="actions.setProjectFilter(this.value)" />
@@ -395,7 +397,7 @@ function flowEditorScreen() {
           </div>
           Schedule
         </div>
-        ${btnSecondary(state.running ? "Running..." : "Run", "play", `onclick="actions.runFlow()" style="color:${state.running ? "var(--ch-warning)" : "var(--ch-text)"}`)}
+        ${btnSecondary(state.running ? "Running..." : "Run", "play", 'onclick="actions.runFlow()" style="color:' + (state.running ? "var(--ch-warning)" : "var(--ch-text)") + '"')}
       </div>
     </div>
 
@@ -424,14 +426,14 @@ function flowEditorScreen() {
   </div>`;
 }
 
-function logsScreen() {
+function tasksScreen() {
   const history = mockData.executions.map(e => `
     <div onclick="actions.selectExecution('${e.id}')" style="padding:var(--ch-space-3) var(--ch-space-4);border-bottom:1px solid var(--ch-border);cursor:pointer;background:${state.selectedExecution?.id === e.id ? "var(--ch-surface-high)" : "transparent"}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div style="font-weight:600;font-size:var(--ch-text-base)">${helpers.escape(e.flowName)}</div>
         ${statusDot(e.status, 8)}
       </div>
-      <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-xs)">${e.startedAt} · ${e.duration} · ${e.nodesRun} nodes</div>
+      <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-xs)">${helpers.escape(e.projectName)} · ${e.startedAt} · ${e.duration} · ${e.nodesRun} nodes</div>
     </div>
   `).join("");
 
@@ -475,8 +477,8 @@ function logsScreen() {
   return `<div style="display:flex;flex-direction:column;height:100%">
     <div style="${styles.pageHeader}">
       <div>
-        <div style="${styles.pageTitle}">Executions</div>
-        <div style="${styles.pageSubtitle}">View run history, logs, and outputs</div>
+        <div style="${styles.pageTitle}">Tasks</div>
+        <div style="${styles.pageSubtitle}">Runs of a flow inside a project</div>
       </div>
     </div>
     <div style="display:flex;flex:1;gap:var(--ch-space-4);overflow:hidden">
@@ -488,6 +490,29 @@ function logsScreen() {
         <div style="display:flex;border-bottom:1px solid var(--ch-border)">${tabs}</div>
         <div style="flex:1;overflow:auto;padding:var(--ch-space-4)">${content}</div>
       </div>
+    </div>
+  </div>`;
+}
+
+function settingsScreen() {
+  return `<div>
+    <div style="${styles.pageHeader}">
+      <div>
+        <div style="${styles.pageTitle}">Settings</div>
+        <div style="${styles.pageSubtitle}">Workspace and preferences</div>
+      </div>
+    </div>
+    <div style="max-width:560px">
+      ${card(`
+        <div style="margin-bottom:var(--ch-space-4)">
+          <label style="${styles.label}">Workspace Root Directory</label>
+          <input style="${styles.input}" value="${helpers.escape(state.workspaceRoot)}" oninput="actions.setWorkspaceRoot(this.value)" />
+          <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:var(--ch-space-2)">All projects are loaded from this directory.</div>
+        </div>
+        <div style="display:flex;gap:var(--ch-space-3)">
+          ${btnPrimary("Save", null, "onclick=\"actions.saveSettings()\"")}
+        </div>
+      `)}
     </div>
   </div>`;
 }
@@ -504,6 +529,13 @@ const actions = {
   },
   setProjectFilter(value) {
     state.projectFilter = value;
+    renderApp();
+  },
+  setWorkspaceRoot(value) {
+    state.workspaceRoot = value;
+    renderApp();
+  },
+  saveSettings() {
     renderApp();
   },
   toggleSkillLink(skillId, projectId) {
@@ -556,15 +588,16 @@ function screenContent() {
   switch (state.activeScreen) {
     case "workspace": return workspaceScreen();
     case "skills": return skillsScreen();
-    case "flow": return flowEditorScreen();
-    case "logs": return logsScreen();
+    case "flows": return flowEditorScreen();
+    case "tasks": return tasksScreen();
+    case "settings": return settingsScreen();
     default: return workspaceScreen();
   }
 }
 
 function renderApp() {
   const root = document.getElementById("root");
-  const mainPadding = state.activeScreen === "flow"
+  const mainPadding = state.activeScreen === "flows"
     ? "padding:var(--ch-space-6) 0 var(--ch-space-6) var(--ch-space-6)"
     : "padding:var(--ch-space-6)";
   root.innerHTML = `
