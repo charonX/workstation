@@ -9,6 +9,7 @@ const state = {
   workspaceRoot: "~/codex-harness-workspace",
   skills: [],
   selectedSkill: null,
+  addProjectOpen: false,
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -217,7 +218,7 @@ function workspaceScreen() {
         <div style="${styles.pageTitle}">Workspace</div>
         <div style="${styles.pageSubtitle}">${mockData.workspace.name} · ${helpers.escape(state.workspaceRoot)}</div>
       </div>
-      ${btnPrimary("Add Project", "plus")}
+      ${btnPrimary("Add Project", "plus", "onclick=\"actions.openAddProjectModal()\"")}
     </div>
     <div style="display:flex;gap:var(--ch-space-4);margin-bottom:var(--ch-space-5)">
       <input style="${styles.input};width:300px" placeholder="Filter projects..." value="${helpers.escape(state.projectFilter)}" oninput="actions.setProjectFilter(this.value)" />
@@ -308,6 +309,40 @@ function skillModal() {
           <div style="display:flex;gap:var(--ch-space-3);margin-top:var(--ch-space-2)">
             ${btnPrimary("Save", null, "onclick=\"actions.closeSkillModal()\"")}
             <button onclick="actions.closeSkillModal()" style="background:transparent;border:1px solid var(--ch-border);color:var(--ch-error);border-radius:var(--ch-radius-md);padding:6px 12px;font-size:var(--ch-text-base);cursor:pointer">Delete Skill</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function addProjectModal() {
+  if (!state.addProjectOpen) return "";
+  return `
+    <div onclick="actions.closeAddProjectModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
+      <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:520px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+          <div>
+            <div style="font-size:var(--ch-text-xl);font-weight:700">Add Project</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">Create a project from a local directory</div>
+          </div>
+          <button onclick="actions.closeAddProjectModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
+        </div>
+        <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Project Name</label>
+            <input id="add-project-name" style="${styles.input}" placeholder="e.g. Hot News" />
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Directory Path</label>
+            <input id="add-project-path" style="${styles.input}" placeholder="${helpers.escape(state.workspaceRoot)}/my-project" />
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Description</label>
+            <input id="add-project-desc" style="${styles.input}" placeholder="Short description" />
+          </div>
+          <div style="display:flex;gap:var(--ch-space-3)">
+            ${btnPrimary("Create Project", null, "onclick=\"actions.saveProject()\"")}
+            ${btnSecondary("Cancel", null, "onclick=\"actions.closeAddProjectModal()\"")}
           </div>
         </div>
       </div>
@@ -554,6 +589,27 @@ const actions = {
     state.selectedSkill = null;
     renderApp();
   },
+  openAddProjectModal() {
+    state.addProjectOpen = true;
+    renderApp();
+  },
+  closeAddProjectModal() {
+    state.addProjectOpen = false;
+    renderApp();
+  },
+  saveProject() {
+    const nameInput = document.getElementById("add-project-name");
+    const pathInput = document.getElementById("add-project-path");
+    const descInput = document.getElementById("add-project-desc");
+    const name = (nameInput?.value || "").trim();
+    const path = (pathInput?.value || "").trim();
+    const description = (descInput?.value || "").trim();
+    if (!name) return;
+    const id = "p" + (mockData.projects.length + 1);
+    mockData.projects.push({ id, name, description, updatedAt: "just now" });
+    state.addProjectOpen = false;
+    renderApp();
+  },
   selectNode(nodeId) {
     state.selectedNode = mockData.flow.nodes.find(n => n.id === nodeId);
     renderApp();
@@ -608,7 +664,8 @@ function renderApp() {
         <div style="flex:1;overflow:auto;${mainPadding}">${screenContent()}</div>
       </div>
     </div>
-    ${skillModal()}`;
+    ${skillModal()}
+    ${addProjectModal()}`;
 }
 
 renderApp();
