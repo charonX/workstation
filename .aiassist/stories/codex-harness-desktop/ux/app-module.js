@@ -11,6 +11,7 @@ const state = {
   selectedSkill: null,
   addProjectOpen: false,
   addProjectSource: "local",
+  createTaskOpen: false,
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -538,6 +539,7 @@ function tasksScreen() {
         <div style="${styles.pageTitle}">Tasks</div>
         <div style="${styles.pageSubtitle}">Runs of a flow inside a project</div>
       </div>
+      ${btnPrimary("New Task", "plus", "onclick=\"actions.openCreateTaskModal()\"")}
     </div>
     <div style="display:flex;flex:1;gap:var(--ch-space-4);overflow:hidden">
       <div style="width:380px;background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-lg);overflow:hidden;display:flex;flex-direction:column">
@@ -550,6 +552,46 @@ function tasksScreen() {
       </div>
     </div>
   </div>`;
+}
+
+function createTaskModal() {
+  if (!state.createTaskOpen) return "";
+  const projectOptions = mockData.projects.map(p => `<option value="${p.id}">${helpers.escape(p.name)}</option>`).join("");
+  return `
+    <div onclick="actions.closeCreateTaskModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
+      <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:480px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+          <div>
+            <div style="font-size:var(--ch-text-xl);font-weight:700">New Task</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">Run a flow inside a project</div>
+          </div>
+          <button onclick="actions.closeCreateTaskModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
+        </div>
+        <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Project</label>
+            <select id="create-task-project" style="${styles.input}">${projectOptions}</select>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Flow</label>
+            <select id="create-task-flow" style="${styles.input}">
+              <option value="${helpers.escape(mockData.flow.name)}">${helpers.escape(mockData.flow.name)}</option>
+            </select>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Trigger</label>
+            <select id="create-task-trigger" style="${styles.input}">
+              <option value="manual">Manual run now</option>
+              <option value="schedule">Use flow schedule</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:var(--ch-space-3)">
+            ${btnPrimary("Run Task", "play", "onclick=\"actions.saveTask()\"")}
+            ${btnSecondary("Cancel", null, "onclick=\"actions.closeCreateTaskModal()\"")}
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
 function settingsScreen() {
@@ -646,6 +688,40 @@ const actions = {
     state.addProjectOpen = false;
     renderApp();
   },
+  openCreateTaskModal() {
+    state.createTaskOpen = true;
+    renderApp();
+  },
+  closeCreateTaskModal() {
+    state.createTaskOpen = false;
+    renderApp();
+  },
+  saveTask() {
+    const projectSelect = document.getElementById("create-task-project");
+    const flowSelect = document.getElementById("create-task-flow");
+    const triggerSelect = document.getElementById("create-task-trigger");
+    const projectId = projectSelect?.value;
+    const project = mockData.projects.find(p => p.id === projectId);
+    const flowName = flowSelect?.value || mockData.flow.name;
+    const trigger = triggerSelect?.value || "manual";
+    if (!project) return;
+    const now = new Date();
+    const timestamp = now.toISOString().slice(0, 19).replace("T", " ");
+    const id = "e" + (mockData.executions.length + 1);
+    const execution = { id, flowName, projectName: project.name, startedAt: timestamp, endedAt: null, status: "running", duration: "—", nodesRun: 0, trigger };
+    mockData.executions.unshift(execution);
+    state.selectedExecution = execution;
+    state.activeTab = "logs";
+    state.createTaskOpen = false;
+    renderApp();
+    setTimeout(() => {
+      execution.status = "success";
+      execution.endedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+      execution.duration = "12s";
+      execution.nodesRun = mockData.flow.nodes.length;
+      renderApp();
+    }, 2000);
+  },
   selectNode(nodeId) {
     state.selectedNode = mockData.flow.nodes.find(n => n.id === nodeId);
     renderApp();
@@ -701,7 +777,8 @@ function renderApp() {
       </div>
     </div>
     ${skillModal()}
-    ${addProjectModal()}`;
+    ${addProjectModal()}
+    ${createTaskModal()}`;
 }
 
 renderApp();
