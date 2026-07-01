@@ -12,6 +12,7 @@ const state = {
   addProjectOpen: false,
   addProjectSource: "local",
   createTaskOpen: false,
+  createScheduleOpen: false,
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -64,6 +65,9 @@ const mockData = {
     { id: "e2", flowName: "热点新闻抓取", projectName: "热点新闻抓取", startedAt: "2026-06-30 08:00:05", endedAt: "2026-06-30 08:00:52", status: "success", duration: "47s", nodesRun: 6 },
     { id: "e3", flowName: "热点新闻抓取", projectName: "热点新闻抓取", startedAt: "2026-06-29 08:00:00", endedAt: "2026-06-29 08:00:18", status: "error", duration: "18s", nodesRun: 3 },
     { id: "e4", flowName: "TikTok 红人筛选", projectName: "TikTok 红人筛选", startedAt: "2026-06-28 20:15:00", endedAt: "2026-06-28 20:16:10", status: "success", duration: "70s", nodesRun: 8 }
+  ],
+  schedules: [
+    { id: "sch1", projectId: "p1", flowName: "热点新闻抓取", cron: "0 8 * * *", enabled: true }
   ],
   logs: [
     { time: "08:00:12", node: "Schedule Trigger", status: "success", message: "Cron matched, execution started" },
@@ -496,6 +500,21 @@ function tasksScreen() {
     </div>
   `).join("");
 
+  const schedules = mockData.schedules.map(sch => {
+    const project = mockData.projects.find(p => p.id === sch.projectId);
+    const enabled = sch.enabled;
+    return `
+      <div style="padding:var(--ch-space-3) var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-weight:600;font-size:var(--ch-text-base)">${helpers.escape(sch.flowName)}</div>
+          <div onclick="actions.toggleScheduleEnabled('${sch.id}')" style="width:32px;height:18px;border-radius:9px;background:${enabled ? "var(--ch-accent)" : "var(--ch-surface-highest)"};position:relative;cursor:pointer">
+            <div style="width:14px;height:14px;border-radius:50%;background:var(--ch-text);position:absolute;top:2px;left:${enabled ? 16 : 2}px;transition:left 0.2s"></div>
+          </div>
+        </div>
+        <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-xs)">${project ? helpers.escape(project.name) : "—"} · ${helpers.escape(sch.cron)}</div>
+      </div>`;
+  }).join("");
+
   let content = "";
   if (state.activeTab === "logs") {
     content = `<div style="display:flex;flex-direction:column;gap:var(--ch-space-3)">
@@ -539,11 +558,16 @@ function tasksScreen() {
         <div style="${styles.pageTitle}">Tasks</div>
         <div style="${styles.pageSubtitle}">Runs of a flow inside a project</div>
       </div>
-      ${btnPrimary("New Task", "plus", "onclick=\"actions.openCreateTaskModal()\"")}
+      <div style="display:flex;gap:var(--ch-space-3)">
+        ${btnSecondary("New Schedule", null, "onclick=\"actions.openCreateScheduleModal()\"")}
+        ${btnPrimary("New Task", "plus", "onclick=\"actions.openCreateTaskModal()\"")}
+      </div>
     </div>
     <div style="display:flex;flex:1;gap:var(--ch-space-4);overflow:hidden">
       <div style="width:380px;background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-lg);overflow:hidden;display:flex;flex-direction:column">
-        <div style="padding:var(--ch-space-3) var(--ch-space-4);border-bottom:1px solid var(--ch-border);font-weight:600;font-size:var(--ch-text-md)">Run History</div>
+        <div style="padding:var(--ch-space-3) var(--ch-space-4);border-bottom:1px solid var(--ch-border);font-weight:600;font-size:var(--ch-text-md)">Schedules</div>
+        <div style="overflow-y:auto;flex-shrink:0;max-height:240px">${schedules}</div>
+        <div style="padding:var(--ch-space-3) var(--ch-space-4);border-top:1px solid var(--ch-border);border-bottom:1px solid var(--ch-border);font-weight:600;font-size:var(--ch-text-md)">Run History</div>
         <div style="overflow-y:auto;flex:1">${history}</div>
       </div>
       <div style="flex:1;background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-lg);overflow:hidden;display:flex;flex-direction:column">
@@ -588,6 +612,44 @@ function createTaskModal() {
           <div style="display:flex;gap:var(--ch-space-3)">
             ${btnPrimary("Run Task", "play", "onclick=\"actions.saveTask()\"")}
             ${btnSecondary("Cancel", null, "onclick=\"actions.closeCreateTaskModal()\"")}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function createScheduleModal() {
+  if (!state.createScheduleOpen) return "";
+  const projectOptions = mockData.projects.map(p => `<option value="${p.id}">${helpers.escape(p.name)}</option>`).join("");
+  return `
+    <div onclick="actions.closeCreateScheduleModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
+      <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:480px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+          <div>
+            <div style="font-size:var(--ch-text-xl);font-weight:700">New Schedule</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">Run a flow on a cron schedule</div>
+          </div>
+          <button onclick="actions.closeCreateScheduleModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
+        </div>
+        <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Project</label>
+            <select id="create-schedule-project" style="${styles.input}">${projectOptions}</select>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Flow</label>
+            <select id="create-schedule-flow" style="${styles.input}">
+              <option value="${helpers.escape(mockData.flow.name)}">${helpers.escape(mockData.flow.name)}</option>
+            </select>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Cron Expression</label>
+            <input id="create-schedule-cron" style="${styles.input}" placeholder="0 8 * * *" value="0 8 * * *" />
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:var(--ch-space-2)">At 08:00 every day.</div>
+          </div>
+          <div style="display:flex;gap:var(--ch-space-3)">
+            ${btnPrimary("Create Schedule", null, "onclick=\"actions.saveSchedule()\"")}
+            ${btnSecondary("Cancel", null, "onclick=\"actions.closeCreateScheduleModal()\"")}
           </div>
         </div>
       </div>
@@ -722,6 +784,34 @@ const actions = {
       renderApp();
     }, 2000);
   },
+  openCreateScheduleModal() {
+    state.createScheduleOpen = true;
+    renderApp();
+  },
+  closeCreateScheduleModal() {
+    state.createScheduleOpen = false;
+    renderApp();
+  },
+  saveSchedule() {
+    const projectSelect = document.getElementById("create-schedule-project");
+    const flowSelect = document.getElementById("create-schedule-flow");
+    const cronInput = document.getElementById("create-schedule-cron");
+    const projectId = projectSelect?.value;
+    const flowName = (flowSelect?.value || mockData.flow.name).trim();
+    const cron = (cronInput?.value || "").trim();
+    if (!projectId || !cron) return;
+    const id = "sch" + (mockData.schedules.length + 1);
+    mockData.schedules.push({ id, projectId, flowName, cron, enabled: true });
+    state.createScheduleOpen = false;
+    renderApp();
+  },
+  toggleScheduleEnabled(scheduleId) {
+    const schedule = mockData.schedules.find(s => s.id === scheduleId);
+    if (schedule) {
+      schedule.enabled = !schedule.enabled;
+      renderApp();
+    }
+  },
   selectNode(nodeId) {
     state.selectedNode = mockData.flow.nodes.find(n => n.id === nodeId);
     renderApp();
@@ -778,7 +868,8 @@ function renderApp() {
     </div>
     ${skillModal()}
     ${addProjectModal()}
-    ${createTaskModal()}`;
+    ${createTaskModal()}
+    ${createScheduleModal()}`;
 }
 
 renderApp();
