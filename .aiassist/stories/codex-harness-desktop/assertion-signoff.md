@@ -1,4 +1,4 @@
-# Assertion Signoff: Codex Harness Desktop App
+# Assertion Signoff: OPC Workstation Desktop App
 
 > 由 /assertion-signoff 阶段生成。当前为空。
 

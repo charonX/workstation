@@ -1,4 +1,4 @@
-# Feel Signoff: Codex Harness Desktop App
+# Feel Signoff: OPC Workstation Desktop App
 
 > 由 /feel-signoff 阶段生成。当前为空。
 

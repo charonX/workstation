@@ -1,4 +1,4 @@
-// Codex Harness interactive prototype — Vanilla JS
+// OPC Workstation interactive prototype — Vanilla JS
 // Uses design system tokens from tokens.css (dark/light themes)
 
 // === State ===
@@ -172,7 +172,7 @@ function topbar() {
   const themeIcon = state.theme === "dark" ? "sun" : "moon";
   return `<div style="grid-column:1 / -1;height:var(--ch-topbar-height);background:var(--ch-surface);border-bottom:1px solid var(--ch-border);display:flex;align-items:center;justify-content:space-between;padding:0 var(--ch-space-4);flex-shrink:0">
     <div style="display:flex;align-items:center;gap:var(--ch-space-4)">
-      <div style="font-weight:700;font-size:var(--ch-text-md);color:var(--ch-text);display:flex;align-items:center;gap:var(--ch-space-2)">${icon("logo", 20)} Codex Harness</div>
+      <div style="font-weight:700;font-size:var(--ch-text-md);color:var(--ch-text);display:flex;align-items:center;gap:var(--ch-space-2)">${icon("logo", 20)} OPC Workstation</div>
       ${projectLabel ? `<div style="color:var(--ch-text-secondary);font-size:var(--ch-text-base)">${projectLabel}</div>` : ""}
     </div>
     <div style="display:flex;align-items:center;gap:var(--ch-space-3)">

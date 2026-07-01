@@ -1,4 +1,4 @@
-# Requirements: Codex Harness Desktop App
+# Requirements: OPC Workstation Desktop App
 
 ## 原始需求
 

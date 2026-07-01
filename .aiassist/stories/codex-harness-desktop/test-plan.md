@@ -1,4 +1,4 @@
-# Test Plan: Codex Harness Desktop App
+# Test Plan: OPC Workstation Desktop App
 
 > 由 /test-author 阶段生成。当前为空。
 

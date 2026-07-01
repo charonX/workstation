@@ -1,4 +1,4 @@
-# Codex Harness Desktop App
+# OPC Workstation Desktop App
 
 ## 1. Problem Statement
 
@@ -14,7 +14,7 @@
 
 ## 2. Solution
 
-开发一个内部自用的桌面应用 **Codex Harness Desktop App**，核心定位是：
+开发一个内部自用的桌面应用 **OPC Workstation Desktop App**，核心定位是：
 
 > 个人自动化 harness：把 Claude Code skills GUI 化，把 codex/computer-use 接入流程节点，通过 n8n 式节点编排实现可定时触发、可远程观察的自动化工作流。
 
