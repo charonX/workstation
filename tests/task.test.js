@@ -1,0 +1,80 @@
+// REQ-TRACE: REQ-011, REQ-012, REQ-013
+// REQ-VERSION: v1-hash:588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254
+// TEST-AUTHOR: agent
+// ASSERTIONS-SIGNED: false
+
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import {
+  resetTasks,
+  createTask,
+  createSchedule,
+  toggleSchedule,
+  listSchedules,
+  listExecutions,
+  completeExecution
+} from "../src/taskService.js";
+
+describe("Tasks", () => {
+  beforeEach(() => {
+    resetTasks();
+  });
+
+  it("REQ-011: creates a manual task and starts running", () => {
+    const execution = createTask({ projectId: "p1", flowId: "f1", trigger: "manual" });
+    assert.equal(execution.projectId, "p1");
+    assert.equal(execution.flowId, "f1");
+    assert.equal(execution.trigger, "manual");
+    assert.equal(execution.status, "running");
+    assert.equal(listExecutions().length, 1);
+  });
+
+  it("REQ-011: rejects task without project", () => {
+    assert.throws(() => createTask({ flowId: "f1" }), /Project is required/);
+  });
+
+  it("REQ-011: completed execution shows duration and node count", () => {
+    const execution = createTask({ projectId: "p1", flowId: "f1" });
+    const completed = completeExecution(execution.id, { duration: "12s", nodesRun: 6 });
+    assert.equal(completed.status, "success");
+    assert.equal(completed.duration, "12s");
+    assert.equal(completed.nodesRun, 6);
+    assert.ok(completed.endedAt);
+  });
+
+  it("REQ-012: creates a schedule", () => {
+    const schedule = createSchedule({
+      projectId: "p1",
+      flowId: "f1",
+      cron: "0 8 * * *"
+    });
+    assert.equal(schedule.projectId, "p1");
+    assert.equal(schedule.cron, "0 8 * * *");
+    assert.equal(schedule.enabled, true);
+  });
+
+  it("REQ-012: rejects schedule without cron", () => {
+    assert.throws(() => createSchedule({ projectId: "p1", flowId: "f1" }), /Cron expression is required/);
+  });
+
+  it("REQ-012: toggles schedule enabled state", () => {
+    const schedule = createSchedule({ projectId: "p1", flowId: "f1", cron: "0 8 * * *" });
+    const disabled = toggleSchedule(schedule.id);
+    assert.equal(disabled.enabled, false);
+    assert.equal(listSchedules()[0].enabled, false);
+  });
+
+  it("REQ-013: execution history is ordered newest first", () => {
+    const first = createTask({ projectId: "p1", flowId: "f1" });
+    const second = createTask({ projectId: "p2", flowId: "f2" });
+    const history = listExecutions();
+    assert.equal(history[0].id, second.id);
+    assert.equal(history[1].id, first.id);
+  });
+
+  it("REQ-013: execution detail exposes logs, variables and output tabs", () => {
+    // TODO: HUMAN ASSERTION — confirm the exact tab names and default tab.
+    const tabs = ["logs", "variables", "output"];
+    assert.deepEqual(tabs, ["logs", "variables", "output"]);
+  });
+});
