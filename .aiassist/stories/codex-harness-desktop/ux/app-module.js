@@ -7,6 +7,7 @@ const state = {
   theme: "dark",
   projectFilter: "",
   skills: [],
+  selectedSkill: null,
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -225,19 +226,26 @@ function workspaceScreen() {
 
 function skillsScreen() {
   const rows = state.skills.map(s => {
-    const links = mockData.projects.map(p => {
-      const linked = s.linkedTo.includes(p.id);
-      const color = linked ? "var(--ch-accent)" : "var(--ch-text-secondary)";
-      const bg = linked ? "var(--ch-accent-soft)" : "transparent";
-      const border = linked ? "var(--ch-accent)" : "var(--ch-border)";
-      return `<button onclick="actions.toggleSkillLink('${s.id}', '${p.id}')" style="background:${bg};border:1px solid ${border};color:${color};border-radius:var(--ch-radius-md);padding:4px 10px;font-size:var(--ch-text-xs);cursor:pointer">${linked ? "✓ " : ""}${helpers.escape(p.name)}</button>`;
-    }).join("");
+    const linkedProjects = s.linkedTo.map(id => mockData.projects.find(p => p.id === id)).filter(Boolean);
+    const linkCount = linkedProjects.length;
+    const linkLabel = linkCount === 0 ? "Not linked" : `${linkCount} project${linkCount > 1 ? "s" : ""}`;
+    const linkNames = linkedProjects.map(p => helpers.escape(p.name)).join(", ") || "—";
     return `
-      <tr>
-        <td style="${styles.td}"><div style="font-weight:600">${helpers.escape(s.name)}</div><div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm)">${helpers.escape(s.description)}</div></td>
+      <tr onclick="actions.openSkillModal('${s.id}')" style="cursor:pointer">
+        <td style="${styles.td}">
+          <div style="font-weight:600">${helpers.escape(s.name)}</div>
+          <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">${helpers.escape(s.description)}</div>
+        </td>
         <td style="${styles.td};font-family:var(--ch-font-mono);color:var(--ch-text-secondary);font-size:var(--ch-text-sm)">${helpers.escape(s.repoPath)}</td>
-        <td style="${styles.td}"><div style="display:flex;gap:var(--ch-space-2);flex-wrap:wrap">${links}</div></td>
-        <td style="${styles.td}">${btnGhost("trash")}</td>
+        <td style="${styles.td}">
+          <span title="${linkNames}" style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm)">${linkLabel}</span>
+        </td>
+        <td style="${styles.td}">
+          <div style="display:flex;gap:var(--ch-space-2)">
+            ${btnSecondary("Details", null, `onclick="event.stopPropagation();actions.openSkillModal('${s.id}')"`)}
+            ${btnGhost("trash", "onclick=\"event.stopPropagation()\"")}
+          </div>
+        </td>
       </tr>`;
   }).join("");
 
@@ -254,6 +262,54 @@ function skillsScreen() {
       <tbody>${rows}</tbody>
     </table>
   </div>`;
+}
+
+function skillModal() {
+  const s = state.selectedSkill;
+  if (!s) return "";
+  const projectLinks = mockData.projects.map(p => {
+    const linked = s.linkedTo.includes(p.id);
+    return `
+      <label style="display:flex;align-items:center;gap:var(--ch-space-2);padding:8px var(--ch-space-3);border-radius:var(--ch-radius-md);background:var(--ch-surface-high);border:1px solid ${linked ? "var(--ch-accent)" : "var(--ch-border)"};cursor:pointer;margin-bottom:var(--ch-space-2)">
+        <input type="checkbox" ${linked ? "checked" : ""} onchange="actions.toggleSkillLink('${s.id}', '${p.id}')" style="cursor:pointer" />
+        <span style="color:${linked ? "var(--ch-accent)" : "var(--ch-text)"};font-size:var(--ch-text-base)">${helpers.escape(p.name)}</span>
+      </label>`;
+  }).join("");
+
+  return `
+    <div onclick="actions.closeSkillModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
+      <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:560px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+          <div>
+            <div style="font-size:var(--ch-text-xl);font-weight:700">${helpers.escape(s.name)}</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">${helpers.escape(s.description)}</div>
+          </div>
+          <button onclick="actions.closeSkillModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
+        </div>
+        <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          <div style="margin-bottom:var(--ch-space-4)">
+            <div style="${styles.label}">Repository Path</div>
+            <div style="font-family:var(--ch-font-mono);font-size:var(--ch-text-sm);color:var(--ch-text-secondary);background:var(--ch-surface-high);border:1px solid var(--ch-border);border-radius:var(--ch-radius-md);padding:var(--ch-space-3)">${helpers.escape(s.repoPath)}</div>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <div style="${styles.label}">Version & Dependencies</div>
+            <div style="display:flex;gap:var(--ch-space-4);color:var(--ch-text-secondary);font-size:var(--ch-text-sm)">
+              <span>v1.2.0</span>
+              <span>·</span>
+              <span>Requires: http-client</span>
+            </div>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <div style="${styles.label}">Linked Projects</div>
+            <div style="max-height:220px;overflow-y:auto;padding-right:4px">${projectLinks}</div>
+          </div>
+          <div style="display:flex;gap:var(--ch-space-3);margin-top:var(--ch-space-2)">
+            ${btnPrimary("Save", null, "onclick=\"actions.closeSkillModal()\"")}
+            <button onclick="actions.closeSkillModal()" style="background:transparent;border:1px solid var(--ch-border);color:var(--ch-error);border-radius:var(--ch-radius-md);padding:6px 12px;font-size:var(--ch-text-base);cursor:pointer">Delete Skill</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
 function flowEditorScreen() {
@@ -458,6 +514,14 @@ const actions = {
     else skill.linkedTo.push(projectId);
     renderApp();
   },
+  openSkillModal(skillId) {
+    state.selectedSkill = state.skills.find(s => s.id === skillId);
+    renderApp();
+  },
+  closeSkillModal() {
+    state.selectedSkill = null;
+    renderApp();
+  },
   selectNode(nodeId) {
     state.selectedNode = mockData.flow.nodes.find(n => n.id === nodeId);
     renderApp();
@@ -510,7 +574,8 @@ function renderApp() {
         ${sidebar()}
         <div style="flex:1;overflow:auto;${mainPadding}">${screenContent()}</div>
       </div>
-    </div>`;
+    </div>
+    ${skillModal()}`;
 }
 
 renderApp();
