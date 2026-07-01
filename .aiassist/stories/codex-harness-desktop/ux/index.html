@@ -1,0 +1,47 @@
+<!--
+  UX-REF-FOR: REQ-DESIGN-001, REQ-DESIGN-002, REQ-DESIGN-003, REQ-DESIGN-004, REQ-DESIGN-005, REQ-DESIGN-006
+  STORY-ID: codex-harness-desktop
+  VERSION: v2
+  DATE: 2026-07-01
+-->
+<!DOCTYPE html>
+<html data-theme="dark" lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex Harness — Interactive Prototype</title>
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body, #root { height: 100%; margin: 0; }
+    body {
+      font-family: var(--ch-font-sans);
+      background: var(--ch-bg);
+      color: var(--ch-text);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--ch-accent) !important;
+    }
+    button:hover {
+      filter: brightness(1.08);
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ch-text-secondary);font-size:var(--ch-text-base)">
+      Loading prototype...
+    </div>
+  </div>
+
+  <!-- HTM + Preact standalone: JSX-like tagged templates without build step -->
+  <script src="./app-module.js"></script>
+</body>
+</html>
