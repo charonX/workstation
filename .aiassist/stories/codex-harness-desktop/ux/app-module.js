@@ -13,6 +13,8 @@ const state = {
   addProjectSource: "local",
   createTaskOpen: false,
   createScheduleOpen: false,
+  createFlowOpen: false,
+  flowView: "list",
   selectedNode: null,
   zoom: 1,
   running: false,
@@ -68,6 +70,11 @@ const mockData = {
   ],
   schedules: [
     { id: "sch1", projectId: "p1", flowName: "热点新闻抓取", cron: "0 8 * * *", enabled: true }
+  ],
+  flows: [
+    { id: "f1", name: "热点新闻抓取", projectId: "p1", nodes: 6, updatedAt: "2h ago", scheduleEnabled: true },
+    { id: "f2", name: "TikTok 红人筛选", projectId: "p2", nodes: 8, updatedAt: "1d ago", scheduleEnabled: false },
+    { id: "f3", name: "网站内容更新", projectId: "p3", nodes: 5, updatedAt: "3d ago", scheduleEnabled: false }
   ],
   logs: [
     { time: "08:00:12", node: "Schedule Trigger", status: "success", message: "Cron matched, execution started" },
@@ -377,6 +384,73 @@ function addProjectModal() {
     </div>`;
 }
 
+function flowsListScreen() {
+  const cards = mockData.flows.map(f => {
+    const project = mockData.projects.find(p => p.id === f.projectId);
+    const statusColor = f.scheduleEnabled ? "var(--ch-success)" : "var(--ch-text-tertiary)";
+    const statusText = f.scheduleEnabled ? "Scheduled" : "Manual";
+    return card(`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--ch-space-3)">
+        <div>
+          <div style="font-size:var(--ch-text-lg);font-weight:600">${helpers.escape(f.name)}</div>
+          <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">${project ? helpers.escape(project.name) : "—"} · ${f.nodes} nodes</div>
+        </div>
+        ${badge(statusText, statusColor, "var(--ch-surface-high)")}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="color:var(--ch-text-tertiary);font-size:var(--ch-text-sm)">Updated ${f.updatedAt}</div>
+        ${btnSecondary("Edit Flow", null, `onclick="actions.enterFlowEditor('${f.id}')"`)}
+      </div>
+    `);
+  }).join("");
+
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="${styles.pageHeader}">
+      <div>
+        <div style="${styles.pageTitle}">Flows</div>
+        <div style="${styles.pageSubtitle}">Automation flows across projects</div>
+      </div>
+      ${btnPrimary("New Flow", "plus", "onclick=\"actions.openCreateFlowModal()\"")}
+    </div>
+    <div style="${styles.grid2}">${cards}</div>
+  </div>`;
+}
+
+function createFlowModal() {
+  if (!state.createFlowOpen) return "";
+  const projectOptions = mockData.projects.map(p => `<option value="${p.id}">${helpers.escape(p.name)}</option>`).join("");
+  return `
+    <div onclick="actions.closeCreateFlowModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:var(--ch-space-6)">
+      <div onclick="event.stopPropagation()" style="background:var(--ch-surface);border:1px solid var(--ch-border);border-radius:var(--ch-radius-xl);width:480px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--ch-shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--ch-space-4);border-bottom:1px solid var(--ch-border)">
+          <div>
+            <div style="font-size:var(--ch-text-xl);font-weight:700">New Flow</div>
+            <div style="color:var(--ch-text-secondary);font-size:var(--ch-text-sm);margin-top:2px">Create a new automation flow</div>
+          </div>
+          <button onclick="actions.closeCreateFlowModal()" style="background:transparent;border:none;color:var(--ch-text-secondary);cursor:pointer;padding:var(--ch-space-2);border-radius:var(--ch-radius-md);font-size:20px;line-height:1">&times;</button>
+        </div>
+        <div style="padding:var(--ch-space-4);overflow-y:auto;flex:1">
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Flow Name</label>
+            <input id="create-flow-name" style="${styles.input}" placeholder="e.g. Hot News Scraper" />
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Project</label>
+            <select id="create-flow-project" style="${styles.input}">${projectOptions}</select>
+          </div>
+          <div style="margin-bottom:var(--ch-space-4)">
+            <label style="${styles.label}">Description</label>
+            <input id="create-flow-desc" style="${styles.input}" placeholder="Short description" />
+          </div>
+          <div style="display:flex;gap:var(--ch-space-3)">
+            ${btnPrimary("Create Flow", null, "onclick=\"actions.saveFlow()\"")}
+            ${btnSecondary("Cancel", null, "onclick=\"actions.closeCreateFlowModal()\"")}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function flowEditorScreen() {
   const nodeById = {};
   mockData.flow.nodes.forEach(n => nodeById[n.id] = n);
@@ -449,9 +523,12 @@ function flowEditorScreen() {
 
   return `<div style="display:flex;flex-direction:column;height:100%">
     <div style="${styles.pageHeader};margin-bottom:var(--ch-space-4);padding-right:var(--ch-space-6)">
-      <div>
-        <div style="${styles.pageTitle}">${mockData.flow.name}</div>
-        <div style="${styles.pageSubtitle}">Drag nodes to build your automation flow</div>
+      <div style="display:flex;align-items:center;gap:var(--ch-space-3)">
+        ${btnSecondary("Back to Flows", null, "onclick=\"actions.backToFlowList()\"")}
+        <div>
+          <div style="${styles.pageTitle}">${mockData.flow.name}</div>
+          <div style="${styles.pageSubtitle}">Drag nodes to build your automation flow</div>
+        </div>
       </div>
       <div style="display:flex;gap:var(--ch-space-3);align-items:center">
         <div style="display:flex;align-items:center;gap:var(--ch-space-2);color:var(--ch-text-secondary);font-size:var(--ch-text-sm)">
@@ -750,6 +827,37 @@ const actions = {
     state.addProjectOpen = false;
     renderApp();
   },
+  enterFlowEditor(flowId) {
+    state.flowId = flowId;
+    state.flowView = "editor";
+    renderApp();
+  },
+  backToFlowList() {
+    state.flowView = "list";
+    state.flowId = null;
+    renderApp();
+  },
+  openCreateFlowModal() {
+    state.createFlowOpen = true;
+    renderApp();
+  },
+  closeCreateFlowModal() {
+    state.createFlowOpen = false;
+    renderApp();
+  },
+  saveFlow() {
+    const nameInput = document.getElementById("create-flow-name");
+    const projectSelect = document.getElementById("create-flow-project");
+    const descInput = document.getElementById("create-flow-desc");
+    const name = (nameInput?.value || "").trim();
+    const projectId = projectSelect?.value;
+    const description = (descInput?.value || "").trim();
+    if (!name || !projectId) return;
+    const id = "f" + (mockData.flows.length + 1);
+    mockData.flows.push({ id, name, projectId, nodes: 0, updatedAt: "just now", scheduleEnabled: false, description });
+    state.createFlowOpen = false;
+    renderApp();
+  },
   openCreateTaskModal() {
     state.createTaskOpen = true;
     renderApp();
@@ -846,7 +954,7 @@ function screenContent() {
   switch (state.activeScreen) {
     case "workspace": return workspaceScreen();
     case "skills": return skillsScreen();
-    case "flows": return flowEditorScreen();
+    case "flows": return state.flowView === "editor" ? flowEditorScreen() : flowsListScreen();
     case "tasks": return tasksScreen();
     case "settings": return settingsScreen();
     default: return workspaceScreen();
@@ -869,7 +977,8 @@ function renderApp() {
     ${skillModal()}
     ${addProjectModal()}
     ${createTaskModal()}
-    ${createScheduleModal()}`;
+    ${createScheduleModal()}
+    ${createFlowModal()}`;
 }
 
 renderApp();
