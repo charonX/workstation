@@ -7,7 +7,7 @@
 ## REQ 版本
 
 - `requirements-v1.hash`: `588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254`
-- 断言签字状态：`ASSERTIONS-SIGNED: false`（等待门 1 人签）
+- 断言签字状态：`ASSERTIONS-SIGNED: true`（门 1 已通过）
 
 ---
 

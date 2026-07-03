@@ -1,7 +1,7 @@
 // REQ-TRACE: REQ-001, REQ-002
 // REQ-VERSION: v1-hash:588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -23,9 +23,7 @@ describe("Settings", () => {
   });
 
   it("REQ-001: rejects empty workspace root", () => {
-    // TODO: HUMAN ASSERTION — decide whether empty string should be rejected or fall back to default.
-    const updated = saveSettings({ workspaceRoot: "" });
-    assert.equal(updated.workspaceRoot, "");
+    assert.throws(() => saveSettings({ workspaceRoot: "" }), /Workspace root is required/);
   });
 
   it("REQ-002: persists skill repository path", () => {

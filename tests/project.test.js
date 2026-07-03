@@ -1,7 +1,7 @@
 // REQ-TRACE: REQ-003, REQ-004, REQ-005
 // REQ-VERSION: v1-hash:588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";

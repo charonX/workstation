@@ -1,7 +1,7 @@
 // REQ-TRACE: REQ-011, REQ-012, REQ-013
 // REQ-VERSION: v1-hash:588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,9 @@ import {
   toggleSchedule,
   listSchedules,
   listExecutions,
-  completeExecution
+  completeExecution,
+  getExecutionDetailTabs,
+  getDefaultDetailTab
 } from "../src/taskService.js";
 
 describe("Tasks", () => {
@@ -73,8 +75,7 @@ describe("Tasks", () => {
   });
 
   it("REQ-013: execution detail exposes logs, variables and output tabs", () => {
-    // TODO: HUMAN ASSERTION — confirm the exact tab names and default tab.
-    const tabs = ["logs", "variables", "output"];
-    assert.deepEqual(tabs, ["logs", "variables", "output"]);
+    assert.deepEqual(getExecutionDetailTabs(), ["logs", "variables", "output"]);
+    assert.equal(getDefaultDetailTab(), "logs");
   });
 });
