@@ -1,11 +1,35 @@
-// Temporary stub for test compilation.
-// Real implementation will be provided by the implementer agent.
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
-let settings = {
+const configDir = path.join(os.homedir(), ".opc-workstation");
+const settingsFile = path.join(configDir, "settings.json");
+
+const defaults = {
   workspaceRoot: "~/codex-harness-workspace",
   skillRepoPath: "~/.codex-harness/skills",
   theme: "dark"
 };
+
+function readSettings() {
+  try {
+    const data = fs.readFileSync(settingsFile, "utf8");
+    return { ...defaults, ...JSON.parse(data) };
+  } catch {
+    return { ...defaults };
+  }
+}
+
+function writeSettings(settings) {
+  try {
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  } catch {
+    // Ignore persistence failures in restricted environments (tests, CI).
+  }
+}
+
+let settings = readSettings();
 
 export function loadSettings() {
   return { ...settings };
@@ -16,5 +40,6 @@ export function saveSettings(partial) {
     throw new Error("Workspace root is required");
   }
   settings = { ...settings, ...partial };
+  writeSettings(settings);
   return loadSettings();
 }

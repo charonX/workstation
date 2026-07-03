@@ -1,15 +1,27 @@
-// Temporary stub for test compilation.
-
 let projects = [];
 
 export function resetProjects(seed = []) {
   projects = seed.map(p => ({ ...p }));
 }
 
+function nextProjectId() {
+  return "p" + (projects.length + 1);
+}
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
 export function createLocalProject({ name, description, localPath }) {
   if (!name) throw new Error("Project name is required");
-  const id = "p" + (projects.length + 1);
-  const project = { id, name, description, sourceType: "local", localPath };
+  const project = {
+    id: nextProjectId(),
+    name,
+    description,
+    sourceType: "local",
+    localPath,
+    updatedAt: timestamp()
+  };
   projects.push(project);
   return { ...project };
 }
@@ -17,15 +29,15 @@ export function createLocalProject({ name, description, localPath }) {
 export function createGitProject({ name, description, repoUrl, branch, localPath }) {
   if (!name) throw new Error("Project name is required");
   if (!repoUrl) throw new Error("Repository URL is required");
-  const id = "p" + (projects.length + 1);
   const project = {
-    id,
+    id: nextProjectId(),
     name,
     description,
     sourceType: "git",
     repoUrl,
     branch: branch || "main",
-    localPath
+    localPath,
+    updatedAt: timestamp()
   };
   projects.push(project);
   return { ...project };

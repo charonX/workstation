@@ -1,34 +1,66 @@
-// Temporary stub for test compilation.
-
 let flows = [];
 
 export function resetFlows(seed = []) {
-  flows = seed.map(f => ({ ...f }));
+  flows = seed.map(f => ({ ...f, nodeList: f.nodeList || [], edges: f.edges || [] }));
+}
+
+function nextFlowId() {
+  return "f" + (flows.length + 1);
+}
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function toFlowView(flow) {
+  return {
+    ...flow,
+    nodes: flow.nodeList.length
+  };
 }
 
 export function createFlow({ name, projectId, description }) {
   if (!name) throw new Error("Flow name is required");
   if (!projectId) throw new Error("Project is required");
-  const id = "f" + (flows.length + 1);
   const flow = {
-    id,
+    id: nextFlowId(),
     name,
     projectId,
     description,
-    nodes: 0,
+    nodeList: [],
+    edges: [],
     scheduleEnabled: false,
-    updatedAt: "just now"
+    updatedAt: timestamp()
   };
   flows.push(flow);
-  return { ...flow };
+  return toFlowView(flow);
 }
 
 export function listFlows() {
-  return flows.map(f => ({ ...f }));
+  return flows.map(toFlowView);
 }
 
 export function getFlow(id) {
-  return flows.find(f => f.id === id);
+  const flow = flows.find(f => f.id === id);
+  return flow ? toFlowView(flow) : undefined;
+}
+
+export function addNode(flowId, node) {
+  const flow = flows.find(f => f.id === flowId);
+  if (!flow) return undefined;
+  const newNode = { id: `n${flow.nodeList.length + 1}`, ...node };
+  flow.nodeList.push(newNode);
+  flow.updatedAt = timestamp();
+  return { ...newNode };
+}
+
+export function connectNodes(flowId, sourceId, targetId) {
+  const flow = flows.find(f => f.id === flowId);
+  if (!flow) return undefined;
+  const edge = { id: `e${flow.edges.length + 1}`, sourceId, targetId };
+  flow.edges.push(edge);
+  flow.updatedAt = timestamp();
+  return { ...edge };
 }
 
 export function getNodeCategories() {
