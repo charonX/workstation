@@ -30,3 +30,31 @@ export function listFlows() {
 export function getFlow(id) {
   return flows.find(f => f.id === id);
 }
+
+export function getNodeCategories() {
+  return ["Trigger", "Agent", "Data", "Logic", "Output"];
+}
+
+export function getEditableFields({ type }) {
+  const common = ["name", "outputVariable"];
+  if (type === "agent") return [...common, "model", "systemPrompt"];
+  return common;
+}
+
+export function toggleRun(running) {
+  return running
+    ? { running: false, label: "Run" }
+    : { running: true, label: "Running..." };
+}
+
+export function zoomIn(current) {
+  return Math.min(1.5, Math.round((current + 0.1) * 10) / 10);
+}
+
+export function zoomOut(current) {
+  return Math.max(0.5, Math.round((current - 0.1) * 10) / 10);
+}
+
+export function resetZoom() {
+  return 1.0;
+}

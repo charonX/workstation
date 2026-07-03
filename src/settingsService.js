@@ -12,6 +12,9 @@ export function loadSettings() {
 }
 
 export function saveSettings(partial) {
+  if (partial && Object.prototype.hasOwnProperty.call(partial, "workspaceRoot") && partial.workspaceRoot === "") {
+    throw new Error("Workspace root is required");
+  }
   settings = { ...settings, ...partial };
   return loadSettings();
 }

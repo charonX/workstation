@@ -58,3 +58,11 @@ export function completeExecution(id, { duration, nodesRun }) {
   execution.nodesRun = nodesRun;
   return { ...execution };
 }
+
+export function getExecutionDetailTabs() {
+  return ["logs", "variables", "output"];
+}
+
+export function getDefaultDetailTab() {
+  return "logs";
+}
