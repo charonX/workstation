@@ -1,0 +1,43 @@
+#!/bin/sh
+# Test-as-Contract pre-commit hook
+# 规则：一个 commit 不能同时包含实现代码和测试文件的修改。
+# 这保护“实现者对测试只读”的契约：测试更新必须在 test-author/签核阶段完成，
+# 实现代码只能在 build 阶段提交。如果两者需要同时变化，请拆成两个 commit。
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+[ -z "$STAGED_FILES" ] && exit 0
+
+HAS_IMPL=false
+HAS_TEST=false
+
+# 项目根目录的约定路径
+for file in $STAGED_FILES; do
+  case "$file" in
+    test/*|tests/*|__tests__/*|*.test.*|*.spec.*|e2e/*|spec/*|integration/*)
+      HAS_TEST=true
+      ;;
+    src/*|app/*|lib/*|pages/*|components/*|server/*|client/*|api/*|services/*|workers/*|tools/*|bin/*)
+      HAS_IMPL=true
+      ;;
+  esac
+done
+
+if [ "$HAS_IMPL" = true ] && [ "$HAS_TEST" = true ]; then
+  echo ""
+  echo "❌ 测试即契约：一个 commit 不能同时修改实现代码和测试文件。"
+  echo ""
+  echo "当前暂存区同时包含："
+  echo "  • 实现代码（src/、app/、lib/ 等）"
+  echo "  • 测试文件（test/、*.test.*、e2e/ 等）"
+  echo ""
+  echo "请拆成两个 commit："
+  echo "  1. 测试修改：git commit -m '[tac-test] 调整 XXX 断言/测试'"
+  echo "  2. 实现修改：git commit -m '[tac-build] 实现 XXX'"
+  echo ""
+  echo "如果测试需要随需求变化而更新，请先通过 /tac-story 回流到 TEST 阶段。"
+  echo ""
+  exit 1
+fi
+
+exit 0
