@@ -10,10 +10,11 @@
 
 | Skill | 用途 | 触发者 |
 |---|---|---|
-| `/tac-story` | 开始/继续 story；执行回流（归档重做/删 story） | 用户 |
+| `/tac-story` | 开始/继续 story;执行回流(归档重做/删 story) | 用户 |
 | `/tac-bootstrap-workflow` | 初始化项目级工作流基础设施 | 用户 |
 | `/tac-demand-insight` | 对抗式需求访谈 | 用户 |
 | `/tac-to-prd` | 把讨论整理成 PRD | 用户 |
+| `/tac-tech-design` | 对抗式技术方案设计 | 用户 |
 | `/tac-design-system` | 建立或校验项目级设计系统 | 用户 |
 | `/tac-ux-explore` | 用 HTML 原型进行高保真 UX 探索 | 用户 |
 | `/tac-crystallize` | 把 PRD 稳定块转成 REQ-ID | 模型 |
@@ -30,6 +31,7 @@
 .aiassist/
 ├── stories/<story-id>/
 │   ├── prd.md                 # 叙事意图（软）
+│   ├── tech-design.md         # 技术方案（一挡可推翻）
 │   ├── requirements.md        # 带 ID 的 REQ（契约）
 │   ├── requirements-v1.hash   # 版本哈希，用于检测过时测试
 │   ├── ux/                    # 用于 feel-signoff 的 HTML UX 参照
