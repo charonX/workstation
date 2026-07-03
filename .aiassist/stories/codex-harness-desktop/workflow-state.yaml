@@ -1,9 +1,21 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
-current_phase: DESIGN
+intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
+current_phase: BUILD
+attempt: 1
 blockers: []
 gates:
-  assertion_signoff: pending
+  assertion_signoff: passed
   feel_signoff: pending
+history:
+  - {at: 2026-07-01, from: THINK, to: PRD, note: "完成需求洞察，PRD 生成"}
+  - {at: 2026-07-01, from: PRD, to: DESIGN, note: "PRD 稳定块结晶为 REQ，进入原型设计"}
+  - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "探索 n8n 作执行后端（按块回流）：n8n 有 Public API/JSON/cron/SQLite 日志，许可证允许内部自用。但第一性原理复盘后回滚——computer-use 是主要功能、必须本地交互式桌面执行，n8n（headless/远程）无法承载，每个 agent 步骤都要 Wait+Webhook 握手，在产品核心位置加摩擦。引擎块重新稳定回自建 FlowEngine。未建 archive，初衷不变。"}
+  - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "n8n 回滚完成。always-on + computer-use 的真实需求 = 引擎跑在 always-on 的 GUI 机器上（或先笔记本、后常驻桌面机），自建引擎进程内直跑 agent，无握手。下次别再绕回 n8n。"}
+  - {at: 2026-07-03, from: DESIGN, to: BUILD, note: "assertion-signoff 全部签核通过，解锁 BUILD"}
 notes: |
-  PRD 已生成。下一步：运行 /ux-explore 进行原型设计。
+  引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
+  待办：
+  1. 门 1（assertion-signoff）签字 6 处占位断言契约（REQ-001.3 / 008.1 / 009 / 010 / 013.3 / 16.5），见 assertion-signoff.md。
+  2. 签字后 test-author 把占位写实，implementer 实现对应导出。
+  3. 自建引擎的调度器/SQLite 日志/拓扑执行为已知工作量，列入后续 BUILD。
