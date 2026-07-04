@@ -1,7 +1,7 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUILD
+current_phase: QA
 attempt: 1
 blockers: []
 gates:
@@ -15,6 +15,7 @@ history:
   - {at: 2026-07-03, from: DESIGN, to: BUILD, note: "assertion-signoff 全部签核通过，解锁 BUILD"}
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "在 BUILD 阶段重新推导 /tac-tech-design：TaskService 为 Execution 唯一入口；FlowEngine 纯函数；ScheduleService 事件驱动；executor 显式 status + 一次重试；节点接收全量上下文；AgentAdapter 对 FlowEngine 透明。"}
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "assertion-signoff 重新通过：REQ-017~020 已签核，解锁 BUILD。"}
+  - {at: 2026-07-04, from: BUILD, to: QA, note: "BUILD 全切片完成，42 个单元测试全绿，QA runner 已输出报告。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
