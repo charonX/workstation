@@ -236,6 +236,69 @@
 
 ---
 
+## REQ-017: 条件分支节点
+
+**来源**：PRD §4.8 基础节点类型、User Story 15
+
+**描述**：流程编辑器支持条件分支节点，允许用 JavaScript 表达式决定流程执行路径。
+
+**验收标准**：
+- [ ] Node Palette 提供 Condition 节点类型。
+- [ ] Condition 节点配置包含一个 JavaScript 表达式输入框。
+- [ ] Condition 节点有两个出口：true 分支和 false 分支。
+- [ ] FlowEngine 执行 Condition 节点时，用当前上下文 eval 表达式，结果 truthy 走 true 分支，否则走 false 分支。
+- [ ] 表达式非法或抛错时，节点返回 fatal 错误，Execution 失败。
+- [ ] Execution 日志记录实际走的分支名（"true" 或 "false"）。
+
+---
+
+## REQ-018: ForEach 循环节点
+
+**来源**：PRD §4.8 基础节点类型、User Story 16
+
+**描述**：流程编辑器支持 ForEach 循环节点，遍历数组并为每个元素执行 body 子图。
+
+**验收标准**：
+- [ ] Node Palette 提供 ForEach 节点类型。
+- [ ] ForEach 节点配置包含要遍历的数组变量名。
+- [ ] ForEach 节点有两个出口：body（继续循环）和 exit（结束循环）。
+- [ ] FlowEngine 迭代数组，每次把当前元素写入上下文变量后执行 body 子图。
+- [ ] 数组遍历完成后自动走 exit 分支。
+- [ ] Execution 日志记录迭代次数。
+
+---
+
+## REQ-019: While 循环节点
+
+**来源**：PRD §4.8 基础节点类型、User Story 16
+
+**描述**：流程编辑器支持 While 循环节点，当 JavaScript 表达式为真时重复执行 body 子图。
+
+**验收标准**：
+- [ ] Node Palette 提供 While 节点类型。
+- [ ] While 节点配置包含一个 JavaScript 表达式输入框。
+- [ ] While 节点有两个出口：body（继续循环）和 exit（结束循环）。
+- [ ] FlowEngine 每次进入 While 节点时 eval 表达式，truthy 走 body 分支，否则走 exit 分支。
+- [ ] 表达式非法或抛错时，节点返回 fatal 错误，Execution 失败。
+- [ ] Execution 日志记录迭代次数。
+
+---
+
+## REQ-020: 循环图保护与执行限制
+
+**来源**：PRD §4.7 流程编辑器形态、§4.8 基础节点类型、tech-design §4.1
+
+**描述**：FlowEngine 支持包含循环的流程图，并通过深度/迭代计数防止无限循环。
+
+**验收标准**：
+- [ ] FlowEngine 不要求 flow.edges 构成 DAG，允许循环图。
+- [ ] FlowEngine.run 支持 `options.maxDepth` 参数，默认 100；超过则 Execution 失败。
+- [ ] FlowEngine.run 支持 `options.maxIterations` 参数，默认 1000；超过则 Execution 失败。
+- [ ] 超过限制时返回明确的错误信息（如 `"Max execution depth exceeded"`）。
+- [ ] 失败时仍在 Execution 日志中记录已执行到的节点。
+
+---
+
 ## 原始需求（保留上下文）
 
 > 见 PRD §1 Problem Statement。核心动机：把需要人类判断的环节交给 codex/agent 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。

@@ -6,8 +6,8 @@
 
 ## REQ 版本
 
-- `requirements-v1.hash`: `588f13f5f81efdd54b064c8c8467098f11550d3f3dbe7e1785738c9177d47254`
-- 断言签字状态：`ASSERTIONS-SIGNED: true`（门 1 已通过）
+- `requirements-v1.hash`: `2ac6ee56bb4da537ba3e109f9a72e2aa36febb15beac6bdda04cbc2f9be68045`
+- 断言签字状态：`ASSERTIONS-SIGNED: partial`（REQ-001~016 已签；REQ-017~020 等待门 1 重新签核）
 
 ---
 
@@ -46,6 +46,12 @@
 | TP-020 | Skills 列表 | REQ-014 | `tests/skill.test.js` — lists skills with name, repo path and link status | 单元 | 列表展示名称、路径、链接数。 |
 | TP-021 | Skill 详情与项目链接 | REQ-015 | `tests/skill.test.js` — skill detail / link / unlink / idempotent | 单元 | 链接、取消链接、幂等性正确。 |
 | TP-022 | 主题切换 | REQ-016 | `tests/theme.test.js` — toggles from dark to light / applyTheme | 单元 / E2E | dark/light 切换正确。 |
+| TP-023 | Condition 节点 true 分支 | REQ-017 | `tests/flowEngine.test.js` — condition node routes to true branch | 单元 | 表达式为真时走 true 分支。 |
+| TP-024 | Condition 节点 false 分支 | REQ-017 | `tests/flowEngine.test.js` — condition node routes to false branch | 单元 | 表达式为假时走 false 分支。 |
+| TP-025 | Condition 表达式非法 | REQ-017 | `tests/flowEngine.test.js` — invalid condition expression returns fatal | 单元 | 表达式语法错误时 fatal。 |
+| TP-026 | ForEach 循环 | REQ-018 | `tests/flowEngine.test.js` — forEach iterates over array | 单元 | 遍历数组并执行 body 子图。 |
+| TP-027 | While 循环 | REQ-019 | `tests/flowEngine.test.js` — while loop repeats while expression is true | 单元 | 表达式为真时重复执行 body。 |
+| TP-028 | 循环保护 | REQ-020 | `tests/flowEngine.test.js` — maxIterations / maxDepth prevent infinite loops | 单元 | 超过限制时 Execution 失败。 |
 
 ---
 
