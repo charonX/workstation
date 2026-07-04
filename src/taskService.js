@@ -1,4 +1,5 @@
 import { getDb, resetDb } from "./db.js";
+import * as eventBus from "./eventBus.js";
 
 function timestamp() {
   return new Date().toISOString();
@@ -219,4 +220,10 @@ export function getExecutionDetailTabs() {
 
 export function getDefaultDetailTab() {
   return "logs";
+}
+
+export function subscribeToScheduleTriggers() {
+  return eventBus.subscribe("schedule:triggered", ({ projectId, flowId }) => {
+    createTask({ projectId, flowId, trigger: "schedule" });
+  });
 }
