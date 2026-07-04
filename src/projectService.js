@@ -1,15 +1,47 @@
-let projects = [];
-
-export function resetProjects(seed = []) {
-  projects = seed.map(p => ({ ...p }));
-}
-
-function nextProjectId() {
-  return "p" + (projects.length + 1);
-}
+import { getDb, resetDb } from "./db.js";
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+export function resetProjects(seed = []) {
+  resetDb();
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT INTO projects (id, name, description, sourceType, repoUrl, branch, localPath, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const project of seed) {
+    insert.run(
+      project.id ?? nextProjectId(),
+      project.name,
+      project.description ?? null,
+      project.sourceType ?? "local",
+      project.repoUrl ?? null,
+      project.branch ?? null,
+      project.localPath ?? null,
+      project.updatedAt ?? timestamp()
+    );
+  }
+}
+
+function nextProjectId() {
+  const db = getDb();
+  const row = db.prepare("SELECT COUNT(*) AS count FROM projects").get();
+  return "p" + (row.count + 1);
+}
+
+function rowToProject(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    sourceType: row.sourceType,
+    repoUrl: row.repoUrl,
+    branch: row.branch,
+    localPath: row.localPath,
+    updatedAt: row.updatedAt
+  };
 }
 
 export function createLocalProject({ name, description, localPath }) {
@@ -19,11 +51,26 @@ export function createLocalProject({ name, description, localPath }) {
     name,
     description,
     sourceType: "local",
+    repoUrl: null,
+    branch: null,
     localPath,
     updatedAt: timestamp()
   };
-  projects.push(project);
-  return { ...project };
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO projects (id, name, description, sourceType, repoUrl, branch, localPath, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    project.id,
+    project.name,
+    project.description ?? null,
+    project.sourceType,
+    project.repoUrl,
+    project.branch,
+    project.localPath,
+    project.updatedAt
+  );
+  return rowToProject(project);
 }
 
 export function createGitProject({ name, description, repoUrl, branch, localPath }) {
@@ -39,12 +86,26 @@ export function createGitProject({ name, description, repoUrl, branch, localPath
     localPath,
     updatedAt: timestamp()
   };
-  projects.push(project);
-  return { ...project };
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO projects (id, name, description, sourceType, repoUrl, branch, localPath, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    project.id,
+    project.name,
+    project.description ?? null,
+    project.sourceType,
+    project.repoUrl,
+    project.branch,
+    project.localPath,
+    project.updatedAt
+  );
+  return rowToProject(project);
 }
 
 export function listProjects() {
-  return projects.map(p => ({ ...p }));
+  const db = getDb();
+  return db.prepare("SELECT * FROM projects").all().map(rowToProject);
 }
 
 export function filterProjects(projects, filter) {

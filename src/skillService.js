@@ -1,27 +1,62 @@
-// Temporary stub for test compilation.
-
-let skills = [];
-let links = [];
+import { getDb, resetDb } from "./db.js";
 
 export function resetSkills(seed = []) {
-  skills = seed.map(s => ({ ...s }));
-  links = [];
+  resetDb();
+  const db = getDb();
+  const insertSkill = db.prepare(`
+    INSERT INTO skills (id, name, description, repoPath, version, dependencies)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const skill of seed) {
+    insertSkill.run(
+      skill.id,
+      skill.name,
+      skill.description ?? null,
+      skill.repoPath,
+      skill.version ?? null,
+      JSON.stringify(skill.dependencies ?? [])
+    );
+  }
+}
+
+function rowToSkill(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    repoPath: row.repoPath,
+    version: row.version,
+    dependencies: JSON.parse(row.dependencies || "[]")
+  };
 }
 
 export function listSkills() {
-  return skills.map(s => ({ ...s }));
+  const db = getDb();
+  return db.prepare("SELECT * FROM skills").all().map(rowToSkill);
 }
 
 export function linkSkill(skillId, projectId) {
-  if (!links.some(l => l.skillId === skillId && l.projectId === projectId)) {
-    links.push({ skillId, projectId });
+  const db = getDb();
+  const exists = db.prepare(`
+    SELECT 1 FROM project_skills WHERE projectId = ? AND skillId = ?
+  `).get(projectId, skillId);
+  if (!exists) {
+    db.prepare(`
+      INSERT INTO project_skills (projectId, skillId) VALUES (?, ?)
+    `).run(projectId, skillId);
   }
 }
 
 export function unlinkSkill(skillId, projectId) {
-  links = links.filter(l => !(l.skillId === skillId && l.projectId === projectId));
+  const db = getDb();
+  db.prepare(`
+    DELETE FROM project_skills WHERE projectId = ? AND skillId = ?
+  `).run(projectId, skillId);
 }
 
 export function getLinkedProjects(skillId) {
-  return links.filter(l => l.skillId === skillId).map(l => l.projectId);
+  const db = getDb();
+  return db.prepare(`
+    SELECT projectId FROM project_skills WHERE skillId = ?
+  `).all(skillId).map(row => row.projectId);
 }

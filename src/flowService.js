@@ -1,21 +1,56 @@
-let flows = [];
-
-export function resetFlows(seed = []) {
-  flows = seed.map(f => ({ ...f, nodeList: f.nodeList || [], edges: f.edges || [] }));
-}
-
-function nextFlowId() {
-  return "f" + (flows.length + 1);
-}
+import { getDb, resetDb } from "./db.js";
 
 function timestamp() {
   return new Date().toISOString();
 }
 
-function toFlowView(flow) {
+export function resetFlows(seed = []) {
+  resetDb();
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const flow of seed) {
+    insert.run(
+      flow.id ?? nextFlowId(),
+      flow.projectId ?? null,
+      flow.name ?? null,
+      flow.description ?? null,
+      JSON.stringify(flow.nodeList || []),
+      JSON.stringify(flow.edges || []),
+      flow.scheduleEnabled ? 1 : 0,
+      flow.updatedAt ?? timestamp()
+    );
+  }
+}
+
+function nextFlowId() {
+  const db = getDb();
+  const row = db.prepare("SELECT COUNT(*) AS count FROM flows").get();
+  return "f" + (row.count + 1);
+}
+
+function safeJson(value, fallback) {
+  try {
+    return JSON.parse(value || JSON.stringify(fallback));
+  } catch {
+    return fallback;
+  }
+}
+
+function toFlowView(row) {
+  const nodeList = safeJson(row.nodeList, []);
   return {
-    ...flow,
-    nodes: flow.nodeList.length
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    description: row.description,
+    nodes: nodeList.length,
+    nodeList,
+    edges: safeJson(row.edges, []),
+    scheduleEnabled: Boolean(row.scheduleEnabled),
+    updatedAt: row.updatedAt
   };
 }
 
@@ -24,42 +59,65 @@ export function createFlow({ name, projectId, description }) {
   if (!projectId) throw new Error("Project is required");
   const flow = {
     id: nextFlowId(),
-    name,
     projectId,
+    name,
     description,
     nodeList: [],
     edges: [],
     scheduleEnabled: false,
     updatedAt: timestamp()
   };
-  flows.push(flow);
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    flow.id,
+    flow.projectId,
+    flow.name,
+    flow.description ?? null,
+    JSON.stringify(flow.nodeList),
+    JSON.stringify(flow.edges),
+    flow.scheduleEnabled ? 1 : 0,
+    flow.updatedAt
+  );
   return toFlowView(flow);
 }
 
 export function listFlows() {
-  return flows.map(toFlowView);
+  const db = getDb();
+  return db.prepare("SELECT * FROM flows").all().map(toFlowView);
 }
 
 export function getFlow(id) {
-  const flow = flows.find(f => f.id === id);
-  return flow ? toFlowView(flow) : undefined;
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(id);
+  return row ? toFlowView(row) : undefined;
 }
 
 export function addNode(flowId, node) {
-  const flow = flows.find(f => f.id === flowId);
-  if (!flow) return undefined;
-  const newNode = { id: `n${flow.nodeList.length + 1}`, ...node };
-  flow.nodeList.push(newNode);
-  flow.updatedAt = timestamp();
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(flowId);
+  if (!row) return undefined;
+  const nodeList = safeJson(row.nodeList, []);
+  const newNode = { id: `n${nodeList.length + 1}`, ...node };
+  nodeList.push(newNode);
+  db.prepare(`
+    UPDATE flows SET nodeList = ?, updatedAt = ? WHERE id = ?
+  `).run(JSON.stringify(nodeList), timestamp(), flowId);
   return { ...newNode };
 }
 
 export function connectNodes(flowId, sourceId, targetId) {
-  const flow = flows.find(f => f.id === flowId);
-  if (!flow) return undefined;
-  const edge = { id: `e${flow.edges.length + 1}`, sourceId, targetId };
-  flow.edges.push(edge);
-  flow.updatedAt = timestamp();
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(flowId);
+  if (!row) return undefined;
+  const edges = safeJson(row.edges, []);
+  const edge = { id: `e${edges.length + 1}`, sourceId, targetId };
+  edges.push(edge);
+  db.prepare(`
+    UPDATE flows SET edges = ?, updatedAt = ? WHERE id = ?
+  `).run(JSON.stringify(edges), timestamp(), flowId);
   return { ...edge };
 }
 
