@@ -112,7 +112,7 @@ describe("FlowEngine", () => {
         ],
         edges: [
           { id: "e1", sourceNodeId: "f1", sourcePort: "body", targetNodeId: "a1" },
-          { id: "e2", sourceNodeId: "a1", sourceNodeId: "a1", targetNodeId: "f1" }
+          { id: "e2", sourceNodeId: "a1", targetNodeId: "f1" }
         ]
       },
       project: { id: "p1" },
