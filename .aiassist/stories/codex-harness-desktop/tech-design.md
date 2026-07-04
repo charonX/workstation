@@ -73,14 +73,19 @@ Main Process (Node.js)
         project,
         inputVariables,
         executors,
-        onEvent: (event) => EventBus.publish(event)
+        onEvent: (event) => EventBus.publish(event),
+        options: { maxDepth: 100, maxIterations: 1000 }
     })
-  → FlowEngine 按拓扑顺序执行节点（MVP 限制为 DAG，发现环则立即失败）
+  → FlowEngine 按拓扑顺序执行节点
+     - Condition 节点：eval JavaScript 表达式，选择匹配出口
+     - ForEach 节点：遍历数组，重复执行 body 子图
+     - While 节点：表达式为真时重复执行 body 子图
+     - 通过 execution depth / iteration counter 防止无限循环
   → 每个 executor 返回 { status, output, logs, error }
   → FlowEngine 合并 output 到上下文
   → 节点 status=error 时重试一次；status=fatal 或直接二次失败则 Execution 失败
   → FlowEngine 返回最终结果
-  → TaskService 更新 Execution（status, duration, output）
+  → TaskService 更新 Execution（status, duration, output, branchPath, iterations）
 
 EventBus 订阅者：
   - LogService：将事件写入 SQLite logs 表
@@ -113,6 +118,10 @@ interface RunFlowInput {
   inputVariables: Record<string, unknown>;
   executors: Record<string, NodeExecutor>;
   onEvent: (event: FlowEvent) => void;
+  options?: {
+    maxDepth?: number;      // 默认 100，防止递归/循环过深
+    maxIterations?: number; // 默认 1000，防止无限循环
+  };
 }
 
 interface RunFlowOutput {
@@ -124,7 +133,10 @@ interface RunFlowOutput {
 function run(input: RunFlowInput): Promise<RunFlowOutput>;
 ```
 
-**约束**：FlowEngine 要求 `flow.edges` 构成有向无环图（DAG）。若检测到环，立即返回 `{ status: "error", error: "Flow contains cycle" }`，不执行任何节点。MVP 阶段不处理循环图。
+**约束**：
+- FlowEngine 支持任意有向图，包括循环图（用于 While / ForEach）。
+- 通过 `maxDepth` 和 `maxIterations` 防止无限循环；超过限制时 Execution 标记为 `error`。
+- Condition / ForEach / While 节点由专门的 executor 实现，其他节点默认按拓扑可达性执行。
 
 ### 4.2 NodeExecutor
 
@@ -133,6 +145,8 @@ interface NodeExecutorInput {
   node: Node;
   context: Record<string, unknown>; // 当前累积上下文
   project: Project;
+  branch?: string;          // 当前分支名（如 "true"/"false"/"body"/"exit"）
+  iteration?: number;       // 当前循环迭代次数
 }
 
 interface NodeExecutorOutput {
@@ -167,6 +181,41 @@ async function agentExecutor(input: NodeExecutorInput): Promise<NodeExecutorOutp
     output: result.output,
     logs: result.logs
   };
+}
+
+// ConditionExecutor：eval JavaScript 表达式，output 为分支名 "true" / "false"
+function conditionExecutor(input: NodeExecutorInput): NodeExecutorOutput {
+  const expression = input.node.config.expression; // e.g. "input.count > 10"
+  try {
+    const result = evaluateJsExpression(expression, input.context);
+    return {
+      status: "success",
+      output: result ? "true" : "false"
+    };
+  } catch (err) {
+    return { status: "fatal", error: err.message };
+  }
+}
+
+// ForEachExecutor：output 为当前迭代项，FlowEngine 根据 output 驱动 body/exit
+function forEachExecutor(input: NodeExecutorInput): NodeExecutorOutput {
+  const array = input.context[input.node.config.arrayVariable];
+  const index = input.iteration ?? 0;
+  if (!Array.isArray(array) || index >= array.length) {
+    return { status: "success", output: "exit" };
+  }
+  return { status: "success", output: "body", logs: [{ at: new Date().toISOString(), message: `iter ${index}` }] };
+}
+
+// WhileExecutor：output 为 "body" 或 "exit"
+function whileExecutor(input: NodeExecutorInput): NodeExecutorOutput {
+  const expression = input.node.config.expression;
+  try {
+    const result = evaluateJsExpression(expression, input.context);
+    return { status: "success", output: result ? "body" : "exit" };
+  } catch (err) {
+    return { status: "fatal", error: err.message };
+  }
 }
 
 // AgentAdapter
@@ -263,8 +312,8 @@ CREATE TABLE flows (
   projectId TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
-  nodeList TEXT NOT NULL, -- JSON
-  edges TEXT NOT NULL,    -- JSON
+  nodeList TEXT NOT NULL, -- JSON: [{ id, type, name, config, outputVariable, ports[], position }]
+  edges TEXT NOT NULL,    -- JSON: [{ id, sourceNodeId, sourcePort, targetNodeId, targetPort }]
   scheduleEnabled INTEGER NOT NULL DEFAULT 0,
   updatedAt TEXT NOT NULL
 );
@@ -287,8 +336,10 @@ CREATE TABLE executions (
   endedAt TEXT,
   duration TEXT,
   nodesRun INTEGER NOT NULL DEFAULT 0,
-  variables TEXT, -- JSON
-  output TEXT     -- JSON
+  variables TEXT,     -- JSON
+  output TEXT,        -- JSON
+  branchPath TEXT,    -- JSON: 记录条件分支路径
+  iterations TEXT     -- JSON: 记录循环迭代信息
 );
 
 CREATE TABLE logs (
@@ -310,7 +361,7 @@ CREATE TABLE logs (
 | Workspace/Settings | SettingsService | 单元测试：JSON 文件读写 + 验证规则 |
 | 项目导入 | ProjectService + git 子进程 mock | 单元测试 + 集成测试（临时目录） |
 | Skill 链接 | SkillService | 单元测试：SQLite |
-| Flow 编排 | FlowEngine + mock executors + callback | 单元测试：验证拓扑、上下文合并、重试 |
+| Flow 编排 | FlowEngine + mock executors + callback | 单元测试：验证拓扑、上下文合并、重试、**条件分支、ForEach、While、死循环防护** |
 | Agent 节点 | agentExecutor + mock AgentAdapter | 单元测试：验证调用协议 |
 | Agent 适配 | AgentAdapter + mock SDK/CLI | 单元测试：验证 Claude Code / Codex 协议 |
 | Schedule | ScheduleService + 虚拟时间/事件监听 | 单元测试：验证 cron 触发后事件发布 |
@@ -326,6 +377,8 @@ CREATE TABLE logs (
 |---|---|---|---|
 | Agent SDK / Codex 调用不稳定 | Agent 节点无法可靠执行 | spike：最小任务验证调用协议 | 降级为本地 CLI 子进程调用 |
 | SQLite 主进程并发写入冲突 | 日志丢失 | 集成测试 + 单线程事件队列 | 串行化写操作 |
+| FlowEngine 无限循环 | 循环节点导致 Execution 永不结束 | 单元测试覆盖 maxDepth / maxIterations | 限制循环次数并标记 error |
+| Condition 表达式安全 | 用户输入的 JS 表达式可能执行危险代码 | 使用受限沙箱（如 vm2 替代方案）或只允许白名单操作 | 禁用 eval，改用 JSON 逻辑规则 |
 | React Flow 与 Electron 兼容性 | 画布交互异常 | 原型验证 | 自绘 SVG/Canvas |
 | cron 调度器应用关闭丢失任务 | 定时任务不执行 | 产品决策已接受 | 已在设计中接受 |
 | FlowEngine 拓扑排序错误 | 节点执行顺序错误 | 单元测试覆盖 DAG 场景 | 限制 MVP 只支持线性流程 |
@@ -346,8 +399,10 @@ CREATE TABLE logs (
 - FlowEngine 为纯函数，由 TaskService 注入数据和 executors。
 - ScheduleService 通过事件总线触发 TaskService。
 - AgentAdapter 对 FlowEngine 透明，封装在 agentExecutor 中。
-- executor 返回显式 status 对象，FlowEngine 执行一次重试。
+- executor 返回显式 status 对象（success / error / fatal），FlowEngine 对 error 执行一次重试。
 - 节点接收全量累积上下文。
+- **支持 Condition / ForEach / While 节点；允许循环图；通过 maxDepth / maxIterations 防止无限循环。**
+- **Condition / While 使用 JavaScript 表达式；ForEach 遍历数组变量。**
 
 ---
 

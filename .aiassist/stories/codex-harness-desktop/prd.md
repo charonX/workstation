@@ -41,6 +41,8 @@
 11. **作为用户，我可以在 Tasks 页面手动创建一个任务**（选择项目和流程后立即运行），这样可以把流程在某一个项目中跑起来。
 12. **作为用户，我可以在 Tasks 页面创建定时任务（Schedule）**，设置 cron 表达式并启用/停用，让流程按计划自动执行。
 13. **作为用户，我可以在 Skill 详情弹层中查看技能元数据**，并把它链接/取消链接到任意项目。
+14. **作为用户，我可以在流程中加入条件分支节点**，用 JavaScript 表达式决定走哪条分支。
+15. **作为用户，我可以在流程中加入循环节点**（ForEach / While），让流程重复执行某段子图。
 
 ## 4. Stable Blocks（已稳定，可结晶为 REQ）
 
@@ -60,40 +62,50 @@
    - Claude Code：通过 Claude Agent SDK 调用
    - Codex：通过 OpenAI app-server 方式接入
 6. **Codex 的角色**：流程中的一个节点
-7. **流程编辑器形态**：n8n 式节点拖拽
-8. **定时触发**：流程可以配置定时执行
-9. **数据存储**：
+7. **流程编辑器形态**：
+   - n8n 式节点拖拽
+   - 节点支持多出口（Condition 分支、Loop body/exit）
+   - 支持 Condition、ForEach、While、Agent、Data、Logic、Output 等基础节点
+8. **基础节点类型（MVP）**：
+   - **Condition**：用 JavaScript 表达式判断，根据 true/false 走不同分支
+   - **ForEach**：遍历输入数组，重复执行 body 子图
+   - **While**：当 JavaScript 表达式为真时重复执行 body 子图
+   - **Agent**：调用 Claude Code / Codex
+   - **Data / Logic / Output**：基础数据处理和输出节点
+9. **定时触发**：流程可以配置定时执行
+10. **数据存储**：
    - 流程配置/项目元数据：应用数据目录（文件系统）
    - 执行日志：SQLite
-10. **Settings 与 Workspace 配置**：
+11. **Settings 与 Workspace 配置**：
     - 提供 Settings 页面
     - 可配置 Workspace 根目录
     - 可配置 Skill 仓库位置
-11. **项目导入 UI**：
+12. **项目导入 UI**：
     - 统一使用 "Add Project" 按钮弹出模态框
     - 支持本地目录和 Git 检出（填写仓库 URL、分支、克隆目录）
     - 不在界面上给项目打 "local" 或 "git" 标签，来源仅作为元数据
-12. **Flows 列表页**：
+13. **Flows 列表页**：
     - 以卡片形式列出所有流程，显示所属项目、节点数、定时状态、更新时间
     - 提供 "New Flow" 弹层创建流程，再进入编辑器
-13. **Tasks 页面**：
+14. **Tasks 页面**：
     - 任务是流程在某个项目里的一次运行（Execution）
     - 支持手动创建任务（New Task）
     - 支持创建定时任务（New Schedule）并设置 cron 表达式
     - 左侧显示 Schedules 列表（可启用/停用）和 Run History
     - 右侧显示单次执行的详情：Logs / Variables / Output 三个 Tab
-14. **Skill 管理 UI**：
+    - 执行历史需展示分支路径和循环迭代信息
+15. **Skill 管理 UI**：
     - Skills 页面以表格展示技能列表
     - 点击技能打开详情弹层，展示仓库路径、版本、依赖
     - 在弹层中通过 checkbox 把技能链接到多个项目
-15. **Workspace 首页**：
+16. **Workspace 首页**：
     - 展示项目卡片网格
     - 支持按项目名称搜索/过滤
     - 顶部提供 "Add Project" 入口
-16. **设计系统与主题**：
+17. **设计系统与主题**：
     - 使用 CSS 自定义属性（design tokens）管理颜色、间距、字体等
     - 支持 dark / light 主题切换
-17. **Out of Scope（明确不做）**：
+18. **Out of Scope（明确不做）**：
     - AI 画布
     - 移动端应用
     - 商业化/多租户
@@ -102,7 +114,7 @@
 
 以下部分尚未完全确定，需要在后续阶段继续细化：
 
-1. **具体节点列表**：用户表示"节点再说，架构搭出来节点很容易加"，但 MVP 至少需要哪些基础节点仍需设计。
+1. **扩展节点列表**：MVP 基础节点（Condition / ForEach / While / Agent / Data / Logic / Output）已确定，但 HTTP、文件、通知、条件分支等扩展节点后续按需增加。
 2. **流程配置格式**：JSON vs YAML 未定。
 3. **API key / 认证管理**：用户表示"不需要管"，但实际接入 Codex/Claude Code 仍需某种形式的配置。
 4. **结果展示 UI 形态细化**：虽然已有 Logs / Variables / Output 三个 Tab，但具体展示格式（表格、Markdown 预览、图片等）仍需细化。
@@ -161,9 +173,11 @@
 - **Project**：id, workspaceId, name, description, sourceType(local/git), repoUrl, branch, localPath, updatedAt
 - **Skill**：id, name, description, repoPath, version, dependencies
 - **ProjectSkill**：projectId, skillId, linkPath
-- **Flow**：id, projectId, name, description, nodes, config（节点/边）, scheduleEnabled, updatedAt
+- **Flow**：id, projectId, name, description, nodes[], edges[], scheduleEnabled, updatedAt
+  - **Node**：id, type, name, config（条件表达式 / 循环配置 / agent 配置等）, outputVariable, position, ports[]
+  - **Edge**：id, sourceNodeId, sourcePort, targetNodeId, targetPort
 - **Schedule**：id, projectId, flowId, cron, enabled
-- **Execution**（即 Task 的一次运行）：id, projectId, flowId, trigger(manual/schedule), startedAt, endedAt, status, duration, nodesRun, logs[]
+- **Execution**（即 Task 的一次运行）：id, projectId, flowId, trigger(manual/schedule), startedAt, endedAt, status, duration, nodesRun, logs[], branchPath[], iterations[]
 - **Settings**：workspaceRoot, skillRepoPath, theme
 
 ### 6.4 关键页面结构
@@ -181,7 +195,7 @@
 
 ### 7.1 测试 seams
 
-1. **FlowEngine**：输入节点配置 + 模拟节点执行器，验证执行顺序、数据传递、错误处理。
+1. **FlowEngine**：输入节点配置 + 模拟节点执行器，验证执行顺序、数据传递、错误处理、**条件分支、循环迭代、死循环防护**。
 2. **AgentAdapter**：通过 mock server/SDK 验证调用协议正确性，不依赖真实 agent。
 3. **ProjectService**：在临时目录中创建/删除项目，验证文件系统操作，包括 Git clone。
 4. **SkillService**：验证软链接创建、读取、失效处理。

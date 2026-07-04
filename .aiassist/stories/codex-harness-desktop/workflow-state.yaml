@@ -14,20 +14,24 @@ history:
   - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "n8n 回滚完成。always-on + computer-use 的真实需求 = 引擎跑在 always-on 的 GUI 机器上（或先笔记本、后常驻桌面机），自建引擎进程内直跑 agent，无握手。下次别再绕回 n8n。"}
   - {at: 2026-07-03, from: DESIGN, to: BUILD, note: "assertion-signoff 全部签核通过，解锁 BUILD"}
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "在 BUILD 阶段重新推导 /tac-tech-design：TaskService 为 Execution 唯一入口；FlowEngine 纯函数；ScheduleService 事件驱动；executor 显式 status + 一次重试；节点接收全量上下文；AgentAdapter 对 FlowEngine 透明。"}
+  - {at: 2026-07-04, from: BUILD, to: BUILD, note: "扩展 PRD/tech-design：新增 Condition/ForEach/While 基础节点；JavaScript 表达式；允许循环图；maxDepth/maxIterations 防止无限循环。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
   Agent 执行已定：Node.js 引擎进程内调 Agent SDK / Codex app-server。
   持久化已定：settings 用 JSON 文件；项目/流程/任务/执行/日志用 SQLite。
   调度策略已定：应用内 cron 调度器，应用关闭则错过的任务不补执行。
-  FlowEngine 边界已定：纯函数，由 TaskService 注入 flow/project/inputVariables/executors/onEvent。
+  FlowEngine 边界已定：纯函数，由 TaskService 注入 flow/project/inputVariables/executors/onEvent/options。
   触发入口已定：TaskService 是创建 Execution 的唯一入口；ScheduleService 只发 schedule:triggered 事件。
-  错误策略已定：executor 返回显式 status；status=error 重试一次，再次失败则 Execution 失败。
+  错误策略已定：executor 返回 success/error/fatal；error 重试一次，fatal 直接失败。
   数据流已定：节点接收全量累积上下文。
   Agent 边界已定：AgentAdapter 被 agentExecutor 封装，对 FlowEngine 透明。
+  图结构已定：允许循环图；Condition/ForEach/While 为 MVP 基础节点；通过 maxDepth/maxIterations 防止无限循环。
+  表达式已定：Condition / While 使用 JavaScript 表达式。
   待办：
   1. 引入 SQLite 并迁移 Project/Flow/Task/Skill 服务到持久化存储。
-  2. 实现 FlowEngine.run 骨架（拓扑排序、上下文合并、executor 调用、重试、事件回调）。
-  3. 实现 AgentAdapter spike，验证 Claude Code / Codex 调用协议。
-  4. 实现 ScheduleService + 事件总线 + TaskService 订阅。
-  5. 搭建 Electron 主进程 + React 渲染进程最小壳。
+  2. 实现 FlowEngine.run 骨架：拓扑排序、上下文合并、executor 调用、重试、事件回调、循环/条件支持、死循环防护。
+  3. 实现 Condition / ForEach / While executor。
+  4. 实现 AgentAdapter spike，验证 Claude Code / Codex 调用协议。
+  5. 实现 ScheduleService + 事件总线 + TaskService 订阅。
+  6. 搭建 Electron 主进程 + React 渲染进程最小壳。
