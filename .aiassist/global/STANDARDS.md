@@ -13,7 +13,7 @@
 
 ## 编码规范
 
-- TypeScript / React / Rust 遵循各自社区默认风格
+- TypeScript / React / Node.js 遵循各自社区默认风格
 - 核心逻辑优先写单元测试
 - Tauri command 层写集成测试
 
