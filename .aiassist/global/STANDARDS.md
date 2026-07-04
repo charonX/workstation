@@ -15,7 +15,7 @@
 
 - TypeScript / React / Node.js 遵循各自社区默认风格
 - 核心逻辑优先写单元测试
-- Tauri command 层写集成测试
+- Electron main process / IPC 层写集成测试
 
 ## 目录结构约定
 
