@@ -10,17 +10,18 @@
     "build": "vite build",
     "electron": "electron src/main/main.js",
     "start": "npm run build && npm run electron",
-    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -w better-sqlite3",
     "rebuild:node": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "electron": "^33.4.11",
+    "electron": "^43.0.0",
     "node-cron": "^4.5.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.1.0",
     "@vitejs/plugin-react": "^6.0.3",
     "electron-rebuild": "^3.2.9",
     "vite": "^8.1.3"
