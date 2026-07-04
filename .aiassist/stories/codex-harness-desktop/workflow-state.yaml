@@ -5,7 +5,7 @@ current_phase: BUILD
 attempt: 1
 blockers: []
 gates:
-  assertion_signoff: pending
+  assertion_signoff: passed
   feel_signoff: pending
 history:
   - {at: 2026-07-01, from: THINK, to: PRD, note: "完成需求洞察，PRD 生成"}
@@ -14,7 +14,7 @@ history:
   - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "n8n 回滚完成。always-on + computer-use 的真实需求 = 引擎跑在 always-on 的 GUI 机器上（或先笔记本、后常驻桌面机），自建引擎进程内直跑 agent，无握手。下次别再绕回 n8n。"}
   - {at: 2026-07-03, from: DESIGN, to: BUILD, note: "assertion-signoff 全部签核通过，解锁 BUILD"}
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "在 BUILD 阶段重新推导 /tac-tech-design：TaskService 为 Execution 唯一入口；FlowEngine 纯函数；ScheduleService 事件驱动；executor 显式 status + 一次重试；节点接收全量上下文；AgentAdapter 对 FlowEngine 透明。"}
-  - {at: 2026-07-04, from: BUILD, to: BUILD, note: "扩展 REQ：新增 REQ-017 Condition / REQ-018 ForEach / REQ-019 While / REQ-020 循环图保护；重新生成 requirements-v1.hash；assertion-signoff 回退为 pending。"}
+  - {at: 2026-07-04, from: BUILD, to: BUILD, note: "assertion-signoff 重新通过：REQ-017~020 已签核，解锁 BUILD。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。

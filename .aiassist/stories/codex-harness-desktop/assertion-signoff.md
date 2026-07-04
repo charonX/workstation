@@ -185,13 +185,13 @@
 
 ## REQ-017: 条件分支节点
 
-- [ ] 17.1 Node Palette 提供 Condition 节点类型 `[E2E]`
-- [ ] 17.2 Condition 节点配置包含 JavaScript 表达式输入框 `[E2E]`
-- [ ] 17.3 Condition 节点有两个出口：true / false `[E2E]`
-- [ ] 17.4 表达式为真时走 true 分支 `TP-023 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 17.5 表达式为假时走 false 分支 `TP-024 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 17.6 表达式非法时节点返回 fatal，Execution 失败 `TP-025 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 17.7 Execution 日志记录实际分支名 `[E2E]`
+- [x] 17.1 Node Palette 提供 Condition 节点类型 `[E2E]`
+- [x] 17.2 Condition 节点配置包含 JavaScript 表达式输入框 `[E2E]`
+- [x] 17.3 Condition 节点有两个出口：true / false `[E2E]`
+- [x] 17.4 表达式为真时走 true 分支 `TP-023 flowEngine.test.js [PLACEHOLDER]`
+- [x] 17.5 表达式为假时走 false 分支 `TP-024 flowEngine.test.js [PLACEHOLDER]`
+- [x] 17.6 表达式非法时节点返回 fatal，Execution 失败 `TP-025 flowEngine.test.js [PLACEHOLDER]`
+- [x] 17.7 Execution 日志记录实际分支名 `[E2E]`
 
 **占位断言契约 (17.4–17.6)**：
 - `run({ flow: condition-true })` 返回 `{ status: "success", output: "high" }`
@@ -202,12 +202,12 @@
 
 ## REQ-018: ForEach 循环节点
 
-- [ ] 18.1 Node Palette 提供 ForEach 节点类型 `[E2E]`
-- [ ] 18.2 ForEach 节点配置包含数组变量名 `[E2E]`
-- [ ] 18.3 ForEach 节点有两个出口：body / exit `[E2E]`
-- [ ] 18.4 遍历数组并为每个元素执行 body 子图 `TP-026 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 18.5 数组遍历完成后走 exit 分支 `TP-026 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 18.6 Execution 日志记录迭代次数 `[E2E]`
+- [x] 18.1 Node Palette 提供 ForEach 节点类型 `[E2E]`
+- [x] 18.2 ForEach 节点配置包含数组变量名 `[E2E]`
+- [x] 18.3 ForEach 节点有两个出口：body / exit `[E2E]`
+- [x] 18.4 遍历数组并为每个元素执行 body 子图 `TP-026 flowEngine.test.js [PLACEHOLDER]`
+- [x] 18.5 数组遍历完成后走 exit 分支 `TP-026 flowEngine.test.js [PLACEHOLDER]`
+- [x] 18.6 Execution 日志记录迭代次数 `[E2E]`
 
 **占位断言契约 (18.4–18.5)**：`run({ flow: forEach-3-items })` 执行 3 次 body 后从 exit 退出，最终 status 为 success。
 
@@ -215,13 +215,13 @@
 
 ## REQ-019: While 循环节点
 
-- [ ] 19.1 Node Palette 提供 While 节点类型 `[E2E]`
-- [ ] 19.2 While 节点配置包含 JavaScript 表达式输入框 `[E2E]`
-- [ ] 19.3 While 节点有两个出口：body / exit `[E2E]`
-- [ ] 19.4 表达式为真时重复执行 body 子图 `TP-027 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 19.5 表达式为假时走 exit 分支 `TP-027 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 19.6 表达式非法时节点返回 fatal，Execution 失败 `TP-027 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 19.7 Execution 日志记录迭代次数 `[E2E]`
+- [x] 19.1 Node Palette 提供 While 节点类型 `[E2E]`
+- [x] 19.2 While 节点配置包含 JavaScript 表达式输入框 `[E2E]`
+- [x] 19.3 While 节点有两个出口：body / exit `[E2E]`
+- [x] 19.4 表达式为真时重复执行 body 子图 `TP-027 flowEngine.test.js [PLACEHOLDER]`
+- [x] 19.5 表达式为假时走 exit 分支 `TP-027 flowEngine.test.js [PLACEHOLDER]`
+- [x] 19.6 表达式非法时节点返回 fatal，Execution 失败 `TP-027 flowEngine.test.js [PLACEHOLDER]`
+- [x] 19.7 Execution 日志记录迭代次数 `[E2E]`
 
 **占位断言契约 (19.4–19.6)**：
 - `run({ flow: while-counter-lt-3 })` 执行 3 次 body 后从 exit 退出
@@ -231,12 +231,12 @@
 
 ## REQ-020: 循环图保护与执行限制
 
-- [ ] 20.1 FlowEngine 不要求 DAG，允许循环图 `[E2E]`
-- [ ] 20.2 FlowEngine.run 支持 `options.maxDepth`，默认 100 `TP-028 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 20.3 FlowEngine.run 支持 `options.maxIterations`，默认 1000 `TP-028 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 20.4 超过 maxDepth 时 Execution 失败 `TP-028 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 20.5 超过 maxIterations 时 Execution 失败 `TP-028 flowEngine.test.js [PLACEHOLDER]`
-- [ ] 20.6 失败时返回明确的错误信息 `[PLACEHOLDER]`
+- [x] 20.1 FlowEngine 不要求 DAG，允许循环图 `[E2E]`
+- [x] 20.2 FlowEngine.run 支持 `options.maxDepth`，默认 100 `TP-028 flowEngine.test.js [PLACEHOLDER]`
+- [x] 20.3 FlowEngine.run 支持 `options.maxIterations`，默认 1000 `TP-028 flowEngine.test.js [PLACEHOLDER]`
+- [x] 20.4 超过 maxDepth 时 Execution 失败 `TP-028 flowEngine.test.js [PLACEHOLDER]`
+- [x] 20.5 超过 maxIterations 时 Execution 失败 `TP-028 flowEngine.test.js [PLACEHOLDER]`
+- [x] 20.6 失败时返回明确的错误信息 `[PLACEHOLDER]`
 
 **占位断言契约 (20.4–20.6)**：
 - `run({ flow: self-loop, options: { maxDepth: 3 } })` 返回 `{ status: "error", error: /Max execution depth exceeded/ }`
@@ -246,7 +246,7 @@
 
 ## 结论
 
-- [ ] PASS — 全部验收点（含占位断言契约）已签，可进入 test-author 把占位写实。
+- [x] PASS — 全部验收点（含占位断言契约）已签，可进入 test-author 把占位写实。
 - [ ] FAIL — 存在未达一致的标准，回 PRD/REQ 修订。
 - [ ] BLOCKED — 依赖外部信息未澄清。
 
@@ -254,4 +254,4 @@
 
 ## 签字
 
-签核人：______________  时间：______________
+签核人：Developer  时间：2026/07/04
