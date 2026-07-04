@@ -15,6 +15,7 @@
 | `/tac-demand-insight` | 对抗式需求访谈 | 用户 |
 | `/tac-to-prd` | 把讨论整理成 PRD | 用户 |
 | `/tac-tech-design` | 对抗式技术方案设计 | 用户 |
+| `/tac-review` | 手动审查 PRD/技术方案/代码（建议新会话） | 用户 |
 | `/tac-design-system` | 建立或校验项目级设计系统 | 用户 |
 | `/tac-ux-explore` | 用 HTML 原型进行高保真 UX 探索 | 用户 |
 | `/tac-crystallize` | 把 PRD 稳定块转成 REQ-ID | 模型 |
@@ -34,6 +35,9 @@
 │   ├── tech-design.md         # 技术方案（一挡可推翻）
 │   ├── requirements.md        # 带 ID 的 REQ（契约）
 │   ├── requirements-v1.hash   # 版本哈希，用于检测过时测试
+│   ├── review-prd.md          # PRD 审查报告（可选）
+│   ├── review-tech.md         # 技术方案审查报告（可选）
+│   ├── review-code.md         # 代码审查报告（可选）
 │   ├── ux/                    # 用于 feel-signoff 的 HTML UX 参照
 │   ├── test-plan.md           # 测试作者的计划
 │   ├── assertion-signoff.md   # 人签核断言
