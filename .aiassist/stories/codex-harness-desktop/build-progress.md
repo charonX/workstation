@@ -7,4 +7,4 @@
 | 2 | SQLite migration | complete | a9a06d5 | 3c2f6d3 | Project/Flow/Task/Skill/Log services on better-sqlite3 |
 | 3 | AgentAdapter spike | complete | 3c2f6d3 | 7484f27 | mock/claude-code/codex contract |
 | 4 | ScheduleService + EventBus | complete | 7484f27 | ed2decf | Cron triggers, TaskService subscription |
-| 5 | Electron shell | in_progress | - | - | Main + renderer process minimum shell |
+| 5 | Electron shell | complete | ed2decf | bc0a723 | Main + React renderer minimum shell |
