@@ -1,10 +1,30 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 let db = null;
 
-export function getDb(path = ":memory:") {
+function defaultDbPath() {
+  if (process.env.DB_PATH) {
+    return process.env.DB_PATH;
+  }
+  if (process.type === "browser") {
+    const dataDir = path.join(os.homedir(), ".opc-workstation");
+    fs.mkdirSync(dataDir, { recursive: true });
+    return path.join(dataDir, "data.sqlite");
+  }
+  return ":memory:";
+}
+
+export function getDb(dbPath = ":memory:") {
   if (!db) {
-    db = new Database(path);
+    const target = dbPath === ":memory:" ? defaultDbPath() : dbPath;
+    if (target !== ":memory:") {
+      const targetDir = path.dirname(target);
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    db = new Database(target);
     initSchema(db);
   }
   return db;
