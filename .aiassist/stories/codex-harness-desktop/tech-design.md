@@ -1,6 +1,6 @@
 # Technical Design: codex-harness-desktop
 
-> 由 `/tac-tech-design` 生成。承接 `prd.md`，把 PRD 稳定块翻译成系统语言、模块边界、接口契约和测试 seams。
+> 由 `/tac-tech-design` 基于当前 PRD 重新推导生成。
 
 ---
 
@@ -8,128 +8,220 @@
 
 - **桌面壳**：Electron
 - **前端**：React + TypeScript + TailwindCSS + React Flow
-- **主进程 / 引擎**：Node.js（复用现有 `src/` 服务层）
+- **主进程 / 引擎**：Node.js（现有 `src/` 服务层演进）
 - **数据持久化**：
-  - 应用配置（Workspace 根目录、Skill 仓库路径、主题）：JSON 文件（`~/.opc-workstation/settings.json`）
-  - 项目/流程/任务元数据 + 执行日志：SQLite（`~/.opc-workstation/data.sqlite`）
+  - 应用配置：`~/.opc-workstation/settings.json`
+  - 项目/流程/任务/执行/日志：SQLite（`~/.opc-workstation/data.sqlite`）
 - **Agent 接入**：
   - Claude Code：Claude Agent SDK
   - Codex：OpenAI app-server / Codex CLI
-- **定时调度**：Node.js 主进程内运行（`node-cron` 或 `node-schedule`）
+- **定时调度**：Electron 主进程内运行（Node.js cron 库）
 
 ---
 
-## 2. 架构分层
+## 2. 模块边界
 
 ```
-┌─────────────────────────────────────────────┐
-│  Renderer Process (React + React Flow)      │
-│  - Workspace/Project 管理                    │
-│  - Flows 列表页与流程编辑器                    │
-│  - Tasks 页面                                │
-│  - Skills 列表与 Skill 详情                  │
-│  - Settings 页面                             │
-├─────────────────────────────────────────────┤
-│  Electron IPC Bridge                         │
-│  - preload 暴露有限 API                      │
-│  - main process handlers 调用核心服务         │
-├─────────────────────────────────────────────┤
-│  Main Process / Engine (Node.js)             │
-│  - ProjectService                            │
-│  - SkillService                              │
-│  - FlowEngine                                │
-│  - AgentAdapter                              │
-│  - ScheduleService                           │
-│  - TaskService                               │
-│  - LogService                                │
-│  - SettingsService                           │
-├─────────────────────────────────────────────┤
-│  External Agents                             │
-│  - Claude Code (Agent SDK)                   │
-│  - Codex (app-server / CLI)                  │
-└─────────────────────────────────────────────┘
+Renderer Process (React)
+    │
+    │ Electron IPC
+    ▼
+Main Process (Node.js)
+├── SettingsService      ←→ settings.json
+├── ProjectService       ←→ SQLite + file system
+├── SkillService         ←→ SQLite + skill repo
+├── ScheduleService      ──emits──▶ EventBus
+├── TaskService          ◀──subscribes── EventBus
+│   │
+│   ├── reads Flow + Project from SQLite
+│   ├── calls FlowEngine.run({ flow, project, inputVariables, executors, onEvent })
+│   └── writes Execution + logs to SQLite
+│
+├── FlowEngine           (pure, 无外部依赖)
+│   ├── 拓扑排序执行 nodes
+│   ├── 调用 injected executors
+│   ├── 重试策略
+│   └── 通过 onEvent 回调报告进度
+│
+├── AgentAdapter         (被 agentExecutor 封装)
+│   ├── Claude Code SDK
+│   └── Codex app-server / CLI
+│
+└── LogService           ←→ SQLite
+```
+
+### 2.1 关键边界约定
+
+- **TaskService 是创建 Execution 的唯一入口**。ScheduleService 到点后只发事件，不直接创建 Execution。
+- **FlowEngine 是纯函数**：不读 SQLite、不写日志、不感知 UI。输入数据由 TaskService 组装后传入。
+- **FlowEngine 不感知 AgentAdapter**：agent 节点只是一个普通 executor，其内部调用 AgentAdapter。
+- **ScheduleService 只负责"到点发事件"**，不负责执行流程或写历史。
+
+---
+
+## 3. 数据流
+
+### 3.1 手动触发任务
+
+```
+用户点击 "Run"
+  → Renderer IPC → TaskService.createTask({ projectId, flowId, trigger: "manual" })
+  → TaskService 从 SQLite 读取 Flow + Project
+  → TaskService 组装 inputVariables（Project 元数据 + trigger 上下文）
+  → TaskService 调用 FlowEngine.run({
+        flow,
+        project,
+        inputVariables,
+        executors,
+        onEvent: (event) => { LogService.write(event); IPC to renderer; }
+    })
+  → FlowEngine 按拓扑顺序执行节点
+  → 每个 executor 返回 { status, output, logs, error }
+  → FlowEngine 合并 output 到上下文
+  → 节点失败则重试一次，再次失败则 Execution 失败
+  → FlowEngine 返回最终结果
+  → TaskService 更新 Execution（status, duration, output）
+```
+
+### 3.2 定时触发任务
+
+```
+ScheduleService.start()
+  → 从 SQLite 加载 enabled schedules
+  → 注册 cron jobs
+  → 到点后 emit "schedule:triggered"({ scheduleId, projectId, flowId })
+
+TaskService 订阅 "schedule:triggered"
+  → TaskService.createTask({ projectId, flowId, trigger: "schedule" })
+  → 后续流程与手动触发相同
 ```
 
 ---
 
-## 3. 模块职责与边界
+## 4. 接口契约
 
-### 3.1 ProjectService
+### 4.1 FlowEngine.run
 
-- **职责**：管理 Workspace 和项目元数据；支持本地目录和 git 仓库导入。
-- **边界**：
-  - 只维护项目元数据（id、name、sourceType、localPath、repoUrl、branch、updatedAt）。
-  - 不直接执行 git clone；调用 `git` 子进程或 Node.js git 库。
-  - 不感知 UI 表现（如是否显示 local/git 标签）。
-- **持久化**：项目元数据写入 SQLite `projects` 表。
+```ts
+interface RunFlowInput {
+  flow: Flow;              // 包含 nodes、edges、scheduleEnabled 等
+  project: Project;        // 项目元数据
+  inputVariables: Record<string, unknown>;
+  executors: Record<string, NodeExecutor>;
+  onEvent: (event: FlowEvent) => void;
+}
 
-### 3.2 SkillService
+interface RunFlowOutput {
+  status: "success" | "error";
+  output?: unknown;
+  error?: string;
+}
 
-- **职责**：读取 skill 仓库，维护项目到 skill 的链接关系。
-- **边界**：
-  - skill 元数据（name、description、repoPath、version、dependencies）只读解析。
-  - 链接关系维护在 SQLite `project_skills` 表；实际软链接在应用运行时按需创建/校验。
-  - 不直接调用 agent。
+function run(input: RunFlowInput): Promise<RunFlowOutput>;
+```
 
-### 3.3 FlowEngine
+### 4.2 NodeExecutor
 
-- **职责**：解析流程图，按拓扑顺序执行节点，处理数据流和错误。
-- **边界**：
-  - 输入：Flow ID + Project ID + trigger context。
-  - 输出：Execution 对象（status、duration、nodesRun、logs、variables、output）。
-  - 通过事件总线发布执行事件；不直接操作 UI。
-- **执行策略**：
-  - 节点按拓扑排序执行。
-  - 单个节点失败后**重试一次**；再次失败则整个 Execution 标记为 `error`。
-  - Agent 节点调用 AgentAdapter；其余节点在进程内同步/异步执行。
+```ts
+interface NodeExecutorInput {
+  node: Node;
+  context: Record<string, unknown>; // 当前累积上下文
+  project: Project;
+}
 
-### 3.4 AgentAdapter
+interface NodeExecutorOutput {
+  status: "success" | "error";
+  output?: unknown;
+  logs?: Array<{ at: string; message: string }>;
+  error?: string;
+}
 
-- **职责**：统一抽象不同 agent 的调用协议。
-- **边界**：
-  - 输入：agentType（"claude-code" | "codex"）、nodeConfig、inputVariables。
-  - 输出：{ status, output, logs }。
-  - 内部通过子进程或 SDK 调用实际 agent。
-  - 超时、重试、日志收集在 Adapter 内部处理。
+type NodeExecutor = (input: NodeExecutorInput) => Promise<NodeExecutorOutput>;
+```
 
-### 3.5 ScheduleService
+**重试策略**：`status === "error"` 时重试一次；再次失败则整个 Execution 标记为 `error`。
 
-- **职责**：基于 cron 表达式定时触发流程。
-- **边界**：
-  - 只负责"到点就触发"，不维护 Execution 详情（交给 TaskService）。
-  - 调度器随应用启动而启动，随应用关闭而停止；**错过的任务不补执行**。
-  - 启用/停用状态持久化在 SQLite `schedules` 表。
+### 4.3 AgentExecutor → AgentAdapter
 
-### 3.6 TaskService
+```ts
+// AgentExecutor 是 NodeExecutor 的一种实现
+async function agentExecutor(input: NodeExecutorInput): Promise<NodeExecutorOutput> {
+  const result = await agentAdapter.execute({
+    agentType: input.node.config.agentType, // "claude-code" | "codex"
+    systemPrompt: input.node.config.systemPrompt,
+    model: input.node.config.model,
+    inputVariables: input.context
+  });
+  return {
+    status: result.status,
+    output: result.output,
+    logs: result.logs
+  };
+}
 
-- **职责**：把"流程 + 项目"组合成一次运行（Execution），支持手动触发和查看历史。
-- **边界**：
-  - 手动触发：`createTask({ projectId, flowId, trigger })` 创建 Execution 并交给 FlowEngine。
-  - 定时触发：ScheduleService 到点后调用 `createTask`。
-  - Execution 详情（logs/variables/output）只读暴露给 UI。
+// AgentAdapter
+interface AgentExecuteInput {
+  agentType: "claude-code" | "codex";
+  systemPrompt?: string;
+  model?: string;
+  inputVariables: Record<string, unknown>;
+}
 
-### 3.7 LogService
+interface AgentExecuteOutput {
+  status: "success" | "error";
+  output?: unknown;
+  logs: Array<{ at: string; message: string }>;
+  error?: string;
+}
 
-- **职责**：把执行日志写入 SQLite，支持按 execution/project/flow 查询。
-- **边界**：
-  - 只写结构化日志（time、node、status、message）。
-  - 不解析日志内容。
+function execute(input: AgentExecuteInput): Promise<AgentExecuteOutput>;
+```
 
-### 3.8 SettingsService
+### 4.4 ScheduleService
 
-- **职责**：持久化应用级配置。
-- **边界**：
-  - 配置项：workspaceRoot、skillRepoPath、theme。
-  - 使用 JSON 文件持久化；验证规则（如 workspaceRoot 不能为空）内聚在服务中。
+```ts
+function start(): void;   // 加载 enabled schedules，注册 cron jobs
+function stop(): void;    // 取消所有 cron jobs
+function createSchedule(input: { projectId, flowId, cron }): Schedule;
+function toggleSchedule(id: string): Schedule | undefined;
+function deleteSchedule(id: string): boolean;
+```
+
+** missed schedules 策略**：应用关闭期间错过的任务不补执行。
+
+### 4.5 TaskService
+
+```ts
+function createTask(input: {
+  projectId: string;
+  flowId: string;
+  trigger: "manual" | "schedule";
+}): Promise<Execution>;
+
+function listExecutions(): Execution[];
+function getExecution(id: string): Execution | undefined;
+```
 
 ---
 
-## 4. 数据模型
+## 5. 事件总线
 
-### 4.1 SQLite Schema（初稿）
+ScheduleService 与 TaskService 之间使用轻量级事件总线解耦。
+
+| 事件 | 发布者 | 订阅者 | payload |
+|---|---|---|---|
+| `schedule:triggered` | ScheduleService | TaskService | `{ scheduleId, projectId, flowId }` |
+| `execution:started` | TaskService / FlowEngine callback | UI / LogService | `{ executionId, projectId, flowId }` |
+| `execution:node:started` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, nodeType }` |
+| `execution:node:completed` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, output }` |
+| `execution:node:failed` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, error }` |
+| `execution:completed` | FlowEngine callback | UI / LogService | `{ executionId, status, duration, output }` |
+
+---
+
+## 6. SQLite Schema
 
 ```sql
--- projects
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -141,7 +233,6 @@ CREATE TABLE projects (
   updatedAt TEXT NOT NULL
 );
 
--- skills
 CREATE TABLE skills (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -151,14 +242,12 @@ CREATE TABLE skills (
   dependencies TEXT -- JSON array
 );
 
--- project_skills
 CREATE TABLE project_skills (
   projectId TEXT NOT NULL,
   skillId TEXT NOT NULL,
   PRIMARY KEY (projectId, skillId)
 );
 
--- flows
 CREATE TABLE flows (
   id TEXT PRIMARY KEY,
   projectId TEXT NOT NULL,
@@ -170,7 +259,6 @@ CREATE TABLE flows (
   updatedAt TEXT NOT NULL
 );
 
--- schedules
 CREATE TABLE schedules (
   id TEXT PRIMARY KEY,
   projectId TEXT NOT NULL,
@@ -179,7 +267,6 @@ CREATE TABLE schedules (
   enabled INTEGER NOT NULL DEFAULT 1
 );
 
--- executions
 CREATE TABLE executions (
   id TEXT PRIMARY KEY,
   projectId TEXT NOT NULL,
@@ -194,7 +281,6 @@ CREATE TABLE executions (
   output TEXT     -- JSON
 );
 
--- logs
 CREATE TABLE logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   executionId TEXT NOT NULL,
@@ -207,111 +293,58 @@ CREATE TABLE logs (
 
 ---
 
-## 5. 事件总线
-
-FlowEngine 通过事件总线与外部模块通信，避免直接耦合。
-
-| 事件 | 发布者 | 订阅者 |  payload |
-|---|---|---|---|
-| `execution:started` | FlowEngine | TaskService / UI | { executionId, projectId, flowId } |
-| `execution:node:started` | FlowEngine | LogService / UI | { executionId, nodeId, nodeType } |
-| `execution:node:completed` | FlowEngine | LogService / UI | { executionId, nodeId, output } |
-| `execution:node:failed` | FlowEngine | LogService / UI | { executionId, nodeId, error } |
-| `execution:completed` | FlowEngine | TaskService / UI | { executionId, status, duration, output } |
-| `schedule:triggered` | ScheduleService | TaskService | { scheduleId, projectId, flowId } |
-
----
-
-## 6. 接口契约示例
-
-### 6.1 FlowEngine.runFlow
-
-```ts
-interface RunFlowInput {
-  projectId: string;
-  flowId: string;
-  trigger: "manual" | "schedule";
-}
-
-interface RunFlowOutput {
-  executionId: string;
-  status: "running" | "success" | "error";
-}
-
-function runFlow(input: RunFlowInput): Promise<RunFlowOutput>;
-```
-
-### 6.2 AgentAdapter.execute
-
-```ts
-interface AgentExecuteInput {
-  agentType: "claude-code" | "codex";
-  systemPrompt?: string;
-  model?: string;
-  inputVariables: Record<string, unknown>;
-}
-
-interface AgentExecuteOutput {
-  status: "success" | "error";
-  output: unknown;
-  logs: Array<{ at: string; message: string }>;
-}
-
-function execute(input: AgentExecuteInput): Promise<AgentExecuteOutput>;
-```
-
-### 6.3 ScheduleService.start/stop
-
-```ts
-function start(): void; // 加载所有 enabled schedules 并注册 cron jobs
-function stop(): void;  // 取消所有 cron jobs
-function createSchedule(input: { projectId, flowId, cron }): Schedule;
-function toggleSchedule(id: string): Schedule | undefined;
-```
-
----
-
 ## 7. 测试 seams
 
 | 稳定块 | Seam | 测试方式 |
 |---|---|---|
-| Workspace/Settings | SettingsService | 单元测试：文件读写 + 验证规则 |
+| Workspace/Settings | SettingsService | 单元测试：JSON 文件读写 + 验证规则 |
 | 项目导入 | ProjectService + git 子进程 mock | 单元测试 + 集成测试（临时目录） |
-| Skill 链接 | SkillService | 单元测试：内存/ SQLite |
-| Flow 编排 | FlowEngine + mock 节点执行器 | 单元测试：验证拓扑顺序、数据传递、错误重试 |
-| Agent 节点 | AgentAdapter + mock SDK/子进程 | 单元测试：验证调用协议 |
-| Schedule | ScheduleService + 虚拟时间 | 单元测试：验证 cron 触发逻辑 |
-| Execution / Logs | TaskService + LogService | 集成测试：验证事件写入和查询 |
+| Skill 链接 | SkillService | 单元测试：SQLite |
+| Flow 编排 | FlowEngine + mock executors + callback | 单元测试：验证拓扑、上下文合并、重试 |
+| Agent 节点 | agentExecutor + mock AgentAdapter | 单元测试：验证调用协议 |
+| Agent 适配 | AgentAdapter + mock SDK/CLI | 单元测试：验证 Claude Code / Codex 协议 |
+| Schedule | ScheduleService + 虚拟时间/事件监听 | 单元测试：验证 cron 触发后事件发布 |
+| Execution / Logs | TaskService + mock FlowEngine + SQLite | 集成测试：验证事件写入和查询 |
 | 主题切换 | theme.ts + DOM mock | 单元测试 |
-| Electron IPC | preload + main handlers | 集成测试：使用 playwright-electron 或自定义 harness |
+| Electron IPC | preload + main handlers | 集成测试：playwright-electron 或自定义 harness |
 
 ---
 
-## 8. 风险与回退点
+## 8. 风险与回退
 
 | 风险 | 影响 | 验证方式 | 回退方案 |
 |---|---|---|---|
-| Agent SDK / Codex app-server 调用不稳定 | Agent 节点无法可靠执行 | spike：用最小任务验证调用协议 | 降级为调用本地 Claude Code / Codex CLI 子进程 |
-| SQLite 在 Electron 主进程中的并发写入 | 日志丢失或锁冲突 | 集成测试 + 实际并发场景 | 使用单线程事件队列串行化写操作 |
-| React Flow 与 Electron 渲染进程兼容性 | 画布交互异常 | 原型验证 | 换用更基础的 SVG/Canvas 自绘 |
-| cron 调度器在应用关闭时丢失任务 | 定时任务不执行 | 明确产品决策：错过不补 | 已在 PRD/tech-design 中接受 |
+| Agent SDK / Codex 调用不稳定 | Agent 节点无法可靠执行 | spike：最小任务验证调用协议 | 降级为本地 CLI 子进程调用 |
+| SQLite 主进程并发写入冲突 | 日志丢失 | 集成测试 + 单线程事件队列 | 串行化写操作 |
+| React Flow 与 Electron 兼容性 | 画布交互异常 | 原型验证 | 自绘 SVG/Canvas |
+| cron 调度器应用关闭丢失任务 | 定时任务不执行 | 产品决策已接受 | 已在设计中接受 |
+| FlowEngine 拓扑排序错误 | 节点执行顺序错误 | 单元测试覆盖 DAG 场景 | 限制 MVP 只支持线性流程 |
 
 ---
 
-## 9. 与 PRD 的反向同步
+## 9. 与 PRD 的同步
 
-根据 `/tac-tech-design` 讨论，已更新 `prd.md`：
+当前 `prd.md` 已包含以下技术决策：
 
-- 技术栈从 **Tauri** 调整为 **Electron**（§2、§4.1、§6.1、§7.2）。
-- 架构图从 "Tauri Commands (Rust Bridge)" 调整为 "Electron Main Process / Node.js 引擎"。
+- 技术栈：Electron + React + TypeScript + TailwindCSS + React Flow
+- 数据存储：JSON（settings）+ SQLite（元数据与日志）
+- 架构分层：UI / Electron Main Process / Core Services / External Agents
+
+本 `tech-design.md` 在 PRD 基础上进一步明确了：
+
+- TaskService 是 Execution 创建的唯一入口。
+- FlowEngine 为纯函数，由 TaskService 注入数据和 executors。
+- ScheduleService 通过事件总线触发 TaskService。
+- AgentAdapter 对 FlowEngine 透明，封装在 agentExecutor 中。
+- executor 返回显式 status 对象，FlowEngine 执行一次重试。
+- 节点接收全量累积上下文。
 
 ---
 
 ## 10. 下一步
 
-1. 在 `architecture.md` 中记录 Electron 决策（已完成）。
-2. 引入 SQLite 依赖并迁移 `ProjectService`、`FlowService`、`TaskService`、`SkillService` 到持久化存储。
-3. 实现 `FlowEngine` 骨架：拓扑排序、事件总线、节点执行器注册。
-4. 实现 `AgentAdapter` 的最小 spike，验证 Claude Code / Codex 调用协议。
-5. 实现 `ScheduleService` 和 cron 调度器。
-6. 搭建 Electron 主进程 + React 渲染进程的最小可运行壳。
+1. 引入 SQLite 并迁移 `ProjectService`、`FlowService`、`TaskService`、`SkillService`。
+2. 实现 `FlowEngine.run` 骨架：拓扑排序、上下文合并、executor 调用、重试、事件回调。
+3. 实现最小 `AgentAdapter` spike，验证 Claude Code / Codex 调用协议。
+4. 实现 `ScheduleService` + 事件总线 + `TaskService` 订阅。
+5. 搭建 Electron 主进程 + React 渲染进程最小壳。

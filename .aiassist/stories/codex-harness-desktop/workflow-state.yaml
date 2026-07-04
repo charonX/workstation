@@ -13,17 +13,21 @@ history:
   - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "探索 n8n 作执行后端（按块回流）：n8n 有 Public API/JSON/cron/SQLite 日志，许可证允许内部自用。但第一性原理复盘后回滚——computer-use 是主要功能、必须本地交互式桌面执行，n8n（headless/远程）无法承载，每个 agent 步骤都要 Wait+Webhook 握手，在产品核心位置加摩擦。引擎块重新稳定回自建 FlowEngine。未建 archive，初衷不变。"}
   - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "n8n 回滚完成。always-on + computer-use 的真实需求 = 引擎跑在 always-on 的 GUI 机器上（或先笔记本、后常驻桌面机），自建引擎进程内直跑 agent，无握手。下次别再绕回 n8n。"}
   - {at: 2026-07-03, from: DESIGN, to: BUILD, note: "assertion-signoff 全部签核通过，解锁 BUILD"}
-  - {at: 2026-07-04, from: BUILD, to: BUILD, note: "在 BUILD 阶段补充 /tac-tech-design：确认 Electron + Node.js 引擎进程 + SQLite + 事件驱动架构；PRD 技术栈从 Tauri 调整为 Electron。"}
+  - {at: 2026-07-04, from: BUILD, to: BUILD, note: "在 BUILD 阶段重新推导 /tac-tech-design：TaskService 为 Execution 唯一入口；FlowEngine 纯函数；ScheduleService 事件驱动；executor 显式 status + 一次重试；节点接收全量上下文；AgentAdapter 对 FlowEngine 透明。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
   Agent 执行已定：Node.js 引擎进程内调 Agent SDK / Codex app-server。
   持久化已定：settings 用 JSON 文件；项目/流程/任务/执行/日志用 SQLite。
   调度策略已定：应用内 cron 调度器，应用关闭则错过的任务不补执行。
-  FlowEngine 错误策略已定：事件驱动；单个节点失败重试一次，再次失败则整个 Execution 失败。
+  FlowEngine 边界已定：纯函数，由 TaskService 注入 flow/project/inputVariables/executors/onEvent。
+  触发入口已定：TaskService 是创建 Execution 的唯一入口；ScheduleService 只发 schedule:triggered 事件。
+  错误策略已定：executor 返回显式 status；status=error 重试一次，再次失败则 Execution 失败。
+  数据流已定：节点接收全量累积上下文。
+  Agent 边界已定：AgentAdapter 被 agentExecutor 封装，对 FlowEngine 透明。
   待办：
   1. 引入 SQLite 并迁移 Project/Flow/Task/Skill 服务到持久化存储。
-  2. 实现 FlowEngine 骨架（拓扑排序、事件总线、节点执行器）。
+  2. 实现 FlowEngine.run 骨架（拓扑排序、上下文合并、executor 调用、重试、事件回调）。
   3. 实现 AgentAdapter spike，验证 Claude Code / Codex 调用协议。
-  4. 实现 ScheduleService 和 cron 调度器。
+  4. 实现 ScheduleService + 事件总线 + TaskService 订阅。
   5. 搭建 Electron 主进程 + React 渲染进程最小壳。
