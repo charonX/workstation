@@ -19,7 +19,7 @@
 > 个人自动化 harness：把 Claude Code skills GUI 化，把 codex/computer-use 接入流程节点，通过 n8n 式节点编排实现可定时触发、可远程观察的自动化工作流。
 
 核心架构：
-- **桌面应用壳**：Tauri + React + TypeScript + TailwindCSS + React Flow
+- **桌面应用壳**：Electron + React + TypeScript + TailwindCSS + React Flow
 - **项目模型**：Workspace 包含多个项目；项目是本地目录或 git 仓库
 - **Skill 管理**：集中式 skill 仓库，通过软链接加载到项目
 - **Agent 适配层**：前期支持 Claude Code（Agent SDK）和 Codex（OpenAI app-server）
@@ -46,7 +46,7 @@
 
 以下部分在访谈中已经明确，可以进入下一阶段的 REQ 结晶：
 
-1. **技术栈**：Tauri + React + TypeScript + TailwindCSS + React Flow
+1. **技术栈**：Electron + React + TypeScript + TailwindCSS + React Flow
 2. **应用类型**：手动打开的桌面工具，单用户内部使用
 3. **项目模型**：
    - 存在 Workspace 概念
@@ -122,9 +122,10 @@
 │  - Settings 页面                     │
 │  - dark/light 主题切换                │
 ├─────────────────────────────────────┤
-│  Tauri Commands (Rust Bridge)       │
+│  Electron Main Process              │
+│  - Node.js 引擎进程                   │
 │  - 文件系统操作                       │
-│  - 子进程管理                         │
+│  - 子进程管理（Agent SDK / Codex）     │
 │  - SQLite 访问                        │
 ├─────────────────────────────────────┤
 │  Core Services                      │
@@ -191,7 +192,7 @@
 ### 7.2 测试类型
 
 - **单元测试**：核心服务逻辑（Rust/TS 均可）。
-- **集成测试**：Tauri command 层 + 核心服务 + SQLite。
+- **集成测试**：Electron main process + 核心服务 + SQLite。
 - **E2E 测试**：
   - 路径 A：创建项目 → 设计流程 → 手动触发 → 查看日志与输出。
   - 路径 B：创建 schedule → 等待/手动推进时间 → 验证自动触发 → 查看执行历史。
