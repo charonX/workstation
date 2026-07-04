@@ -73,14 +73,18 @@ Main Process (Node.js)
         project,
         inputVariables,
         executors,
-        onEvent: (event) => { LogService.write(event); IPC to renderer; }
+        onEvent: (event) => EventBus.publish(event)
     })
-  → FlowEngine 按拓扑顺序执行节点
+  → FlowEngine 按拓扑顺序执行节点（MVP 限制为 DAG，发现环则立即失败）
   → 每个 executor 返回 { status, output, logs, error }
   → FlowEngine 合并 output 到上下文
-  → 节点失败则重试一次，再次失败则 Execution 失败
+  → 节点 status=error 时重试一次；status=fatal 或直接二次失败则 Execution 失败
   → FlowEngine 返回最终结果
   → TaskService 更新 Execution（status, duration, output）
+
+EventBus 订阅者：
+  - LogService：将事件写入 SQLite logs 表
+  - IPC Publisher：将事件转发到 Renderer Process 更新 UI
 ```
 
 ### 3.2 定时触发任务
@@ -120,6 +124,8 @@ interface RunFlowOutput {
 function run(input: RunFlowInput): Promise<RunFlowOutput>;
 ```
 
+**约束**：FlowEngine 要求 `flow.edges` 构成有向无环图（DAG）。若检测到环，立即返回 `{ status: "error", error: "Flow contains cycle" }`，不执行任何节点。MVP 阶段不处理循环图。
+
 ### 4.2 NodeExecutor
 
 ```ts
@@ -130,7 +136,7 @@ interface NodeExecutorInput {
 }
 
 interface NodeExecutorOutput {
-  status: "success" | "error";
+  status: "success" | "error" | "fatal";
   output?: unknown;
   logs?: Array<{ at: string; message: string }>;
   error?: string;
@@ -139,12 +145,16 @@ interface NodeExecutorOutput {
 type NodeExecutor = (input: NodeExecutorInput) => Promise<NodeExecutorOutput>;
 ```
 
-**重试策略**：`status === "error"` 时重试一次；再次失败则整个 Execution 标记为 `error`。
+**重试策略**：
+- `status === "error"` 时重试一次；再次失败则整个 Execution 标记为 `error`。
+- `status === "fatal"` 时**不**重试，直接让 Execution 失败。
+- `status === "success"` 时合并 output 到上下文。
 
 ### 4.3 AgentExecutor → AgentAdapter
 
 ```ts
 // AgentExecutor 是 NodeExecutor 的一种实现
+// 它把 AgentAdapter 的原始错误映射为 error（可重试）或 fatal（不可重试）
 async function agentExecutor(input: NodeExecutorInput): Promise<NodeExecutorOutput> {
   const result = await agentAdapter.execute({
     agentType: input.node.config.agentType, // "claude-code" | "codex"
@@ -153,7 +163,7 @@ async function agentExecutor(input: NodeExecutorInput): Promise<NodeExecutorOutp
     inputVariables: input.context
   });
   return {
-    status: result.status,
+    status: result.status, // "success" | "error" | "fatal"
     output: result.output,
     logs: result.logs
   };
@@ -168,7 +178,7 @@ interface AgentExecuteInput {
 }
 
 interface AgentExecuteOutput {
-  status: "success" | "error";
+  status: "success" | "error" | "fatal";
   output?: unknown;
   logs: Array<{ at: string; message: string }>;
   error?: string;
@@ -211,11 +221,11 @@ ScheduleService 与 TaskService 之间使用轻量级事件总线解耦。
 | 事件 | 发布者 | 订阅者 | payload |
 |---|---|---|---|
 | `schedule:triggered` | ScheduleService | TaskService | `{ scheduleId, projectId, flowId }` |
-| `execution:started` | TaskService / FlowEngine callback | UI / LogService | `{ executionId, projectId, flowId }` |
-| `execution:node:started` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, nodeType }` |
-| `execution:node:completed` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, output }` |
-| `execution:node:failed` | FlowEngine callback | UI / LogService | `{ executionId, nodeId, error }` |
-| `execution:completed` | FlowEngine callback | UI / LogService | `{ executionId, status, duration, output }` |
+| `execution:started` | TaskService（由 FlowEngine onEvent 触发） | UI / LogService | `{ executionId, projectId, flowId }` |
+| `execution:node:started` | TaskService（由 FlowEngine onEvent 触发） | UI / LogService | `{ executionId, nodeId, nodeType }` |
+| `execution:node:completed` | TaskService（由 FlowEngine onEvent 触发） | UI / LogService | `{ executionId, nodeId, output }` |
+| `execution:node:failed` | TaskService（由 FlowEngine onEvent 触发） | UI / LogService | `{ executionId, nodeId, error }` |
+| `execution:completed` | TaskService（由 FlowEngine onEvent 触发） | UI / LogService | `{ executionId, status, duration, output }` |
 
 ---
 
