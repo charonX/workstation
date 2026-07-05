@@ -3,27 +3,31 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "src/main/main.js",
+  "main": ".vite/build/main.js",
   "scripts": {
     "test": "node --test tests/**/*.test.js",
-    "dev": "vite",
-    "build": "vite build",
-    "electron": "electron src/main/main.js",
-    "start": "npm run build && npm run electron",
-    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -w better-sqlite3",
-    "rebuild:node": "npm rebuild better-sqlite3"
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "electron": "^43.0.0",
+    "electron-squirrel-startup": "^1.0.1",
     "node-cron": "^4.5.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.1.0",
+    "@electron-forge/cli": "^7.8.0",
+    "@electron-forge/maker-dmg": "^7.8.0",
+    "@electron-forge/maker-squirrel": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
+    "@electron-forge/plugin-vite": "^7.8.0",
     "@vitejs/plugin-react": "^6.0.3",
-    "electron-rebuild": "^3.2.9",
+    "electron": "^43.0.0",
     "vite": "^8.1.3"
   }
 }

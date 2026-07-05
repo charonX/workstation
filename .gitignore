@@ -25,6 +25,8 @@ venv/
 # Build
 build/
 dist/
+out/
+.vite/
 *.tmp
 
 # Claude Code skills (symlinked from workflow project)

@@ -1,3 +1,5 @@
+/* global MAIN_WINDOW_VITE_DEV_SERVER_URL, MAIN_WINDOW_VITE_NAME */
+
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,17 +18,18 @@ function createWindow() {
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, "../preload/preload.js"),
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
 
-  // In development, load Vite dev server. In production, load built files.
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../../dist/renderer/index.html"));
+    mainWindow.loadFile(
+      path.join(__dirname, "../renderer", MAIN_WINDOW_VITE_NAME, "index.html")
+    );
   }
 }
 
