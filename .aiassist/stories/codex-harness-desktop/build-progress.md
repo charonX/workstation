@@ -8,3 +8,4 @@
 | 3 | AgentAdapter spike | complete | 3c2f6d3 | 7484f27 | mock/claude-code/codex contract |
 | 4 | ScheduleService + EventBus | complete | 7484f27 | ed2decf | Cron triggers, TaskService subscription |
 | 5 | Electron shell | complete | ed2decf | bc0a723 | Main + React renderer minimum shell |
+| 6 | Forge migration | complete | bc0a723 | 615ea76 | Electron Forge + Vite plugin; auto native rebuild; `npm run make` produces .dmg/.zip |
