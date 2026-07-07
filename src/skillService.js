@@ -54,9 +54,9 @@ export function unlinkSkill(skillId, projectId) {
   `).run(projectId, skillId);
 }
 
-export function getLinkedProjects(skillId) {
+export function getLinkedSkills(projectId) {
   const db = getDb();
   return db.prepare(`
-    SELECT projectId FROM project_skills WHERE skillId = ?
-  `).all(skillId).map(row => row.projectId);
+    SELECT skillId FROM project_skills WHERE projectId = ?
+  `).all(projectId).map(row => row.skillId);
 }

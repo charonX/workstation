@@ -108,6 +108,26 @@ export function listProjects() {
   return db.prepare("SELECT * FROM projects").all().map(rowToProject);
 }
 
+export function getProjectDetail(projectId) {
+  const db = getDb();
+  const project = db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId);
+  if (!project) return null;
+  const flowsCount = db.prepare("SELECT COUNT(*) AS count FROM flows WHERE projectId = ?").get(projectId).count;
+  const runsCount = db.prepare("SELECT COUNT(*) AS count FROM executions WHERE projectId = ?").get(projectId).count;
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    sourceType: project.sourceType,
+    repoUrl: project.repoUrl,
+    branch: project.branch,
+    localPath: project.localPath,
+    updatedAt: project.updatedAt,
+    flowsCount,
+    runsCount
+  };
+}
+
 export function filterProjects(projects, filter) {
   const term = (filter || "").toLowerCase();
   if (!term) return projects;
