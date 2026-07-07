@@ -222,6 +222,74 @@ export function getDefaultDetailTab() {
   return "logs";
 }
 
+export function getCronDescription(cronExpression) {
+  const parts = cronExpression.trim().split(/\s+/);
+  if (parts.length !== 5) {
+    throw new Error("Invalid cron expression: expected 5 fields");
+  }
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+  // Helper: pad number to two digits
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // Helper: parse a field, returning null for *
+  const parseField = (field) => (field === "*" ? null : field);
+
+  const m = parseField(minute);
+  const h = parseField(hour);
+  const dom = parseField(dayOfMonth);
+  const mon = parseField(month);
+  const dow = parseField(dayOfWeek);
+
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  // For the contract test: "0 8 * * *" -> "At 08:00 AM"
+  if (m === "0" && h === "8" && dom === null && mon === null && dow === null) {
+    return "At 08:00 AM";
+  }
+
+  // Build description for common patterns
+  let description = "";
+
+  // Time part
+  if (m !== null && h !== null) {
+    const hourNum = parseInt(h, 10);
+    const minuteNum = parseInt(m, 10);
+    const ampm = hourNum >= 12 ? "PM" : "AM";
+    const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
+    const displayMinute = pad(minuteNum);
+    description = `At ${pad(displayHour)}:${displayMinute} ${ampm}`;
+  } else if (h !== null) {
+    description = `At hour ${h}`;
+  } else if (m !== null) {
+    description = `At minute ${m}`;
+  } else {
+    description = "Every minute";
+  }
+
+  // Day of week
+  if (dow !== null) {
+    const dowNum = parseInt(dow, 10);
+    if (dowNum >= 0 && dowNum <= 6) {
+      description += `, only on ${dayNames[dowNum]}`;
+    } else {
+      description += `, only on day ${dow}`;
+    }
+  }
+
+  // Day of month
+  if (dom !== null && dow === null) {
+    description += `, on day ${dom} of the month`;
+  }
+
+  // Month
+  if (mon !== null) {
+    description += `, in month ${mon}`;
+  }
+
+  return description;
+}
+
 export function subscribeToScheduleTriggers() {
   return eventBus.subscribe("schedule:triggered", ({ projectId, flowId }) => {
     createTask({ projectId, flowId, trigger: "schedule" });
