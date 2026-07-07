@@ -170,14 +170,14 @@ export function getExecution(id) {
   return row ? rowToExecution(row) : undefined;
 }
 
-export function completeExecution(id, { duration, nodesRun, output }) {
+export function completeExecution(id, { duration, nodesRun, output, branchPath, iterations }) {
   const db = getDb();
   const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
   if (!row) return undefined;
   const endedAt = timestamp();
   db.prepare(`
     UPDATE executions
-    SET status = ?, endedAt = ?, duration = ?, nodesRun = ?, output = ?
+    SET status = ?, endedAt = ?, duration = ?, nodesRun = ?, output = ?, branchPath = ?, iterations = ?
     WHERE id = ?
   `).run(
     "success",
@@ -185,6 +185,8 @@ export function completeExecution(id, { duration, nodesRun, output }) {
     duration,
     nodesRun,
     output !== undefined ? JSON.stringify(output) : row.output,
+    branchPath !== undefined ? JSON.stringify(branchPath) : row.branchPath,
+    iterations !== undefined ? JSON.stringify(iterations) : row.iterations,
     id
   );
   return getExecution(id);
