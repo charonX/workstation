@@ -8,7 +8,9 @@ const settingsFile = path.join(configDir, "settings.json");
 const defaults = {
   workspaceRoot: "~/codex-harness-workspace",
   skillRepoPath: "~/.codex-harness/skills",
-  theme: "dark"
+  theme: "dark",
+  language: "en-US",
+  density: "comfortable"
 };
 
 function readSettings() {
