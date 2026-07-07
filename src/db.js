@@ -70,7 +70,14 @@ function initSchema(database) {
       description TEXT,
       repoPath TEXT NOT NULL,
       version TEXT,
-      dependencies TEXT
+      dependencies TEXT,
+      category TEXT,
+      installSource TEXT,
+      author TEXT,
+      tags TEXT,
+      parameters TEXT,
+      examples TEXT,
+      readme TEXT
     );
 
     CREATE TABLE IF NOT EXISTS project_skills (
