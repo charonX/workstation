@@ -112,12 +112,12 @@ src/
 
 | Entity | Endpoints | 对应 REQ |
 |---|---|---|
-| projects | `GET /api/projects`, `POST /api/projects`, `GET /api/projects/:id`, `PATCH /api/projects/:id`, `DELETE /api/projects/:id` | REQ-003~005, REQ-021 |
-| skills | `GET /api/skills`, `POST /api/skills/install`, `GET /api/skills/:id` | REQ-014, REQ-015, REQ-022 |
-| flows | `GET /api/flows`, `POST /api/flows`, `GET /api/flows/:id`, `PATCH /api/flows/:id`, `DELETE /api/flows/:id`, `POST /api/flows/:id/import`, `GET /api/flows/:id/export` | REQ-006~010 |
-| schedules | `GET /api/schedules`, `POST /api/schedules`, `PATCH /api/schedules/:id`, `DELETE /api/schedules/:id` | REQ-012 |
-| executions | `GET /api/executions`, `POST /api/executions` (run task), `GET /api/executions/:id` | REQ-011, REQ-013, REQ-023 |
-| settings | `GET /api/settings`, `PATCH /api/settings` | REQ-001, REQ-002, REQ-016, REQ-024, REQ-025 |
+| projects | `GET /api/projects`, `POST /api/projects`, `GET /api/projects/:id`, `PATCH /api/projects/:id`, `DELETE /api/projects/:id` | REQ-WORKSPACE-003~006 |
+| skills | `GET /api/skills`, `POST /api/skills/install`, `GET /api/skills/:id` | REQ-SKILL-001~003 |
+| flows | `GET /api/flows`, `POST /api/flows`, `GET /api/flows/:id`, `PATCH /api/flows/:id`, `DELETE /api/flows/:id`, `POST /api/flows/:id/import`, `GET /api/flows/:id/export` | REQ-FLOW-001~006 |
+| schedules | `GET /api/schedules`, `POST /api/schedules`, `PATCH /api/schedules/:id`, `DELETE /api/schedules/:id` | REQ-SCHEDULE-002 |
+| executions | `GET /api/executions`, `POST /api/executions` (run task), `GET /api/executions/:id` | REQ-SCHEDULE-001, REQ-SCHEDULE-003, REQ-DASH-001 |
+| settings | `GET /api/settings`, `PATCH /api/settings` | REQ-WORKSPACE-001~002, REQ-WORKSPACE-007, REQ-I18N-001~002 |
 
 ### 5.3 错误契约
 
@@ -191,15 +191,16 @@ opc-workstation settings set --language zh-CN
 
 | REQ-ID | 主要 seam | 测试类型 | 说明 |
 |---|---|---|---|
-| REQ-001~002, REQ-024~025 | `opc-workstation settings` / `PATCH /api/settings` | CLI + HTTP API | 持久化、校验、默认值 |
-| REQ-003~005, REQ-021 | `opc-workstation project` / `/api/projects` | CLI + HTTP API | CRUD、搜索、skill 关联 |
-| REQ-006~010 | `opc-workstation flow` / `/api/flows` | CLI + HTTP API | CRUD、导入导出 |
-| REQ-011, REQ-013 | `opc-workstation task run` / `POST /api/executions` | CLI + HTTP API | 执行触发、历史、详情 |
-| REQ-012 | `opc-workstation schedule` / `/api/schedules` | CLI + HTTP API | cron、启用停用 |
-| REQ-014~015, REQ-022 | `opc-workstation skill` / `/api/skills` | CLI + HTTP API | 列表、详情、多源安装 |
-| REQ-016, REQ-024 | React 主题/语言切换 | feel-signoff | 视觉与交互 |
-| REQ-017~020 | `flowEngine.run` | 服务单元测试 | 纯函数执行逻辑 |
-| REQ-023 | Dashboard 聚合 | CLI + HTTP API | 指标与最近执行 |
+| REQ-WORKSPACE-001~002, REQ-WORKSPACE-007, REQ-I18N-002 | `opc-workstation settings` / `PATCH /api/settings` | CLI + HTTP API | 持久化、校验、默认值 |
+| REQ-WORKSPACE-003~006 | `opc-workstation project` / `/api/projects` | CLI + HTTP API | CRUD、搜索、skill 关联 |
+| REQ-FLOW-001~006 | `opc-workstation flow` / `/api/flows` | CLI + HTTP API | CRUD、导入导出 |
+| REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `opc-workstation task run` / `POST /api/executions` | CLI + HTTP API | 执行触发、历史、详情 |
+| REQ-SCHEDULE-002 | `opc-workstation schedule` / `/api/schedules` | CLI + HTTP API | cron、启用停用 |
+| REQ-SKILL-001~003 | `opc-workstation skill` / `/api/skills` | CLI + HTTP API | 列表、详情、多源安装 |
+| REQ-I18N-001 | React 主题切换 | feel-signoff | 视觉与交互 |
+| REQ-FLOW-007~010 | `flowEngine.run` | 服务单元测试 | 纯函数执行逻辑 |
+| REQ-DASH-001 | Dashboard 聚合 | CLI + HTTP API | 指标与最近执行 |
+| REQ-CLI-001 | `opc-workstation --help` / 子命令 | CLI | CLI 入口与 headless server 生命周期 |
 
 > 注：先不引入浏览器 E2E；前端观感与交互通过 `/signoff --stage=feel` 依据 `ux/` HTML 原型验收。
 
@@ -221,7 +222,6 @@ opc-workstation settings set --language zh-CN
 
 ## 12. 下一步
 
-1. 反向更新 PRD 稳定块。
-2. 更新 `CONTEXT.md` 中“CLI 命令：通过 Electron 主进程 IPC 调用，无独立 CLI”为新的 CLI/HTTP 定义。
-3. 进入 `/crystallize`，把稳定块转换为 REQ-ID。
-4. 进入 `/test-author`，按 CLI / HTTP API seams 生成测试骨架。
+1. 反向更新 PRD 稳定块（已完成）。
+2. 更新 `CONTEXT.md` 中 CLI/HTTP API 术语定义（已完成）。
+3. 进入 `/test-author`，按 CLI / HTTP API seams 生成测试骨架。

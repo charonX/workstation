@@ -3,7 +3,7 @@
 - **状态**: 已接受
 - **日期**: 2026-07-08
 - **相关 story**: codex-harness-desktop
-- **相关 REQ**: REQ-001 ~ REQ-025
+- **相关 REQ**: REQ-WORKSPACE-001~007、REQ-FLOW-001~010、REQ-SCHEDULE-001~003、REQ-SKILL-001~003、REQ-DASH-001、REQ-I18N-001~002、REQ-CLI-001
 
 ## 背景
 

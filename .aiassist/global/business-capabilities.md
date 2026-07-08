@@ -3,8 +3,6 @@
 > 本文件由 `/crystallize` 和 `/reflect` 维护。
 > 把测试按业务实体/能力组织，而不是按 story。
 > 每个能力下挂测试文件和 REQ-ID。
->
-> **注意**：当前处于 `codex-harness-desktop` attempt-2 的 `TECH-DESIGN` 阶段，attempt-1 的测试与实现已归档到 `.aiassist/stories/codex-harness-desktop/archive/attempt-1/`。下表中的测试目录将在新 attempt 的 `/test-author` 阶段重新生成后更新。
 
 ---
 
@@ -15,66 +13,76 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-001, REQ-002, REQ-025 | `settings.test.js` |
-| project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/` | REQ-003~005, REQ-021 | `project.test.js` |
+| settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007 | `settings.test.js` |
+| project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/` | REQ-WORKSPACE-003~006 | `project.test.js` |
 
 ### flow-orchestration
 > 设计、保存、执行流程图，支持条件分支与循环。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/` | REQ-006~010 | `flow.test.js` |
-| flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/` | REQ-017~020 | `flowEngine.test.js` |
+| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/` | REQ-FLOW-001~006 | `flow.test.js` |
+| flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/` | REQ-FLOW-007~010 | `flowEngine.test.js` |
 
 ### scheduling-execution
 > 手动触发、定时触发、查看执行历史与详情。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/` | REQ-011, REQ-013 | `task.test.js` |
-| schedule | `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/` | REQ-012 | `schedule.test.js` |
+| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `task.test.js` |
+| schedule | `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/` | REQ-SCHEDULE-002 | `schedule.test.js` |
 
 ### skill-management
 > 集中式 skill 仓库、多源安装、项目关联。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/` | REQ-014, REQ-015, REQ-022 | `skill.test.js` |
+| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/` | REQ-SKILL-001~003 | `skill.test.js` |
 
 ### information-aggregation
 > Dashboard 展示关键指标与最近活动。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| dashboard | `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/` | REQ-023 | `dashboard.test.js` |
+| dashboard | `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/` | REQ-DASH-001 | `dashboard.test.js` |
 
 ### internationalization-theme
 > 语言切换、主题切换、显示密度。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| language | `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/` | REQ-024 | `language.test.js` |
-| theme | `tests/capabilities/internationalization-theme/theme/codex-harness-desktop/api/` | REQ-016 | `theme.test.js` |
+| theme | `tests/capabilities/internationalization-theme/theme/codex-harness-desktop/api/` | REQ-I18N-001 | `theme.test.js` |
+| language | `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/` | REQ-I18N-002 | `language.test.js` |
+
+### command-interface
+> CLI 产品入口，统一把业务命令映射到本地 HTTP API。
+
+| 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
+|------|----------|---------------|----------|
+| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/` | REQ-CLI-001 | `cli.test.js` / shell scripts |
 
 ## 能力依赖图
 
 ```
-workspace-management ──> flow-orchestration ──> scheduling-execution
-       │                       │
-       ├─> skill-management ───┘
-       │
-       └─> information-aggregation
-       │
-       └─> internationalization-theme
+command-interface ──> workspace-management ──> flow-orchestration ──> scheduling-execution
+                                    │                │
+                                    ├─> skill-management ───┘
+                                    │
+                                    ├─> information-aggregation
+                                    │
+                                    └─> internationalization-theme
 ```
 
 ## 健康指标
 
+> attempt-2 测试骨架尚未生成，以下测试数待 `/test-author` 完成后更新。
+
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 2 | 15 | 2026-07-08 |
-| flow-orchestration | 2 | 16 | 2026-07-08 |
-| scheduling-execution | 2 | 15 | 2026-07-08 |
-| skill-management | 1 | 8 | 2026-07-08 |
-| information-aggregation | 1 | 3 | 2026-07-08 |
-| internationalization-theme | 2 | 5 | 2026-07-08 |
+| workspace-management | 2 | TBD | 2026-07-08 |
+| flow-orchestration | 2 | TBD | 2026-07-08 |
+| scheduling-execution | 2 | TBD | 2026-07-08 |
+| skill-management | 1 | TBD | 2026-07-08 |
+| information-aggregation | 1 | TBD | 2026-07-08 |
+| internationalization-theme | 2 | TBD | 2026-07-08 |
+| command-interface | 1 | TBD | 2026-07-08 |

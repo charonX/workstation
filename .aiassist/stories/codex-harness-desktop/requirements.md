@@ -1,304 +1,606 @@
 # Requirements: OPC Workstation Desktop App
 
-> 由 PRD 稳定块结晶而成。每条 REQ 带唯一 ID、验收标准，并反向挂到测试计划。
+> 由 PRD 稳定块结晶而成。每条 REQ 带唯一 ID、验收标准、capability/entity、seam 与测试路径。
+> REQ 格式：`REQ-<AREA>-<NNN>`，AREA 取自所属业务能力域。
+> REQ 版本哈希：`requirements-v1.hash`
 
 ---
 
-## REQ-001: Workspace 根目录配置
+## REQ-WORKSPACE-001: Workspace 根目录配置
 
-**来源**：PRD §4.10 Settings 与 Workspace 配置、User Story 8
-
-**描述**：用户可以在 Settings 页面配置 Workspace 根目录，应用从该目录加载项目。
+- **来源**：PRD §4.11 Settings 与 Workspace 配置
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `settings`
+- **scope**: cross-module
+- **modules**: `settingsService`, `src/http/routes/settings.js`, `src/cli/commands/settings.js`
+- **interface_contract**:
+  - `GET /api/settings` → `{workspaceRoot: string}`
+  - `PATCH /api/settings` → body `{workspaceRoot: string}`，返回更新后的 settings
+  - CLI: `opc-workstation settings get`, `opc-workstation settings set --workspace-root <path>`
+  - 空路径返回 `400 VALIDATION_ERROR`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] 导航到 Settings 页面可见 "Workspace Root Directory" 输入框，默认显示当前路径。
-- [ ] 修改路径后点击 Save，配置被持久化，重新打开应用后仍显示新路径。
-- [ ] Workspace 首页的项目列表从配置的根目录（或当前 mock）加载。
-- [ ] 路径为空时 Save 按钮给出提示或不保存。
+- [ ] `GET /api/settings` 返回当前 `workspaceRoot`。
+- [ ] `PATCH /api/settings` 持久化新路径，重启后保持不变。
+- [ ] CLI `settings set --workspace-root ""` 退出码 1 并返回错误信息。
 
 ---
 
-## REQ-002: Skill 仓库位置配置
+## REQ-WORKSPACE-002: Skill 仓库位置配置
 
-**来源**：PRD §4.10 Settings 与 Workspace 配置、User Story 8
-
-**描述**：用户可以在 Settings 页面配置 Skill 仓库位置。
+- **来源**：PRD §4.11 Settings 与 Workspace 配置
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `settings`
+- **scope**: cross-module
+- **modules**: `settingsService`, `src/http/routes/settings.js`, `src/cli/commands/settings.js`
+- **interface_contract**:
+  - `GET /api/settings` → `{skillRepoPath: string}`
+  - `PATCH /api/settings` → body `{skillRepoPath: string}`
+  - CLI: `opc-workstation settings set --skill-repo-path <path>`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Settings 页面可见 "Skill Repository Path" 输入框。
-- [ ] 修改路径并 Save 后持久化，重启后保持不变。
-- [ ] Skills 页面从配置的仓库路径（或当前 mock）读取技能列表。
+- [ ] `GET /api/settings` 返回当前 `skillRepoPath`。
+- [ ] 修改并 Save 后持久化，重启后保持不变。
 
 ---
 
-## REQ-003: 添加本地项目
+## REQ-WORKSPACE-003: 添加本地项目
 
-**来源**：PRD §4.11 项目导入 UI、User Story 9
-
-**描述**：用户可以通过 "Add Project" 弹层从本地目录导入项目。
+- **来源**：PRD §4.12 项目导入 UI
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `project`
+- **scope**: cross-module
+- **modules**: `projectService`, `src/http/routes/projects.js`, `src/cli/commands/project.js`
+- **interface_contract**:
+  - `POST /api/projects` → body `{name, localPath, description?}`
+  - CLI: `opc-workstation project create --name <name> --local-path <path>`
+  - `name` 为空返回 `400 VALIDATION_ERROR`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Workspace 首页顶部提供 "Add Project" 按钮，点击打开模态框。
-- [ ] 模态框默认显示本地目录表单：Project Name、Directory Path、Description。
-- [ ] Project Name 为空时不能提交。
-- [ ] 提交后新项目出现在 Workspace 项目列表中，显示名称、描述、更新时间。
-- [ ] 项目元数据记录 `sourceType=local` 和 `localPath`。
+- [ ] 创建后项目出现在 `GET /api/projects` 列表中。
+- [ ] 项目元数据包含 `sourceType=local`、`localPath`、`name`、`updatedAt`。
+- [ ] `name` 为空时创建失败。
 
 ---
 
-## REQ-004: 从 Git 仓库检出项目
+## REQ-WORKSPACE-004: 从 Git 仓库检出项目
 
-**来源**：PRD §4.11 项目导入 UI、User Story 9
-
-**描述**：用户可以在 Add Project 弹层切换到 Git Repository，填写仓库信息并检出。
+- **来源**：PRD §4.12 项目导入 UI
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `project`
+- **scope**: cross-module
+- **modules**: `projectService`, `src/http/routes/projects.js`, `src/cli/commands/project.js`
+- **interface_contract**:
+  - `POST /api/projects` → body `{name, repoUrl, branch?, cloneDirectory?}`
+  - CLI: `opc-workstation project create --name <name> --repo-url <url> --branch main`
+  - `repoUrl` 为空返回 `400 VALIDATION_ERROR`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Add Project 弹层提供 "Local Directory" / "Git Repository" 切换。
-- [ ] 选择 Git 后显示字段：Project Name、Repository URL、Branch（可选，默认 main）、Clone Directory。
-- [ ] Repository URL 为空时不能提交。
-- [ ] 提交后新项目出现在 Workspace 列表中。
-- [ ] 项目元数据记录 `sourceType=git`、`repoUrl`、`branch`、`localPath`。
-- [ ] Workspace 项目卡片不显示 "local" 或 "git" 来源标签。
+- [ ] 创建后项目出现在列表中。
+- [ ] 元数据包含 `sourceType=git`、`repoUrl`、`branch`（默认 `main`）、`localPath`。
+- [ ] `repoUrl` 为空时创建失败。
 
 ---
 
-## REQ-005: Workspace 项目列表与搜索
+## REQ-WORKSPACE-005: Workspace 项目列表与搜索
 
-**来源**：PRD §4.15 Workspace 首页
-
-**描述**：Workspace 首页以卡片网格展示项目，并支持按名称过滤。
+- **来源**：PRD §4.16 Workspace / Projects 首页
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `project`
+- **scope**: cross-module
+- **modules**: `projectService`, `src/http/routes/projects.js`, `src/cli/commands/project.js`
+- **interface_contract**:
+  - `GET /api/projects?q=<filter>`
+  - CLI: `opc-workstation project list --q <filter>`
+  - 过滤大小写不敏感；空过滤返回全部
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] 页面展示项目卡片网格，每张卡片包含项目名称、描述、更新时间。
-- [ ] 提供搜索/过滤输入框，输入关键词后仅显示名称匹配的项目（不区分大小写）。
-- [ ] 无匹配项目时显示空状态提示。
+- [ ] `GET /api/projects` 返回全部项目。
+- [ ] 带 `q` 参数时仅返回名称匹配的项目（大小写不敏感）。
+- [ ] 无匹配时返回空数组。
 
 ---
 
-## REQ-006: Flows 列表页
+## REQ-WORKSPACE-006: Project 详情与 Skill 关联
 
-**来源**：PRD §4.12 Flows 列表页、User Story 10
-
-**描述**：Flows 页面以卡片列出所有流程，展示关键元数据并提供编辑入口。
+- **来源**：PRD §4.16 Workspace / Projects 首页
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `workspace-management`
+- **entity**: `project`
+- **scope**: cross-module
+- **modules**: `projectService`, `skillService`, `src/http/routes/projects.js`
+- **interface_contract**:
+  - `GET /api/projects/:id` → `{overview: {flowsCount, runsCount, ...}, skills: [...]}`
+  - `PATCH /api/projects/:id/skills` → body `{skillId, linked: boolean}`
+  - CLI: `opc-workstation project get --id <id>`, `opc-workstation project link-skill --project-id <id> --skill-id <id>`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Flows 页面默认展示流程卡片列表，非直接进入编辑器。
-- [ ] 每张卡片显示：流程名称、所属项目名称、节点数、定时状态（Scheduled/Manual）、更新时间。
-- [ ] 每张卡片提供 "Edit Flow" 按钮，点击后进入该流程的编辑器。
-- [ ] 页面提供 "New Flow" 按钮，点击打开创建弹层。
+- [ ] Project 详情返回 Overview 元数据和可用 skill 列表及关联状态。
+- [ ] 关联/取消关联 skill 幂等。
+- [ ] 重复关联同一 skill 不重复记录。
 
 ---
 
-## REQ-007: 创建新流程
+## REQ-WORKSPACE-007: 显示密度
 
-**来源**：PRD §4.12 Flows 列表页、User Story 10
-
-**描述**：用户可以通过弹层创建新流程，指定名称、项目和描述。
+- **来源**：PRD §4.11 Settings 与 Workspace 配置
+- **优先级**: P1
+- **必须性**: 应该
+- **capability**: `workspace-management`
+- **entity**: `settings`
+- **scope**: cross-module
+- **modules**: `settingsService`, Settings 页面
+- **interface_contract**:
+  - `PATCH /api/settings` → body `{density: "compact" | "comfortable"}`
+  - CLI: `opc-workstation settings set --density <value>`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] New Flow 弹层包含字段：Flow Name（必填）、Project（下拉选择）、Description（可选）。
-- [ ] Flow Name 为空或 Project 未选择时不能提交。
-- [ ] 提交后新流程出现在 Flows 列表中，节点数初始为 0，定时状态为 Manual。
-- [ ] 创建成功后弹层关闭。
+- [ ] 支持 `compact` / `comfortable`。
+- [ ] 默认值为 `comfortable`。
+- [ ] 持久化，重启后保持。
 
 ---
 
-## REQ-008: 流程编辑器画布
+## REQ-FLOW-001: Flows 列表页
 
-**来源**：PRD §4.7 流程编辑器形态、§6.4 关键页面结构
-
-**描述**：流程编辑器提供画布，可查看节点和连边，并按类别使用节点面板。
+- **来源**：PRD §4.13 Flows 列表页
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `flowService`, `src/http/routes/flows.js`, `src/cli/commands/flow.js`
+- **interface_contract**:
+  - `GET /api/flows`
+  - CLI: `opc-workstation flow list`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] 编辑器左侧显示 Node Palette，按 Trigger / Agent / Data / Logic / Output 等类别列出节点。
-- [ ] 画布区域渲染流程节点和节点间的连线（边）。
-- [ ] 节点显示标题、子类型摘要和类型色条。
-- [ ] 点击节点后在右侧 Properties 面板展示该节点信息。
-- [ ] 编辑器顶部显示返回 Flows 列表的入口。
+- [ ] 列表返回每个 flow 的 `id`、`name`、`projectId`、`projectName`、`nodeCount`、`scheduleEnabled`、`updatedAt`。
+- [ ] 可通过 `GET /api/flows/:id` 获取单个 flow 详情。
 
 ---
 
-## REQ-009: 流程编辑器节点属性
+## REQ-FLOW-002: 创建新流程
 
-**来源**：PRD §6.4 关键页面结构
-
-**描述**：选中节点后，右侧面板展示可编辑的属性，Agent 节点有特殊字段。
+- **来源**：PRD §4.13 Flows 列表页
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `flowService`, `src/http/routes/flows.js`, `src/cli/commands/flow.js`
+- **interface_contract**:
+  - `POST /api/flows` → body `{name, projectId, description?}`
+  - CLI: `opc-workstation flow create --name <name> --project-id <id>`
+  - `name` 或 `projectId` 缺失返回 `400`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] 未选中节点时右侧显示 "Select a node to edit properties"。
-- [ ] 选中节点后显示 Node Name 输入框和 Output Variable 输入框。
-- [ ] 选中 Agent 类型节点时额外显示 Model 下拉框和 System Prompt 文本框。
-- [ ] 提供 Save 和 Delete 按钮（当前原型 Delete 为占位，只需存在即可）。
+- [ ] 创建后 flow 出现在列表中。
+- [ ] 初始 `nodes` 为空数组，`scheduleEnabled=false`。
+- [ ] 缺少 `name` 或 `projectId` 时创建失败。
 
 ---
 
-## REQ-010: 流程编辑器运行与视图控制
+## REQ-FLOW-003: 流程编辑器画布
 
-**来源**：PRD §6.4 关键页面结构
-
-**描述**：流程编辑器提供运行触发、定时开关和画布缩放控制。
+- **来源**：PRD §4.7 流程编辑器形态、§6.4 关键页面结构
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: intra-module (renderer)
+- **modules**: React Flow 画布组件、Node Palette 组件
+- **interface_contract**:
+  - 从 `GET /api/flows/:id` 获取节点/边数据渲染画布
+  - 节点分类：Trigger / Agent / Data / Logic / Output
+- **测试类型**: feel-signoff（HTML 原型）
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
 
 **验收标准**：
-- [ ] 编辑器顶部提供 Run 按钮，点击后按钮文案变为 "Running..."，运行结束后恢复。
-- [ ] 顶部提供 Schedule 开关，切换时更新运行状态视觉反馈。
-- [ ] 画布右下角提供 Zoom Out / 当前百分比 / Zoom In 控制。
-- [ ] 点击 Reset Zoom 恢复到 100%。
+- [ ] 左侧 Node Palette 按分类列出节点。
+- [ ] 画布渲染节点和连边。
+- [ ] 点击节点后 Properties 面板展示节点信息。
 
 ---
 
-## REQ-011: 手动创建任务
+## REQ-FLOW-004: 流程编辑器节点属性
 
-**来源**：PRD §4.13 Tasks 页面、User Story 11
-
-**描述**：用户可以在 Tasks 页面手动创建一个任务（选择项目和流程后立即运行）。
+- **来源**：PRD §6.4 关键页面结构
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: intra-module (renderer)
+- **modules**: Properties 面板组件、flowService
+- **interface_contract**:
+  - `PATCH /api/flows/:id` → body 含 `nodes` 数组
+  - Agent 节点配置字段：`model`、`systemPrompt`
+- **测试类型**: feel-signoff
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
 
 **验收标准**：
-- [ ] Tasks 页面顶部提供 "New Task" 按钮，点击打开弹层。
-- [ ] 弹层包含 Project 下拉框、Flow 下拉框、Trigger 选项（Manual run now / Use flow schedule）。
-- [ ] 未选择 Project 时不能提交。
-- [ ] 提交后在 Run History 列表顶部新增一条运行记录，状态为 running。
-- [ ] 运行完成后状态更新为 success 或 error，并显示持续时间、节点数。
+- [ ] 未选中节点时显示占位提示。
+- [ ] 选中节点显示 `name`、`outputVariable`。
+- [ ] Agent 节点额外显示 `model` 和 `systemPrompt`。
 
 ---
 
-## REQ-012: 定时任务管理
+## REQ-FLOW-005: 流程编辑器运行与视图控制
 
-**来源**：PRD §4.13 Tasks 页面、User Story 12
-
-**描述**：用户可以创建、查看和启用/停用定时任务（Schedule）。
+- **来源**：PRD §6.4 关键页面结构
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: renderer, `src/http/routes/executions.js`, `taskService`
+- **interface_contract**:
+  - `POST /api/executions` → body `{projectId, flowId}`
+  - 运行按钮状态切换由 UI 本地管理
+- **测试类型**: CLI + HTTP API + feel-signoff
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
 
 **验收标准**：
-- [ ] Tasks 页面顶部提供 "New Schedule" 按钮，点击打开弹层。
-- [ ] 弹层包含 Project 下拉框、Flow 下拉框、Cron Expression 输入框，并显示人类可读的 cron 描述。
-- [ ] Cron 表达式为空或 Project/Flow 未选择时不能提交。
-- [ ] 提交后新 Schedule 出现在 Tasks 页面左侧 Schedules 列表中。
-- [ ] 每条 Schedule 提供启用/停用开关，切换后状态立即更新。
-- [ ] Schedules 列表显示所属项目、cron 表达式和当前启用状态。
+- [ ] 点击 Run 后触发 `POST /api/executions`。
+- [ ] Schedule 开关调用 `PATCH /api/schedules/:id`。
+- [ ] Zoom In/Out/Reset 控制画布缩放。
 
 ---
 
-## REQ-013: 任务执行历史与详情
+## REQ-FLOW-006: 流程 JSON 配置格式
 
-**来源**：PRD §4.13 Tasks 页面、User Story 6
-
-**描述**：Tasks 页面展示运行历史，并支持查看单次执行的日志、变量和输出。
+- **来源**：PRD §4.22 流程配置格式
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `flowService`, `src/http/routes/flows.js`, `src/cli/commands/flow.js`
+- **interface_contract**:
+  - 存储格式：JSON，包含 `id`、`projectId`、`name`、`description`、`nodes`、`edges`、`scheduleEnabled`、`updatedAt`
+  - CLI: `opc-workstation flow import --file flow.json --project-id <id>`
+  - CLI: `opc-workstation flow export --id <id> --file flow.json`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Tasks 页面左侧下半部分展示 Run History，按时间倒序排列。
-- [ ] 每条历史显示流程名、项目名、开始时间、持续时间、节点数、状态。
-- [ ] 点击历史记录后，右侧详情面板展示 Logs / Variables / Output 三个 Tab。
-- [ ] Logs Tab 显示时间、节点、状态、消息。
-- [ ] Variables Tab 显示执行变量键值表。
-- [ ] Output Tab 显示最终输出（当前为 JSON 示例）。
+- [ ] `flow export` 输出合法 JSON，包含 nodes/edges。
+- [ ] `flow import` 从 JSON 创建或更新 flow。
+- [ ] 导入的 JSON 缺少必填字段时返回 `400`。
 
 ---
 
-## REQ-014: Skills 列表
+## REQ-FLOW-007: Condition 节点
 
-**来源**：PRD §4.14 Skill 管理 UI、User Story 2
-
-**描述**：Skills 页面以表格展示技能仓库中的技能及其项目链接情况。
+- **来源**：PRD §4.8 基础节点类型
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow-engine`
+- **scope**: intra-module
+- **modules**: `flowEngine`, `executors/conditionExecutor`
+- **interface_contract**:
+  - 输入：`{expression: string, context: object}`
+  - 输出：分支 `true` / `false`
+- **测试类型**: 服务单元测试
+- **测试路径**: `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Skills 页面展示表格，列包括 Skill、Repository Path、Linked Projects、操作。
-- [ ] Skill 行显示名称、描述、仓库路径。
-- [ ] Linked Projects 列显示已链接项目数量或 "Not linked"。
-- [ ] 提供 "Details" 按钮打开 Skill 详情弹层。
+- [ ] 表达式为真时走 `true` 分支。
+- [ ] 表达式为假时走 `false` 分支。
+- [ ] 表达式语法错误返回 `fatal`，execution 失败。
 
 ---
 
-## REQ-015: Skill 详情与项目链接
+## REQ-FLOW-008: ForEach 节点
 
-**来源**：PRD §4.14 Skill 管理 UI、User Story 13
-
-**描述**：用户可以在 Skill 详情弹层查看元数据并把技能链接到项目。
+- **来源**：PRD §4.8 基础节点类型
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow-engine`
+- **scope**: intra-module
+- **modules**: `flowEngine`, `executors/forEachExecutor`
+- **interface_contract**:
+  - 输入：`{array: any[]}`
+  - 输出：对数组每个元素执行 body 子图
+- **测试类型**: 服务单元测试
+- **测试路径**: `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Skill 详情弹层显示技能名称、描述、仓库路径、版本、依赖信息。
-- [ ] 弹层中列出所有项目，每个项目前提供 checkbox。
-- [ ] 勾选项目后，该技能链接到对应项目；取消勾选后移除链接。
-- [ ] 关闭弹层后，Skills 列表的 Linked Projects 列同步更新。
-- [ ] 提供 Save 和 Delete Skill 按钮（Delete 当前为占位）。
+- [ ] 遍历数组并执行 body 子图。
+- [ ] 上下文按迭代隔离/合并正确。
 
 ---
 
-## REQ-016: 深色/浅色主题切换
+## REQ-FLOW-009: While 节点
 
-**来源**：PRD §4.16 设计系统与主题
-
-**描述**：应用支持 dark / light 主题切换，并通过 design tokens 驱动界面样式。
+- **来源**：PRD §4.8 基础节点类型
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow-engine`
+- **scope**: intra-module
+- **modules**: `flowEngine`, `executors/whileExecutor`
+- **interface_contract**:
+  - 输入：`{expression: string}`
+  - 输出：表达式为真时重复执行 body
+- **测试类型**: 服务单元测试
+- **测试路径**: `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] 顶部栏提供主题切换按钮，点击后在 dark 与 light 之间切换。
-- [ ] 切换后整个应用（侧边栏、页面、弹层、表格）颜色同步变化。
-- [ ] 主题偏好持久化，重新打开应用后保持上次选择。
-- [ ] 样式使用 CSS 自定义属性（design tokens），不直接写死颜色值。
+- [ ] 表达式为真时重复执行 body。
+- [ ] 表达式为假时退出循环。
 
 ---
 
-## REQ-017: 条件分支节点
+## REQ-FLOW-010: 循环保护
 
-**来源**：PRD §4.8 基础节点类型、User Story 15
-
-**描述**：流程编辑器支持条件分支节点，允许用 JavaScript 表达式决定流程执行路径。
+- **来源**：PRD §4.8 基础节点类型
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow-engine`
+- **scope**: intra-module
+- **modules**: `flowEngine`
+- **interface_contract**:
+  - `options.maxIterations`、`options.maxDepth`
+- **测试类型**: 服务单元测试
+- **测试路径**: `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Node Palette 提供 Condition 节点类型。
-- [ ] Condition 节点配置包含一个 JavaScript 表达式输入框。
-- [ ] Condition 节点有两个出口：true 分支和 false 分支。
-- [ ] FlowEngine 执行 Condition 节点时，用当前上下文 eval 表达式，结果 truthy 走 true 分支，否则走 false 分支。
-- [ ] 表达式非法或抛错时，节点返回 fatal 错误，Execution 失败。
-- [ ] Execution 日志记录实际走的分支名（"true" 或 "false"）。
+- [ ] 超过 `maxIterations` 时 execution 失败。
+- [ ] 超过 `maxDepth` 时 execution 失败。
 
 ---
 
-## REQ-018: ForEach 循环节点
+## REQ-SCHEDULE-001: 手动创建任务
 
-**来源**：PRD §4.8 基础节点类型、User Story 16
-
-**描述**：流程编辑器支持 ForEach 循环节点，遍历数组并为每个元素执行 body 子图。
+- **来源**：PRD §4.14 Tasks 页面
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `scheduling-execution`
+- **entity**: `task`
+- **scope**: cross-module
+- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`
+- **interface_contract**:
+  - `POST /api/executions` → body `{projectId, flowId, trigger?: "manual" | "schedule"}`
+  - CLI: `opc-workstation task run --project-id <id> --flow-id <id>`
+  - `projectId` 缺失返回 `400`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Node Palette 提供 ForEach 节点类型。
-- [ ] ForEach 节点配置包含要遍历的数组变量名。
-- [ ] ForEach 节点有两个出口：body（继续循环）和 exit（结束循环）。
-- [ ] FlowEngine 迭代数组，每次把当前元素写入上下文变量后执行 body 子图。
-- [ ] 数组遍历完成后自动走 exit 分支。
-- [ ] Execution 日志记录迭代次数。
+- [ ] 提交后创建一条 `running` 的 execution。
+- [ ] 完成后状态更新为 `success`/`error`，并记录 `duration`、`nodesRun`。
+- [ ] 未选择 `projectId` 时失败。
 
 ---
 
-## REQ-019: While 循环节点
+## REQ-SCHEDULE-002: 定时任务管理
 
-**来源**：PRD §4.8 基础节点类型、User Story 16
-
-**描述**：流程编辑器支持 While 循环节点，当 JavaScript 表达式为真时重复执行 body 子图。
+- **来源**：PRD §4.14 Tasks 页面
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `scheduling-execution`
+- **entity**: `schedule`
+- **scope**: cross-module
+- **modules**: `scheduleService`, `src/http/routes/schedules.js`, `src/cli/commands/schedule.js`
+- **interface_contract**:
+  - `POST /api/schedules` → body `{projectId, flowId, cron}`
+  - `PATCH /api/schedules/:id` → body `{enabled: boolean}`
+  - CLI: `opc-workstation schedule create/toggle`
+  - `cron` 为空返回 `400`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] Node Palette 提供 While 节点类型。
-- [ ] While 节点配置包含一个 JavaScript 表达式输入框。
-- [ ] While 节点有两个出口：body（继续循环）和 exit（结束循环）。
-- [ ] FlowEngine 每次进入 While 节点时 eval 表达式，truthy 走 body 分支，否则走 exit 分支。
-- [ ] 表达式非法或抛错时，节点返回 fatal 错误，Execution 失败。
-- [ ] Execution 日志记录迭代次数。
+- [ ] 创建后出现在 `GET /api/schedules` 列表，默认 `enabled=true`。
+- [ ] 列表显示 `projectId`、`cron`、`enabled` 和人类可读 cron 描述。
+- [ ] toggle 后状态同步更新。
 
 ---
 
-## REQ-020: 循环图保护与执行限制
+## REQ-SCHEDULE-003: 任务执行历史与详情
 
-**来源**：PRD §4.7 流程编辑器形态、§4.8 基础节点类型、tech-design §4.1
-
-**描述**：FlowEngine 支持包含循环的流程图，并通过深度/迭代计数防止无限循环。
+- **来源**：PRD §4.14 Tasks 页面
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `scheduling-execution`
+- **entity**: `task`
+- **scope**: cross-module
+- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`
+- **interface_contract**:
+  - `GET /api/executions` → 按时间倒序
+  - `GET /api/executions/:id` → `{logs, variables, output, branchPath, iterations}`
+  - CLI: `opc-workstation execution list/get`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`
 
 **验收标准**：
-- [ ] FlowEngine 不要求 flow.edges 构成 DAG，允许循环图。
-- [ ] FlowEngine.run 支持 `options.maxDepth` 参数，默认 100；超过则 Execution 失败。
-- [ ] FlowEngine.run 支持 `options.maxIterations` 参数，默认 1000；超过则 Execution 失败。
-- [ ] 超过限制时返回明确的错误信息（如 `"Max execution depth exceeded"`）。
-- [ ] 失败时仍在 Execution 日志中记录已执行到的节点。
+- [ ] 执行历史按时间倒序排列。
+- [ ] 详情包含 `logs`、`variables`、`output` 三个 Tab 数据。
+- [ ] execution 记录 `branchPath` 和 `iterations`。
 
 ---
 
-## 原始需求（保留上下文）
+## REQ-SKILL-001: Skills 列表
 
-> 见 PRD §1 Problem Statement。核心动机：把需要人类判断的环节交给 codex/agent 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
+- **来源**：PRD §4.15 Skill 管理 UI
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `skill-management`
+- **entity**: `skill`
+- **scope**: cross-module
+- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
+- **interface_contract**:
+  - `GET /api/skills`
+  - CLI: `opc-workstation skill list`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`
+
+**验收标准**：
+- [ ] 列表字段包含 `name`、`repoPath`、`version`、`category`，无 `linkedProjects`。
+- [ ] 每行包含 skill `id` 作为详情入口。
+
+---
+
+## REQ-SKILL-002: Skill 详情
+
+- **来源**：PRD §4.15 Skill 管理 UI
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `skill-management`
+- **entity**: `skill`
+- **scope**: cross-module
+- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
+- **interface_contract**:
+  - `GET /api/skills/:id` → `{name, description, author, tags, parameters, examples, readme, tabs}`
+  - CLI: `opc-workstation skill get --id <id>`
+- **测试类型**: CLI + HTTP API + feel-signoff
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/skills.html`
+
+**验收标准**：
+- [ ] 详情返回 `tabs: ["Overview", "Parameters", "Examples", "README"]`。
+- [ ] 不包含项目链接/取消链接控制字段。
+
+---
+
+## REQ-SKILL-003: 多源安装 Skill
+
+- **来源**：PRD §4.4 Skill 管理、User Story 18
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `skill-management`
+- **entity**: `skill`
+- **scope**: cross-module
+- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
+- **interface_contract**:
+  - `POST /api/skills/install` → body `{source: "npm" | "plugin" | "local", identifier: string}`
+  - CLI: `opc-workstation skill install --source <source> --identifier <id>`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`
+
+**验收标准**：
+- [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
+- [ ] 安装后 skill 出现在列表中，并记录 `installSource`。
+
+---
+
+## REQ-DASH-001: Dashboard 关键指标
+
+- **来源**：PRD §4.17 Dashboard 页面
+- **优先级**: P1
+- **必须性**: 应该
+- **capability**: `information-aggregation`
+- **entity**: `dashboard`
+- **scope**: cross-module
+- **modules**: dashboard aggregator, `src/http/routes/dashboard.js`
+- **interface_contract**:
+  - `GET /api/dashboard` → `{projectCount, activeScheduleCount, recentRunCount, successRate, recentExecutions, quickProjectLinks}`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/`
+
+**验收标准**：
+- [ ] 返回项目数、活跃调度数、最近运行次数、成功率。
+- [ ] 最近执行列表包含 flow、project、status、time。
+- [ ] 提供快捷项目入口。
+
+---
+
+## REQ-I18N-001: 主题切换
+
+- **来源**：PRD §4.11 Settings 与 Workspace 配置
+- **优先级**: P1
+- **必须性**: 必须
+- **capability**: `internationalization-theme`
+- **entity**: `theme`
+- **scope**: intra-module (renderer)
+- **modules**: theme 组件、Settings 页面
+- **interface_contract**:
+  - `PATCH /api/settings` → body `{theme: "dark" | "light"}`
+  - DOM `document.documentElement.dataset.theme`
+- **测试类型**: feel-signoff
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/settings.html`
+
+**验收标准**：
+- [ ] 切换主题后 `data-theme` 属性更新。
+- [ ] 设置持久化，重启后保持。
+
+---
+
+## REQ-I18N-002: 语言切换
+
+- **来源**：PRD §4.18 国际化
+- **优先级**: P1
+- **必须性**: 应该
+- **capability**: `internationalization-theme`
+- **entity**: `language`
+- **scope**: cross-module
+- **modules**: `settingsService`, i18n 层、Settings 页面
+- **interface_contract**:
+  - `PATCH /api/settings` → body `{language: "en-US" | "zh-CN"}`
+  - CLI: `opc-workstation settings set --language <code>`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/`
+
+**验收标准**：
+- [ ] 支持 `zh-CN` / `en-US` 切换。
+- [ ] 默认语言为 `en-US`。
+- [ ] 持久化，重启后保持。
+
+---
+
+## REQ-CLI-001: CLI 产品入口
+
+- **来源**：PRD §4.20 CLI 入口
+- **优先级**: P0
+- **必须性**: 必须
+- **capability**: `command-interface`
+- **entity**: `cli`
+- **scope**: cross-module
+- **modules**: `src/cli/opc-workstation.js`, `src/cli/server.js`, `src/http/server.js`
+- **interface_contract**:
+  - 全局 `--json` / `--pretty`
+  - 未检测到 server 时自动启动 headless server
+  - 退出码：`0` 成功，`1` 业务错误，`2` 系统错误
+  - CLI 子命令最终都映射到 `src/http/routes/*` 的 REST 端点
+- **测试类型**: CLI
+- **测试路径**: `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`
+
+**验收标准**：
+- [ ] `opc-workstation --help` 显示子命令与全局选项。
+- [ ] 任意子命令在未启动应用时能自动启动 headless server。
+- [ ] 全局 `--pretty` 输出美化 JSON。
+- [ ] 业务错误返回退出码 1，系统错误返回退出码 2。
+
+---
