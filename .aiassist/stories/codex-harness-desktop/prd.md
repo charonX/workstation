@@ -21,7 +21,7 @@
 核心架构：
 - **桌面应用壳**：Electron + React + TypeScript + TailwindCSS + React Flow
 - **项目模型**：Workspace 包含多个项目；项目是本地目录或 git 仓库
-- **Skill 管理**：集中式 skill 仓库，通过软链接加载到项目
+- **Skill 管理**：集中式 skill 仓库，支持 npm/npx、Claude Plugin、本地文件三种来源安装；项目通过详情弹层配置关联 skills
 - **Agent 适配层**：前期支持 Claude Code（Agent SDK）和 Codex（OpenAI app-server）
 - **流程引擎**：n8n 式节点拖拽编排，支持定时触发、流程间调用
 - **数据层**：流程配置/项目元数据存在应用数据目录；执行日志存在 SQLite
@@ -29,7 +29,7 @@
 ## 3. User Stories
 
 1. **作为用户，我可以在 workspace 中创建/导入项目**，这样不同工作流可以隔离管理。
-2. **作为用户，我可以把 skill 仓库中的 skill 软链接到项目中**，这样 Claude Code 可以直接使用这些 skill。
+2. **作为用户，我可以在项目详情中配置该项目使用哪些 skills**，这样 Claude Code 在该项目下可以直接调用这些 skill。
 3. **作为用户，我可以在可视化编辑器中拖拽节点设计流程**，这样不必写代码就能编排自动化任务。
 4. **作为用户，我可以在流程中放入 codex/agent 节点**，让 agent 在特定环节做人类式判断。
 5. **作为用户，我可以设置流程定时触发**，让任务自动执行。
@@ -40,9 +40,12 @@
 10. **作为用户，我可以在 Flows 列表页查看所有流程卡片**，并新建流程，再进入编辑器编排节点。
 11. **作为用户，我可以在 Tasks 页面手动创建一个任务**（选择项目和流程后立即运行），这样可以把流程在某一个项目中跑起来。
 12. **作为用户，我可以在 Tasks 页面创建定时任务（Schedule）**，设置 cron 表达式并启用/停用，让流程按计划自动执行。
-13. **作为用户，我可以在 Skill 详情弹层中查看技能元数据**，并把它链接/取消链接到任意项目。
+13. **作为用户，我可以在 Skill 详情弹层中查看技能元数据**（描述、参数、示例、README），并安装新的 skill。
 14. **作为用户，我可以在流程中加入条件分支节点**，用 JavaScript 表达式决定走哪条分支。
 15. **作为用户，我可以在流程中加入循环节点**（ForEach / While），让流程重复执行某段子图。
+16. **作为用户，我可以在 Dashboard 页面查看关键指标和最近活动聚合**，快速了解工作区整体状态。
+17. **作为用户，我可以切换界面语言（中/英文）**，让不同语言环境下都能使用。
+18. **作为用户，我可以通过多种来源安装 skill**（npm/npx、Claude Plugin、本地文件），扩展自动化能力。
 
 ## 4. Stable Blocks（已稳定，可结晶为 REQ）
 
@@ -55,8 +58,8 @@
    - 项目是 Workspace 下的一个目录
    - 项目可以是本地目录或 git 仓库（git 仓库自动 clone 到 Workspace）
 4. **Skill 管理**：
-   - 使用集中式 skill 仓库
-   - 通过软链接方式把 skill 加载到项目的 `.claude/skills/`
+   - Skill 来源包括 npm/npx 包、Claude Plugin、本地文件三种方式，统一安装到集中式 skill 仓库
+   - 通过 Project 详情弹层配置项目关联哪些 skills，不在 Skills 页面显示项目链接关系
    - Skill 格式为 Claude Code 标准格式（SKILL.md + 可选脚本）
 5. **Agent 适配（前期）**：
    - Claude Code：通过 Claude Agent SDK 调用
@@ -80,32 +83,52 @@
     - 提供 Settings 页面
     - 可配置 Workspace 根目录
     - 可配置 Skill 仓库位置
+    - 可配置界面主题（dark / light）和显示密度（compact / comfortable）
 12. **项目导入 UI**：
     - 统一使用 "Add Project" 按钮弹出模态框
     - 支持本地目录和 Git 检出（填写仓库 URL、分支、克隆目录）
     - 不在界面上给项目打 "local" 或 "git" 标签，来源仅作为元数据
 13. **Flows 列表页**：
-    - 以卡片形式列出所有流程，显示所属项目、节点数、定时状态、更新时间
+    - 以卡片形式列出所有流程，显示所属项目、更新时间
+    - 不提供手动/定时筛选，不在卡片上显示节点 pill
     - 提供 "New Flow" 弹层创建流程，再进入编辑器
 14. **Tasks 页面**：
-    - 任务是流程在某个项目里的一次运行（Execution）
-    - 支持手动创建任务（New Task）
-    - 支持创建定时任务（New Schedule）并设置 cron 表达式
-    - 左侧显示 Schedules 列表（可启用/停用）和 Run History
-    - 右侧显示单次执行的详情：Logs / Variables / Output 三个 Tab
+    - 左侧分为 Tasks（任务定义）和 Executions（执行历史）两个 Tab
+    - Tasks Tab 展示手动任务与定时 Schedule 的定义列表
+    - Executions Tab 展示运行历史，按时间倒序排列
+    - 选中执行后右侧详情面板展示 Logs / Variables / Output 三个 Tab
     - 执行历史需展示分支路径和循环迭代信息
 15. **Skill 管理 UI**：
-    - Skills 页面以表格展示技能列表
-    - 点击技能打开详情弹层，展示仓库路径、版本、依赖
-    - 在弹层中通过 checkbox 把技能链接到多个项目
-16. **Workspace 首页**：
-    - 展示项目卡片网格
+    - Skills 页面以表格展示技能列表，列包括 Skill、Repository Path、Version、Category、操作
+    - 点击技能打开详情弹层，展示 Overview / Parameters / Examples / README 四个 Tab
+    - 不提供在 Skills 弹层中链接项目；项目关联在 Project 详情弹层中配置
+16. **Workspace / Projects 首页**：
+    - 展示项目卡片网格，每张卡片显示名称、路径、flows/runs 数量、更新时间
+    - 项目卡片提供 "Configure Skills" 入口，打开 Project 详情弹层
     - 支持按项目名称搜索/过滤
     - 顶部提供 "Add Project" 入口
-17. **设计系统与主题**：
+    - 信息架构有两个变体：Dashboard 作为首页，或 Projects 作为首页、Dashboard 作为独立 Overview 页
+17. **Dashboard 页面**：
+    - 作为信息聚合页，展示项目数、活跃调度数、最近运行次数、成功率等关键指标
+    - 展示最近执行记录和快捷项目入口
+    - 不是工作流必需入口，可根据信息架构变体作为主首页或独立 Overview
+18. **国际化**：
+    - 界面支持中/英文切换
+    - 所有用户可见文案通过 i18n key 管理
+19. **设计系统与主题**：
     - 使用 CSS 自定义属性（design tokens）管理颜色、间距、字体等
     - 支持 dark / light 主题切换
-18. **Out of Scope（明确不做）**：
+20. **CLI 入口**：
+    - 提供 `opc-workstation` 命令行工具
+    - 支持 `project`、`flow`、`schedule`、`task`、`skill`、`settings` 等实体的 CRUD 与动作命令
+    - CLI 在未检测到运行中的应用时，可自动启动 headless server
+21. **本地 HTTP API**：
+    - CLI 与 React 渲染进程通过同一 localhost REST API 访问 core services
+    - 绑定 `127.0.0.1` 动态端口，MVP 无认证
+    - 错误返回标准 HTTP 状态码 + JSON 错误体
+22. **流程配置格式**：
+    - MVP 使用 JSON 作为流程定义、持久化与 CLI import/export 的标准格式
+23. **Out of Scope（明确不做）**：
     - AI 画布
     - 移动端应用
     - 商业化/多租户
@@ -115,10 +138,9 @@
 以下部分尚未完全确定，需要在后续阶段继续细化：
 
 1. **扩展节点列表**：MVP 基础节点（Condition / ForEach / While / Agent / Data / Logic / Output）已确定，但 HTTP、文件、通知、条件分支等扩展节点后续按需增加。
-2. **流程配置格式**：JSON vs YAML 未定。
-3. **API key / 认证管理**：用户表示"不需要管"，但实际接入 Codex/Claude Code 仍需某种形式的配置。
-4. **结果展示 UI 形态细化**：虽然已有 Logs / Variables / Output 三个 Tab，但具体展示格式（表格、Markdown 预览、图片等）仍需细化。
-5. **国产模型替代 Codex 的策略**：什么场景替代、如何配置未定。
+2. **API key / 认证管理**：用户表示"不需要管"，但实际接入 Codex/Claude Code 仍需某种形式的配置。
+3. **结果展示 UI 形态细化**：虽然已有 Logs / Variables / Output 三个 Tab，但具体展示格式（表格、Markdown 预览、图片等）仍需细化。
+4. **国产模型替代 Codex 的策略**：什么场景替代、如何配置未定。
 
 ## 6. Implementation Decisions
 
@@ -127,12 +149,14 @@
 ```
 ┌─────────────────────────────────────┐
 │  UI Layer (React + React Flow)      │
-│  - Workspace/Project 管理            │
+│  - Dashboard 信息聚合                │
+│  - Workspace/Project 管理（含 Project 详情/Skill 配置）│
 │  - Flows 列表页与流程编辑器            │
-│  - Tasks 页面（手动任务 + 定时任务 + 执行详情）│
-│  - Skills 列表与 Skill 详情/项目链接   │
+│  - Tasks 页面（任务定义 + 执行历史）    │
+│  - Skills 列表与 Skill 详情           │
 │  - Settings 页面                     │
 │  - dark/light 主题切换                │
+│  - 中/英文语言切换                    │
 ├─────────────────────────────────────┤
 │  Electron Main Process              │
 │  - Node.js 引擎进程                   │
@@ -142,11 +166,12 @@
 ├─────────────────────────────────────┤
 │  Core Services                      │
 │  - ProjectService                   │
-│  - SkillService                     │
+│  - SkillService（多源安装 + 项目关联）  │
 │  - FlowEngine                       │
 │  - AgentAdapter (ClaudeCode/Codex)  │
 │  - ScheduleService                  │
 │  - TaskService                      │
+│  - ExecutionService                 │
 │  - LogService                       │
 │  - SettingsService                  │
 ├─────────────────────────────────────┤
@@ -158,38 +183,41 @@
 
 ### 6.2 关键模块
 
-- **ProjectService**：管理 Workspace 和项目，支持本地目录和 git clone。
-- **SkillService**：读取 skill 仓库，维护项目到 skill 的软链接。
+- **ProjectService**：管理 Workspace 和项目，支持本地目录和 git clone；维护项目与 skill 的关联关系。
+- **SkillService**：读取 skill 仓库，支持从 npm/npx、Claude Plugin、本地文件安装 skill；维护项目到 skill 的关联配置。
 - **FlowEngine**：解析流程图，按拓扑顺序执行节点，处理数据流和错误。
 - **AgentAdapter**：统一抽象，底层分别调用 Claude Code Agent SDK 和 Codex app-server。
 - **ScheduleService**：基于 cron 或类似机制，定时触发流程；支持启用/停用单个 schedule。
-- **TaskService**：把“流程 + 项目”组合成一次运行（Execution），支持手动触发和查看历史。
+- **TaskService**：管理任务定义（手动任务与 Schedule），是创建 Execution 的入口。
+- **ExecutionService**：把“流程 + 项目”组合成一次运行（Execution），支持查看历史和详情。
 - **LogService**：把执行日志写入 SQLite，支持按项目/流程/执行ID 查询。
-- **SettingsService**：持久化 Workspace 根目录、Skill 仓库位置、主题等应用级配置。
+- **SettingsService**：持久化 Workspace 根目录、Skill 仓库位置、主题、语言、密度等应用级配置。
 
 ### 6.3 数据模型（初稿）
 
 - **Workspace**：id, path, name
 - **Project**：id, workspaceId, name, description, sourceType(local/git), repoUrl, branch, localPath, updatedAt
-- **Skill**：id, name, description, repoPath, version, dependencies
-- **ProjectSkill**：projectId, skillId, linkPath
+- **Skill**：id, name, description, repoPath, version, category, author, tags[], installSource(npm/npx/plugin/local), localPath, parameters[], examples[], readme
+- **ProjectSkill**：projectId, skillId
 - **Flow**：id, projectId, name, description, nodes[], edges[], scheduleEnabled, updatedAt
   - **Node**：id, type, name, config（条件表达式 / 循环配置 / agent 配置等）, outputVariable, position, ports[]
   - **Edge**：id, sourceNodeId, sourcePort, targetNodeId, targetPort
 - **Schedule**：id, projectId, flowId, cron, enabled
-- **Execution**（即 Task 的一次运行）：id, projectId, flowId, trigger(manual/schedule), startedAt, endedAt, status, duration, nodesRun, logs[], branchPath[], iterations[]
-- **Settings**：workspaceRoot, skillRepoPath, theme
+- **Execution**（即一次运行）：id, projectId, flowId, trigger(manual/schedule), startedAt, endedAt, status, duration, nodesRun, logs[], branchPath[], iterations[]
+- **Settings**：workspaceRoot, skillRepoPath, theme, language, density
 
 ### 6.4 关键页面结构
 
 基于当前交互原型，应用主要页面如下：
 
-- **Workspace**：项目卡片网格、搜索过滤、Add Project 入口。
-- **Flows**：流程列表卡片（项目、节点数、定时状态、更新时间）+ New Flow 弹层；点击进入流程编辑器。
+- **Dashboard**：信息聚合页，展示关键指标（项目数、活跃调度数、最近运行次数、成功率）、最近执行记录和快捷项目入口。
+- **Workspace / Projects**：项目卡片网格、搜索过滤、Add Project 入口；项目卡片提供 "Configure Skills" 打开 Project Detail Modal。
+- **Project Detail Modal**：项目详情弹层，含 Overview（项目元数据）和 Skills（可用 skill 复选框配置关联）两个 Tab。
+- **Flows**：流程列表卡片（项目名称、更新时间）+ New Flow 弹层；点击进入流程编辑器。
 - **Flow Editor**：左侧 Node Palette、中间画布、右侧 Node Properties；支持缩放、运行、定时开关。
-- **Tasks**：左侧上半 Schedules 列表（可启用/停用），左侧下半 Run History；右侧选中执行的 Logs / Variables / Output 详情 Tab；顶部提供 New Task 与 New Schedule 按钮。
-- **Skills**：技能表格列表；点击打开 Skill Detail Modal，展示元数据并管理项目链接。
-- **Settings**：Workspace 根目录、Skill 仓库位置、主题偏好等配置。
+- **Tasks**：左侧为 Tasks / Executions 两个 Tab；Tasks Tab 展示手动任务与 Schedule 定义，Executions Tab 展示运行历史；右侧选中执行的 Logs / Variables / Output 详情 Tab；顶部提供 New Task 与 New Schedule 按钮。
+- **Skills**：技能表格列表（Skill / Repository Path / Version / Category / 操作）；点击打开 Skill Detail Modal，展示 Overview / Parameters / Examples / README。
+- **Settings**：Workspace 根目录、Skill 仓库位置、主题、语言、密度等配置。
 
 ## 7. Testing Decisions
 
@@ -197,11 +225,12 @@
 
 1. **FlowEngine**：输入节点配置 + 模拟节点执行器，验证执行顺序、数据传递、错误处理、**条件分支、循环迭代、死循环防护**。
 2. **AgentAdapter**：通过 mock server/SDK 验证调用协议正确性，不依赖真实 agent。
-3. **ProjectService**：在临时目录中创建/删除项目，验证文件系统操作，包括 Git clone。
-4. **SkillService**：验证软链接创建、读取、失效处理。
+3. **ProjectService**：在临时目录中创建/删除项目，验证文件系统操作，包括 Git clone；验证项目与 skill 的关联持久化。
+4. **SkillService**：验证多源安装（npm/npx、Claude Plugin、本地文件）的元数据读取；验证项目到 skill 的关联配置创建与删除。
 5. **ScheduleService**：用虚拟时间或短周期任务验证触发机制。
-6. **TaskService**：验证手动触发流程生成 Execution，并正确关联 projectId/flowId/trigger。
-7. **SettingsService**：验证 Workspace 根目录、Skill 仓库位置、主题偏好持久化。
+6. **TaskService**：验证任务定义创建，以及作为创建 Execution 的唯一入口。
+7. **ExecutionService**：验证手动/定时触发生成 Execution，并正确关联 projectId/flowId/trigger。
+8. **SettingsService**：验证 Workspace 根目录、Skill 仓库位置、主题、语言、密度等持久化。
 
 ### 7.2 测试类型
 

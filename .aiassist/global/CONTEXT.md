@@ -40,10 +40,12 @@
 - 数据库表：小写复数，如 `projects`、`executions`
 - 函数/方法：camelCase
 - 文件：camelCase，服务文件以 `Service` 结尾
-- CLI 命令：通过 Electron 主进程 IPC 调用，无独立 CLI
+- CLI 命令：`opc-workstation <entity> <action>`，通过本地 HTTP API 调用服务；未运行应用时 CLI 可启动 headless server
+- HTTP API：`/api/<entity>`，RESTful 资源风格，默认 JSON，错误返回标准 HTTP 状态码 + JSON 错误体
 
 ## 变更记录
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |
+| 2026-07-08 | 更新 CLI 与 HTTP API 术语定义 | codex-harness-desktop attempt-2 tech-design |

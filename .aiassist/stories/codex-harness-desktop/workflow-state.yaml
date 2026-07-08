@@ -1,10 +1,9 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: TECH-DESIGN
+current_phase: CRYSTALLIZE
 attempt: 2
-blockers:
-  - 技术方案需补全前端/CLI seams 与对应测试策略。
+blockers: []
 slices: []
 gates:
   assertion_signoff: pending
@@ -26,6 +25,7 @@ history:
   - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "测试已按 loop-workflow 能力/实体结构重新生成；业务 capabilities 地图已更新。"}
   - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 重新签核通过：62 个测试全绿，无 TODO 占位，解锁 BUILD。"}
   - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
+  - {at: 2026-07-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "技术方案已定：独立 CLI + 本地 HTTP API + TanStack Query + 无浏览器 E2E；PRD/CONTEXT/ADR 已同步。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
