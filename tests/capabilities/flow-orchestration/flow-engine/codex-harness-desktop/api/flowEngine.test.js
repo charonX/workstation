@@ -1,11 +1,13 @@
-// REQ-TRACE: REQ-017, REQ-018, REQ-019, REQ-020
-// REQ-VERSION: v1-hash:2ac6ee56bb4da537ba3e109f9a72e2aa36febb15beac6bdda04cbc2f9be68045
+// REQ-TRACE: codex-harness-desktop/REQ-017, codex-harness-desktop/REQ-018, codex-harness-desktop/REQ-019, codex-harness-desktop/REQ-020
+// REQ-VERSION: v1-hash:2c79015bd970c381f96e90dfa5950a839b3fdf9b90606fadf73c07c381cbaad8
+// CAPABILITY-TRACE: flow-orchestration
+// ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { run } from "../src/flowEngine.js";
+import { run } from "../../../../../../src/flowEngine.js";
 
 function conditionExecutor(input) {
   const expression = input.node.config.expression;
