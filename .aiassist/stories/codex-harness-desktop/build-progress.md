@@ -26,3 +26,17 @@
 
 ## 运行记录
 
+### 2026-07-08 — loop-workflow 重新进入 BUILD
+
+- 触发：`/loop-workflow:implementer`
+- 前提：assertion-signoff 已通过，测试已按 `tests/capabilities/<capability>/<entity>/<story-id>/api/` 结构重新生成。
+- 运行结果：
+
+```
+npm test: 62 tests / 62 passed / 0 failed
+```
+
+- 结论：现有实现已满足所有已签核业务测试，无需新增 `[build]` commit。
+- 偏差记录：无。
+- 下一步：`/qa-runner` → `/signoff --stage=feel`。
+
