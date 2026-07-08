@@ -1,8 +1,8 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
-attempt: 2
+current_phase: TECH-DESIGN
+attempt: 3
 blockers: []
 slices: []
 gates:
@@ -25,21 +25,15 @@ history:
   - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "测试已按 loop-workflow 能力/实体结构重新生成；业务 capabilities 地图已更新。"}
   - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 重新签核通过：62 个测试全绿，无 TODO 占位，解锁 BUILD。"}
   - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
-  - {at: 2026-07-08, from: CRYSTALLIZE, to: TEST, note: "REQ 已按 area-code 格式结晶（WORKSPACE/FLOW/SCHEDULE/SKILL/DASH/I18N/CLI），requirements-v1.hash 已更新，等待 test-author 生成测试。"}
-  - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：61 个测试（3 pass / 58 fail），失败为未实现 stub 的红色契约，等待 assertion-signoff。"}
-  - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 通过：28 条 REQ 全覆盖，61 个测试等待 implementer 变绿，解锁 BUILD。"}
-  - {at: 2026-07-08, from: BUILD, to: QA, note: "BUILD 完成：61 个单元测试全绿，实现覆盖 HTTP API、CLI、FlowEngine 核心 seams。"}
-  - {at: 2026-07-07, from: PRD, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff 签核。"}
-  - {at: 2026-07-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 已通过，解锁 BUILD。当前 62 个测试 50 通过 12 失败，失败均为未实现 seam 的红色契约。"}
-  - {at: 2026-07-07, from: BUILD, to: QA, note: "全部 5 个 BUILD 切片完成：project-skill-config / skill-detail-install / schedule-cron-desc / execution-branch-iter / settings-defaults。62 个单元测试全绿。"}
-  - {at: 2026-07-08, from: QA, to: TEST, note: "根因诊断：实现层已完成，但测试需要按 loop-workflow 新结构重新生成。回退到 TEST 阶段，不归档。"}
-  - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "测试已按 loop-workflow 能力/实体结构重新生成；业务 capabilities 地图已更新。"}
-  - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 重新签核通过：62 个测试全绿，无 TODO 占位，解锁 BUILD。"}
-  - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
   - {at: 2026-07-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "技术方案已定：独立 CLI + 本地 HTTP API + TanStack Query + 无浏览器 E2E；PRD/CONTEXT/ADR 已同步。"}
   - {at: 2026-07-08, from: CRYSTALLIZE, to: TEST, note: "REQ 已按 area-code 格式结晶（WORKSPACE/FLOW/SCHEDULE/SKILL/DASH/I18N/CLI），requirements-v1.hash 已更新，等待 test-author 生成测试。"}
   - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：61 个测试（3 pass / 58 fail），失败为未实现 stub 的红色契约，等待 assertion-signoff。"}
   - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 通过：28 条 REQ 全覆盖，61 个测试等待 implementer 变绿，解锁 BUILD。"}
+  - {at: 2026-07-08, from: BUILD, to: QA, note: "BUILD 完成：61 个单元测试全绿，实现覆盖 HTTP API、CLI、FlowEngine 核心 seams。"}
+  - {at: 2026-07-08, from: QA, to: TECH-DESIGN, note: "根因诊断：前端界面未实现，无法通过 feel-signoff。问题在技术方案层未将 Electron + React 前端 seams 纳入必须交付物。归档 attempt-2，见 archive/attempt-2/reason.md。"}
+archive:
+  - {attempt: 1, date: 2026-07-08, reason_file: archive/attempt-1/reason.md}
+  - {attempt: 2, date: 2026-07-08, reason_file: archive/attempt-2/reason.md}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
@@ -55,7 +49,7 @@ notes: |
   表达式已定：Condition / While 使用 JavaScript 表达式。
   UX 设计决策已回流 PRD（2026-07-06）：Tasks/Executions 分离、Flows 列表简化、Skills 多源安装、Project 详情配置 Skills、Dashboard/语言/Density 等。
   REQ 已同步更新至 REQ-025，requirements-v1.hash 已重新生成。
-  因 PRD/REQ 变化，先前 assertion-signoff 需重新签核受影响 REQ。
+  attempt-2 后端/CLI/FlowEngine 代码保留（commit 158da4d），新 attempt 复用并补前端层。
 design_system:
   compiled: true
   slug: global
@@ -83,9 +77,9 @@ design_system:
       - variant_b: Workspace as home, Dashboard as Overview
 
   待办：
-  1. 引入 SQLite 并迁移 Project/Flow/Task/Skill 服务到持久化存储。
-  2. 实现 FlowEngine.run 骨架：拓扑排序、上下文合并、executor 调用、重试、事件回调、循环/条件支持、死循环防护。
-  3. 实现 Condition / ForEach / While executor。
-  4. 实现 AgentAdapter spike，验证 Claude Code / Codex 调用协议。
-  5. 实现 ScheduleService + 事件总线 + TaskService 订阅。
-  6. 搭建 Electron 主进程 + React 渲染进程最小壳。
+  1. 在 tech-design 中明确 Electron 主进程/渲染进程结构、React 路由、TanStack Query 集成、主题切换机制。
+  2. 决定前端验收策略：feel-signoff only，或补充 renderer public API/组件测试 seams。
+  3. 按新 tech-design 更新 PRD/REQ（如需新增/调整前端相关 REQ）。
+  4. 重新进入 CRYSTALLIZE → TEST → ASSERTION-SIGNOFF。
+  5. BUILD 阶段先搭 Electron + React 最小壳，再实现 Workspace/Flows/Flow Editor/Tasks/Skills/Settings 页面。
+  6. 保留 attempt-2 后端/CLI/FlowEngine 代码并复用。
