@@ -1,9 +1,10 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: TEST
 attempt: 1
-blockers: []
+blockers:
+  - 等待 assertion-signoff：测试已按 loop-workflow 结构重新生成，需重新签核断言。
 slices:
   - id: project-skill-config
     name: Project Detail / Skill Association
@@ -51,6 +52,7 @@ history:
   - {at: 2026-07-07, from: QA, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff 签核。"}
   - {at: 2026-07-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 已通过，解锁 BUILD。当前 62 个测试 50 通过 12 失败，失败均为未实现 seam 的红色契约。"}
   - {at: 2026-07-07, from: BUILD, to: QA, note: "全部 5 个 BUILD 切片完成：project-skill-config / skill-detail-install / schedule-cron-desc / execution-branch-iter / settings-defaults。62 个单元测试全绿。"}
+  - {at: 2026-07-08, from: QA, to: TEST, note: "根因诊断：实现层已完成，但测试需要按 loop-workflow 新结构重新生成。回退到 TEST 阶段，不归档。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
