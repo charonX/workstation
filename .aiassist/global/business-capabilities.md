@@ -59,7 +59,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/` | REQ-CLI-001 | `cli.test.js` / shell scripts |
+| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/` | REQ-CLI-001 | `cli.test.js` |
 
 ## 能力依赖图
 
@@ -75,14 +75,12 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 
 ## 健康指标
 
-> attempt-2 测试骨架尚未生成，以下测试数待 `/test-author` 完成后更新。
-
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 2 | TBD | 2026-07-08 |
-| flow-orchestration | 2 | TBD | 2026-07-08 |
-| scheduling-execution | 2 | TBD | 2026-07-08 |
-| skill-management | 1 | TBD | 2026-07-08 |
-| information-aggregation | 1 | TBD | 2026-07-08 |
-| internationalization-theme | 2 | TBD | 2026-07-08 |
-| command-interface | 1 | TBD | 2026-07-08 |
+| workspace-management | 2 | 17 | 2026-07-08 |
+| flow-orchestration | 2 | 14 | 2026-07-08 |
+| scheduling-execution | 2 | 11 | 2026-07-08 |
+| skill-management | 1 | 7 | 2026-07-08 |
+| information-aggregation | 1 | 4 | 2026-07-08 |
+| internationalization-theme | 2 | 5 | 2026-07-08 |
+| command-interface | 1 | 3 | 2026-07-08 |

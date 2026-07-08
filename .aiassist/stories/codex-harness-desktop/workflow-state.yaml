@@ -1,10 +1,10 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: TEST
+current_phase: ASSERTION-SIGNOFF
 attempt: 2
 blockers:
-  - 等待 /test-author 按新 REQ 生成 CLI / HTTP API / 服务层测试骨架。
+  - 等待 assertion-signoff：测试骨架已生成，需签核断言。
 slices: []
 gates:
   assertion_signoff: pending
@@ -28,6 +28,7 @@ history:
   - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
   - {at: 2026-07-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "技术方案已定：独立 CLI + 本地 HTTP API + TanStack Query + 无浏览器 E2E；PRD/CONTEXT/ADR 已同步。"}
   - {at: 2026-07-08, from: CRYSTALLIZE, to: TEST, note: "REQ 已按 area-code 格式结晶（WORKSPACE/FLOW/SCHEDULE/SKILL/DASH/I18N/CLI），requirements-v1.hash 已更新，等待 test-author 生成测试。"}
+  - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：61 个测试（3 pass / 58 fail），失败为未实现 stub 的红色契约，等待 assertion-signoff。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
