@@ -3,6 +3,8 @@
 > 本文件由 `/crystallize` 和 `/reflect` 维护。
 > 把测试按业务实体/能力组织，而不是按 story。
 > 每个能力下挂测试文件和 REQ-ID。
+>
+> **注意**：当前处于 `codex-harness-desktop` attempt-2 的 `TECH-DESIGN` 阶段，attempt-1 的测试与实现已归档到 `.aiassist/stories/codex-harness-desktop/archive/attempt-1/`。下表中的测试目录将在新 attempt 的 `/test-author` 阶段重新生成后更新。
 
 ---
 
