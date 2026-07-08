@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "autoSync": true,
+  "syncDebounceMs": 5000,
+  "ignorePatterns": [
+    "node_modules/",
+    ".git/",
+    "dist/",
+    "build/",
+    "*.test.*",
+    "*.spec.*"
+  ],
+  "queryMode": "mcp",
+  "fallbackToGrep": true
+}

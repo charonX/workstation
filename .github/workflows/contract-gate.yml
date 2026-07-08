@@ -1,0 +1,90 @@
+name: Loop Contract Gate
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  contract-gate:
+    name: Loop Contract Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 1. 静态检查
+      - name: Lint
+        run: npm run lint
+        if: ${{ hashFiles('package.json') != '' }}
+
+      - name: Type check
+        run: npm run typecheck
+        if: ${{ hashFiles('tsconfig.json') != '' }}
+
+      # 2. 单元测试 + coverage
+      - name: Unit tests
+        run: npm run test:unit -- --coverage
+
+      # 3. E2E 测试
+      - name: E2E tests
+        run: npm run test:e2e
+
+      # 4. 契约签核文件存在性检查
+      - name: Assertion signoff check
+        run: |
+          if grep -qE '\[build\]' <<< "${{ github.event.pull_request.title }}"; then
+            test -f .aiassist/stories/*/assertion-signoff.md || {
+              echo "❌ [build] PR 缺少 assertion-signoff.md"
+              exit 1
+            }
+          fi
+
+      # 5. 观感签核文件存在性检查
+      - name: Feel signoff check
+        run: |
+          if grep -qE '\[feel\]' <<< "${{ github.event.pull_request.title }}"; then
+            test -f .aiassist/stories/*/feel-signoff.md || {
+              echo "❌ [feel] PR 缺少 feel-signoff.md"
+              exit 1
+            }
+          fi
+
+      # 6. 测试文件只读检查：实现 PR 不能修改测试
+      - name: Test files read-only check
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          HAS_IMPL=false
+          HAS_TEST=false
+
+          for file in $CHANGED_FILES; do
+            case "$file" in
+              test/*|tests/*|__tests__/*|*.test.*|*.spec.*|e2e/*|spec/*|integration/*)
+                HAS_TEST=true
+                ;;
+              src/*|app/*|lib/*|pages/*|components/*|server/*|client/*|api/*|services/*|workers/*|tools/*|bin/*)
+                HAS_IMPL=true
+                ;;
+            esac
+          done
+
+          if [ "$HAS_IMPL" = true ] && [ "$HAS_TEST" = true ]; then
+            echo ""
+            echo "❌ 双循环：一个 PR 不能同时修改实现代码和测试文件。"
+            echo ""
+            echo "请把测试修改拆到单独的 PR，或通过 /story 回流到 TEST 阶段。"
+            echo ""
+            exit 1
+          fi
