@@ -1,12 +1,12 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUILD
+current_phase: QA
 attempt: 2
 blockers: []
 slices: []
 gates:
-  assertion_signoff: pending
+  assertion_signoff: passed
   feel_signoff: pending
 history:
   - {at: 2026-07-01, from: THINK, to: PRD, note: "完成需求洞察，PRD 生成"}
@@ -18,6 +18,17 @@ history:
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "assertion-signoff 重新通过：REQ-017~020 已签核，解锁 BUILD。"}
   - {at: 2026-07-04, from: BUILD, to: QA, note: "BUILD 全切片完成，42 个单元测试全绿，QA runner 已输出报告。"}
   - {at: 2026-07-06, from: QA, to: PRD, note: "按块回流：UX 探索确认 Tasks/Executions 分离、Flows 列表简化、Skills 多源安装、Project 详情配置 Skills、Dashboard/语言/Density 等设计，PRD 与 REQ 已同步更新。assertion-signoff 需重新签核受影响 REQ。"}
+  - {at: 2026-07-07, from: PRD, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff。"}
+  - {at: 2026-07-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 已通过，解锁 BUILD。当前 62 个测试 50 通过 12 失败，失败均为未实现 seam 的红色契约。"}
+  - {at: 2026-07-07, from: BUILD, to: QA, note: "全部 5 个 BUILD 切片完成：project-skill-config / skill-detail-install / schedule-cron-desc / execution-branch-iter / settings-defaults。62 个单元测试全绿。"}
+  - {at: 2026-07-08, from: QA, to: TEST, note: "根因诊断：实现层已完成，但测试需要按 loop-workflow 新结构重新生成。回退到 TEST 阶段，不归档。"}
+  - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "测试已按 loop-workflow 能力/实体结构重新生成；业务 capabilities 地图已更新。"}
+  - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 重新签核通过：62 个测试全绿，无 TODO 占位，解锁 BUILD。"}
+  - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
+  - {at: 2026-07-08, from: CRYSTALLIZE, to: TEST, note: "REQ 已按 area-code 格式结晶（WORKSPACE/FLOW/SCHEDULE/SKILL/DASH/I18N/CLI），requirements-v1.hash 已更新，等待 test-author 生成测试。"}
+  - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：61 个测试（3 pass / 58 fail），失败为未实现 stub 的红色契约，等待 assertion-signoff。"}
+  - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 通过：28 条 REQ 全覆盖，61 个测试等待 implementer 变绿，解锁 BUILD。"}
+  - {at: 2026-07-08, from: BUILD, to: QA, note: "BUILD 完成：61 个单元测试全绿，实现覆盖 HTTP API、CLI、FlowEngine 核心 seams。"}
   - {at: 2026-07-07, from: PRD, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff 签核。"}
   - {at: 2026-07-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 已通过，解锁 BUILD。当前 62 个测试 50 通过 12 失败，失败均为未实现 seam 的红色契约。"}
   - {at: 2026-07-07, from: BUILD, to: QA, note: "全部 5 个 BUILD 切片完成：project-skill-config / skill-detail-install / schedule-cron-desc / execution-branch-iter / settings-defaults。62 个单元测试全绿。"}
