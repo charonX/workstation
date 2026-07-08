@@ -1,42 +1,13 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUILD
-attempt: 1
-blockers: []
-slices:
-  - id: project-skill-config
-    name: Project Detail / Skill Association
-    reqs: [REQ-021]
-    tests: [tests/project.test.js]
-    seams: [projectService.getProjectDetail, skillService.getLinkedSkills]
-    status: complete
-  - id: skill-detail-install
-    name: Skill Detail & Multi-source Install
-    reqs: [REQ-014, REQ-015, REQ-022]
-    tests: [tests/skill.test.js]
-    seams: [skillService.getSkillDetail, skillService.installSkill, skills schema]
-    status: complete
-  - id: schedule-cron-desc
-    name: Schedule Cron Description
-    reqs: [REQ-012]
-    tests: [tests/task.test.js]
-    seams: [taskService.getCronDescription]
-    status: complete
-  - id: execution-branch-iter
-    name: Execution Branch Path & Iterations
-    reqs: [REQ-013]
-    tests: [tests/task.test.js]
-    seams: [completeExecution branchPath/iterations]
-    status: complete
-  - id: settings-defaults
-    name: Settings Defaults for Language & Density
-    reqs: [REQ-024, REQ-025]
-    tests: [tests/language.test.js, tests/settings.test.js]
-    seams: [settingsService defaults]
-    status: complete
+current_phase: TECH-DESIGN
+attempt: 2
+blockers:
+  - 技术方案需补全前端/CLI seams 与对应测试策略。
+slices: []
 gates:
-  assertion_signoff: passed
+  assertion_signoff: pending
   feel_signoff: pending
 history:
   - {at: 2026-07-01, from: THINK, to: PRD, note: "完成需求洞察，PRD 生成"}
@@ -48,12 +19,13 @@ history:
   - {at: 2026-07-04, from: BUILD, to: BUILD, note: "assertion-signoff 重新通过：REQ-017~020 已签核，解锁 BUILD。"}
   - {at: 2026-07-04, from: BUILD, to: QA, note: "BUILD 全切片完成，42 个单元测试全绿，QA runner 已输出报告。"}
   - {at: 2026-07-06, from: QA, to: PRD, note: "按块回流：UX 探索确认 Tasks/Executions 分离、Flows 列表简化、Skills 多源安装、Project 详情配置 Skills、Dashboard/语言/Density 等设计，PRD 与 REQ 已同步更新。assertion-signoff 需重新签核受影响 REQ。"}
-  - {at: 2026-07-07, from: QA, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff 签核。"}
+  - {at: 2026-07-07, from: PRD, to: ASSERTION-SIGNOFF, note: "test-author 完成：测试骨架已按新版 REQ-001~025 更新，新增 language/dashboard 测试，等待 assertion-signoff 签核。"}
   - {at: 2026-07-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 已通过，解锁 BUILD。当前 62 个测试 50 通过 12 失败，失败均为未实现 seam 的红色契约。"}
   - {at: 2026-07-07, from: BUILD, to: QA, note: "全部 5 个 BUILD 切片完成：project-skill-config / skill-detail-install / schedule-cron-desc / execution-branch-iter / settings-defaults。62 个单元测试全绿。"}
   - {at: 2026-07-08, from: QA, to: TEST, note: "根因诊断：实现层已完成，但测试需要按 loop-workflow 新结构重新生成。回退到 TEST 阶段，不归档。"}
   - {at: 2026-07-08, from: TEST, to: ASSERTION-SIGNOFF, note: "测试已按 loop-workflow 能力/实体结构重新生成；业务 capabilities 地图已更新。"}
   - {at: 2026-07-08, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 重新签核通过：62 个测试全绿，无 TODO 占位，解锁 BUILD。"}
+  - {at: 2026-07-08, from: BUILD, to: TECH-DESIGN, note: "根因诊断：实现缺少前端、CLI 及对应测试，问题在技术方案层。归档 attempt-1，见 archive/attempt-1/reason.md。"}
 notes: |
   引擎已定：自建 FlowEngine（进程内执行 agent/computer-use）。
   技术栈已定：Electron + React + TypeScript + TailwindCSS + React Flow。
