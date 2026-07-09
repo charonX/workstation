@@ -8,9 +8,9 @@
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { startElectronApp, stopElectronApp } = require("../../../e2e/fixtures/electronApp");
-const { installSkill } = require("../../../e2e/helpers/seed");
-const locators = require("../../../e2e/helpers/locators");
+const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
+const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Onboarding", () => {
   let electronApp;

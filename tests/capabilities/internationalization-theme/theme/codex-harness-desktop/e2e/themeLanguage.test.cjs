@@ -6,8 +6,8 @@
 // ASSERTIONS-SIGNED: false
 
 const { test, expect } = require("@playwright/test");
-const { startElectronApp, stopElectronApp } = require("../../../../../../e2e/fixtures/electronApp");
-const locators = require("../../../../../../e2e/helpers/locators");
+const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Theme and Language", () => {
   let electronApp;

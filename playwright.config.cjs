@@ -7,6 +7,7 @@ const path = require("node:path");
  */
 module.exports = defineConfig({
   testDir: "./tests",
+  testMatch: "**/*.test.cjs",
   /* Run tests in files in parallel only where safe; Electron tests share an app instance per worker */
   fullyParallel: false,
   /* Fail the build on CI if you accidentally left test.only in the source code */
@@ -39,5 +40,5 @@ module.exports = defineConfig({
   ],
 
   /* Output directory for test artifacts */
-  outputDir: "./playwright-report/test-artifacts",
+  outputDir: "./test-results",
 });

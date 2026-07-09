@@ -5,14 +5,60 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-const { electron } = require("@playwright/test");
+const { _electron: electron } = require("@playwright/test");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 
 const MAIN_ENTRY = path.join(process.cwd(), "src/main/main.js");
 const SERVER_JSON_POLL_MS = 200;
 const SERVER_JSON_TIMEOUT_MS = 10000;
+const VITE_DEV_URL = "http://localhost:5173";
+const VITE_READY_POLL_MS = 200;
+const VITE_READY_TIMEOUT_MS = 15000;
+
+let viteProcess = null;
+
+/**
+ * Wait for the Vite dev server to be reachable.
+ */
+async function waitForViteDevServer() {
+  const start = Date.now();
+  while (Date.now() - start < VITE_READY_TIMEOUT_MS) {
+    try {
+      const res = await fetch(VITE_DEV_URL, { signal: AbortSignal.timeout(1000) });
+      if (res.ok) return;
+    } catch {
+      // not ready yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, VITE_READY_POLL_MS));
+  }
+  throw new Error("Vite dev server did not start within timeout");
+}
+
+/**
+ * Start the Vite dev server if it is not already running.
+ */
+async function startViteDevServer() {
+  // If Vite is already running, reuse it.
+  try {
+    const res = await fetch(VITE_DEV_URL, { signal: AbortSignal.timeout(500) });
+    if (res.ok) return null;
+  } catch {
+    // not running, start one
+  }
+
+  const child = spawn("npx", ["vite", "--config", "vite.renderer.config.js"], {
+    cwd: process.cwd(),
+    stdio: "ignore",
+    env: { ...process.env, NODE_ENV: "development" },
+  });
+
+  viteProcess = child;
+  await waitForViteDevServer();
+  return child;
+}
 
 /**
  * Start the Electron application with a temporary userData directory.
@@ -21,6 +67,7 @@ const SERVER_JSON_TIMEOUT_MS = 10000;
  * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, firstWindow: import('@playwright/test').Page, apiBaseUrl: string, userDataDir: string }>}
  */
 async function startElectronApp() {
+  await startViteDevServer();
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-"));
 
   const electronApp = await electron.launch({
@@ -31,7 +78,7 @@ async function startElectronApp() {
     ],
     env: {
       ...process.env,
-      NODE_ENV: "test",
+      NODE_ENV: "development",
     },
   });
 
@@ -54,6 +101,10 @@ async function startElectronApp() {
 
   if (!serverJson || !serverJson.port) {
     await electronApp.close();
+    if (viteProcess) {
+      viteProcess.kill();
+      viteProcess = null;
+    }
     await fs.rm(userDataDir, { recursive: true, force: true });
     throw new Error("Electron app did not publish server.json within timeout");
   }
