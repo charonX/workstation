@@ -37,9 +37,19 @@ jobs:
       - name: Unit tests
         run: npm run test:unit -- --coverage
 
-      # 3. E2E 测试
+      # 3. E2E 测试（默认 Playwright）
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: E2E tests
         run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
 
       # 4. 契约签核文件存在性检查
       - name: Assertion signoff check
