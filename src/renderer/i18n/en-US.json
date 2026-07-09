@@ -101,5 +101,41 @@
     "noLogs": "No logs available.",
     "noVariables": "No variables available.",
     "noOutput": "No output available."
+  },
+  "workspace": {
+    "title": "Projects",
+    "addProject": "Add Project",
+    "searchPlaceholder": "Search projects...",
+    "loading": "Loading projects...",
+    "noSearchResults": "No projects match your search.",
+    "empty": "No projects yet. Click \"+ Add Project\" to get started."
+  },
+  "flows": {
+    "title": "Flows",
+    "newFlow": "New Flow",
+    "loading": "Loading flows...",
+    "empty": "No flows yet. Create your first flow to get started."
+  },
+  "flowEditor": {
+    "loading": "Loading flow editor...",
+    "run": "Run",
+    "running": "Running...",
+    "selectNode": "Select a node to edit",
+    "breadcrumb": "Flows",
+    "schedule": "Schedule",
+    "save": "Save"
+  },
+  "projectDetail": {
+    "title": "Project Detail",
+    "close": "Close",
+    "loading": "Loading...",
+    "noSkills": "No skills available.",
+    "projectName": "Project Name",
+    "localPath": "Local Path",
+    "repoUrl": "Repository URL",
+    "flows": "Flows",
+    "runs": "Runs",
+    "updated": "Updated",
+    "availableSkills": "Available Skills"
   }
 }

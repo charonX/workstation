@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useProjects } from "../hooks/useProjects.js";
 import ProjectCard from "../components/project/ProjectCard.jsx";
 import ProjectFormModal from "../components/project/ProjectFormModal.jsx";
@@ -6,6 +7,7 @@ import ProjectDetailModal from "../components/project/ProjectDetailModal.jsx";
 import "./Workspace.css";
 
 export default function Workspace() {
+  const { t } = useTranslation();
   const [projects, loading, error, createProject] = useProjects();
   const [formOpen, setFormOpen] = useState(false);
   const [detailProjectId, setDetailProjectId] = useState(null);
@@ -26,13 +28,13 @@ export default function Workspace() {
   return (
     <div className="page workspace-page" data-testid="workspace-page">
       <div className="page-header">
-        <h1 className="page-title">Projects</h1>
+        <h1 className="page-title">{t("workspace.title")}</h1>
         <button
           className="btn btn-primary"
           data-testid="add-project-button"
           onClick={() => setFormOpen(true)}
         >
-          + Add Project
+          + {t("workspace.addProject")}
         </button>
       </div>
 
@@ -40,14 +42,14 @@ export default function Workspace() {
         <input
           type="text"
           className="form-input"
-          placeholder="Search projects..."
+          placeholder={t("workspace.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
       {loading && (
-        <div className="workspace-loading">Loading projects...</div>
+        <div className="workspace-loading">{t("workspace.loading")}</div>
       )}
 
       {error && (
@@ -57,8 +59,8 @@ export default function Workspace() {
       {!loading && !error && filteredProjects.length === 0 && (
         <div className="workspace-empty">
           {search.trim()
-            ? "No projects match your search."
-            : 'No projects yet. Click "+ Add Project" to get started.'}
+            ? t("workspace.noSearchResults")
+            : t("workspace.empty")}
         </div>
       )}
 

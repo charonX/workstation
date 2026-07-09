@@ -101,5 +101,41 @@
     "noLogs": "暂无日志。",
     "noVariables": "暂无变量。",
     "noOutput": "暂无输出。"
+  },
+  "workspace": {
+    "title": "项目",
+    "addProject": "添加项目",
+    "searchPlaceholder": "搜索项目...",
+    "loading": "加载项目中...",
+    "noSearchResults": "没有匹配的项目。",
+    "empty": "暂无项目。点击 \"+ 添加项目\" 开始。"
+  },
+  "flows": {
+    "title": "流程",
+    "newFlow": "新建流程",
+    "loading": "加载流程中...",
+    "empty": "暂无流程。创建第一个流程开始。"
+  },
+  "flowEditor": {
+    "loading": "加载流程编辑器中...",
+    "run": "运行",
+    "running": "运行中...",
+    "selectNode": "选择一个节点进行编辑",
+    "breadcrumb": "流程",
+    "schedule": "调度",
+    "save": "保存"
+  },
+  "projectDetail": {
+    "title": "项目详情",
+    "close": "关闭",
+    "loading": "加载中...",
+    "noSkills": "暂无可用技能。",
+    "projectName": "项目名称",
+    "localPath": "本地路径",
+    "repoUrl": "仓库地址",
+    "flows": "流程数",
+    "runs": "运行数",
+    "updated": "更新时间",
+    "availableSkills": "可用技能"
   }
 }

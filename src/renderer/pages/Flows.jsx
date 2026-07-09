@@ -23,7 +23,7 @@ export default function Flows() {
           data-testid="new-flow-button"
           onClick={() => setShowModal(true)}
         >
-          + New Flow
+          + {t("flows.newFlow")}
         </button>
       </div>
 
@@ -36,7 +36,7 @@ export default function Flows() {
       )}
 
       {loading ? (
-        <p className="loading-text">Loading flows...</p>
+        <p className="loading-text">{t("flows.loading")}</p>
       ) : (
         <div className="flow-grid">
           {flows.map((flow) => (
@@ -44,7 +44,7 @@ export default function Flows() {
           ))}
           {flows.length === 0 && (
             <div className="empty-state">
-              <p>No flows yet. Create your first flow to get started.</p>
+              <p>{t("flows.empty")}</p>
             </div>
           )}
         </div>

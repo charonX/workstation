@@ -30,14 +30,14 @@ export default function FlowEditor() {
         setFlow(data);
       } catch (err) {
         if (cancelled) return;
-        setError(err.message || "Failed to load flow");
+        setError(err.message || t("common.loading"));
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
     load();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, t]);
 
   const handleAddNode = useCallback((type, name) => {
     if (canvasRef.current?.addNode) {
@@ -79,7 +79,7 @@ export default function FlowEditor() {
   if (loading) {
     return (
       <div className="flow-editor" data-testid="flow-editor-page">
-        <p className="loading-text">Loading flow editor...</p>
+        <p className="loading-text">{t("flowEditor.loading")}</p>
       </div>
     );
   }
@@ -103,22 +103,22 @@ export default function FlowEditor() {
         <div className="flow-editor-topbar-left">
           <div className="breadcrumb">
             <button className="breadcrumb-link" onClick={() => navigate("/flows")}>
-              Flows
+              {t("flowEditor.breadcrumb")}
             </button>
             <span className="breadcrumb-sep">/</span>
             <span className="breadcrumb-current">{flow?.name}</span>
           </div>
         </div>
         <div className="flow-editor-topbar-right">
-          <button className="btn btn-secondary">Schedule</button>
-          <button className="btn btn-secondary">Save</button>
+          <button className="btn btn-secondary">{t("flowEditor.schedule")}</button>
+          <button className="btn btn-secondary">{t("flowEditor.save")}</button>
           <button
             className="btn btn-primary"
             data-testid="run-flow-button"
             onClick={handleRun}
             disabled={running}
           >
-            {running ? "Running..." : "▶ Run"}
+            {running ? t("flowEditor.running") : `▶ ${t("flowEditor.run")}`}
           </button>
         </div>
       </header>
@@ -172,7 +172,7 @@ export default function FlowEditor() {
             </div>
           ) : (
             <div className="properties-placeholder">
-              Select a node to edit
+              {t("flowEditor.selectNode")}
             </div>
           )}
         </aside>

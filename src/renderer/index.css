@@ -785,6 +785,19 @@ body {
   border-top: 1px solid var(--ch-border);
 }
 
+/* Modal sizes */
+.modal--sm {
+  max-width: 400px;
+}
+
+.modal--md {
+  max-width: 520px;
+}
+
+.modal--lg {
+  max-width: 640px;
+}
+
 /* Icon button */
 .icon-btn {
   width: 32px;

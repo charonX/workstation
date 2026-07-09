@@ -74,67 +74,6 @@
   color: var(--ch-text-tertiary);
 }
 
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--ch-surface);
-  border: 1px solid var(--ch-border);
-  border-radius: var(--ch-radius-lg);
-  width: 480px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow: auto;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--ch-space-4);
-  border-bottom: 1px solid var(--ch-border);
-}
-
-.modal-title {
-  font-size: var(--ch-text-lg);
-  font-weight: var(--ch-weight-semibold);
-  margin: 0;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: var(--ch-text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-}
-
-.modal-close:hover {
-  color: var(--ch-text);
-}
-
-.modal-body {
-  padding: var(--ch-space-4);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--ch-space-3);
-  padding: var(--ch-space-4);
-  border-top: 1px solid var(--ch-border);
-}
-
 .form-error {
   color: var(--ch-error);
   font-size: var(--ch-text-sm);

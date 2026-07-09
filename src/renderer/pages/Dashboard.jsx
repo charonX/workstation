@@ -1,33 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useDashboard } from "../hooks/useDashboard.js";
+import StatusBadge from "../components/shared/StatusBadge.jsx";
 import "./Dashboard.css";
-
-function StatusBadge({ status }) {
-  const normalized = status?.toLowerCase() || "unknown";
-  let className = "status-badge";
-  let label = status || "Unknown";
-
-  if (normalized === "success" || normalized === "completed") {
-    className += " status-success";
-    label = "Success";
-  } else if (normalized === "running") {
-    className += " status-running";
-    label = "Running";
-  } else if (normalized === "error" || normalized === "failed") {
-    className += " status-error";
-    label = "Failed";
-  } else {
-    className += " status-success";
-  }
-
-  return (
-    <span className={className}>
-      <span className="status-dot" />
-      {label}
-    </span>
-  );
-}
 
 function StatCard({ testid, label, value }) {
   return (
