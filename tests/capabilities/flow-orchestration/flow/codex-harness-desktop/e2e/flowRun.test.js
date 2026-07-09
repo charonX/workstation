@@ -7,7 +7,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp");
-const { createProject } = require("../../../../../e2e/helpers/seed");
+const { createProject, createFlow, createExecution } = require("../../../../../e2e/helpers/seed");
 const locators = require("../../../../../e2e/helpers/locators");
 
 test.describe("Flow Run", () => {
@@ -15,6 +15,7 @@ test.describe("Flow Run", () => {
   let firstWindow;
   let apiBaseUrl;
   let userDataDir;
+  let seededProject;
 
   test.beforeEach(async () => {
     const ctx = await startElectronApp();
@@ -23,11 +24,9 @@ test.describe("Flow Run", () => {
     apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
 
-    // Seed a project so the flow creation form has a project to choose.
-    // TODO: HUMAN ASSERTION — verify project body matches API contract
-    await createProject(apiBaseUrl, {
+    seededProject = await createProject(apiBaseUrl, {
       name: "Flow Run Project",
-      localPath: "/tmp/opc-workspace/flow-run-project",
+      localPath: `${userDataDir}/workspace/flow-run-project`,
     });
   });
 
@@ -61,9 +60,10 @@ test.describe("Flow Run", () => {
     await expect(firstWindow.locator(locators.NODE_PALETTE)).toBeVisible();
     await expect(firstWindow.locator(locators.FLOW_CANVAS)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — confirm node categories expected in palette
-    await expect(firstWindow.getByText("Agent")).toBeVisible();
-    await expect(firstWindow.getByText("Logic")).toBeVisible();
+    // Node palette categories for MVP: Trigger, logic, loop
+    await expect(firstWindow.getByText("Trigger")).toBeVisible();
+    await expect(firstWindow.getByText("logic")).toBeVisible();
+    await expect(firstWindow.getByText("loop")).toBeVisible();
   });
 
   test("selecting a node shows properties panel", async () => {
@@ -76,7 +76,9 @@ test.describe("Flow Run", () => {
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Properties Test Flow" }).click();
     await expect(firstWindow.locator(locators.PROPERTIES_PANEL)).toContainText("Select a node to edit");
 
-    // TODO: HUMAN ASSERTION — confirm how to add a node (drag from palette or click)
+    // Add a node by clicking its category in the palette.
+    await firstWindow.getByText("logic").click();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
     await firstWindow.locator(locators.FLOW_NODE).first().click();
     await expect(firstWindow.locator(locators.PROPERTIES_PANEL)).not.toContainText("Select a node to edit");
     await expect(firstWindow.locator(locators.PROPERTIES_PANEL)).toBeVisible();
@@ -106,23 +108,37 @@ test.describe("Flow Run", () => {
     await firstWindow.click(locators.SUBMIT_FLOW_BUTTON);
 
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Zoom Test Flow" }).click();
-    await expect(firstWindow.locator(locators.FLOW_CANVAS)).toBeVisible();
+    const viewport = firstWindow.locator(".react-flow__viewport");
+    await expect(viewport).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — assert on a measurable side effect of zoom (e.g. transform scale)
+    const getScale = async () => {
+      const transform = await viewport.evaluate((el) => el.style.transform);
+      const match = transform.match(/scale\(([^)]+)\)/);
+      return match ? parseFloat(match[1]) : 1;
+    };
+
+    const initialScale = await getScale();
+
     await firstWindow.click(locators.ZOOM_IN_BUTTON);
+    const zoomedInScale = await getScale();
+    expect(zoomedInScale).toBeGreaterThan(initialScale);
+
     await firstWindow.click(locators.ZOOM_OUT_BUTTON);
+    const zoomedOutScale = await getScale();
+    expect(zoomedOutScale).toBeLessThan(zoomedInScale);
+
     await firstWindow.click(locators.ZOOM_RESET_BUTTON);
-    await expect(firstWindow.locator(locators.FLOW_CANVAS)).toBeVisible();
+    const resetScale = await getScale();
+    expect(resetScale).toBeCloseTo(initialScale, 1);
   });
 
   test("execution detail shows Logs / Variables / Output tabs", async () => {
-    // Seed a flow and execution via API to avoid setup clicks.
-    // TODO: HUMAN ASSERTION — verify bodies match API contract
+    // Seed a flow and execution via API so the detail view has data without UI setup.
     const flow = await createFlow(apiBaseUrl, {
       name: "Detail Flow",
-      projectId: "TODO", // TODO: HUMAN ASSERTION — use real project id from seeded project
+      projectId: seededProject.id,
     });
-    await createExecution(apiBaseUrl, { projectId: flow.projectId, flowId: flow.id });
+    await createExecution(apiBaseUrl, { projectId: seededProject.id, flowId: flow.id });
 
     await firstWindow.click(locators.TASKS_LINK);
     await firstWindow.click(locators.EXECUTIONS_TAB);

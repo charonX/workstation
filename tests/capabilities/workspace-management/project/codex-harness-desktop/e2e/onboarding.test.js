@@ -6,19 +6,33 @@
 // ASSERTIONS-SIGNED: false
 
 const { test, expect } = require("@playwright/test");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../e2e/fixtures/electronApp");
+const { installSkill } = require("../../../e2e/helpers/seed");
 const locators = require("../../../e2e/helpers/locators");
 
 test.describe("Onboarding", () => {
   let electronApp;
   let firstWindow;
+  let apiBaseUrl;
   let userDataDir;
 
   test.beforeEach(async () => {
     const ctx = await startElectronApp();
     electronApp = ctx.electronApp;
     firstWindow = ctx.firstWindow;
+    apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
+
+    // Seed a local skill fixture so Configure Skills has something to link.
+    const skillDir = path.join(userDataDir, "skills", "demo-skill");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      ["---", "name: demo-skill", "description: A demo skill for E2E tests", "---", "", "# Demo Skill"].join("\n")
+    );
+    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
   });
 
   test.afterEach(async () => {
@@ -29,15 +43,14 @@ test.describe("Onboarding", () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     await expect(firstWindow.locator(locators.SETTINGS_FORM)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — fill real paths for your local environment
-    await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, "/tmp/opc-workspace");
-    await firstWindow.fill(locators.SKILL_REPO_PATH_INPUT, "/tmp/opc-skills");
+    await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
+    await firstWindow.fill(locators.SKILL_REPO_PATH_INPUT, `${userDataDir}/skills`);
     await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
 
     // Expected: settings persisted and reflected in the form after reload
     await firstWindow.reload();
-    await expect(firstWindow.locator(locators.WORKSPACE_ROOT_INPUT)).toHaveValue("/tmp/opc-workspace");
-    await expect(firstWindow.locator(locators.SKILL_REPO_PATH_INPUT)).toHaveValue("/tmp/opc-skills");
+    await expect(firstWindow.locator(locators.WORKSPACE_ROOT_INPUT)).toHaveValue(`${userDataDir}/workspace`);
+    await expect(firstWindow.locator(locators.SKILL_REPO_PATH_INPUT)).toHaveValue(`${userDataDir}/skills`);
   });
 
   test("user can add a local project from Workspace", async () => {
@@ -45,9 +58,8 @@ test.describe("Onboarding", () => {
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — use a real temporary path
     await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Demo Project");
-    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, "/tmp/opc-workspace/demo");
+    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/demo-project`);
     await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
 
     // Expected: modal closes and project card appears
@@ -56,23 +68,21 @@ test.describe("Onboarding", () => {
   });
 
   test("user can configure skills in Project Detail", async () => {
-    // Seed a project via UI to keep the path realistic, or use API seeding if available.
-    // For this skeleton we assume a project card already exists from a previous step.
-    // TODO: HUMAN ASSERTION — decide whether to seed via UI or API in beforeEach
     await firstWindow.click(locators.WORKSPACE_LINK);
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
     await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Skill Test Project");
-    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, "/tmp/opc-workspace/skill-test");
+    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/skill-test-project`);
     await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
 
     const projectCard = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Skill Test Project" });
     await projectCard.locator(locators.CONFIGURE_SKILLS_BUTTON).click();
     await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — identify the skill name/label to link
-    const skillCheckbox = firstWindow.locator(locators.SKILL_LINK_CHECKBOX).first();
+    const skillCheckbox = firstWindow.locator(locators.SKILL_LINK_CHECKBOX).filter({ hasText: "demo-skill" });
     await skillCheckbox.check();
+    await expect(skillCheckbox).toBeChecked();
     await skillCheckbox.uncheck();
+    await expect(skillCheckbox).not.toBeChecked();
 
     // Expected: association state toggles without error
     await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();

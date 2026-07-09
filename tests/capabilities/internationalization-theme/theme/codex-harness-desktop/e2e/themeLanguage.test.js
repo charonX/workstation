@@ -54,16 +54,12 @@ test.describe("Theme and Language", () => {
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "zh-CN");
     await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "zh-CN");
-
-    // TODO: HUMAN ASSERTION — add a specific Chinese label expected in the UI
-    // await expect(firstWindow.getByText("工作区")).toBeVisible();
+    await expect(firstWindow.locator(locators.WORKSPACE_LINK)).toContainText("工作区");
 
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "en-US");
     await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "en-US");
-
-    // TODO: HUMAN ASSERTION — add a specific English label expected in the UI
-    // await expect(firstWindow.getByText("Workspace")).toBeVisible();
+    await expect(firstWindow.locator(locators.WORKSPACE_LINK)).toContainText("Workspace");
   });
 
   test("language preference persists after reload", async () => {

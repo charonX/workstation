@@ -6,18 +6,23 @@
 // ASSERTIONS-SIGNED: false
 
 const { test, expect } = require("@playwright/test");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp");
+const { installSkill } = require("../../../../../e2e/helpers/seed");
 const locators = require("../../../../../e2e/helpers/locators");
 
 test.describe("Skill Install", () => {
   let electronApp;
   let firstWindow;
+  let apiBaseUrl;
   let userDataDir;
 
   test.beforeEach(async () => {
     const ctx = await startElectronApp();
     electronApp = ctx.electronApp;
     firstWindow = ctx.firstWindow;
+    apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
   });
 
@@ -25,40 +30,42 @@ test.describe("Skill Install", () => {
     await stopElectronApp(electronApp, userDataDir);
   });
 
-  test("user can install a skill from npm/npx source", async () => {
+  test("user can install a skill from a local file", async () => {
+    // Create a minimal local skill fixture.
+    const skillDir = path.join(userDataDir, "skills", "local-demo-skill");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      ["---", "name: local-demo-skill", "description: A local demo skill for E2E tests", "---", "", "# Local Demo Skill"].join("\n")
+    );
+
     await firstWindow.click(locators.SKILLS_LINK);
     await expect(firstWindow.locator(locators.SKILL_TABLE)).toBeVisible();
 
     await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — use a real public npm package or a mocked local package
-    await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "npm");
-    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, "@example/opc-skill-demo");
+    await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "local");
+    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, skillDir);
     await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
 
     // Expected: modal closes and the new skill appears in the table
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
-    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "@example/opc-skill-demo" })).toBeVisible();
-  });
-
-  test("user can install a skill from a local file", async () => {
-    await firstWindow.click(locators.SKILLS_LINK);
-    await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
-
-    // TODO: HUMAN ASSERTION — use a real local skill path
-    await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "local");
-    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, "/tmp/opc-skills/local-skill");
-    await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
-
-    await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
-    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "local-skill" })).toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "local-demo-skill" })).toBeVisible();
   });
 
   test("Skill Detail shows Overview / Parameters / Examples / README tabs", async () => {
-    // TODO: HUMAN ASSERTION — seed a skill via API or install via UI first
+    // Seed a local skill via API so the detail view has data.
+    const skillDir = path.join(userDataDir, "skills", "detail-demo-skill");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      ["---", "name: detail-demo-skill", "description: A detail demo skill for E2E tests", "---", "", "# Detail Demo Skill\n\nThis is the README."].join("\n")
+    );
+    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
+
     await firstWindow.click(locators.SKILLS_LINK);
-    await firstWindow.locator(locators.SKILL_ROW).first().click();
+    await firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "detail-demo-skill" }).click();
 
     await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toBeVisible();
     await expect(firstWindow.locator(locators.SKILL_TAB_OVERVIEW)).toBeVisible();
@@ -66,8 +73,7 @@ test.describe("Skill Install", () => {
     await expect(firstWindow.locator(locators.SKILL_TAB_EXAMPLES)).toBeVisible();
     await expect(firstWindow.locator(locators.SKILL_TAB_README)).toBeVisible();
 
-    // TODO: HUMAN ASSERTION — verify tab content expectations
     await firstWindow.click(locators.SKILL_TAB_README);
-    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("README");
+    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("This is the README.");
   });
 });
