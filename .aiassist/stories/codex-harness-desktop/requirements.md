@@ -576,7 +576,7 @@
   - `PATCH /api/settings` → body `{language: "en-US" | "zh-CN"}`
   - CLI: `opc-workstation settings set --language <code>`
 - **测试类型**: CLI + HTTP API + E2E
-- **测试路径**: `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/`, `tests/capabilities/internationalization-theme/language/codex-harness-desktop/e2e/themeLanguage.spec.js`
+- **测试路径**: `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/`, `tests/capabilities/internationalization-theme/theme/codex-harness-desktop/e2e/themeLanguage.test.js`
 
 **验收标准**：
 - [ ] 支持 `zh-CN` / `en-US` 切换。
