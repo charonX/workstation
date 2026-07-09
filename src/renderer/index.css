@@ -112,6 +112,24 @@ body {
   margin: 0;
 }
 
+/* Density: compact mode reduces padding and gaps */
+[data-density="compact"] .page {
+  padding: var(--ch-space-3);
+}
+
+[data-density="compact"] .page h1 {
+  margin-bottom: var(--ch-space-2);
+}
+
+[data-density="compact"] .sidebar-nav {
+  padding: var(--ch-space-1);
+  gap: 0;
+}
+
+[data-density="compact"] .nav-link {
+  padding: var(--ch-space-1) var(--ch-space-2);
+}
+
 /* Loading screen */
 .loading-screen {
   display: flex;

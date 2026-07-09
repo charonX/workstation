@@ -12,10 +12,12 @@ function discoverApiBaseUrl() {
   // In preload, we can read process.argv.
   for (const arg of process.argv) {
     if (arg.startsWith("--opc-api-base-url=")) {
-      return arg.slice("--opc-api-base-url=".length);
+      const url = arg.slice("--opc-api-base-url=".length);
+      if (url) return url;
     }
     if (arg.startsWith("opc-api-base-url=")) {
-      return arg.slice("opc-api-base-url=".length);
+      const url = arg.slice("opc-api-base-url=".length);
+      if (url) return url;
     }
   }
 
@@ -24,7 +26,9 @@ function discoverApiBaseUrl() {
     return process.env.OPC_API_BASE_URL;
   }
 
-  // Ultimate fallback for development
+  // Ultimate fallback: localhost with a common dev port.
+  // This should only be reached during development if the main process
+  // argument passing fails; in production the argument is always present.
   return "http://127.0.0.1:3000";
 }
 

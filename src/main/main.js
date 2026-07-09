@@ -16,26 +16,49 @@ const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let serverCtx = null;
 let apiBaseUrl = null;
+let isCleaningUp = false;
+
+async function cleanupServer() {
+  if (isCleaningUp) return;
+  isCleaningUp = true;
+
+  if (serverCtx) {
+    await stopServer(serverCtx);
+    serverCtx = null;
+    apiBaseUrl = null;
+  }
+  unregisterServerRecord();
+}
 
 async function createWindow() {
+  // Guard: do not start multiple servers on macOS re-activate
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
+    return;
+  }
+
   const userData = app.getPath("userData");
 
   // Set DB_PATH before starting the HTTP server so each test run gets isolated data
   const dbPath = path.join(userData, "data.db");
   process.env.DB_PATH = dbPath;
 
-  // Start the HTTP server (do not reset data in production/test)
-  serverCtx = await startServer({ reset: false });
-  const { port, baseUrl } = serverCtx;
-  apiBaseUrl = baseUrl;
+  // Start the HTTP server only if not already running (guard against activate)
+  if (!serverCtx) {
+    serverCtx = await startServer({ reset: false });
+    const { port, baseUrl } = serverCtx;
+    apiBaseUrl = baseUrl;
 
-  // Write server.json into userData so E2E fixtures can discover the port
-  const serverJsonPath = path.join(userData, "server.json");
-  await fs.mkdir(userData, { recursive: true });
-  await fs.writeFile(serverJsonPath, JSON.stringify({ port, baseUrl }, null, 2));
+    // Write server.json into userData so E2E fixtures can discover the port
+    const serverJsonPath = path.join(userData, "server.json");
+    await fs.mkdir(userData, { recursive: true });
+    await fs.writeFile(serverJsonPath, JSON.stringify({ port, baseUrl }, null, 2));
 
-  // Register server record for CLI discovery
-  registerServerRecord(port, process.pid);
+    // Register server record for CLI discovery
+    registerServerRecord(port, process.pid);
+  }
+
+  const currentBaseUrl = apiBaseUrl;
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -47,7 +70,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      additionalArguments: [`--opc-api-base-url=${baseUrl}`],
+      additionalArguments: [`--opc-api-base-url=${currentBaseUrl}`],
     },
   });
 
@@ -69,12 +92,7 @@ async function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", async () => {
-  // Stop the HTTP server and unregister on window close
-  if (serverCtx) {
-    await stopServer(serverCtx);
-    serverCtx = null;
-  }
-  unregisterServerRecord();
+  await cleanupServer();
 
   if (process.platform !== "darwin") {
     app.quit();
@@ -88,9 +106,5 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", async () => {
-  if (serverCtx) {
-    await stopServer(serverCtx);
-    serverCtx = null;
-  }
-  unregisterServerRecord();
+  await cleanupServer();
 });
