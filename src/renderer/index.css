@@ -1,0 +1,124 @@
+/* Global styles using design tokens */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--ch-font-sans);
+  font-size: var(--ch-text-base);
+  line-height: var(--ch-leading-normal);
+  background: var(--ch-bg);
+  color: var(--ch-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* App layout */
+.app-layout {
+  display: grid;
+  grid-template-columns: var(--ch-sidebar-width) 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--ch-panel-padding);
+}
+
+/* Sidebar */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--ch-surface);
+  border-right: 1px solid var(--ch-border);
+  height: 100vh;
+}
+
+.sidebar-header {
+  padding: var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.sidebar-logo {
+  font-size: var(--ch-text-lg);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ch-space-2);
+  gap: var(--ch-space-1);
+}
+
+.nav-link {
+  display: block;
+  padding: var(--ch-space-2) var(--ch-space-3);
+  color: var(--ch-text-secondary);
+  text-decoration: none;
+  border-radius: var(--ch-radius-md);
+  font-size: var(--ch-text-base);
+  font-weight: var(--ch-weight-medium);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-link:hover {
+  background: var(--ch-surface-high);
+  color: var(--ch-text);
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ch-topbar-height);
+  padding: 0 var(--ch-panel-padding);
+  background: var(--ch-surface);
+  border-bottom: 1px solid var(--ch-border);
+  flex-shrink: 0;
+}
+
+/* Page */
+.page {
+  max-width: 1200px;
+}
+
+.page h1 {
+  font-size: var(--ch-text-xl);
+  font-weight: var(--ch-weight-semibold);
+  margin: 0 0 var(--ch-space-4) 0;
+  color: var(--ch-text);
+}
+
+.page p {
+  color: var(--ch-text-secondary);
+  margin: 0;
+}
+
+/* Loading screen */
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--ch-bg);
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-md);
+}
