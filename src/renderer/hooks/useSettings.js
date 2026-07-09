@@ -31,23 +31,27 @@ export function useSettings() {
   }, []);
 
   const updateSettings = useCallback(async (partial) => {
-    const updated = await apiUpdateSettings(partial);
-    setSettings(updated);
-    applyToDocument(updated);
-    return updated;
-  }, []);
+    try {
+      const updated = await apiUpdateSettings(partial);
+      setSettings(updated);
+      applyToDocument(updated, settings?.language);
+      return updated;
+    } catch (err) {
+      throw new Error(err.message || "Failed to update settings");
+    }
+  }, [settings?.language]);
 
   return [settings, updateSettings, loading, error];
 }
 
-function applyToDocument(data) {
+function applyToDocument(data, previousLanguage) {
   if (data.theme) {
     document.documentElement.setAttribute("data-theme", data.theme);
   }
   if (data.density) {
     document.documentElement.setAttribute("data-density", data.density);
   }
-  if (data.language) {
+  if (data.language && data.language !== previousLanguage) {
     document.documentElement.setAttribute("lang", data.language);
     changeLanguage(data.language);
   }

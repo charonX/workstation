@@ -5,7 +5,8 @@
     "flows": "流程",
     "tasks": "任务",
     "skills": "技能",
-    "settings": "设置"
+    "settings": "设置",
+    "system": "系统"
   },
   "settings": {
     "title": "设置",
@@ -27,6 +28,8 @@
     "compact": "紧凑",
     "comfortable": "舒适",
     "dark": "深色",
-    "light": "浅色"
+    "light": "浅色",
+    "english": "English",
+    "chinese": "中文"
   }
 }

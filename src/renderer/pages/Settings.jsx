@@ -2,17 +2,20 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../hooks/useSettings.js";
 
+const DEFAULT_FORM = {
+  workspaceRoot: "",
+  skillRepoPath: "",
+  theme: "dark",
+  language: "en-US",
+  density: "comfortable",
+};
+
 export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, loading] = useSettings();
-  const [form, setForm] = useState({
-    workspaceRoot: "",
-    skillRepoPath: "",
-    theme: "dark",
-    language: "en-US",
-    density: "comfortable",
-  });
+  const [form, setForm] = useState({ ...DEFAULT_FORM });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   useEffect(() => {
     if (settings) {
@@ -23,12 +26,14 @@ export default function Settings() {
         language: settings.language || "en-US",
         density: settings.density || "comfortable",
       });
+      setSaveError(null);
     }
   }, [settings]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     try {
       await updateSettings({
         workspaceRoot: form.workspaceRoot,
@@ -37,6 +42,8 @@ export default function Settings() {
         language: form.language,
         density: form.density,
       });
+    } catch (err) {
+      setSaveError(err.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -44,6 +51,7 @@ export default function Settings() {
 
   function handleChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setSaveError(null);
   }
 
   if (loading) {
@@ -68,6 +76,14 @@ export default function Settings() {
           {saving ? "Saving..." : t("settings.saveChanges")}
         </button>
       </div>
+
+      {saveError && (
+        <div className="card" style={{ marginBottom: "var(--ch-space-4)", borderColor: "var(--ch-error)" }}>
+          <div className="card-body" style={{ color: "var(--ch-error)" }}>
+            {saveError}
+          </div>
+        </div>
+      )}
 
       <form id="settings-form" data-testid="settings-form" onSubmit={handleSubmit}>
         <div className="settings-grid">
@@ -143,8 +159,8 @@ export default function Settings() {
                     value={form.language}
                     onChange={(e) => handleChange("language", e.target.value)}
                   >
-                    <option value="en-US">English</option>
-                    <option value="zh-CN">中文</option>
+                    <option value="en-US">{t("settings.english")}</option>
+                    <option value="zh-CN">{t("settings.chinese")}</option>
                   </select>
                 </div>
 

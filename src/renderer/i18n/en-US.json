@@ -5,7 +5,8 @@
     "flows": "Flows",
     "tasks": "Tasks",
     "skills": "Skills",
-    "settings": "Settings"
+    "settings": "Settings",
+    "system": "System"
   },
   "settings": {
     "title": "Settings",
@@ -27,6 +28,8 @@
     "compact": "Compact",
     "comfortable": "Comfortable",
     "dark": "Dark",
-    "light": "Light"
+    "light": "Light",
+    "english": "English",
+    "chinese": "中文"
   }
 }

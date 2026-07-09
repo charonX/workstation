@@ -300,10 +300,6 @@ body {
   font-size: var(--ch-text-md);
 }
 
-.loading-text {
-  color: var(--ch-text-secondary);
-}
-
 /* Density: compact mode reduces padding and gaps */
 [data-density="compact"] .app-content {
   padding: var(--ch-space-3);

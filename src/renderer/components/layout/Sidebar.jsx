@@ -1,9 +1,22 @@
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
+function NavLink({ to, testid, children }) {
+  const location = useLocation();
+  const isActive = location.pathname === to || (to !== "/" && location.pathname.startsWith(to));
+  return (
+    <Link
+      to={to}
+      className={`nav-link${isActive ? " active" : ""}`}
+      data-testid={testid}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export default function Sidebar() {
   const { t } = useTranslation();
-  const location = useLocation();
 
   return (
     <aside className="sidebar" data-testid="sidebar">
@@ -19,24 +32,11 @@ export default function Sidebar() {
           <NavLink to="/tasks" testid="nav-tasks">{t("nav.tasks")}</NavLink>
         </div>
         <div className="nav-group">
-          <div className="nav-label">System</div>
+          <div className="nav-label">{t("nav.system")}</div>
           <NavLink to="/skills" testid="nav-skills">{t("nav.skills")}</NavLink>
           <NavLink to="/settings" testid="nav-settings">{t("nav.settings")}</NavLink>
         </div>
       </nav>
     </aside>
   );
-
-  function NavLink({ to, testid, children }) {
-    const isActive = location.pathname === to || (to !== "/" && location.pathname.startsWith(to));
-    return (
-      <Link
-        to={to}
-        className={`nav-link${isActive ? " active" : ""}`}
-        data-testid={testid}
-      >
-        {children}
-      </Link>
-    );
-  }
 }
