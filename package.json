@@ -6,13 +6,13 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "node --test tests/capabilities/**/api/*.test.js tests/capabilities/**/cli/*.test.js",
-    "test:e2e": "playwright test",
+    "test:unit": "npm run rebuild:node && node --test tests/capabilities/**/api/*.test.js tests/capabilities/**/cli/*.test.js",
+    "test:e2e": "npm run rebuild:electron && playwright test",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m better-sqlite3"
+    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m node_modules/better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -33,6 +33,7 @@
     "@electron-forge/maker-zip": "^7.8.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
     "@electron-forge/plugin-vite": "^7.8.0",
+    "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.51.0",
     "@vitejs/plugin-react": "^6.0.3",
     "electron": "^43.0.0",

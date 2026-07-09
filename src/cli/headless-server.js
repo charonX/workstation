@@ -13,6 +13,21 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("exit", cleanup);
 
+// Exit when the parent/owner process goes away so headless servers do not
+// accumulate across test runs.
+function watchOwner() {
+  if (!owner) return;
+  const interval = setInterval(() => {
+    try {
+      process.kill(Number(owner), 0);
+    } catch {
+      clearInterval(interval);
+      shutdown();
+    }
+  }, 3000);
+}
+watchOwner();
+
 function shutdown() {
   cleanup();
   ctx.server.close(() => process.exit(0));

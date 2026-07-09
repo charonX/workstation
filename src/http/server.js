@@ -45,6 +45,16 @@ export function stopServer({ server }) {
 }
 
 async function handleRequest(req, res) {
+  // CORS: allow renderer loaded from Vite dev server to call the local API.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    return res.end();
+  }
+
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathParts = url.pathname.replace(/^\/api\//, "").split("/").filter(Boolean);
   const resource = pathParts[0];

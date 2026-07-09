@@ -6,7 +6,7 @@ import "./ProjectDetailModal.css";
 
 export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("skills");
   const [detail, loading, error, toggleSkill] = useProjectDetail(projectId);
 
   if (!isOpen) return null;

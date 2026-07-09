@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../hooks/useSettings.js";
 
@@ -14,18 +14,23 @@ export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, loading] = useSettings();
   const [form, setForm] = useState({ ...DEFAULT_FORM });
+  const formRef = useRef(form);
+  const initializedRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
   useEffect(() => {
-    if (settings) {
-      setForm({
+    if (settings && !initializedRef.current) {
+      const next = {
         workspaceRoot: settings.workspaceRoot || "",
         skillRepoPath: settings.skillRepoPath || "",
         theme: settings.theme || "dark",
         language: settings.language || "en-US",
         density: settings.density || "comfortable",
-      });
+      };
+      setForm(next);
+      formRef.current = next;
+      initializedRef.current = true;
       setSaveError(null);
     }
   }, [settings]);
@@ -35,12 +40,13 @@ export default function Settings() {
     setSaving(true);
     setSaveError(null);
     try {
+      const current = formRef.current;
       await updateSettings({
-        workspaceRoot: form.workspaceRoot,
-        skillRepoPath: form.skillRepoPath,
-        theme: form.theme,
-        language: form.language,
-        density: form.density,
+        workspaceRoot: current.workspaceRoot,
+        skillRepoPath: current.skillRepoPath,
+        theme: current.theme,
+        language: current.language,
+        density: current.density,
       });
     } catch (err) {
       setSaveError(err.message || "Failed to save settings");
@@ -50,7 +56,11 @@ export default function Settings() {
   }
 
   function handleChange(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      formRef.current = next;
+      return next;
+    });
     setSaveError(null);
   }
 

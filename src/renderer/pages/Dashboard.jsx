@@ -42,9 +42,7 @@ function RecentExecutionsPanel({ executions }) {
                 {execution.flowName || t("dashboard.unknownFlow")}
               </span>
               <span className="list-meta">
-                {execution.projectName
-                  ? `${execution.projectName} · ${execution.status}`
-                  : execution.status}
+                {execution.status}
                 {execution.time ? ` · ${execution.time}` : ""}
               </span>
             </div>

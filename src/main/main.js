@@ -1,9 +1,8 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import { startServer, stopServer } from "../http/server.js";
-import { registerServerRecord, unregisterServerRecord } from "../cli/server.js";
 
 // Handle squirrel startup events (Windows installer)
 if (process.platform === "win32" && (await import("electron-squirrel-startup")).default) {
@@ -12,6 +11,27 @@ if (process.platform === "win32" && (await import("electron-squirrel-startup")).
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Isolate per-app settings and DB before any service modules are imported,
+// so that settingsService and the SQLite DB use the correct paths.
+const userData = app.getPath("userData");
+process.env.OPC_WORKSTATION_CONFIG_DIR = userData;
+process.env.DB_PATH = path.join(userData, "data.db");
+
+const { startServer, stopServer } = await import("../http/server.js");
+const { registerServerRecord, unregisterServerRecord } = await import("../cli/server.js");
+
+function resolvePreloadPath() {
+  const candidates = [
+    path.join(__dirname, "../preload/preload.js"), // source layout
+    path.join(__dirname, "preload.js"),            // built layout
+  ];
+  for (const candidate of candidates) {
+    if (fsSync.existsSync(candidate)) return candidate;
+  }
+  // Fallback to source layout; Electron will report the missing file clearly.
+  return candidates[0];
+}
 
 let mainWindow = null;
 let serverCtx = null;
@@ -37,16 +57,11 @@ async function createWindow() {
     return;
   }
 
-  const userData = app.getPath("userData");
-
-  // Set DB_PATH before starting the HTTP server so each test run gets isolated data
-  const dbPath = path.join(userData, "data.db");
-  process.env.DB_PATH = dbPath;
-
   // Start the HTTP server only if not already running (guard against activate)
   if (!serverCtx) {
     serverCtx = await startServer({ reset: false });
-    const { port, baseUrl } = serverCtx;
+    const { server, baseUrl } = serverCtx;
+    const { port } = server.address();
     apiBaseUrl = baseUrl;
 
     // Write server.json into userData so E2E fixtures can discover the port
@@ -59,6 +74,7 @@ async function createWindow() {
   }
 
   const currentBaseUrl = apiBaseUrl;
+  process.env.OPC_API_BASE_URL = currentBaseUrl;
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -66,7 +82,7 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: resolvePreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

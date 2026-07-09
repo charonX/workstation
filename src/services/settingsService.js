@@ -2,7 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const configDir = path.join(os.homedir(), ".opc-workstation");
+function resolveConfigDir() {
+  if (process.env.OPC_WORKSTATION_CONFIG_DIR) {
+    return process.env.OPC_WORKSTATION_CONFIG_DIR;
+  }
+  return path.join(os.homedir(), ".opc-workstation");
+}
+
+const configDir = resolveConfigDir();
 const settingsFile = path.join(configDir, "settings.json");
 
 const defaults = {

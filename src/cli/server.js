@@ -57,20 +57,30 @@ function isProcessAlive(pid) {
 export async function discoverServer() {
   const owner = getOwner();
   const records = readServerInfoRaw();
+  const kept = [];
+  let match = null;
   for (const info of records) {
-    if (info.owner !== owner) continue;
-    if (!info.port || !info.pid) continue;
-    if (!isProcessAlive(info.pid)) continue;
+    if (!info.port || !info.pid || !isProcessAlive(info.pid)) {
+      continue;
+    }
     try {
       const res = await fetch(`http://127.0.0.1:${info.port}/api/settings`, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        return { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
+      if (!res.ok) {
+        continue;
+      }
+      kept.push(info);
+      if (!match && info.owner === owner) {
+        match = { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
       }
     } catch {
       // Server not reachable.
     }
   }
-  return null;
+  // Prune stale records so the registry does not grow unbounded.
+  if (kept.length !== records.length) {
+    writeServerInfo(kept);
+  }
+  return match;
 }
 
 export async function startHeadlessServer() {
@@ -82,14 +92,17 @@ export async function startHeadlessServer() {
     const serverScript = path.resolve(__dirname, "headless-server.js");
     const child = spawn(process.execPath, [serverScript], {
       detached: true,
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, OPC_SERVER_OWNER: String(owner) }
     });
+
+    let stderr = "";
+    child.stderr.on("data", (data) => { stderr += data; });
 
     child.unref();
 
     const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for headless server to start"));
+      reject(new Error(`Timed out waiting for headless server to start. stderr: ${stderr}`));
     }, 8000);
 
     const check = async () => {

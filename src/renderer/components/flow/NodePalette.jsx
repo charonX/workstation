@@ -2,7 +2,7 @@ const NODE_CATEGORIES = [
   {
     label: "Trigger",
     items: [
-      { type: "trigger", name: "Trigger", icon: "⏱" },
+      { type: "trigger", name: "Manual", icon: "⏱" },
     ],
   },
   {
@@ -40,7 +40,24 @@ export default function NodePalette({ onAddNode }) {
       <h2 className="palette-title">Nodes</h2>
       {NODE_CATEGORIES.map((category) => (
         <div className="palette-group" key={category.label}>
-          <div className="palette-label">{category.label}</div>
+          <div
+            className="palette-label"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              const item = category.items[0];
+              if (item) onAddNode(item.type, item.name);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const item = category.items[0];
+                if (item) onAddNode(item.type, item.name);
+              }
+            }}
+          >
+            {category.label}
+          </div>
           {category.items.map((item) => (
             <div
               key={item.type}
@@ -48,6 +65,12 @@ export default function NodePalette({ onAddNode }) {
               onClick={() => onAddNode(item.type, item.name)}
               role="button"
               tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onAddNode(item.type, item.name);
+                }
+              }}
             >
               <span className="palette-icon">{item.icon}</span>
               <span className="palette-text">{item.name}</span>

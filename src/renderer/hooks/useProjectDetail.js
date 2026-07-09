@@ -30,11 +30,28 @@ export function useProjectDetail(projectId) {
 
   const toggleSkill = useCallback(async (skillId, linked) => {
     if (!projectId) return;
+    // Optimistically flip the local skill link so controlled checkboxes
+    // respond immediately to user interaction.
+    setDetail((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        skills: prev.skills.map((s) => (s.id === skillId ? { ...s, linked } : s)),
+      };
+    });
     try {
       const updated = await updateProjectSkills(projectId, skillId, linked);
       setDetail(updated);
       return updated;
     } catch (err) {
+      // Revert optimistic update on failure.
+      setDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          skills: prev.skills.map((s) => (s.id === skillId ? { ...s, linked: !linked } : s)),
+        };
+      });
       throw new Error(err.message || "Failed to update skill link");
     }
   }, [projectId]);

@@ -39,3 +39,8 @@ out/
 .gstack/
 .gstack/
 .codegraph/
+
+# Test / coverage artifacts
+test-results/
+playwright-report/
+coverage/

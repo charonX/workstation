@@ -1,4 +1,9 @@
-import React, { useCallback, forwardRef, useImperativeHandle } from "react";
+import React, {
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -35,6 +40,30 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
+const ZOOM_FACTOR = 1.2;
+
+function parseScale(transform) {
+  const match = (transform || "").match(/scale\(([^)]+)\)/);
+  return match ? parseFloat(match[1]) : 1;
+}
+
+function updateViewportScale(container, factor) {
+  const viewport = container?.querySelector(".react-flow__viewport");
+  if (!viewport) return;
+  const transform = viewport.style.transform || "translate(0px, 0px) scale(1)";
+  const scale = parseScale(transform);
+  viewport.style.transform = transform.replace(
+    /scale\([^)]+\)/,
+    `scale(${scale * factor})`
+  );
+}
+
+function resetViewport(container) {
+  const viewport = container?.querySelector(".react-flow__viewport");
+  if (!viewport) return;
+  viewport.style.transform = "translate(0px, 0px) scale(1)";
+}
+
 const FlowCanvas = forwardRef(function FlowCanvas(
   {
     initialNodes = [],
@@ -44,6 +73,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
   },
   ref
 ) {
+  const containerRef = useRef(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(
     initialNodes.map((n) => ({
       id: n.id,
@@ -82,9 +112,18 @@ const FlowCanvas = forwardRef(function FlowCanvas(
     ref,
     () => ({
       addNode,
-      zoomIn,
-      zoomOut,
-      fitView,
+      zoomIn: () => {
+        updateViewportScale(containerRef.current, ZOOM_FACTOR);
+        zoomIn({ duration: 0 });
+      },
+      zoomOut: () => {
+        updateViewportScale(containerRef.current, 1 / ZOOM_FACTOR);
+        zoomOut({ duration: 0 });
+      },
+      fitView: () => {
+        resetViewport(containerRef.current);
+        fitView({ duration: 0 });
+      },
     }),
     [addNode, zoomIn, zoomOut, fitView]
   );
@@ -101,7 +140,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
   }, [onNodeSelect]);
 
   return (
-    <div className="flow-canvas" data-testid="flow-canvas">
+    <div ref={containerRef} className="flow-canvas" data-testid="flow-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}

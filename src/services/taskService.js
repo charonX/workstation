@@ -124,6 +124,16 @@ export function createTask({ projectId, flowId, trigger }) {
     JSON.stringify(execution.iterations),
     JSON.stringify(execution.logs)
   );
+  // Placeholder: auto-complete executions until a real flow engine is wired in.
+  setImmediate(() => {
+    completeExecution(execution.id, {
+      duration: 0,
+      nodesRun: 0,
+      output: null,
+      branchPath: [],
+      iterations: []
+    });
+  });
   return { ...execution };
 }
 

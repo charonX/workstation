@@ -1,4 +1,6 @@
 import { getDb, resetDb } from "../db.js";
+import fs from "node:fs";
+import path from "node:path";
 
 export function resetSkills(seed = []) {
   resetDb();
@@ -43,6 +45,26 @@ function rowToSkill(row) {
   };
 }
 
+function parseSkillMarkdown(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!match) {
+      return { frontmatter: {}, body: content.trim() };
+    }
+    const frontmatter = {};
+    for (const line of match[1].split("\n")) {
+      const idx = line.indexOf(":");
+      if (idx > 0) {
+        frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      }
+    }
+    return { frontmatter, body: match[2].trim() };
+  } catch {
+    return { frontmatter: {}, body: "" };
+  }
+}
+
 export function createSkill(skill) {
   const db = getDb();
   const id = skill.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -81,6 +103,7 @@ export function getSkillDetail(skillId) {
     version: row.version,
     category: row.category,
     author: row.author,
+    installSource: row.installSource,
     tags: JSON.parse(row.tags || "[]"),
     parameters: JSON.parse(row.parameters || "[]"),
     examples: JSON.parse(row.examples || "[]"),
@@ -96,8 +119,8 @@ export function installSkill({ source, identifier }) {
   let id;
 
   if (source === "local") {
-    name = identifier.split("/").pop();
     repoPath = identifier;
+    name = path.basename(identifier);
     id = `local-${name}-${Date.now()}`;
   } else {
     // npm or plugin
@@ -106,19 +129,23 @@ export function installSkill({ source, identifier }) {
     id = `${source}-${name}-${Date.now()}`;
   }
 
-  const insertSkill = db.prepare(`
-    INSERT INTO skills (id, name, repoPath, version, installSource)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  insertSkill.run(id, name, repoPath, null, source);
+  let description = null;
+  let readme = null;
+  const skillFilePath = source === "local" ? path.join(identifier, "SKILL.md") : null;
+  if (skillFilePath && fs.existsSync(skillFilePath)) {
+    const parsed = parseSkillMarkdown(skillFilePath);
+    name = parsed.frontmatter.name || name;
+    description = parsed.frontmatter.description || null;
+    readme = parsed.body || null;
+  }
 
-  return {
-    id,
-    name,
-    repoPath,
-    version: null,
-    installSource: source
-  };
+  const insertSkill = db.prepare(`
+    INSERT INTO skills (id, name, description, repoPath, version, installSource, readme)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  insertSkill.run(id, name, description, repoPath, null, source, readme);
+
+  return getSkillDetail(id);
 }
 
 export function listSkills() {
