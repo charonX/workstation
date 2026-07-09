@@ -8,6 +8,11 @@
     "settings": "Settings",
     "system": "System"
   },
+  "common": {
+    "loading": "Loading...",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
   "settings": {
     "title": "Settings",
     "saveChanges": "Save Changes",
@@ -31,5 +36,70 @@
     "light": "Light",
     "english": "English",
     "chinese": "中文"
+  },
+  "skills": {
+    "title": "Skills",
+    "skill": "Skill",
+    "repoPath": "Repository Path",
+    "version": "Version",
+    "category": "Category",
+    "view": "View",
+    "noSkills": "No skills installed yet.",
+    "loading": "Loading skills...",
+    "loadingDetail": "Loading skill detail...",
+    "countSuffix": "skills in repository",
+    "installSkill": "Install Skill",
+    "installing": "Installing...",
+    "installSource": "Install Source",
+    "identifier": "Package / Plugin / Path",
+    "identifierPlaceholder": "e.g. @anthropic/skill-content-writer",
+    "identifierHelp": "For npm packages, the app will install it into the Skill Repository.",
+    "installError": "Failed to install skill. Please check the identifier and try again.",
+    "overview": "Overview",
+    "parameters": "Parameters",
+    "examples": "Examples",
+    "readme": "README",
+    "author": "Author",
+    "tags": "Tags",
+    "paramName": "Name",
+    "paramType": "Type",
+    "paramDesc": "Description",
+    "noParameters": "No parameters defined for this skill.",
+    "noExamples": "No examples available.",
+    "noReadme": "No README available for this skill."
+  },
+  "dashboard": {
+    "projects": "Projects",
+    "activeSchedules": "Active Schedules",
+    "recentRuns": "Recent Runs",
+    "successRate": "Success Rate",
+    "recentExecutions": "Recent Executions",
+    "quickProjects": "Quick Projects",
+    "noExecutions": "No recent executions.",
+    "noProjects": "No projects yet.",
+    "unknownFlow": "Unknown Flow",
+    "loading": "Loading dashboard..."
+  },
+  "tasks": {
+    "tabTasks": "Tasks",
+    "tabExecutions": "Executions",
+    "tasksPlaceholder": "Task definitions will be shown here."
+  },
+  "execution": {
+    "flow": "Flow",
+    "project": "Project",
+    "trigger": "Trigger",
+    "status": "Status",
+    "startedAt": "Started At",
+    "duration": "Duration",
+    "noExecutions": "No executions yet.",
+    "detailTitle": "Execution",
+    "selectExecution": "Select an execution to view details.",
+    "logs": "Logs",
+    "variables": "Variables",
+    "output": "Output",
+    "noLogs": "No logs available.",
+    "noVariables": "No variables available.",
+    "noOutput": "No output available."
   }
 }
