@@ -1,0 +1,32 @@
+{
+  "nav": {
+    "dashboard": "概览",
+    "workspace": "工作区",
+    "flows": "流程",
+    "tasks": "任务",
+    "skills": "技能",
+    "settings": "设置"
+  },
+  "settings": {
+    "title": "设置",
+    "saveChanges": "保存更改",
+    "workspace": "工作区",
+    "workspaceSubtitle": "配置项目和技能存储位置",
+    "workspaceRoot": "工作区根目录",
+    "workspaceRootHelp": "所有项目将被克隆或链接到此目录下。",
+    "skillRepoPath": "技能仓库路径",
+    "skillRepoPathHelp": "集中式技能仓库位置；应用从此处读取可用技能。",
+    "appearance": "外观",
+    "appearanceSubtitle": "界面主题和显示偏好",
+    "theme": "主题",
+    "density": "密度",
+    "language": "语言",
+    "about": "关于",
+    "version": "版本",
+    "dataDirectory": "数据目录",
+    "compact": "紧凑",
+    "comfortable": "舒适",
+    "dark": "深色",
+    "light": "浅色"
+  }
+}

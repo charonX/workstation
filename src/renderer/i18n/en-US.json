@@ -1,0 +1,32 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "workspace": "Workspace",
+    "flows": "Flows",
+    "tasks": "Tasks",
+    "skills": "Skills",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "saveChanges": "Save Changes",
+    "workspace": "Workspace",
+    "workspaceSubtitle": "Configure project and skill storage locations",
+    "workspaceRoot": "Workspace Root Directory",
+    "workspaceRootHelp": "All projects will be cloned or linked under this directory.",
+    "skillRepoPath": "Skill Repository Path",
+    "skillRepoPathHelp": "Centralized skill repository location; the app reads available skills from here.",
+    "appearance": "Appearance",
+    "appearanceSubtitle": "Interface theme and display preferences",
+    "theme": "Theme",
+    "density": "Density",
+    "language": "Language",
+    "about": "About",
+    "version": "Version",
+    "dataDirectory": "Data Directory",
+    "compact": "Compact",
+    "comfortable": "Comfortable",
+    "dark": "Dark",
+    "light": "Light"
+  }
+}
