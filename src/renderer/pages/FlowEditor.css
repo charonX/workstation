@@ -1,9 +1,11 @@
+/* Ensure the flow editor is positioned relative for absolute children */
 .flow-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .flow-editor-topbar {

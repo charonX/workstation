@@ -5,6 +5,7 @@ import { getFlow } from "../api/flows.js";
 import { createExecution } from "../api/executions.js";
 import NodePalette from "../components/flow/NodePalette.jsx";
 import FlowCanvas from "../components/flow/FlowCanvas.jsx";
+import { ReactFlowProvider } from "reactflow";
 import "./FlowEditor.css";
 
 export default function FlowEditor() {
@@ -57,6 +58,24 @@ export default function FlowEditor() {
     }
   }, [flow]);
 
+  const handleZoomIn = useCallback(() => {
+    if (canvasRef.current?.zoomIn) {
+      canvasRef.current.zoomIn();
+    }
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    if (canvasRef.current?.zoomOut) {
+      canvasRef.current.zoomOut();
+    }
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    if (canvasRef.current?.fitView) {
+      canvasRef.current.fitView();
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="flow-editor" data-testid="flow-editor-page">
@@ -108,14 +127,16 @@ export default function FlowEditor() {
         {/* Node Palette */}
         <NodePalette onAddNode={handleAddNode} />
 
-        {/* Canvas */}
-        <FlowCanvas
-          ref={canvasRef}
-          initialNodes={flow?.nodeList || []}
-          initialEdges={flow?.edges || []}
-          onNodeSelect={setSelectedNode}
-          selectedNode={selectedNode}
-        />
+        {/* Canvas - wrapped in ReactFlowProvider for useReactFlow hook */}
+        <ReactFlowProvider>
+          <FlowCanvas
+            ref={canvasRef}
+            initialNodes={flow?.nodeList || []}
+            initialEdges={flow?.edges || []}
+            onNodeSelect={setSelectedNode}
+            selectedNode={selectedNode}
+          />
+        </ReactFlowProvider>
 
         {/* Properties Panel */}
         <aside className="properties-panel" data-testid="properties-panel">
@@ -157,15 +178,15 @@ export default function FlowEditor() {
         </aside>
       </div>
 
-      {/* Zoom controls overlay with test ids */}
+      {/* Zoom controls overlay with test ids - wired to React Flow */}
       <div className="zoom-controls-overlay">
-        <button className="zoom-btn" data-testid="zoom-in-button" title="Zoom In">
+        <button className="zoom-btn" data-testid="zoom-in-button" title="Zoom In" onClick={handleZoomIn}>
           +
         </button>
-        <button className="zoom-btn" data-testid="zoom-out-button" title="Zoom Out">
+        <button className="zoom-btn" data-testid="zoom-out-button" title="Zoom Out" onClick={handleZoomOut}>
           −
         </button>
-        <button className="zoom-btn" data-testid="zoom-reset-button" title="Reset Zoom">
+        <button className="zoom-btn" data-testid="zoom-reset-button" title="Reset Zoom" onClick={handleZoomReset}>
           ⊘
         </button>
       </div>

@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, forwardRef, useImperativeHandle } from "react";
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   Handle,
   Position,
 } from "reactflow";
@@ -34,13 +35,15 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
-export default function FlowCanvas({
-  initialNodes = [],
-  initialEdges = [],
-  onNodeSelect,
-  selectedNode,
-  zoomControlsRef,
-}) {
+const FlowCanvas = forwardRef(function FlowCanvas(
+  {
+    initialNodes = [],
+    initialEdges = [],
+    onNodeSelect,
+    selectedNode,
+  },
+  ref
+) {
   const [nodes, setNodes, onNodesChange] = useNodesState(
     initialNodes.map((n) => ({
       id: n.id,
@@ -57,7 +60,8 @@ export default function FlowCanvas({
     }))
   );
 
-  // Expose addNode method via a ref-like callback
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+
   const addNode = useCallback(
     (type, name, icon = "◆") => {
       const id = `node-${Date.now()}`;
@@ -73,25 +77,28 @@ export default function FlowCanvas({
     [setNodes]
   );
 
-  // Expose addNode to parent via callback ref
-  React.useImperativeHandle(
-    zoomControlsRef,
+  // Expose methods to parent via ref
+  useImperativeHandle(
+    ref,
     () => ({
       addNode,
+      zoomIn,
+      zoomOut,
+      fitView,
     }),
-    [addNode]
+    [addNode, zoomIn, zoomOut, fitView]
   );
 
-  const onSelectionChange = useCallback(
-    ({ nodes: selectedNodes }) => {
-      if (selectedNodes.length > 0) {
-        onNodeSelect(selectedNodes[0]);
-      } else {
-        onNodeSelect(null);
-      }
+  const handleNodeClick = useCallback(
+    (_event, node) => {
+      onNodeSelect(node);
     },
     [onNodeSelect]
   );
+
+  const handlePaneClick = useCallback(() => {
+    onNodeSelect(null);
+  }, [onNodeSelect]);
 
   return (
     <div className="flow-canvas" data-testid="flow-canvas">
@@ -100,20 +107,22 @@ export default function FlowCanvas({
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onSelectionChange={onSelectionChange}
+        onNodeClick={handleNodeClick}
+        onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         fitView
         attributionPosition="bottom-left"
       >
         <Background gap={24} size={1} />
         <Controls
-          data-testid="zoom-controls"
           showZoom={true}
-          showFitView={false}
+          showFitView={true}
           showInteractive={false}
         />
         <MiniMap />
       </ReactFlow>
     </div>
   );
-}
+});
+
+export default FlowCanvas;
