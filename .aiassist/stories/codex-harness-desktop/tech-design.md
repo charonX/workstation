@@ -21,7 +21,9 @@
 - 内部单用户桌面应用，不追求多实例并发。
 - CLI 必须是**独立可运行**的入口，不能强制启动 GUI。
 - 前端与 CLI 共享同一 service 层契约（本地 HTTP API）。
-- 前端验收以 **feel-signoff** 为主，**不引入浏览器 E2E**。
+- 前端验收采用 **Playwright Electron E2E + feel-signoff**：
+  - E2E 覆盖 5 条关键用户路径，用 HTTP API seeding 准备数据；
+  - feel-signoff 覆盖纯视觉/审美判断，依据 `ux/` HTML 原型验收。
 - 构建工具：Electron Forge + Vite（与现有 `package.json` 一致）。
 
 ## 3. 架构分层
@@ -71,6 +73,17 @@ src/
 │       ├── skill.js
 │       ├── settings.js
 │       └── dashboard.js
+├── e2e/                             # Playwright Electron E2E
+│   ├── fixtures/                    # 应用启动、数据 seed、状态清理
+│   │   ├── electronApp.js
+│   │   └── seed.js
+│   ├── specs/                       # 5 条关键路径
+│   │   ├── onboarding.spec.js
+│   │   ├── flowRun.spec.js
+│   │   ├── skillInstall.spec.js
+│   │   ├── themeLanguage.spec.js
+│   │   └── dashboard.spec.js
+│   └── playwright.config.js
 ├── services/                        # 与 Electron 解耦的纯 Node.js 服务层
 │   ├── projectService.js
 │   ├── skillService.js
@@ -89,8 +102,9 @@ src/
 │       ├── skills.js
 │       ├── settings.js
 │       └── dashboard.js
-├── electron/
-│   ├── main.js                      # 主进程：启动 HTTP server、创建窗口、调度器
+├── main/
+│   └── main.js                      # 主进程：启动 HTTP server、创建窗口、调度器
+├── preload/
 │   └── preload.js                   # preload 脚本：暴露 apiBaseUrl
 ├── renderer/                        # React + TanStack Query
 │   ├── main.jsx                     # 渲染入口
@@ -250,37 +264,97 @@ window.opc = {
 - React Flow 默认节点样式与原型手绘节点存在差异，需用自定义节点覆盖。
 - 动效（弹层出现、画布平移）按平台能力简化，以功能正确优先。
 
-## 10. 构建配置
+## 10. E2E 测试设计
+
+### 10.1 工具与 harness
+
+- **框架**：`@playwright/test`。
+- **运行方式**：Playwright 的 `electron.launch()` 直接启动 Electron 应用（harness 选项 X）。
+- **启动入口**：`src/main/main.js`（Electron Forge 已配置）。
+- **渲染进程访问**：通过 preload 暴露 `window.opc.apiBaseUrl`，E2E 与真实用户一样用原生 `fetch` 访问本地 HTTP API。
+- **数据准备**：`test.beforeEach` 通过 `src/http/server.js` 的 HTTP 接口 seed 基础数据（harness 选项 B），UI 只验证目标交互。
+- **状态清理**：每个测试使用独立的应用数据目录（`userData` 临时目录），测试结束后删除，避免互相污染。
+
+### 10.2 E2E 目录结构
+
+```
+src/e2e/
+├── fixtures/
+│   ├── electronApp.js       # 启动/关闭 Electron 应用，返回 ElectronApp + firstWindow
+│   └── seed.js              # HTTP API seed helper：createProject、createFlow、installSkill 等
+├── helpers/
+│   └── locators.js          # 共享 selector / data-testid 常量
+├── specs/
+│   ├── onboarding.spec.js   # Settings → Add Project → Configure Skills
+│   ├── flowRun.spec.js      # Create Flow → Edit Nodes → Run → View Execution
+│   ├── skillInstall.spec.js # Install Skill → View Detail
+│   ├── themeLanguage.spec.js # Theme / Language 切换 DOM 效果
+│   └── dashboard.spec.js    # Dashboard 指标渲染
+└── playwright.config.js     # projects、retries、trace、screenshot、artifact
+```
+
+### 10.3 5 条 E2E 路径
+
+| 路径 | 覆盖 REQ-ID | 数据准备（API seed） | UI 断言 |
+|---|---|---|---|
+| **Onboarding** | REQ-WORKSPACE-003、006、007；REQ-I18N-001、002 | 无（从零开始） | Settings 保存 workspaceRoot / skillRepoPath；Add Project 弹层创建项目；Project Detail 配置 skills；密度切换生效 |
+| **Flow Run** | REQ-FLOW-002~005；REQ-SCHEDULE-001、003 | 创建 project | New Flow 弹层创建 flow；Flow Editor 渲染节点面板与画布；Run 创建 execution；Executions Tab 显示执行历史与详情 |
+| **Skill Install** | REQ-SKILL-002、003 | 无 | Install Skill 弹层安装 skill；Skills 列表出现新 skill；Skill Detail 展示 Overview / Parameters / Examples / README |
+| **Theme & Language** | REQ-I18N-001、002 | 无 | 切换 theme 后 `document.documentElement.dataset.theme` 变化；切换 language 后 `<html lang>` 与文案变化 |
+| **Dashboard** | REQ-DASH-001 | seed project、flow、execution | Dashboard 显示 projectCount、activeScheduleCount、recentRunCount、successRate；最近执行列表可见 |
+
+### 10.4 locator 策略
+
+- 优先使用语义 locator：`getByRole`、`getByLabel`、`getByText`。
+- 自定义组件或语义不足时，使用 `data-testid`，统一在 `helpers/locators.js` 管理。
+- 避免裸 CSS selector 和基于文本内容的脆弱断言。
+
+### 10.5 CI 集成
+
+`.github/workflows/contract-gate.yml` 已更新：
+
+- `npx playwright install --with-deps chromium` 安装浏览器二进制。
+- `npm run test:e2e` 执行 E2E。
+- 失败时上传 `playwright-report/` 作为 artifact。
+
+### 10.6 与 feel-signoff 的分工
+
+- **E2E 负责**：结构、行为、数据流、状态切换、关键用户路径可走完。
+- **feel-signoff 负责**：颜色、间距、字体、动效、排版、整体视觉气质、平台特定偏差。
+
+---
+
+## 11. 构建配置
 
 使用 Electron Forge + Vite：
 
 - `forge.config.js`（或 `package.json` 中 `@electron-forge/plugin-vite` 配置）指定：
-  - `main` 入口：`src/electron/main.js`
-  - `preload` 入口：`src/electron/preload.js`
+  - `main` 入口：`src/main/main.js`
+  - `preload` 入口：`src/preload/preload.js`
   - `renderer` 入口：`src/renderer/index.html`
 - Vite 配置：`vite.renderer.config.js`、`vite.preload.config.js`、`vite.main.config.js`。
 - 开发命令：`npm start`（electron-forge start）。
 - 打包命令：`npm run package` / `npm run make`。
 
-## 11. Seams 与测试策略
+## 12. Seams 与测试策略
 
 | REQ-ID | 主要 seam | 测试类型 | 说明 |
 |---|---|---|---|
-| REQ-WORKSPACE-001~002, REQ-WORKSPACE-007, REQ-I18N-002 | `opc-workstation settings` / `PATCH /api/settings` | CLI + HTTP API | 持久化、校验、默认值 |
-| REQ-WORKSPACE-003~006 | `opc-workstation project` / `/api/projects` | CLI + HTTP API | CRUD、搜索、skill 关联 |
-| REQ-FLOW-001~006 | `opc-workstation flow` / `/api/flows` | CLI + HTTP API | CRUD、导入导出 |
-| REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `opc-workstation task run` / `POST /api/executions` | CLI + HTTP API | 执行触发、历史、详情 |
-| REQ-SCHEDULE-002 | `opc-workstation schedule` / `/api/schedules` | CLI + HTTP API | cron、启用停用 |
-| REQ-SKILL-001~003 | `opc-workstation skill` / `/api/skills` | CLI + HTTP API | 列表、详情、多源安装 |
-| REQ-I18N-001 | React 主题切换 | feel-signoff | 视觉与交互；settings API 主题持久化已由 HTTP 测试覆盖 |
-| REQ-FLOW-003~005 | Flow Editor 画布与交互 | feel-signoff | 依据 `flow-editor.html` 验收 |
+| REQ-WORKSPACE-001~002, REQ-WORKSPACE-007, REQ-I18N-002 | `opc-workstation settings` / `PATCH /api/settings` | CLI + HTTP API + E2E | E2E 覆盖 Settings 表单交互与持久化 |
+| REQ-WORKSPACE-003~006 | `opc-workstation project` / `/api/projects` | CLI + HTTP API + E2E | E2E 覆盖 Add Project 弹层、Project Detail、Configure Skills |
+| REQ-FLOW-001~006 | `opc-workstation flow` / `/api/flows` | CLI + HTTP API + E2E | E2E 覆盖 Flows 列表、New Flow 弹层、Flow Editor 节点与运行 |
+| REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `opc-workstation task run` / `POST /api/executions` | CLI + HTTP API + E2E | E2E 覆盖 Run 按钮触发与 Executions 详情 |
+| REQ-SCHEDULE-002 | `opc-workstation schedule` / `/api/schedules` | CLI + HTTP API | cron、启用停用由 API/CLI 覆盖 |
+| REQ-SKILL-001~003 | `opc-workstation skill` / `/api/skills` | CLI + HTTP API + E2E | E2E 覆盖 Install Skill 弹层与 Skill Detail |
+| REQ-I18N-001 | Theme 切换 | E2E + feel-signoff | E2E 验证 DOM `data-theme` 变化；feel-signoff 验证视觉 |
+| REQ-I18N-002 | Language 切换 | CLI + HTTP API + E2E | E2E 验证 `<html lang>` 与文案切换 |
 | REQ-FLOW-007~010 | `flowEngine.run` | 服务单元测试 | 纯函数执行逻辑 |
-| REQ-DASH-001 | Dashboard 聚合 | CLI + HTTP API | 指标与最近执行 |
+| REQ-DASH-001 | Dashboard 聚合 | CLI + HTTP API + E2E + feel-signoff | E2E 验证指标与列表渲染 |
 | REQ-CLI-001 | `opc-workstation --help` / 子命令 | CLI | CLI 入口与 headless server 生命周期 |
 
-> 注：不引入浏览器 E2E；前端观感与交互通过 `/signoff --stage=feel` 依据 `ux/` HTML 原型验收。
+> 注：E2E 覆盖 5 条关键用户路径；剩余结构/视觉细节通过 feel-signoff 依据 `ux/` HTML 原型验收。
 
-## 12. 失败与风险
+## 13. 失败与风险
 
 | 风险 | 缓解 |
 |---|---|
@@ -290,16 +364,30 @@ window.opc = {
 | React Flow 与原型视觉差异 | 自定义节点/边样式，feel-signoff 时记录偏差 |
 | Electron 打包体积大 | 仅内部使用，暂不优化；未来按需启用 ASAR、代码分割 |
 | 前端状态与服务端不同步 | TanStack Query 主动失效 + mutation 后刷新 |
+| E2E 启动 Electron 慢 / flaky | 每个测试独立 `userData` 目录；Playwright `retries: 2`；关键路径用 API seeding 减少 UI 步骤 |
+| E2E 与本地开发环境冲突 | E2E 使用动态端口 + 临时 userData；不依赖默认应用数据目录 |
+| Playwright 浏览器二进制在 CI 缺失 | `contract-gate.yml` 已加入 `npx playwright install --with-deps chromium` |
 
-## 13. 对 PRD/REQ 的反向同步
+## 14. 对 PRD/REQ 的反向同步
 
 - PRD 已包含 Electron + React 技术栈、前端页面结构、主题/国际化等稳定块，无需新增。
-- 技术方案明确：前端不引入浏览器 E2E，以 feel-signoff 验收；如未来需要可执行前端 seams，再讨论是否增加 renderer 层 public API 测试。
-- 建议 `CONTEXT.md` 补充术语：`preload`、`apiBaseUrl`、`TanStack Query`、`React Router`、`HashRouter`。
+- **本次技术方案新增 Playwright Electron E2E 作为前端关键路径的验收 seam，原 `feel-signoff only` 策略被推翻**。以下 REQ 的测试类型需要在 `/crystallize` 阶段同步更新：
+  - REQ-FLOW-002~005：由 feel-signoff 改为 **E2E + feel-signoff**。
+  - REQ-SKILL-002：由 CLI + HTTP API + feel-signoff 改为 **CLI + HTTP API + E2E + feel-signoff**。
+  - REQ-I18N-001：由 feel-signoff 改为 **E2E + feel-signoff**。
+  - REQ-I18N-002：由 CLI + HTTP API 改为 **CLI + HTTP API + E2E**。
+  - REQ-DASH-001：由 CLI + HTTP API 改为 **CLI + HTTP API + E2E + feel-signoff**。
+  - REQ-WORKSPACE-003~006、REQ-SKILL-003：在现有 CLI + HTTP API 基础上增加 **E2E**。
+- 建议 `CONTEXT.md` 补充术语：`preload`、`apiBaseUrl`、`TanStack Query`、`React Router`、`HashRouter`、Playwright E2E。
 
-## 14. 下一步
+## 15. 下一步
 
-1. 若本技术方案通过，进入 `/crystallize` 确认 REQ 是否需要新增/调整（预计无需新增 REQ，前端行为由现有 feel-signoff 项覆盖）。
-2. 进入 `/test-author`：确认现有 61 个测试无需变更；如需补充 renderer 启动测试，再生成。
-3. 进入 `/signoff --stage=assertion` 批量签核。
-4. 进入 `/implementer` BUILD：先搭 Electron + React 最小壳，再按页面实现组件。
+1. 用户审查并确认本技术方案（尤其是 E2E 5 条路径、harness 选项 X、数据准备策略 B）。
+2. 进入 `/crystallize`：按 §14 更新 `requirements.md` 中受影响 REQ 的测试类型。
+3. 重新生成 `requirements-v1.hash`。
+4. 进入 `/test-author`：为新增 E2E seams 生成 5 个 spec 文件骨架；现有 61 个 API/CLI 测试如无变化可保留。
+5. 进入 `/signoff --stage=assertion` 批量签核（含新增 E2E 断言）。
+6. 进入 `/implementer` BUILD：
+   - 先搭 Electron + React 最小壳（`src/main/main.js`、`src/preload/preload.js`、`src/renderer/*`）；
+   - 补全 5 条 E2E 路径所需的页面组件；
+   - 实现 E2E fixtures 与 Playwright 配置，确保 `npm run test:e2e` 可运行。
