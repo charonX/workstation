@@ -1,7 +1,7 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: TEST
+current_phase: ASSERTION-SIGNOFF
 attempt: 3
 blockers: []
 slices: []
@@ -33,6 +33,7 @@ history:
   - {at: 2026-07-08, from: QA, to: TECH-DESIGN, note: "根因诊断：前端界面未实现，无法通过 feel-signoff。问题在技术方案层未将 Electron + React 前端 seams 纳入必须交付物。归档 attempt-2，见 archive/attempt-2/reason.md。"}
   - {at: 2026-07-09, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design 审查通过：新增 Playwright Electron E2E 作为前端验收 seam，推翻原 feel-signoff only 策略。ADR-002 已创建。进入 CRYSTALLIZE 更新 REQ 测试类型。"}
   - {at: 2026-07-09, from: CRYSTALLIZE, to: TEST, note: "REQ 已按 E2E seams 更新测试类型与路径，requirements-v1.hash 已重新生成，business-capabilities.md 已同步。进入 TEST 阶段等待 test-author 生成 E2E 骨架。"}
+  - {at: 2026-07-09, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：新增 5 个 Playwright Electron E2E spec、fixtures、helpers、playwright.config.js；package.json 已添加 @playwright/test 与 test:e2e script；现有 61 个 API/CLI 测试保留。等待 assertion-signoff。"}
 archive:
   - {attempt: 1, date: 2026-07-08, reason_file: archive/attempt-1/reason.md}
   - {attempt: 2, date: 2026-07-08, reason_file: archive/attempt-2/reason.md}
