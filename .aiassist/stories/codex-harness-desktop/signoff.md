@@ -9,18 +9,18 @@
 
 ## Assertion Signoff
 
-> 状态：**待签核**（attempt-3 因新增 Playwright Electron E2E seams，REQ 测试类型已更新，需重新签核）
+> 状态：**已通过**（2026-07-09）
 
 ### 检查清单
 
-- [ ] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
-- [ ] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
-- [ ] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
-- [ ] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
-- [ ] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
-- [ ] 无快照当判定依据。
-- [ ] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等）。
-- [ ] `signoff.md` Assertion 部分已创建。
+- [x] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
+- [x] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
+- [x] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
+- [x] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
+- [x] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
+- [x] 无快照当判定依据。
+- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等）。
+- [x] `signoff.md` Assertion 部分已创建。
 
 ### REQ 覆盖
 
