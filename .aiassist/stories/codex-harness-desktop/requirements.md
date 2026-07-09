@@ -65,8 +65,8 @@
   - `POST /api/projects` → body `{name, localPath, description?}`
   - CLI: `opc-workstation project create --name <name> --local-path <path>`
   - `name` 为空返回 `400 VALIDATION_ERROR`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
 
 **验收标准**：
 - [ ] 创建后项目出现在 `GET /api/projects` 列表中。
@@ -88,8 +88,8 @@
   - `POST /api/projects` → body `{name, repoUrl, branch?, cloneDirectory?}`
   - CLI: `opc-workstation project create --name <name> --repo-url <url> --branch main`
   - `repoUrl` 为空返回 `400 VALIDATION_ERROR`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
 
 **验收标准**：
 - [ ] 创建后项目出现在列表中。
@@ -111,8 +111,8 @@
   - `GET /api/projects?q=<filter>`
   - CLI: `opc-workstation project list --q <filter>`
   - 过滤大小写不敏感；空过滤返回全部
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
 
 **验收标准**：
 - [ ] `GET /api/projects` 返回全部项目。
@@ -134,8 +134,8 @@
   - `GET /api/projects/:id` → `{overview: {flowsCount, runsCount, ...}, skills: [...]}`
   - `PATCH /api/projects/:id/skills` → body `{skillId, linked: boolean}`
   - CLI: `opc-workstation project get --id <id>`, `opc-workstation project link-skill --project-id <id> --skill-id <id>`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
 
 **验收标准**：
 - [ ] Project 详情返回 Overview 元数据和可用 skill 列表及关联状态。
@@ -200,8 +200,8 @@
   - `POST /api/flows` → body `{name, projectId, description?}`
   - CLI: `opc-workstation flow create --name <name> --project-id <id>`
   - `name` 或 `projectId` 缺失返回 `400`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.spec.js`
 
 **验收标准**：
 - [ ] 创建后 flow 出现在列表中。
@@ -222,8 +222,9 @@
 - **interface_contract**:
   - 从 `GET /api/flows/:id` 获取节点/边数据渲染画布
   - 节点分类：Trigger / Agent / Data / Logic / Output
-- **测试类型**: feel-signoff（HTML 原型）
+- **测试类型**: E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.spec.js`
 
 **验收标准**：
 - [ ] 左侧 Node Palette 按分类列出节点。
@@ -244,8 +245,9 @@
 - **interface_contract**:
   - `PATCH /api/flows/:id` → body 含 `nodes` 数组
   - Agent 节点配置字段：`model`、`systemPrompt`
-- **测试类型**: feel-signoff
+- **测试类型**: E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.spec.js`
 
 **验收标准**：
 - [ ] 未选中节点时显示占位提示。
@@ -266,8 +268,9 @@
 - **interface_contract**:
   - `POST /api/executions` → body `{projectId, flowId}`
   - 运行按钮状态切换由 UI 本地管理
-- **测试类型**: CLI + HTTP API + feel-signoff
+- **测试类型**: CLI + HTTP API + E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.spec.js`
 
 **验收标准**：
 - [ ] 点击 Run 后触发 `POST /api/executions`。
@@ -486,8 +489,9 @@
 - **interface_contract**:
   - `GET /api/skills/:id` → `{name, description, author, tags, parameters, examples, readme, tabs}`
   - CLI: `opc-workstation skill get --id <id>`
-- **测试类型**: CLI + HTTP API + feel-signoff
+- **测试类型**: CLI + HTTP API + E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/skills.html`
+- **E2E 路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
 
 **验收标准**：
 - [ ] 详情返回 `tabs: ["Overview", "Parameters", "Examples", "README"]`。
@@ -507,8 +511,8 @@
 - **interface_contract**:
   - `POST /api/skills/install` → body `{source: "npm" | "plugin" | "local", identifier: string}`
   - CLI: `opc-workstation skill install --source <source> --identifier <id>`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
 
 **验收标准**：
 - [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
@@ -527,8 +531,8 @@
 - **modules**: dashboard aggregator, `src/http/routes/dashboard.js`
 - **interface_contract**:
   - `GET /api/dashboard` → `{projectCount, activeScheduleCount, recentRunCount, successRate, recentExecutions, quickProjectLinks}`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E + feel-signoff
+- **测试路径**: `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/`, `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/e2e/dashboard.spec.js`
 
 **验收标准**：
 - [ ] 返回项目数、活跃调度数、最近运行次数、成功率。
@@ -549,8 +553,9 @@
 - **interface_contract**:
   - `PATCH /api/settings` → body `{theme: "dark" | "light"}`
   - DOM `document.documentElement.dataset.theme`
-- **测试类型**: feel-signoff
+- **测试类型**: E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/settings.html`
+- **E2E 路径**: `tests/capabilities/internationalization-theme/theme/codex-harness-desktop/e2e/themeLanguage.spec.js`
 
 **验收标准**：
 - [ ] 切换主题后 `data-theme` 属性更新。
@@ -570,8 +575,8 @@
 - **interface_contract**:
   - `PATCH /api/settings` → body `{language: "en-US" | "zh-CN"}`
   - CLI: `opc-workstation settings set --language <code>`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/`, `tests/capabilities/internationalization-theme/language/codex-harness-desktop/e2e/themeLanguage.spec.js`
 
 **验收标准**：
 - [ ] 支持 `zh-CN` / `en-US` 切换。
@@ -604,3 +609,18 @@
 - [ ] 业务错误返回退出码 1，系统错误返回退出码 2。
 
 ---
+
+## UX / 前端 REQ 可自动化检查结论
+
+按 `/crystallize` 对涉及 `ux/*.html` 的 REQ 的强制检查，结论如下：
+
+| REQ-ID | UX 参照 | 元素存在性 | 状态/交互 | 导航/路由 | API 调用 | 纯审美部分 |
+|---|---|---|---|---|---|---|
+| REQ-FLOW-003 | `flow-editor.html` | ✅ Node Palette 分类、画布节点 | ✅ 点击节点展开 Properties | ✅ 进入 `/flows/:id` | ✅ `GET /api/flows/:id` | React Flow 默认样式、动效 |
+| REQ-FLOW-004 | `flow-editor.html` | ✅ 选中节点字段 | ✅ 未选中/选中状态切换 | ✅ 同页面状态切换 | ✅ `PATCH /api/flows/:id` | 面板排版、字体 |
+| REQ-FLOW-005 | `flow-editor.html` | ✅ Run 按钮、Zoom 控件 | ✅ 运行状态切换 | ✅ 页面内交互 | ✅ `POST /api/executions` | 按钮动效、画布缩放动画 |
+| REQ-SKILL-002 | `skills.html` | ✅ Tab 切换、README 渲染 | ✅ 弹层打开/关闭 | ✅ 列表 → 详情 | ✅ `GET /api/skills/:id` | 弹层动效、排版 |
+| REQ-I18N-001 | `settings.html` | ✅ theme 控件 | ✅ 切换后 `data-theme` 变化 | ✅ Settings 页面 | ✅ `PATCH /api/settings` | 暗色/亮色视觉气质 |
+| REQ-DASH-001 | `dashboard-overview.html` | ✅ 指标卡片、最近执行列表 | ✅ 数据加载状态 | ✅ Dashboard 路由 | ✅ `GET /api/dashboard` | 卡片布局、间距、动效 |
+
+**结论**：以上 REQ 的结构与行为均可通过 E2E 自动化测试覆盖；纯颜色/间距/动效/排版审美留给 `/signoff --stage=feel` 验收。
