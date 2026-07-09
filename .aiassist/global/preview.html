@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>global — Design system</title>
+<style>
+
+:root {
+  color-scheme: light;
+  --ds-bg: #FAF9F5;
+  --ds-surface: #FFFFFF;
+  --ds-text: rgba(15, 12, 8, 0.92);
+  --ds-text-2: rgba(15, 12, 8, 0.62);
+  --ds-text-3: rgba(15, 12, 8, 0.46);
+  --ds-border: rgba(15, 12, 8, 0.10);
+  --ds-border-soft: rgba(15, 12, 8, 0.07);
+  --ds-hover: rgba(15, 12, 8, 0.045);
+  --ds-active: rgba(15, 12, 8, 0.07);
+  --ds-accent: #D97757;
+  --ds-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ds-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--ds-font);
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+.ds-pane { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+
+/* ------------------------------------------------- outline (left nav) */
+.ds-outline {
+  flex: 0 0 248px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ds-border-soft);
+  background: var(--ds-bg);
+}
+@media (max-width: 1007px) { .ds-outline { display: none; } }
+.ds-outline-head { padding: 18px 16px 12px; }
+.ds-outline-head h1 { margin: 0; font-size: 18px; font-weight: 550; letter-spacing: -0.01em; color: var(--ds-text); }
+.ds-outline-scroll { flex: 1; overflow-y: auto; padding: 4px 8px 16px; scrollbar-width: thin; }
+.ds-pinned { margin: 0 0 4px; padding: 0 0 6px; border-bottom: 1px solid var(--ds-border-soft); }
+.ds-item {
+  display: flex; align-items: center; width: 100%;
+  text-align: left; padding: 5px 8px 5px 24px;
+  font-size: 12px; line-height: 1.35; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-item:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-item.active { font-weight: 550; color: var(--ds-text); background: var(--ds-active); }
+.ds-item .ds-ic { flex: 0 0 auto; width: 13px; height: 13px; margin-left: -19px; margin-right: 6px; opacity: 0.75; }
+.ds-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-group-btn {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  padding: 6px 8px; margin-top: 6px;
+  font-size: 12px; font-weight: 550; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-group-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-group-btn .ds-caret { width: 9px; height: 9px; flex: 0 0 auto; transition: transform 0.15s ease; opacity: 0.7; }
+.ds-outline-group.collapsed .ds-caret { transform: rotate(-90deg); }
+.ds-outline-group.collapsed .ds-group-items { display: none; }
+.ds-group-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------- content column */
+.ds-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ds-content-inner {
+  display: flex; flex-direction: column; gap: 24px;
+  padding: 30px 16px 80px;
+  max-width: 760px; margin: 0 auto;
+}
+.ds-group-label { margin: 6px 0 14px; font-size: 13px; font-weight: 550; color: var(--ds-text); }
+.ds-card + .ds-card { margin-top: 26px; }
+.ds-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ds-card-title { margin: 0; font-size: 13.5px; font-weight: 550; line-height: 1.3; color: var(--ds-text); }
+.ds-card-sub { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--ds-text-3); }
+.ds-prevwrap {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--ds-border-soft); border-radius: 8px;
+  background: #fff;
+}
+/* Outer-tree color-scheme on the shadow host beats the card's own
+   ':host { color-scheme: light dark }' (rewritten from ':root'), so
+   light-dark() tokens resolve LIGHT regardless of the viewer's OS theme —
+   the preview chrome is light-only. Cards opting into dark explicitly
+   (e.g. a '.spectrum-dark' subtree) still render dark. */
+.ds-stage { transform-origin: top left; visibility: hidden; color-scheme: light; }
+.ds-stage[data-ready] { visibility: visible; }
+
+/* ------------------------------------------------------------- readme */
+.ds-readme-body { position: relative; }
+.ds-readme-body.collapsed { max-height: 280px; overflow: hidden; }
+.ds-readme-body.collapsed::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 64px;
+  background: linear-gradient(to bottom, rgba(250, 249, 245, 0), var(--ds-bg));
+  pointer-events: none;
+}
+.ds-readme-toggle { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--ds-text-2); }
+.ds-readme-toggle:hover { color: var(--ds-text); }
+
+/* -------------------------------------------------------------- prose */
+.ds-prose { font-size: 13px; line-height: 1.6; color: var(--ds-text); }
+.ds-prose > :first-child { margin-top: 0; }
+.ds-prose h1 { font-size: 19px; font-weight: 600; margin: 22px 0 8px; letter-spacing: -0.01em; }
+.ds-prose h2 { font-size: 16px; font-weight: 600; margin: 20px 0 6px; }
+.ds-prose h3 { font-size: 13.5px; font-weight: 600; margin: 16px 0 4px; }
+.ds-prose h4, .ds-prose h5, .ds-prose h6 { font-size: 12.5px; font-weight: 600; margin: 14px 0 4px; }
+.ds-prose p { margin: 0 0 10px; }
+.ds-prose ul, .ds-prose ol { margin: 0 0 10px; padding-left: 22px; }
+.ds-prose li { margin: 2px 0; }
+.ds-prose code {
+  font-family: var(--ds-mono); font-size: 0.92em;
+  background: rgba(15, 12, 8, 0.055); border-radius: 4px; padding: 0.1em 0.35em;
+}
+.ds-prose pre {
+  background: rgba(15, 12, 8, 0.045); border: 1px solid var(--ds-border-soft);
+  border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 12px;
+}
+.ds-prose pre code { background: none; padding: 0; font-size: 11.5px; line-height: 1.55; }
+.ds-prose blockquote {
+  margin: 0 0 10px; padding: 2px 0 2px 12px;
+  border-left: 3px solid rgba(15, 12, 8, 0.14); color: var(--ds-text-2);
+}
+.ds-prose hr { border: 0; border-top: 1px solid var(--ds-border-soft); margin: 16px 0; }
+.ds-prose table { border-collapse: collapse; margin: 0 0 12px; font-size: 12px; width: 100%; }
+.ds-prose th, .ds-prose td { border: 1px solid var(--ds-border); padding: 5px 9px; text-align: left; vertical-align: top; }
+.ds-prose th { background: rgba(15, 12, 8, 0.035); font-weight: 600; }
+.ds-prose img { max-width: 100%; border-radius: 6px; }
+.ds-prose a { color: inherit; text-decoration: underline; text-decoration-color: rgba(15, 12, 8, 0.3); }
+.ds-prose a:hover { text-decoration-color: currentColor; }
+
+.ds-empty { font-size: 13px; color: var(--ds-text-3); padding: 24px 0; }
+
+</style>
+
+</head>
+<body>
+<div class="ds-pane">
+<nav class="ds-outline" aria-label="Design system outline"><div class="ds-outline-head"><h1>Design system</h1></div><div class="ds-outline-scroll"><div class="ds-pinned"><button class="ds-item" data-target="ds-readme"><svg class="ds-ic" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 3.2c0-.66.54-1.2 1.2-1.2h8.6c.66 0 1.2.54 1.2 1.2v9.6c0 .66-.54 1.2-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V3.2Z" stroke="currentColor" stroke-width="1.2"/><path d="M5.4 2v12" stroke="currentColor" stroke-width="1.2"/></svg><span>Readme</span></button></div></div></nav>
+<main class="ds-content" data-scroll>
+<div class="ds-content-inner">
+<section class="ds-card" id="ds-readme" data-anchor data-anchor-key="ds-readme"><header class="ds-card-head"><h3 class="ds-card-title">Readme</h3></header><div class="ds-readme-body ds-prose collapsed" data-readme><h1>OPC Workstation 设计系统</h1>
+<p>项目级设计系统，由 <code>/tac-design</code> 生成。</p>
+<h2>来源</h2>
+<ul><li><strong>生成方式</strong>：无外部来源，基于用户明确的调性输入生成。</li><li><strong>调性</strong>：开发者工具的精准、高冷、高密度。</li><li><strong>用户</strong>：开发者的本地桌面工具。</li><li><strong>默认主题</strong>：亮色。</li><li><strong>可选主题</strong>：暗色。</li><li><strong>无品牌约束</strong>：颜色、字体为 AI 基于调性建议，可随时回流调整。</li></ul>
+<h2>内容清单</h2>
+<table><thead><tr><th>文件</th><th>用途</th></tr></thead><tbody><tr><td><code>DESIGN.md</code></td><td>设计原则、token 表格、组件约定、维护纪律</td></tr><tr><td><code>tokens.css</code></td><td>全部 CSS 自定义属性（颜色、字体、间距、圆角、阴影、布局）</td></tr><tr><td><code>styles.css</code></td><td><code>@import "./tokens.css"</code> + 最小工具类</td></tr><tr><td><code>preview.html</code></td><td>编译生成的可视化预览（运行 build-preview 后生成）</td></tr><tr><td><code>_ds_manifest.json</code></td><td>设计系统编译清单</td></tr><tr><td><code>_ds_bundle.js</code></td><td>组件/卡片 bundle（当前无组件）</td></tr><tr><td><code>_d_meta.json</code></td><td>资产记录与导入元数据</td></tr><tr><td><code>_ds/&lt;slug&gt;/</code></td><td>自导入后的设计系统副本</td></tr></tbody></table>
+<h2>使用方式</h2>
+<h3>HTML 原型</h3>
+<pre><code class="lang-html">&lt;link rel="stylesheet" href="../../global/tokens.css"&gt;</code></pre>
+<h3>React / Electron</h3>
+<pre><code class="lang-js">import "../../.aiassist/global/tokens.css";</code></pre>
+<h3>主题切换</h3>
+<pre><code class="lang-js">document.documentElement.setAttribute('data-theme', 'dark');</code></pre>
+<p>默认跟随系统 <code>prefers-color-scheme</code>。</p>
+<h2>维护</h2>
+<p>修改 <code>DESIGN.md</code> 或 <code>tokens.css</code> 后，必须重新运行设计系统编译管线：</p>
+<pre><code class="lang-bash">node scripts/design-system/compile-design-system.mjs .aiassist/global
+node scripts/design-system/check-design-system.mjs .aiassist/global
+node scripts/design-system/build-preview.mjs .aiassist/global --out .aiassist/global/preview.html</code></pre>
+<h2>更新记录</h2>
+<ul><li>2026-07-06：初版建立。亮色默认，冷青强调色，开发者工具风格。</li></ul>
+</div><button class="ds-readme-toggle" data-readme-toggle type="button">Show more</button></section>
+</div>
+</main>
+</div>
+<script type="application/json" id="ds-data">{"cards":[],"css":{}}</script>
+<script>
+(function () {
+  var dataEl = document.getElementById("ds-data");
+  if (!dataEl) return;
+  var DATA = JSON.parse(dataEl.textContent);
+  var ASSETS = DATA.assets || {};
+  var cardById = {};
+  DATA.cards.forEach(function (c) { cardById[c.id] = c; });
+
+  function normPath(p) {
+    var segs = p.split("/");
+    var out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (!s || s === ".") continue;
+      if (s === "..") { if (out.length) out.pop(); continue; }
+      out.push(s);
+    }
+    return out.join("/");
+  }
+
+  var supportsAdopt = (function () {
+    try {
+      var s = new CSSStyleSheet();
+      s.replaceSync(":host{}");
+      return "adoptedStyleSheets" in Document.prototype || "adoptedStyleSheets" in ShadowRoot.prototype;
+    } catch (e) { return false; }
+  })();
+
+  var sheetCache = {};
+  function getSheet(hash) {
+    if (!sheetCache[hash]) {
+      var s = new CSSStyleSheet();
+      try { s.replaceSync(DATA.css[hash] || ""); } catch (e) { console.error("[ds-preview] css error", e); }
+      sheetCache[hash] = s;
+    }
+    return sheetCache[hash];
+  }
+
+  // Cards scroll if their content overflows the declared viewport, but the
+  // scrollbar chrome itself reads as a defect in a scaled-down thumbnail —
+  // hide it (content stays scrollable). Applied last so it wins ties.
+  var BASE_CARD_CSS = ".__dsroot{scrollbar-width:none;-ms-overflow-style:none}.__dsroot::-webkit-scrollbar{display:none}";
+  var baseCardSheet = null;
+  function getBaseCardSheet() {
+    if (!baseCardSheet) {
+      baseCardSheet = new CSSStyleSheet();
+      try { baseCardSheet.replaceSync(BASE_CARD_CSS); } catch (e) {}
+    }
+    return baseCardSheet;
+  }
+
+  function ensureShadow(stage) {
+    var root = stage.shadowRoot;
+    if (!root) {
+      var tpl = stage.querySelector("template");
+      root = stage.attachShadow({ mode: "open" });
+      if (tpl) { root.appendChild(tpl.content); tpl.remove(); }
+    }
+    return root;
+  }
+
+  function applyStyles(root, hashes) {
+    if (supportsAdopt && root.adoptedStyleSheets !== undefined) {
+      try { root.adoptedStyleSheets = hashes.map(getSheet).concat([getBaseCardSheet()]); return; } catch (e) {}
+    }
+    var base = document.createElement("style");
+    base.textContent = BASE_CARD_CSS;
+    root.insertBefore(base, root.firstChild);
+    for (var i = hashes.length - 1; i >= 0; i--) {
+      var st = document.createElement("style");
+      st.textContent = DATA.css[hashes[i]] || "";
+      root.insertBefore(st, root.firstChild);
+    }
+  }
+
+  function appendExports(code) {
+    var names = {};
+    var re = /^(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|^(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/gm;
+    var m;
+    while ((m = re.exec(code))) names[m[1] || m[2]] = 1;
+    var tail = Object.keys(names).map(function (n) {
+      return "try{__vars." + n + "=" + n + ";}catch(__e){}";
+    }).join("");
+    return tail ? code + "\n;" + tail : code;
+  }
+
+  function makeEnv(card, root, rootEl) {
+    var vars = Object.create(null);
+    var pendingLoad = [];
+    var realDoc = document;
+    var realWin = window;
+    var winProxy, docProxy;
+
+    // Card sources live in subdirectories, but their HTML is re-rooted into
+    // this single file — rebase relative fetch() URLs against the card's
+    // source dir, serving build-time-inlined project assets when available
+    // (which also makes them work over file://).
+    vars.fetch = function (input, init) {
+      var u = null;
+      try { u = typeof input === "string" ? input : null; } catch (e) {}
+      if (u != null && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u) && u.charAt(0) !== "/" && u.charAt(0) !== "#" && u.charAt(0) !== "?") {
+        var m = /^([^?#]*)([\s\S]*)$/.exec(u);
+        var resolved = normPath((card.base ? card.base + "/" : "") + m[1]);
+        if (Object.prototype.hasOwnProperty.call(ASSETS, resolved)) return realWin.fetch(ASSETS[resolved], init);
+        return realWin.fetch(resolved + m[2], init);
+      }
+      return realWin.fetch(input, init);
+    };
+
+    docProxy = new Proxy(realDoc, {
+      get: function (t, k) {
+        switch (k) {
+          case "getElementById":
+            return function (id) {
+              return root.getElementById ? root.getElementById(id) : root.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(id) : id));
+            };
+          case "querySelector": return root.querySelector.bind(root);
+          case "querySelectorAll": return root.querySelectorAll.bind(root);
+          case "getElementsByClassName": return function (c) { return rootEl.getElementsByClassName(c); };
+          case "getElementsByTagName": return function (s) { return rootEl.getElementsByTagName(s); };
+          case "body": case "documentElement": case "head": return rootEl;
+          case "defaultView": return winProxy;
+          case "readyState": return "complete";
+          case "currentScript": return null;
+          case "activeElement": return root.activeElement || null;
+          case "styleSheets": return root.styleSheets;
+          case "location": return realWin.location;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "DOMContentLoaded" || type === "load" || type === "readystatechange") pendingLoad.push(fn);
+              else realDoc.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return realDoc.removeEventListener.bind(realDoc);
+          default: {
+            var v = t[k];
+            return typeof v === "function" ? v.bind(t) : v;
+          }
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "title" || k === "cookie") return true;
+        try { t[k] = val; } catch (e) {}
+        return true;
+      },
+    });
+
+    winProxy = new Proxy(realWin, {
+      get: function (t, k) {
+        switch (k) {
+          case "document": return docProxy;
+          case "window": case "self": case "globalThis": case "top": case "parent": case "frames": return winProxy;
+          case "innerWidth": return card.w;
+          case "innerHeight": return card.h;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "load" || type === "DOMContentLoaded") pendingLoad.push(fn);
+              else t.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return t.removeEventListener.bind(t);
+          default:
+            if (k in vars) return vars[k];
+            var v = t[k];
+            if (typeof v === "function" && typeof k === "string" && /^[a-z]/.test(k)) {
+              try { return v.bind(t); } catch (e) { return v; }
+            }
+            return v;
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "onload") { pendingLoad.push(val); return true; }
+        vars[k] = val;
+        return true;
+      },
+      has: function (t, k) { return k in vars || k in t; },
+    });
+
+    var scope = new Proxy(vars, {
+      has: function (t, k) {
+        if (typeof k !== "string") return false;
+        if (k === "window" || k === "document" || k === "globalThis" || k === "self" || k === "__vars" || k === "__scope" || k === "event") return false;
+        return k in t;
+      },
+      get: function (t, k) { return t[k]; },
+      set: function (t, k, v) { t[k] = v; return true; },
+    });
+
+    return { win: winProxy, doc: docProxy, vars: vars, scope: scope, pendingLoad: pendingLoad };
+  }
+
+  function runCode(card, env, code, name) {
+    var body = "with(__scope){\n" + appendExports(code) + "\n}";
+    try {
+      var fn = new Function("window", "document", "globalThis", "self", "__vars", "__scope", body);
+      fn.call(env.win, env.win, env.doc, env.win, env.win, env.vars, env.scope);
+    } catch (err) {
+      console.error("[ds-preview] " + card.id + (name ? " (" + name + ")" : "") + ":", err);
+    }
+  }
+
+  function runScripts(card, env) {
+    for (var i = 0; i < card.js.length; i++) {
+      var s = card.js[i];
+      var code = s.code;
+      if (s.babel) {
+        if (window.Babel) {
+          try {
+            code = Babel.transform(code, { presets: [["react", {}]], filename: s.name || "card.jsx" }).code;
+          } catch (err) {
+            console.error("[ds-preview] babel " + card.id + ":", err);
+            continue;
+          }
+        } else {
+          console.error("[ds-preview] " + card.id + " needs Babel but it is not loaded");
+          continue;
+        }
+      }
+      runCode(card, env, code, s.name);
+    }
+    var flush = env.pendingLoad.splice(0);
+    if (flush.length) {
+      setTimeout(function () {
+        var ev; try { ev = new Event("load"); } catch (e) { ev = { type: "load" }; }
+        flush.forEach(function (fn) {
+          try { typeof fn === "function" && fn.call(env.win, ev); } catch (err) { console.error("[ds-preview]", err); }
+        });
+      }, 0);
+    }
+  }
+
+  function bindInlineHandlers(card, env, rootEl) {
+    var all = rootEl.querySelectorAll("*");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      for (var j = 0; j < el.attributes.length; j++) {
+        var at = el.attributes[j];
+        if (at.name.indexOf("data-ds-on") !== 0) continue;
+        (function (el, evt, code) {
+          el.addEventListener(evt, function (event) {
+            try {
+              var fn = new Function("window", "document", "globalThis", "self", "__scope", "event", "with(__scope){\n" + code + "\n}");
+              fn.call(el, env.win, env.doc, env.win, env.win, env.scope, event);
+            } catch (err) { console.error("[ds-preview] inline handler:", err); }
+          });
+        })(el, at.name.slice(10), at.value);
+      }
+    }
+  }
+
+  function fit(section) {
+    var card = cardById[section.id];
+    var wrap = section.querySelector("[data-fit]");
+    var stage = section.querySelector("[data-stage]");
+    if (!card || !wrap || !stage) return;
+    // Measure the available width on the SECTION, not the wrap: the wrap is
+    // shrink-wrapped to the scaled stage below, so reading it back would feed
+    // the previous scale into the next one.
+    var cw = section.clientWidth || wrap.clientWidth;
+    if (!cw) return;
+    // The declared viewport height is a MINIMUM: content that ends up taller
+    // (React mounts, fetched icons, wrapped rows) grows the stage instead of
+    // getting clipped. Monotonic with a 1px tolerance so repeated measures
+    // never jitter the layout back down.
+    var rootEl = stage.shadowRoot && stage.shadowRoot.querySelector(".__dsroot");
+    if (rootEl) {
+      // Cap growth so content sized relative to the container (height:100%
+      // plus a fixed extra) can never ratchet the stage upward forever.
+      var contentH = Math.min(rootEl.scrollHeight, Math.max(card.h, 4000));
+      if (contentH > (card.eh || card.h) + 1) card.eh = contentH;
+    }
+    var h = Math.max(card.eh || 0, card.h);
+    stage.style.height = h + "px";
+    // Width-only scaling: height never shrinks the card (it would leave blank
+    // bands beside the narrower stage). The wrap shrink-wraps the scaled stage
+    // so its frame always hugs the visible pixels.
+    var scale = Math.min(cw / card.w, 1);
+    stage.style.transform = scale === 1 ? "none" : "scale(" + scale + ")";
+    wrap.style.width = Math.ceil(card.w * scale) + "px";
+    wrap.style.height = Math.ceil(h * scale) + "px";
+  }
+
+  var sections = [].slice.call(document.querySelectorAll("[data-card]"));
+  function fitAll() { sections.forEach(fit); }
+
+  // ---- mount all cards
+  sections.forEach(function (section) {
+    var card = cardById[section.id];
+    if (!card) return;
+    var stage = section.querySelector("[data-stage]");
+    try {
+      var root = ensureShadow(stage);
+      var rootEl = root.querySelector(".__dsroot");
+      applyStyles(root, card.css);
+      var env = makeEnv(card, root, rootEl);
+      if (card.js.length) runScripts(card, env);
+      bindInlineHandlers(card, env, rootEl);
+      // Card content keeps changing after mount (React commits async, icon
+      // fetches resolve, images decode) — re-measure on every DOM change and
+      // resource load inside the shadow tree.
+      if (window.MutationObserver) {
+        new MutationObserver(function () { fit(section); }).observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true,
+        });
+      }
+      root.addEventListener("load", function () { fit(section); }, true);
+    } catch (err) {
+      console.error("[ds-preview] mount " + card.id + ":", err);
+    }
+    stage.setAttribute("data-ready", "1");
+    fit(section);
+  });
+
+  // ---- scaling
+  var scroller = document.querySelector("[data-scroll]");
+  var inner = document.querySelector(".ds-content-inner");
+  if (window.ResizeObserver && inner) {
+    var raf = 0;
+    new ResizeObserver(function () {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fitAll);
+    }).observe(inner);
+  } else {
+    window.addEventListener("resize", fitAll);
+  }
+  // Web fonts swap and late resources settle without DOM mutations —
+  // re-measure once fonts are ready plus a few fallback ticks.
+  if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+    document.fonts.ready.then(function () { fitAll(); });
+  }
+  [250, 750, 1500, 3000].forEach(function (ms) { setTimeout(fitAll, ms); });
+
+  // ---- outline interactions
+  var items = [].slice.call(document.querySelectorAll(".ds-item[data-target]"));
+  var itemByTarget = {};
+  items.forEach(function (it) { itemByTarget[it.getAttribute("data-target")] = it; });
+  var anchors = [].slice.call(document.querySelectorAll("[data-anchor]"));
+  var suppressUntil = 0;
+
+  function setActive(it) {
+    items.forEach(function (x) { x.classList.toggle("active", x === it); });
+    if (it) {
+      var g = it.closest(".ds-outline-group");
+      if (g) g.classList.remove("collapsed");
+    }
+  }
+
+  items.forEach(function (it) {
+    it.addEventListener("click", function () {
+      var target = document.getElementById(it.getAttribute("data-target"));
+      if (!target || !scroller) return;
+      var top = scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 20;
+      suppressUntil = Date.now() + 900;
+      setActive(it);
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    });
+  });
+
+  [].slice.call(document.querySelectorAll("[data-group-toggle]")).forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      btn.closest(".ds-outline-group").classList.toggle("collapsed");
+    });
+  });
+
+  function spy() {
+    if (Date.now() < suppressUntil || !scroller) return;
+    var cTop = scroller.getBoundingClientRect().top;
+    var best = null;
+    for (var i = 0; i < anchors.length; i++) {
+      var r = anchors[i].getBoundingClientRect();
+      if (r.top - cTop <= 90) best = anchors[i];
+      else break;
+    }
+    if (!best && anchors.length) best = anchors[0];
+    if (best) {
+      var key = best.getAttribute("data-anchor-key") || best.id;
+      setActive(itemByTarget[key] || itemByTarget[best.id] || null);
+    }
+  }
+  if (scroller) {
+    var sraf = 0;
+    scroller.addEventListener("scroll", function () {
+      cancelAnimationFrame(sraf);
+      sraf = requestAnimationFrame(spy);
+    }, { passive: true });
+    spy();
+  }
+
+  // ---- readme collapse
+  var readme = document.querySelector("[data-readme]");
+  var toggle = document.querySelector("[data-readme-toggle]");
+  if (readme && toggle) {
+    var update = function () {
+      var collapsed = readme.classList.contains("collapsed");
+      toggle.textContent = collapsed ? "Show more" : "Show less";
+    };
+    if (readme.scrollHeight <= 300) {
+      readme.classList.remove("collapsed");
+      toggle.style.display = "none";
+    }
+    toggle.addEventListener("click", function () {
+      readme.classList.toggle("collapsed");
+      update();
+      fitAll();
+    });
+    update();
+  }
+
+  window.addEventListener("load", fitAll);
+})();
+
+</script>
+</body>
+</html>

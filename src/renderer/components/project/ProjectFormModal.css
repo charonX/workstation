@@ -1,0 +1,102 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--ch-space-4);
+}
+
+.modal {
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.modal-title {
+  font-size: var(--ch-text-lg);
+  font-weight: var(--ch-weight-semibold);
+  margin: 0;
+  color: var(--ch-text);
+}
+
+.modal-body {
+  padding: var(--ch-space-4);
+  flex: 1;
+  overflow: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ch-space-3);
+  padding: var(--ch-space-4);
+  border-top: 1px solid var(--ch-border);
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  background: transparent;
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+  font-size: var(--ch-text-sm);
+}
+
+.icon-btn:hover {
+  background: var(--ch-surface-high);
+  color: var(--ch-text);
+}
+
+.radio-group {
+  display: flex;
+  gap: var(--ch-space-2);
+}
+
+.radio-option {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  background: var(--ch-surface-high);
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.radio-option.active {
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent);
+  border-color: var(--ch-accent);
+}
+
+.form-error {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-error);
+  padding: var(--ch-space-2);
+  background: var(--ch-error-soft);
+  border-radius: var(--ch-radius-md);
+}

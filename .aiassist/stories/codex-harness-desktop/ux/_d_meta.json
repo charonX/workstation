@@ -1,0 +1,188 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": "../../../../../../charon/code/workspace/workstation/.aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "createdAt": "2026-07-06T09:03:16.596Z",
+  "updatedAt": "2026-07-06T14:42:28.470Z",
+  "assets": {
+    "Dashboard Home (Variant A)": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-07-06T09:22:37.948Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Workspace Projects (Variant A)": {
+      "versions": [
+        {
+          "path": "workspace.html",
+          "createdAt": "2026-07-06T09:22:42.008Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Flows List": {
+      "versions": [
+        {
+          "path": "flows.html",
+          "createdAt": "2026-07-06T09:23:35.213Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Flow Editor": {
+      "versions": [
+        {
+          "path": "flow-editor.html",
+          "createdAt": "2026-07-06T09:24:34.460Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Tasks and Executions": {
+      "versions": [
+        {
+          "path": "tasks.html",
+          "createdAt": "2026-07-06T09:24:38.803Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Workspace Home (Variant B)": {
+      "versions": [
+        {
+          "path": "workspace-home.html",
+          "createdAt": "2026-07-06T09:24:42.834Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Dashboard as Overview (Variant B)": {
+      "versions": [
+        {
+          "path": "dashboard-overview.html",
+          "createdAt": "2026-07-06T09:24:56.128Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Skills Management": {
+      "versions": [
+        {
+          "path": "skills.html",
+          "createdAt": "2026-07-06T10:09:29.822Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Settings": {
+      "versions": [
+        {
+          "path": "settings.html",
+          "createdAt": "2026-07-06T10:09:34.430Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "dashboard-overview": {
+      "versions": [
+        {
+          "path": "dashboard-overview.html",
+          "createdAt": "2026-07-06T14:42:28.173Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "flow-editor": {
+      "versions": [
+        {
+          "path": "flow-editor.html",
+          "createdAt": "2026-07-06T14:42:28.208Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "flows": {
+      "versions": [
+        {
+          "path": "flows.html",
+          "createdAt": "2026-07-06T14:42:28.241Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "index": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-07-06T14:42:28.274Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "preview": {
+      "versions": [
+        {
+          "path": "preview.html",
+          "createdAt": "2026-07-06T14:42:28.307Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "settings": {
+      "versions": [
+        {
+          "path": "settings.html",
+          "createdAt": "2026-07-06T14:42:28.339Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "skills": {
+      "versions": [
+        {
+          "path": "skills.html",
+          "createdAt": "2026-07-06T14:42:28.372Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "tasks": {
+      "versions": [
+        {
+          "path": "tasks.html",
+          "createdAt": "2026-07-06T14:42:28.404Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "workspace-home": {
+      "versions": [
+        {
+          "path": "workspace-home.html",
+          "createdAt": "2026-07-06T14:42:28.437Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "workspace": {
+      "versions": [
+        {
+          "path": "workspace.html",
+          "createdAt": "2026-07-06T14:42:28.470Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  }
+}

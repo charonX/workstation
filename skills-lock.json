@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "skills": {
+    "tac-assertion-signoff": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-assertion-signoff/SKILL.md",
+      "computedHash": "7d481ee78dbd57ec389d172e0d7cba476d4477a38ecb61d88939642c4bd82d41"
+    },
+    "tac-bootstrap-workflow": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-bootstrap-workflow/SKILL.md",
+      "computedHash": "82ebf6d52c4e3731bc27e55a61791d2750cb2f13dcb3ddb774cab6fc934a50ef"
+    },
+    "tac-crystallize": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tac-crystallize/SKILL.md",
+      "computedHash": "5852cc42e8df98f87a68fe5614199afbf574c1bb6a53d6d34b14bfe4ec2b2998"
+    },
+    "tac-demand-insight": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-demand-insight/SKILL.md",
+      "computedHash": "c6e8e39d4ee8670687c527fd3ce80ce24a307123c7e48d64e24f02c0f3a91cd4"
+    },
+    "tac-design-handoff": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-design-handoff/SKILL.md",
+      "computedHash": "6fa2234ebe9042785c07ef32eaa333217cb9a3f38039b501cd4f3b99f6e9fabf"
+    },
+    "tac-design-import": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-design-import/SKILL.md",
+      "computedHash": "1cc5de4b2b6732c0a9a2a05bc1c624981ab0015c082896c0aceb3b3bb14e00da"
+    },
+    "tac-design-system": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-design-system/SKILL.md",
+      "computedHash": "0497687b5e75877635d34153920c5400b75856d7bfa9bfd8ed89bbceba545074"
+    },
+    "tac-feel-signoff": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-feel-signoff/SKILL.md",
+      "computedHash": "d5beaacba8bdfc480f415e62e57c7f0628919d099955b0c88d41b3434dc9857d"
+    },
+    "tac-implementer": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tac-implementer/SKILL.md",
+      "computedHash": "b2fd542d3dfe16477b3036af24a1a10efae71118ea075e54286e25aecff48104"
+    },
+    "tac-qa-runner": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tac-qa-runner/SKILL.md",
+      "computedHash": "8948aebc58732dada230e3066e937137adfa99ec95c82fb2ea4a22d7a60df6e0"
+    },
+    "tac-reflect": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-reflect/SKILL.md",
+      "computedHash": "312e3b19d6f6901b58628b1c228bd97a98a09eb0585a2bbb9cce0235b9d3e8f0"
+    },
+    "tac-review": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-review/SKILL.md",
+      "computedHash": "75f64b61b5d63de16f084cfe2cbd1ca6d7cc2105916383884932a64293568b5c"
+    },
+    "tac-signoff": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-signoff/SKILL.md",
+      "computedHash": "e56af96ea87e342ba62be4856132073e574e7208a0af4c7959903d2fe546b945"
+    },
+    "tac-story": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-story/SKILL.md",
+      "computedHash": "15d4d3c2d0c7ce2ab9b36bf4a8b47edc43ea07abdde7b40891a58637baec8a8f"
+    },
+    "tac-sync-refs": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/maintenance/tac-sync-refs/SKILL.md",
+      "computedHash": "fba15861bbb7a757b58cf60b74826b93faf83534b04d0eff59ee6e1b0e1e944a"
+    },
+    "tac-tech-design": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-tech-design/SKILL.md",
+      "computedHash": "4cbe4f42f42d0af1571922c1de977a23328899958acefb590bd890c7c2d4716a"
+    },
+    "tac-test-author": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tac-test-author/SKILL.md",
+      "computedHash": "ea96d33599497b863e523f2f1da977535ad91519f41ec3b600fe942be8abc541"
+    },
+    "tac-to-prd": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-to-prd/SKILL.md",
+      "computedHash": "a63843f8c19caf90ff7a4b75f1cc514bacb8e770f00ad573d030df7018892aa9"
+    },
+    "tac-ux-explore": {
+      "source": "charonX/workflow",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/tac-ux-explore/SKILL.md",
+      "computedHash": "ae079b659083a6f8a35e8ef8da844f0c02d8cbc6473a035923b0afe92f446700"
+    }
+  }
+}

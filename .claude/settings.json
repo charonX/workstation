@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "loop-workflow@charonx-workflow": true
+  }
+}

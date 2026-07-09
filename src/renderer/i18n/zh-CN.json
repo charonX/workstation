@@ -8,6 +8,11 @@
     "settings": "设置",
     "system": "系统"
   },
+  "common": {
+    "close": "关闭",
+    "cancel": "取消",
+    "loading": "加载中..."
+  },
   "settings": {
     "title": "设置",
     "saveChanges": "保存更改",
@@ -31,5 +36,70 @@
     "light": "浅色",
     "english": "English",
     "chinese": "中文"
+  },
+  "skills": {
+    "title": "技能",
+    "skill": "技能",
+    "repoPath": "仓库路径",
+    "version": "版本",
+    "category": "分类",
+    "view": "查看",
+    "noSkills": "尚未安装任何技能。",
+    "loading": "加载技能中...",
+    "loadingDetail": "加载技能详情中...",
+    "countSuffix": "个技能在仓库中",
+    "installSkill": "安装技能",
+    "installing": "安装中...",
+    "installSource": "安装来源",
+    "identifier": "包 / 插件 / 路径",
+    "identifierPlaceholder": "例如 @anthropic/skill-content-writer",
+    "identifierHelp": "对于 npm 包，应用将安装到技能仓库中。",
+    "installError": "安装技能失败。请检查标识符并重试。",
+    "overview": "概览",
+    "parameters": "参数",
+    "examples": "示例",
+    "readme": "README",
+    "author": "作者",
+    "tags": "标签",
+    "paramName": "名称",
+    "paramType": "类型",
+    "paramDesc": "描述",
+    "noParameters": "该技能未定义参数。",
+    "noExamples": "暂无示例。",
+    "noReadme": "该技能暂无 README。"
+  },
+  "dashboard": {
+    "projects": "项目数",
+    "activeSchedules": "活跃调度",
+    "recentRuns": "最近运行",
+    "successRate": "成功率",
+    "recentExecutions": "最近执行",
+    "quickProjects": "快捷项目",
+    "noExecutions": "暂无最近执行记录。",
+    "noProjects": "暂无项目。",
+    "unknownFlow": "未知流程",
+    "loading": "加载概览中..."
+  },
+  "tasks": {
+    "tabTasks": "任务",
+    "tabExecutions": "执行历史",
+    "tasksPlaceholder": "任务定义将在此显示。"
+  },
+  "execution": {
+    "flow": "流程",
+    "project": "项目",
+    "trigger": "触发方式",
+    "status": "状态",
+    "startedAt": "开始时间",
+    "duration": "耗时",
+    "noExecutions": "暂无执行记录。",
+    "detailTitle": "执行",
+    "selectExecution": "选择一个执行记录以查看详情。",
+    "logs": "日志",
+    "variables": "变量",
+    "output": "输出",
+    "noLogs": "暂无日志。",
+    "noVariables": "暂无变量。",
+    "noOutput": "暂无输出。"
   }
 }

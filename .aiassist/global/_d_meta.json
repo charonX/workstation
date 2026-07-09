@@ -1,0 +1,26 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": "../../../../../../charon/code/workspace/workstation/.aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "assets": {
+    "Design System Preview": {
+      "versions": [
+        {
+          "path": "preview.html",
+          "createdAt": "2026-07-06T08:52:42.995Z",
+          "status": "approved"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-07-06T08:52:42.997Z",
+  "updatedAt": "2026-07-06T08:52:49.772Z"
+}

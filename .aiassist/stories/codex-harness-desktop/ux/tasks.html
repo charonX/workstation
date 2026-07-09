@@ -1,0 +1,497 @@
+<!-- @dsCard group="tasks" name="Tasks and Executions" viewport="desktop" -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC Workstation — Tasks</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      color: var(--ch-text);
+      background: var(--ch-bg);
+      line-height: var(--ch-leading-normal);
+    }
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--ch-sidebar-width) 1fr;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
+      height: 100vh;
+    }
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface);
+      border-bottom: 1px solid var(--ch-border);
+      gap: var(--ch-space-4);
+    }
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); }
+    .logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); color: var(--ch-text); letter-spacing: -0.02em; }
+    .search-box {
+      width: 280px; padding: 6px 12px;
+      background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text);
+      font-size: var(--ch-text-sm);
+      outline: none;
+    }
+    .search-box:focus { border-color: var(--ch-accent); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); }
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      background: transparent;
+      color: var(--ch-text-secondary);
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px;
+      border-radius: var(--ch-radius-md);
+      font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+    .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
+    .btn-ghost { background: transparent; color: var(--ch-text-secondary); }
+    .sidebar {
+      background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border);
+      padding: var(--ch-space-4) 0;
+      display: flex; flex-direction: column;
+    }
+    .nav-group { padding: 0 var(--ch-space-3); margin-bottom: var(--ch-space-6); }
+    .nav-label {
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 var(--ch-space-3);
+      margin-bottom: var(--ch-space-2);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: 8px var(--ch-space-3);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text-secondary);
+      text-decoration: none;
+      font-size: var(--ch-text-md);
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .nav-item.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .nav-icon { width: 18px; text-align: center; }
+    .main { overflow: auto; padding: var(--ch-space-6); }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--ch-space-5);
+    }
+    .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .tabs {
+      display: flex; gap: var(--ch-space-1);
+      border-bottom: 1px solid var(--ch-border);
+      margin-bottom: var(--ch-space-5);
+    }
+    .tab {
+      padding: var(--ch-space-2) var(--ch-space-4);
+      border-bottom: 2px solid transparent;
+      color: var(--ch-text-secondary);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+    }
+    .tab.active { color: var(--ch-accent); border-bottom-color: var(--ch-accent); }
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--ch-space-4);
+      gap: var(--ch-space-3);
+    }
+    .table {
+      width: 100%;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      overflow: hidden;
+      background: var(--ch-surface);
+    }
+    .table-header {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1.5fr 100px 120px 80px;
+      gap: var(--ch-space-3);
+      padding: var(--ch-space-2) var(--ch-space-4);
+      background: var(--ch-surface-high);
+      border-bottom: 1px solid var(--ch-border);
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .table-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1.5fr 100px 120px 80px;
+      gap: var(--ch-space-3);
+      align-items: center;
+      padding: var(--ch-space-3) var(--ch-space-4);
+      border-bottom: 1px solid var(--ch-border);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+    }
+    .table-row:last-child { border-bottom: none; }
+    .table-row:hover { background: var(--ch-surface-high); }
+    .table-row.active { background: var(--ch-accent-soft); }
+    .cell-main { display: flex; flex-direction: column; gap: 2px; }
+    .cell-title { font-weight: var(--ch-weight-medium); color: var(--ch-text); }
+    .cell-meta { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); font-family: var(--ch-font-mono); }
+    .cell-text { color: var(--ch-text-secondary); }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 2px 8px;
+      border-radius: var(--ch-radius-full);
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-success { background: var(--ch-success-soft); color: var(--ch-success); }
+    .status-success .status-dot { background: var(--ch-success); }
+    .status-running { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .status-running .status-dot { background: var(--ch-accent); animation: pulse 1.5s infinite; }
+    .status-error { background: var(--ch-error-soft); color: var(--ch-error); }
+    .status-error .status-dot { background: var(--ch-error); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .toggle {
+      width: 32px; height: 18px;
+      background: var(--ch-accent);
+      border-radius: 999px;
+      position: relative;
+      cursor: pointer;
+    }
+    .toggle::after {
+      content: ''; position: absolute;
+      width: 14px; height: 14px;
+      background: white; border-radius: 50%;
+      top: 2px; right: 2px;
+    }
+    .toggle.off { background: var(--ch-border-strong); }
+    .toggle.off::after { right: auto; left: 2px; }
+    .action-link {
+      color: var(--ch-accent);
+      font-size: var(--ch-text-xs);
+      cursor: pointer;
+    }
+    .action-link:hover { text-decoration: underline; }
+    .detail-panel {
+      margin-top: var(--ch-space-5);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      background: var(--ch-surface);
+      overflow: hidden;
+    }
+    .detail-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--ch-space-4);
+      border-bottom: 1px solid var(--ch-border);
+    }
+    .detail-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .detail-subtitle { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); font-family: var(--ch-font-mono); margin-top: 2px; }
+    .detail-tabs {
+      display: flex; gap: var(--ch-space-1);
+      padding: 0 var(--ch-space-4);
+      border-bottom: 1px solid var(--ch-border);
+    }
+    .detail-tab {
+      padding: var(--ch-space-2) var(--ch-space-3);
+      border-bottom: 2px solid transparent;
+      color: var(--ch-text-secondary);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+    }
+    .detail-tab.active { color: var(--ch-accent); border-bottom-color: var(--ch-accent); }
+    .detail-body { padding: var(--ch-space-3) var(--ch-space-4); }
+    .log-entry {
+      font-family: var(--ch-font-mono);
+      font-size: var(--ch-text-xs);
+      padding: var(--ch-space-2) 0;
+      border-bottom: 1px solid var(--ch-border);
+      display: flex; gap: var(--ch-space-3);
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--ch-text-tertiary); min-width: 80px; }
+    .log-level { color: var(--ch-accent); min-width: 50px; }
+    .log-msg { color: var(--ch-text-secondary); }
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 1px;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      overflow: hidden;
+      font-family: var(--ch-font-mono);
+      font-size: var(--ch-text-xs);
+    }
+    .kv-key { background: var(--ch-surface-high); padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text-secondary); }
+    .kv-value { background: var(--ch-surface); padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text); }
+    .output-box {
+      background: var(--ch-surface-high);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      padding: var(--ch-space-4);
+      font-family: var(--ch-font-mono);
+      font-size: var(--ch-text-sm);
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo">OPC Workstation</div>
+        <input type="text" class="search-box" data-i18n="searchPlaceholder" data-i18n-target="placeholder" placeholder="Search projects, flows, tasks...">
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" data-lang-toggle>中</button>
+        <button class="icon-btn" data-theme-toggle>◐</button>
+        <button class="icon-btn">🔔</button>
+        <button class="icon-btn">⚙</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="workspace">Workspace</div>
+        <a href="index.html" class="nav-item"><span class="nav-icon">▤</span> <span data-i18n="dashboard">Dashboard</span></a>
+        <a href="workspace.html" class="nav-item"><span class="nav-icon">◧</span> <span data-i18n="projects">Projects</span></a>
+        <a href="flows.html" class="nav-item"><span class="nav-icon">⟳</span> <span data-i18n="flows">Flows</span></a>
+        <a href="tasks.html" class="nav-item active"><span class="nav-icon">▶</span> <span data-i18n="tasks">Tasks</span></a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="system">System</div>
+        <a href="skills.html" class="nav-item"><span class="nav-icon">◈</span> <span data-i18n="skills">Skills</span></a>
+        <a href="settings.html" class="nav-item"><span class="nav-icon">⚙</span> <span data-i18n="settings">Settings</span></a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="page-header">
+        <h1 class="page-title" data-i18n="tasks">Tasks</h1>
+        <button class="btn btn-primary" data-open-modal="new-task" data-i18n="newTask">+ New Task</button>
+      </div>
+
+      <div class="tabs" data-tab-group="main-tabs">
+        <div class="tab active" data-tab="tasks" data-i18n="tasks">Tasks</div>
+        <div class="tab" data-tab="executions" data-i18n="execution">Executions</div>
+      </div>
+
+      <!-- Tasks Tab -->
+      <div data-tab-panel="tasks">
+      <div class="toolbar">
+        <span class="cell-text">4 task definitions</span>
+        <input type="text" class="search-box" placeholder="Filter tasks..." style="width:240px;">
+      </div>
+
+      <div class="table">
+        <div class="table-header">
+          <span data-i18n="taskName">Task</span>
+          <span data-i18n="project">Project</span>
+          <span data-i18n="flow">Flow</span>
+          <span data-i18n="trigger">Trigger</span>
+          <span data-i18n="lastRun">Last Run</span>
+          <span></span>
+        </div>
+        <div class="table-row">
+          <div class="cell-main">
+            <span class="cell-title">Hot News Daily</span>
+            <span class="cell-meta">0 9 * * *</span>
+          </div>
+          <span class="cell-text">content-ops</span>
+          <span class="cell-text">hot-news-fetch</span>
+          <span class="cell-text">Scheduled</span>
+          <span class="status status-success"><span class="status-dot"></span> Success</span>
+          <div class="toggle" data-toggle></div>
+        </div>
+        <div class="table-row">
+          <div class="cell-main">
+            <span class="cell-title">Site Sync Every 6h</span>
+            <span class="cell-meta">0 */6 * * *</span>
+          </div>
+          <span class="cell-text">content-ops</span>
+          <span class="cell-text">site-sync</span>
+          <span class="cell-text">Scheduled</span>
+          <span class="status status-running"><span class="status-dot"></span> Running</span>
+          <div class="toggle" data-toggle></div>
+        </div>
+        <div class="table-row">
+          <div class="cell-main">
+            <span class="cell-title">TikTok Filter Manual</span>
+            <span class="cell-meta">—</span>
+          </div>
+          <span class="cell-text">growth</span>
+          <span class="cell-text">tk-filter</span>
+          <span class="cell-text">Manual</span>
+          <span class="status status-error"><span class="status-dot"></span> Failed</span>
+          <div class="toggle" data-toggle></div>
+        </div>
+        <div class="table-row">
+          <div class="cell-main">
+            <span class="cell-title">Weekly Report</span>
+            <span class="cell-meta">0 10 * * 1</span>
+          </div>
+          <span class="cell-text">analytics</span>
+          <span class="cell-text">anomaly-check</span>
+          <span class="cell-text">Scheduled</span>
+          <span class="cell-text">—</span>
+          <div class="toggle off" data-toggle></div>
+        </div>
+      </div>      </div>
+
+      <!-- Executions Tab -->
+      <div data-tab-panel="executions" style="display:none;">
+      <div class="detail-panel">
+        <div class="detail-header">
+          <div>
+            <h2 class="detail-title">Execution #1042</h2>
+            <div class="detail-subtitle">Hot News Daily · content-ops · hot-news-fetch · 14s · 2026-07-06 09:00:12</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--ch-space-3);">
+            <span class="status status-success"><span class="status-dot"></span> Success</span>
+            <button class="btn btn-secondary" data-i18n="rerun">Rerun</button>
+          </div>
+        </div>
+
+        <div class="detail-tabs" data-tab-group="detail-tabs">
+          <div class="detail-tab active" data-tab="logs" data-i18n="logs">Logs</div>
+          <div class="detail-tab" data-tab="variables" data-i18n="variables">Variables</div>
+          <div class="detail-tab" data-tab="output" data-i18n="output">Output</div>
+        </div>
+
+        <div data-tab-panel="logs">
+          <div class="log-entry">
+            <span class="log-time">09:00:12</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">Execution started (trigger: schedule)</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:13</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Trigger] cron matched, proceeding</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:14</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Codex:Fetch Headlines] calling agent...</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:24</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Codex:Fetch Headlines] returned 8 headlines</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:25</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Condition:Has News?] true → Skill:Write Draft</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:26</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Skill:Write Draft] wrote ./output/daily-news.md</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">09:00:26</span>
+            <span class="log-level">INFO</span>
+            <span class="log-msg">[Output:Save Output] file saved, execution complete</span>
+          </div>
+        </div>
+
+        <div data-tab-panel="variables" style="display:none;">
+          <div class="kv-grid">
+            <div class="kv-key">headlines</div>
+            <div class="kv-value">Array(8)</div>
+            <div class="kv-key">draft</div>
+            <div class="kv-value">./output/daily-news.md</div>
+            <div class="kv-key">hasNews</div>
+            <div class="kv-value">true</div>
+            <div class="kv-key">executionId</div>
+            <div class="kv-value">#1042</div>
+          </div>
+        </div>
+
+        <div data-tab-panel="output" style="display:none;">
+          <div class="output-box">{
+  "title": "Daily Tech News",
+  "headlines": [...],
+  "draft": "./output/daily-news.md"
+}</div>
+        </div>
+      </div>
+      </div>
+    </main>
+  </div>
+  <!-- New Task Modal -->
+  <div class="modal-overlay" data-modal="new-task">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" data-i18n="newTask">New Task</h2>
+        <button class="icon-btn" data-close-modal>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" data-i18n="taskName">Task Name</label>
+          <input type="text" class="form-input" placeholder="e.g. Hot News Daily">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="project">Project</label>
+            <select class="form-input">
+              <option>content-ops</option>
+              <option>growth</option>
+              <option>analytics</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="flow">Flow</label>
+            <select class="form-input">
+              <option>hot-news-fetch</option>
+              <option>site-sync</option>
+              <option>tk-filter</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="trigger">Trigger</label>
+          <div class="radio-group" data-radio-group="task-trigger">
+            <div class="radio-option active" data-radio-option data-i18n="manual">Manual</div>
+            <div class="radio-option" data-radio-option data-i18n="scheduled">Scheduled</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="cronExpression">Cron Expression</label>
+          <input type="text" class="form-input" placeholder="0 9 * * *">
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="inputVariables">Input Variables (JSON)</label>
+          <textarea class="form-textarea" placeholder="{}"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="cancel">Cancel</button>
+        <button class="btn btn-primary" data-i18n="createTask">Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

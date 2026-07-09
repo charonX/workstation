@@ -1,290 +1,442 @@
-<!--
-  UX-REF-FOR: REQ-DESIGN-001, REQ-DESIGN-004
-  STORY-ID: codex-harness-desktop
-  VERSION: v1
-  DATE: 2026-06-29
--->
+<!-- @dsCard group="workspace" name="Workspace Projects (Variant A)" viewport="desktop" -->
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Workspace — OPC Workstation</title>
+  <title>OPC Workstation — Workspace</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <link rel="stylesheet" href="shared.css">
   <style>
-    :root {
-      --bg: #0f1115;
-      --panel: #181b21;
-      --panel-hover: #1f232a;
-      --border: #2a2f38;
-      --text: #e6e6e6;
-      --text-secondary: #8b929d;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --success: #22c55e;
-      --warning: #f59e0b;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      overflow: hidden;
+      margin: 0;
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      color: var(--ch-text);
+      background: var(--ch-bg);
+      line-height: var(--ch-leading-normal);
     }
-    .app {
+    .app-shell {
       display: grid;
-      grid-template-columns: 260px 1fr;
-      grid-template-rows: 48px 1fr;
+      grid-template-columns: var(--ch-sidebar-width) 1fr;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
       height: 100vh;
     }
     .topbar {
       grid-column: 1 / -1;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 16px;
+      padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface);
+      border-bottom: 1px solid var(--ch-border);
+      gap: var(--ch-space-4);
     }
-    .topbar-left { display: flex; align-items: center; gap: 16px; }
-    .logo { font-weight: 700; font-size: 15px; letter-spacing: -0.3px; }
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
-    .btn {
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 13px;
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); }
+    .logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); color: var(--ch-text); letter-spacing: -0.02em; }
+    .search-box {
+      width: 280px;
+      padding: 6px 12px;
+      background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text);
+      font-size: var(--ch-text-sm);
+      outline: none;
+    }
+    .search-box:focus { border-color: var(--ch-accent); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); }
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      background: transparent;
+      color: var(--ch-text-secondary);
       cursor: pointer;
     }
-    .btn-secondary {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px;
+      border-radius: var(--ch-radius-md);
+      font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+      border: 1px solid transparent;
     }
+    .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+    .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
     .sidebar {
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      padding: 16px;
+      background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border);
+      padding: var(--ch-space-4) 0;
+      display: flex;
+      flex-direction: column;
     }
-    .section-title {
-      font-size: 11px;
+    .nav-group { padding: 0 var(--ch-space-3); margin-bottom: var(--ch-space-6); }
+    .nav-label {
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-tertiary);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin-bottom: 10px;
+      letter-spacing: 0.05em;
+      padding: 0 var(--ch-space-3);
+      margin-bottom: var(--ch-space-2);
     }
     .nav-item {
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-bottom: 4px;
-      color: var(--text-secondary);
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: 8px var(--ch-space-3);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text-secondary);
+      text-decoration: none;
+      font-size: var(--ch-text-md);
+      margin-bottom: 2px;
     }
-    .nav-item.active {
-      background: var(--panel-hover);
-      color: var(--text);
-    }
-    .main {
-      padding: 32px;
-      overflow-y: auto;
-    }
+    .nav-item:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .nav-item.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .nav-icon { width: 18px; text-align: center; }
+    .main { overflow: auto; padding: var(--ch-space-6); }
     .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 28px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--ch-space-6);
     }
-    .page-title { font-size: 24px; font-weight: 600; }
-    .page-subtitle { color: var(--text-secondary); margin-top: 6px; font-size: 14px; }
-    .card-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
+    .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--ch-space-5);
+      gap: var(--ch-space-3);
     }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      transition: border-color 0.15s;
-    }
-    .card:hover { border-color: var(--accent); }
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 12px;
-    }
-    .card-title { font-size: 15px; font-weight: 600; }
-    .card-meta {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-    .card-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 16px;
-    }
-    .btn-small {
-      padding: 5px 10px;
-      font-size: 12px;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text);
+    .filter-group { display: flex; gap: var(--ch-space-2); }
+    .filter-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--ch-border);
+      background: var(--ch-surface);
+      color: var(--ch-text-secondary);
+      border-radius: var(--ch-radius-md);
+      font-size: var(--ch-text-sm);
       cursor: pointer;
     }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      display: inline-block;
-      margin-right: 6px;
+    .filter-btn.active { background: var(--ch-accent-soft); color: var(--ch-accent); border-color: var(--ch-accent); }
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--ch-space-4);
     }
-    .status-green { background: var(--success); }
-    .status-gray { background: var(--text-secondary); }
-    .skill-section { margin-top: 32px; }
-    .skill-list {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
+    .project-card {
+      background: var(--ch-surface);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      padding: var(--ch-space-4);
+      cursor: pointer;
     }
-    .skill-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
+    .project-card:hover { border-color: var(--ch-border-strong); }
+    .project-card-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: var(--ch-space-3);
     }
-    .skill-row:last-child { border-bottom: none; }
-    .skill-info { display: flex; align-items: center; gap: 12px; }
-    .skill-name { font-weight: 500; }
-    .skill-path { color: var(--text-secondary); font-size: 12px; }
-    .badge {
-      background: var(--panel-hover);
-      border: 1px solid var(--border);
-      border-radius: 4px;
+    .project-name { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0 0 2px; }
+    .project-path {
+      font-size: var(--ch-text-xs);
+      color: var(--ch-text-tertiary);
+      font-family: var(--ch-font-mono);
+    }
+    .project-meta {
+      display: flex; gap: var(--ch-space-4);
+      font-size: var(--ch-text-xs);
+      color: var(--ch-text-secondary);
+      margin-bottom: var(--ch-space-3);
+    }
+    .project-tags { display: flex; gap: var(--ch-space-2); flex-wrap: wrap; margin-bottom: var(--ch-space-3); }
+    .tag {
       padding: 2px 8px;
-      font-size: 11px;
-      color: var(--text-secondary);
+      border-radius: var(--ch-radius-full);
+      font-size: var(--ch-text-xs);
+      background: var(--ch-surface-high);
+      color: var(--ch-text-secondary);
     }
+    .project-actions {
+      display: flex; gap: var(--ch-space-3);
+      padding-top: var(--ch-space-3);
+      border-top: 1px solid var(--ch-border);
+      font-size: var(--ch-text-xs);
+    }
+    .project-action {
+      color: var(--ch-accent);
+      cursor: pointer;
+    }
+    .project-action:hover { text-decoration: underline; }
+    .add-project-card {
+      border: 2px dashed var(--ch-border);
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      color: var(--ch-text-secondary);
+      gap: var(--ch-space-2);
+    }
+    .add-project-card:hover { border-color: var(--ch-accent); color: var(--ch-accent); background: var(--ch-accent-soft); }
+    .tabs {
+      display: flex; gap: var(--ch-space-1);
+      border-bottom: 1px solid var(--ch-border);
+      margin-bottom: var(--ch-space-4);
+    }
+    .tab {
+      padding: var(--ch-space-2) var(--ch-space-4);
+      border-bottom: 2px solid transparent;
+      color: var(--ch-text-secondary);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+    }
+    .tab.active { color: var(--ch-accent); border-bottom-color: var(--ch-accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .skill-option {
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: var(--ch-space-2) 0;
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+    }
+    .skill-option-main { display: flex; flex-direction: column; }
+    .skill-option-title { color: var(--ch-text); font-weight: var(--ch-weight-medium); }
+    .skill-option-meta { color: var(--ch-text-secondary); font-size: var(--ch-text-xs); }
   </style>
 </head>
 <body>
-  <div class="app">
+  <div class="app-shell">
     <header class="topbar">
       <div class="topbar-left">
-        <span class="logo">⚡ OPC Workstation</span>
+        <div class="logo">OPC Workstation</div>
+        <input type="text" class="search-box" data-i18n="searchPlaceholder" data-i18n-target="placeholder" placeholder="Search projects, flows, tasks...">
       </div>
       <div class="topbar-right">
-        <button class="btn btn-secondary">Settings</button>
+        <button class="icon-btn" data-lang-toggle>中</button>
+        <button class="icon-btn" data-theme-toggle>◐</button>
+        <button class="icon-btn">🔔</button>
+        <button class="icon-btn">⚙</button>
       </div>
     </header>
 
     <aside class="sidebar">
-      <div class="section-title">Workspace</div>
-      <div class="nav-item active">📁 Projects</div>
-      <div class="nav-item">🔌 Skills Repository</div>
-      <div class="nav-item">⏱ Schedules</div>
-      <div class="nav-item">📜 Execution Logs</div>
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="workspace">Workspace</div>
+        <a href="index.html" class="nav-item"><span class="nav-icon">▤</span> <span data-i18n="dashboard">Dashboard</span></a>
+        <a href="workspace.html" class="nav-item active"><span class="nav-icon">◧</span> <span data-i18n="projects">Projects</span></a>
+        <a href="flows.html" class="nav-item"><span class="nav-icon">⟳</span> <span data-i18n="flows">Flows</span></a>
+        <a href="tasks.html" class="nav-item"><span class="nav-icon">▶</span> <span data-i18n="tasks">Tasks</span></a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="system">System</div>
+        <a href="skills.html" class="nav-item"><span class="nav-icon">◈</span> <span data-i18n="skills">Skills</span></a>
+        <a href="settings.html" class="nav-item"><span class="nav-icon">⚙</span> <span data-i18n="settings">Settings</span></a>
+      </nav>
     </aside>
 
     <main class="main">
       <div class="page-header">
-        <div>
-          <div class="page-title">My Workspace</div>
-          <div class="page-subtitle">Manage projects, skills, and automation flows</div>
-        </div>
-        <button class="btn">+ New Project</button>
+        <h1 class="page-title" data-i18n="projects">Projects</h1>
+        <button class="btn btn-primary" data-open-modal="add-project" data-i18n="addProject">+ Add Project</button>
       </div>
 
-      <div class="section-title">Projects</div>
-      <div class="card-grid">
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">DailyOps</span>
-            <span class="badge">Local</span>
+      <div class="toolbar">
+        <div class="filter-group">
+          <button class="filter-btn active" data-i18n="all">All</button>
+          <button class="filter-btn" data-i18n="recent">Recent</button>
+        </div>
+        <input type="text" class="search-box" placeholder="Filter projects..." style="width:200px;">
+      </div>
+
+      <div class="project-grid">
+        <div class="project-card">
+          <div class="project-card-header">
+            <div>
+              <h3 class="project-name">content-ops</h3>
+              <div class="project-path">~/workspace/content-ops</div>
+            </div>
           </div>
-          <div class="card-meta">
-            <span class="status-dot status-green"></span>2 flows active<br/>
-            Last run: 2 hours ago
+          <div class="project-meta">
+            <span>4 flows</span>
+            <span>12 runs</span>
+            <span>updated 2m ago</span>
           </div>
-          <div class="card-actions">
-            <button class="btn-small">Open</button>
-            <button class="btn-small">Edit Skills</button>
+          <div class="project-tags">
+            <span class="tag">hot-news-fetch</span>
+            <span class="tag">site-sync</span>
+          </div>
+          <div class="project-actions">
+            <span class="project-action" data-open-modal="project-detail" data-i18n="configureSkills">Configure Skills</span>
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">TikTok Pilot</span>
-            <span class="badge">Git</span>
+        <div class="project-card">
+          <div class="project-card-header">
+            <div>
+              <h3 class="project-name">growth</h3>
+              <div class="project-path">~/workspace/growth</div>
+            </div>
           </div>
-          <div class="card-meta">
-            <span class="status-dot status-gray"></span>0 flows active<br/>
-            Cloned from github.com/user/tiktok-pilot
+          <div class="project-meta">
+            <span>3 flows</span>
+            <span>8 runs</span>
+            <span>updated 1h ago</span>
           </div>
-          <div class="card-actions">
-            <button class="btn-small">Open</button>
-            <button class="btn-small">Pull</button>
+          <div class="project-tags">
+            <span class="tag">tk-filter</span>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Trend Hunter</span>
-            <span class="badge">Local</span>
-          </div>
-          <div class="card-meta">
-            <span class="status-dot status-green"></span>1 flow active<br/>
-            Last run: 5 min ago
-          </div>
-          <div class="card-actions">
-            <button class="btn-small">Open</button>
-            <button class="btn-small">Edit Skills</button>
+          <div class="project-actions">
+            <span class="project-action" data-open-modal="project-detail" data-i18n="configureSkills">Configure Skills</span>
           </div>
         </div>
 
-        <div class="card" style="border-style:dashed;border-color:var(--text-secondary);display:flex;align-items:center;justify-content:center;min-height:140px">
-          <div style="color:var(--text-secondary);font-size:13px;text-align:center">
-            + Import from Git
+        <div class="project-card">
+          <div class="project-card-header">
+            <div>
+              <h3 class="project-name">analytics</h3>
+              <div class="project-path">~/workspace/analytics</div>
+            </div>
+          </div>
+          <div class="project-meta">
+            <span>2 flows</span>
+            <span>5 runs</span>
+            <span>updated 3h ago</span>
+          </div>
+          <div class="project-tags">
+            <span class="tag">anomaly-check</span>
+          </div>
+          <div class="project-actions">
+            <span class="project-action" data-open-modal="project-detail" data-i18n="configureSkills">Configure Skills</span>
+          </div>
+        </div>
+
+        <div class="project-card add-project-card" data-open-modal="add-project">
+          <span style="font-size:24px;">+</span>
+          <span data-i18n="addProject">Add Project</span>
+        </div>
+      </div>
+
+      <!-- Add Project Modal -->
+      <div class="modal-overlay" data-modal="add-project">
+        <div class="modal">
+          <div class="modal-header">
+            <h2 class="modal-title" data-i18n="addProject">Add Project</h2>
+            <button class="icon-btn" data-close-modal>✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" data-i18n="source">Source</label>
+              <div class="radio-group" data-radio-group="project-source">
+                <div class="radio-option active" data-radio-option data-i18n="localDirectory">Local Directory</div>
+                <div class="radio-option" data-radio-option data-i18n="gitRepository">Git Repository</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="projectName">Project Name</label>
+              <input type="text" class="form-input" placeholder="my-project">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="localPath">Local Path</label>
+              <input type="text" class="form-input" placeholder="/Users/.../my-project">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" data-i18n="repositoryURL">Repository URL</label>
+                <input type="text" class="form-input" placeholder="https://github.com/...">
+              </div>
+              <div class="form-group">
+                <label class="form-label" data-i18n="branch">Branch</label>
+                <input type="text" class="form-input" placeholder="main">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" data-close-modal data-i18n="cancel">Cancel</button>
+            <button class="btn btn-primary" data-i18n="addProject">Add Project</button>
           </div>
         </div>
       </div>
 
-      <div class="skill-section">
-        <div class="section-title">Linked Skills</div>
-        <div class="skill-list">
-          <div class="skill-row">
-            <div class="skill-info">
-              <span class="skill-name">hot-news</span>
-              <span class="skill-path">→ ~/skills/news/hot-news</span>
-            </div>
-            <span class="badge">DailyOps, Trend Hunter</span>
+      <!-- Project Detail Modal -->
+      <div class="modal-overlay" data-modal="project-detail">
+        <div class="modal">
+          <div class="modal-header">
+            <h2 class="modal-title">content-ops</h2>
+            <button class="icon-btn" data-close-modal>✕</button>
           </div>
-          <div class="skill-row">
-            <div class="skill-info">
-              <span class="skill-name">tiktok-scout</span>
-              <span class="skill-path">→ ~/skills/social/tiktok-scout</span>
+          <div class="modal-body">
+            <div class="tabs" data-tab-group="project-detail-tabs">
+              <div class="tab active" data-tab="overview" data-i18n="overview">Overview</div>
+              <div class="tab" data-tab="skills" data-i18n="projectSkills">Skills</div>
             </div>
-            <span class="badge">TikTok Pilot</span>
+
+            <div data-tab-panel="overview" class="tab-panel active">
+              <div class="meta-list">
+                <div class="meta-row">
+                  <span class="meta-label" data-i18n="projectName">Project Name</span>
+                  <span class="meta-value">content-ops</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label" data-i18n="localPath">Local Path</span>
+                  <span class="meta-value">~/workspace/content-ops</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Flows</span>
+                  <span class="meta-value">4</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Runs</span>
+                  <span class="meta-value">12</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label" data-i18n="updated">Updated</span>
+                  <span class="meta-value">2m ago</span>
+                </div>
+              </div>
+            </div>
+
+            <div data-tab-panel="skills" class="tab-panel">
+              <div class="section-title" data-i18n="availableSkills">Available Skills</div>
+              <div class="skill-option">
+                <div class="checkbox checked">✓</div>
+                <div class="skill-option-main">
+                  <span class="skill-option-title">content-writer</span>
+                  <span class="skill-option-meta">Generates markdown drafts from outlines</span>
+                </div>
+              </div>
+              <div class="skill-option">
+                <div class="checkbox checked">✓</div>
+                <div class="skill-option-main">
+                  <span class="skill-option-title">hot-news-agent</span>
+                  <span class="skill-option-meta">Fetches and summarizes news sources</span>
+                </div>
+              </div>
+              <div class="skill-option">
+                <div class="checkbox"></div>
+                <div class="skill-option-main">
+                  <span class="skill-option-title">tk-analyzer</span>
+                  <span class="skill-option-meta">Analyzes TikTok creator metrics</span>
+                </div>
+              </div>
+              <div class="skill-option">
+                <div class="checkbox"></div>
+                <div class="skill-option-main">
+                  <span class="skill-option-title">anomaly-detector</span>
+                  <span class="skill-option-meta">Detects outliers in time-series data</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="skill-row">
-            <div class="skill-info">
-              <span class="skill-name">image-gen</span>
-              <span class="skill-path">→ ~/skills/image/image-gen</span>
-            </div>
-            <span class="badge">DailyOps</span>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" data-close-modal data-i18n="cancel">Cancel</button>
+            <button class="btn btn-primary" data-i18n="saveChanges">Save Changes</button>
           </div>
         </div>
       </div>
     </main>
   </div>
+  <script src="app.js"></script>
 </body>
 </html>
