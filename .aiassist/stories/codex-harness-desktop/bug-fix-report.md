@@ -12,6 +12,8 @@
 |---|---|---|---|---|
 | BUG-001 | code-defect (with test-gap) | major | 顶部导航栏内容与 UX HTML 不一致 | fixed |
 | BUG-002 | code-defect | major | 应用整体布局结构错误 — TopBar 未跨顶且存在两个 Logo | fixed |
+| BUG-003 | code-defect | minor | ProjectFormModal 中 Local Path 等文案未国际化 | fixed |
+| BUG-005 | code-defect | minor | TopBar 主题/语言切换存在竞态 | fixed |
 
 ### BUG-001 详情
 
@@ -39,6 +41,23 @@
   - 更新 `topbar.test.cjs`：断言 Sidebar 中不存在 "OPC Workstation"；修复 theme toggle 测试以适配默认 dark 主题。
 - **关联 REQ**：REQ-DASH-001、REQ-I18N-001、REQ-I18N-002
 - **外部 issue**：无（BUG-001 修复后的结构偏差，本地跟踪）
+
+### BUG-003 详情
+
+- **症状**：`ProjectFormModal.jsx` 中所有文案（包括 Local Path 标签）均为硬编码英文，切换语言后不变。
+- **根因**：项目创建弹层实现时未接入 i18n。
+- **修复范围**：
+  - 在 `en-US.json` / `zh-CN.json` 中新增 `projectForm.*` 翻译键。
+  - 将 `ProjectFormModal.jsx` 中所有硬编码字符串替换为 `t(...)`。
+- **关联 REQ**：REQ-I18N-002
+
+### BUG-005 详情
+
+- **症状**：全量 E2E 回归时，`topbar.test.cjs` 主题切换 case 偶发失败。
+- **根因**：`TopBar` 与 `App` 各自调用 `useSettings`，TopBar 的 `settings` state 加载延迟导致 toggle 时使用了错误的当前值。
+- **修复范围**：
+  - `TopBar.jsx` 的 `toggleTheme` / `toggleLanguage` 优先读取 `document.documentElement` 上已应用的 `data-theme` / `lang` 属性。
+- **关联 REQ**：REQ-I18N-001、REQ-I18N-002
 
 ---
 
