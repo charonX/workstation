@@ -21,7 +21,7 @@ body {
 }
 
 /* App layout */
-.app-layout {
+.app-shell {
   display: grid;
   grid-template-columns: var(--ch-sidebar-width) 1fr;
   grid-template-rows: var(--ch-topbar-height) 1fr;
@@ -30,15 +30,8 @@ body {
 }
 
 .app-main {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
   grid-row: 2;
   grid-column: 2;
-}
-
-.app-content {
-  flex: 1;
   overflow: auto;
   padding: var(--ch-panel-padding);
 }
@@ -49,20 +42,9 @@ body {
   flex-direction: column;
   background: var(--ch-surface);
   border-right: 1px solid var(--ch-border);
-  height: 100vh;
-  grid-row: 1 / -1;
+  grid-row: 2;
   grid-column: 1;
-}
-
-.sidebar-header {
-  padding: var(--ch-space-4);
-  border-bottom: 1px solid var(--ch-border);
-}
-
-.sidebar-logo {
-  font-size: var(--ch-text-lg);
-  font-weight: var(--ch-weight-semibold);
-  color: var(--ch-text);
+  overflow: hidden;
 }
 
 .sidebar-nav {
@@ -117,7 +99,7 @@ body {
   background: var(--ch-surface);
   border-bottom: 1px solid var(--ch-border);
   grid-row: 1;
-  grid-column: 2;
+  grid-column: 1 / -1;
   gap: var(--ch-space-4);
 }
 

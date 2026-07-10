@@ -3,12 +3,10 @@ import TopBar from "./TopBar.jsx";
 
 export default function PageLayout({ children }) {
   return (
-    <div className="app-layout">
+    <div className="app-shell">
+      <TopBar />
       <Sidebar />
-      <div className="app-main">
-        <TopBar />
-        <div className="app-content">{children}</div>
-      </div>
+      <main className="app-main">{children}</main>
     </div>
   );
 }

@@ -20,9 +20,6 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar" data-testid="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-logo">OPC Workstation</div>
-      </div>
       <nav className="sidebar-nav">
         <div className="nav-group">
           <div className="nav-label">{t("nav.workspace")}</div>
