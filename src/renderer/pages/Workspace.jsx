@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { useProjects } from "../hooks/useProjects.js";
 import ProjectCard from "../components/project/ProjectCard.jsx";
 import ProjectFormModal from "../components/project/ProjectFormModal.jsx";
@@ -8,11 +9,21 @@ import "./Workspace.css";
 
 export default function Workspace() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [projects, loading, error, createProject] = useProjects();
   const [formOpen, setFormOpen] = useState(false);
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  useEffect(() => {
+    const q = searchParams.get("q") || "";
+    if (q !== search) {
+      setSearch(q);
+    }
+    // Only sync from URL on initial load / external navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const filteredProjects = search.trim()
     ? projects.filter((p) =>
@@ -44,7 +55,15 @@ export default function Workspace() {
           className="form-input"
           placeholder={t("workspace.searchPlaceholder")}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSearch(value);
+            if (value.trim()) {
+              setSearchParams({ q: value.trim() });
+            } else {
+              setSearchParams({});
+            }
+          }}
         />
       </div>
 

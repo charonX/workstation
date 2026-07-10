@@ -68,6 +68,13 @@
     "noExamples": "No examples available.",
     "noReadme": "No README available for this skill."
   },
+  "topBar": {
+    "searchPlaceholder": "Search projects, flows, tasks...",
+    "switchToDark": "Switch to dark theme",
+    "switchToLight": "Switch to light theme",
+    "notifications": "Notifications",
+    "openSettings": "Open settings"
+  },
   "dashboard": {
     "projects": "Projects",
     "activeSchedules": "Active Schedules",

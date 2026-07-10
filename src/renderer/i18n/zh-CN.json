@@ -68,6 +68,13 @@
     "noExamples": "暂无示例。",
     "noReadme": "该技能暂无 README。"
   },
+  "topBar": {
+    "searchPlaceholder": "搜索项目、流程、任务...",
+    "switchToDark": "切换到深色主题",
+    "switchToLight": "切换到浅色主题",
+    "notifications": "通知",
+    "openSettings": "打开设置"
+  },
   "dashboard": {
     "projects": "项目数",
     "activeSchedules": "活跃调度",
