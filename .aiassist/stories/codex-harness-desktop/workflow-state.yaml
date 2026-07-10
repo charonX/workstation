@@ -1,7 +1,7 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: FEEL-SIGNOFF
+current_phase: QA
 attempt: 3
 blockers: []
 slices: []
@@ -37,6 +37,8 @@ history:
   - {at: 2026-07-09, from: ASSERTION-SIGNOFF, to: BUILD, note: "assertion-signoff 通过：28 条 REQ 全覆盖，无 TODO 占位，所有测试文件头部完整，解锁 BUILD。"}
   - {at: 2026-07-09, from: BUILD, to: QA, note: "BUILD 完成：61 个单元测试 + 21 个 Playwright Electron E2E 测试全绿，实现覆盖前端、CLI、HTTP API、FlowEngine。"}
   - {at: 2026-07-09, from: QA, to: FEEL-SIGNOFF, note: "QA 通过：无失败、无 flaky，生成 qa-report.md，进入 feel-signoff 观感验收。"}
+  - {at: 2026-07-10, from: FEEL-SIGNOFF, to: BUG_TRIAGE, note: "feel-signoff 发现顶部导航栏与 UX HTML 不一致，登记 BUG-001 并路由到 /fix-bugs。"}
+  - {at: 2026-07-10, from: BUG_TRIAGE, to: QA, note: "BUG-001 已修复：TopBar 实现与 UX HTML 对齐，新增 4 个 E2E 回归测试，全量测试通过，回到 QA 等待重新 feel-signoff。"}
 archive:
   - {attempt: 1, date: 2026-07-08, reason_file: archive/attempt-1/reason.md}
   - {attempt: 2, date: 2026-07-08, reason_file: archive/attempt-2/reason.md}
