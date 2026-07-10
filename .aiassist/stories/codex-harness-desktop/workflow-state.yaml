@@ -42,6 +42,7 @@ history:
   - {at: 2026-07-10, from: QA, to: BUG_TRIAGE, note: "feel-signoff 反馈：BUG-001 修复后的整体布局仍为左右结构且存在两个 Logo，与 UX HTML 的上下结构不符，登记 BUG-002 并路由到 /fix-bugs。"}
   - {at: 2026-07-10, from: BUG_TRIAGE, to: QA, note: "BUG-002 已修复：重构为 TopBar 跨顶 + Sidebar + Main 的上下结构，移除 Sidebar 重复 Logo，更新回归测试，全量测试通过，回到 QA 等待重新 feel-signoff。"}
   - {at: 2026-07-10, from: QA, to: QA, note: "feel-signoff 反馈：ProjectFormModal 中 Local Path 等文案未国际化，已登记并修复 BUG-003；目录选择器需求登记为 BUG-004（req-gap），待用户决策。"}
+  - {at: 2026-07-10, from: QA, to: QA, note: "全量回归发现 TopBar 主题/语言切换竞态，已登记并修复 BUG-005；当前 QA 全量测试通过。"}
 archive:
   - {attempt: 1, date: 2026-07-08, reason_file: archive/attempt-1/reason.md}
   - {attempt: 2, date: 2026-07-08, reason_file: archive/attempt-2/reason.md}
