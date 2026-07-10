@@ -37,15 +37,20 @@ test.describe("TopBar", () => {
     await expect(firstWindow.locator(locators.TOPBAR_THEME_BUTTON)).toBeVisible();
     await expect(firstWindow.locator(locators.TOPBAR_NOTIFICATIONS_BUTTON)).toBeVisible();
     await expect(firstWindow.locator(locators.TOPBAR_SETTINGS_BUTTON)).toBeVisible();
+
+    // The brand should appear only in the top bar, not duplicated in the sidebar.
+    await expect(firstWindow.locator(locators.SIDEBAR)).not.toContainText("OPC Workstation");
   });
 
   test("theme toggle in topbar switches data-theme", async () => {
-    await firstWindow.click(locators.TOPBAR_THEME_BUTTON);
-    // TopBar theme button cycles theme: light -> dark -> light
-    await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", "dark");
+    const initial = await firstWindow.locator("html").getAttribute("data-theme");
+    const opposite = initial === "dark" ? "light" : "dark";
 
     await firstWindow.click(locators.TOPBAR_THEME_BUTTON);
-    await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", opposite);
+
+    await firstWindow.click(locators.TOPBAR_THEME_BUTTON);
+    await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", initial);
   });
 
   test("language toggle in topbar cycles language and updates navigation", async () => {
