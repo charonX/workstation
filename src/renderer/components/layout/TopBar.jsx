@@ -27,12 +27,14 @@ export default function TopBar() {
   const language = settings?.language || "en-US";
 
   function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark";
+    const current = document.documentElement.getAttribute("data-theme") || theme || "dark";
+    const next = current === "dark" ? "light" : "dark";
     updateSettings({ theme: next });
   }
 
   function toggleLanguage() {
-    const next = language === "en-US" ? "zh-CN" : "en-US";
+    const current = document.documentElement.getAttribute("lang") || language || "en-US";
+    const next = current === "en-US" ? "zh-CN" : "en-US";
     updateSettings({ language: next });
   }
 
