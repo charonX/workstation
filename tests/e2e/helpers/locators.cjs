@@ -21,6 +21,15 @@ module.exports = {
   SKILLS_LINK: "[data-testid='nav-skills']",
   DASHBOARD_LINK: "[data-testid='nav-dashboard']",
 
+  // TopBar
+  TOPBAR: "[data-testid='topbar']",
+  TOPBAR_LOGO: "[data-testid='topbar-logo']",
+  TOPBAR_SEARCH_INPUT: "[data-testid='topbar-search-input']",
+  TOPBAR_LANGUAGE_BUTTON: "[data-testid='topbar-language-button']",
+  TOPBAR_THEME_BUTTON: "[data-testid='topbar-theme-button']",
+  TOPBAR_NOTIFICATIONS_BUTTON: "[data-testid='topbar-notifications-button']",
+  TOPBAR_SETTINGS_BUTTON: "[data-testid='topbar-settings-button']",
+
   // Settings
   SETTINGS_FORM: "[data-testid='settings-form']",
   WORKSPACE_ROOT_INPUT: "[data-testid='workspace-root-input']",
