@@ -1,6 +1,14 @@
 # QA 报告 — codex-harness-desktop
 
-生成时间：2026-07-09
+生成时间：2026-07-10（BUG-001 修复后重新回归）
+
+---
+
+## 变更摘要
+
+本次 QA 针对 feel-signoff 阶段发现的 BUG-001（顶部导航栏与 UX HTML 不一致）进行修复后的全量回归验证。
+
+---
 
 ## 单元测试
 
@@ -23,13 +31,20 @@
 
 - 结果：**PASS**
 - 命令：`npm run test:e2e`
-- 统计：21 个测试，0 失败，0 flaky
+- 统计：25 个测试，0 失败，0 flaky
 - 关键用户路径：
   - 主题/语言/密度切换与持久化
   - Dashboard 指标卡片、最近执行、快捷项目链接
   - Flow 创建、编辑器、节点属性、运行、执行详情
   - Skill 安装（本地文件）与 Skill Detail 标签页
   - Workspace 设置、本地项目创建、Project Detail 配置 Skills
+  - **TopBar 品牌、搜索框、语言/主题/通知/设置图标按钮（新增回归测试）**
+
+## Bug 修复验证
+
+| BUG-ID | 修复内容 | 回归测试 | 状态 |
+|---|---|---|---|
+| BUG-001 | TopBar 实现与 UX HTML 对齐：品牌、搜索框、语言/主题/通知/设置图标按钮 | `topbar.test.cjs`（4 个 case） | ✅ 通过 |
 
 ## Playwright 产物
 
@@ -65,4 +80,4 @@
 - [ ] 需回 BUILD
 - [ ] 需回 REQ
 
-全部 61 个单元测试与 21 个 Playwright Electron E2E 测试通过，无连续失败、无 flaky。实现满足当前已签核 REQ 的行为断言，建议推进到 **feel-signoff** 进行观感验收。
+全部 61 个单元测试与 25 个 Playwright Electron E2E 测试通过，无连续失败、无 flaky。BUG-001 修复已验证，建议推进到 **feel-signoff** 进行观感验收。
