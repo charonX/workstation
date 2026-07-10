@@ -33,7 +33,9 @@ module.exports = {
   // Settings
   SETTINGS_FORM: "[data-testid='settings-form']",
   WORKSPACE_ROOT_INPUT: "[data-testid='workspace-root-input']",
+  WORKSPACE_ROOT_BROWSE_BUTTON: "[data-testid='workspace-root-input-browse']",
   SKILL_REPO_PATH_INPUT: "[data-testid='skill-repo-path-input']",
+  SKILL_REPO_PATH_BROWSE_BUTTON: "[data-testid='skill-repo-path-input-browse']",
   THEME_SELECT: "[data-testid='theme-select']",
   LANGUAGE_SELECT: "[data-testid='language-select']",
   DENSITY_SELECT: "[data-testid='density-select']",
@@ -44,6 +46,7 @@ module.exports = {
   PROJECT_FORM_MODAL: "[data-testid='project-form-modal']",
   PROJECT_NAME_INPUT: "[data-testid='project-name-input']",
   PROJECT_LOCAL_PATH_INPUT: "[data-testid='project-local-path-input']",
+  PROJECT_LOCAL_PATH_BROWSE_BUTTON: "[data-testid='project-local-path-input-browse']",
   PROJECT_REPO_URL_INPUT: "[data-testid='project-repo-url-input']",
   PROJECT_BRANCH_INPUT: "[data-testid='project-branch-input']",
   SUBMIT_PROJECT_BUTTON: "[data-testid='submit-project-button']",

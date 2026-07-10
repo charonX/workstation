@@ -43,7 +43,8 @@ test.describe("TopBar", () => {
   });
 
   test("theme toggle in topbar switches data-theme", async () => {
-    const initial = await firstWindow.locator("html").getAttribute("data-theme");
+    await expect(firstWindow.locator(locators.TOPBAR)).toBeVisible();
+    const initial = await firstWindow.locator("html").getAttribute("data-theme") || "dark";
     const opposite = initial === "dark" ? "light" : "dark";
 
     await firstWindow.click(locators.TOPBAR_THEME_BUTTON);
@@ -54,6 +55,7 @@ test.describe("TopBar", () => {
   });
 
   test("language toggle in topbar cycles language and updates navigation", async () => {
+    await expect(firstWindow.locator(locators.TOPBAR)).toBeVisible();
     await firstWindow.click(locators.TOPBAR_LANGUAGE_BUTTON);
     // TopBar language button cycles language: en-US -> zh-CN
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "zh-CN");
