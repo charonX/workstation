@@ -46,6 +46,7 @@
 |---|---|---|---|
 | BUG-001 | TopBar 实现与 UX HTML 对齐：品牌、搜索框、语言/主题/通知/设置图标按钮 | `topbar.test.cjs`（4 个 case） | ✅ 通过 |
 | BUG-002 | 重构全局布局为 TopBar 跨顶 + Sidebar + Main；移除 Sidebar 重复 Logo | `topbar.test.cjs` 布局断言 | ✅ 通过 |
+| BUG-005 | TopBar 主题/语言切换优先读取 DOM 当前值，修复竞态 | `topbar.test.cjs` 主题/语言切换 | ✅ 通过 |
 
 ## Playwright 产物
 
