@@ -39,6 +39,8 @@ history:
   - {at: 2026-07-09, from: QA, to: FEEL-SIGNOFF, note: "QA 通过：无失败、无 flaky，生成 qa-report.md，进入 feel-signoff 观感验收。"}
   - {at: 2026-07-10, from: FEEL-SIGNOFF, to: BUG_TRIAGE, note: "feel-signoff 发现顶部导航栏与 UX HTML 不一致，登记 BUG-001 并路由到 /fix-bugs。"}
   - {at: 2026-07-10, from: BUG_TRIAGE, to: QA, note: "BUG-001 已修复：TopBar 实现与 UX HTML 对齐，新增 4 个 E2E 回归测试，全量测试通过，回到 QA 等待重新 feel-signoff。"}
+  - {at: 2026-07-10, from: QA, to: BUG_TRIAGE, note: "feel-signoff 反馈：BUG-001 修复后的整体布局仍为左右结构且存在两个 Logo，与 UX HTML 的上下结构不符，登记 BUG-002 并路由到 /fix-bugs。"}
+  - {at: 2026-07-10, from: BUG_TRIAGE, to: QA, note: "BUG-002 已修复：重构为 TopBar 跨顶 + Sidebar + Main 的上下结构，移除 Sidebar 重复 Logo，更新回归测试，全量测试通过，回到 QA 等待重新 feel-signoff。"}
 archive:
   - {attempt: 1, date: 2026-07-08, reason_file: archive/attempt-1/reason.md}
   - {attempt: 2, date: 2026-07-08, reason_file: archive/attempt-2/reason.md}

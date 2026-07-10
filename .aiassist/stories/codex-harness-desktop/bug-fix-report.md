@@ -11,6 +11,7 @@
 | BUG-ID | 类别 | 严重程度 | 摘要 | 状态 |
 |---|---|---|---|---|
 | BUG-001 | code-defect (with test-gap) | major | 顶部导航栏内容与 UX HTML 不一致 | fixed |
+| BUG-002 | code-defect | major | 应用整体布局结构错误 — TopBar 未跨顶且存在两个 Logo | fixed |
 
 ### BUG-001 详情
 
@@ -26,6 +27,18 @@
     - 新增 `tests/capabilities/internationalization-theme/theme/codex-harness-desktop/e2e/topbar.test.cjs` 覆盖品牌、搜索框、四个图标按钮、主题/语言快捷切换、设置导航。
 - **关联 REQ**：REQ-DASH-001、REQ-WORKSPACE-005、REQ-I18N-001、REQ-I18N-002
 - **外部 issue**：GitHub charonX/workstation #2
+
+### BUG-002 详情
+
+- **症状**：BUG-001 修复后，页面仍是左右结构（Sidebar 占左侧全高，右侧区域内再放 TopBar + 内容），且 Sidebar 与 TopBar 各有一个 "OPC Workstation" Logo。
+- **根因**：BUG-001 只填充了 TopBar 内容，未重构 `PageLayout` 的 CSS Grid 结构，也未移除 Sidebar 中的 Logo。
+- **修复范围**：
+  - 重构 `PageLayout.jsx`：使用 `.app-shell` 容器，顺序为 `TopBar` → `Sidebar` → `<main className="app-main">`。
+  - 修改 `index.css`：`.topbar` 跨顶（`grid-column: 1 / -1`），`.sidebar` 位于 TopBar 下方左侧，`.app-main` 位于 TopBar 下方右侧。
+  - 移除 `Sidebar.jsx` 中的 `sidebar-header` / `sidebar-logo`。
+  - 更新 `topbar.test.cjs`：断言 Sidebar 中不存在 "OPC Workstation"；修复 theme toggle 测试以适配默认 dark 主题。
+- **关联 REQ**：REQ-DASH-001、REQ-I18N-001、REQ-I18N-002
+- **外部 issue**：无（BUG-001 修复后的结构偏差，本地跟踪）
 
 ---
 

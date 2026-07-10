@@ -6,7 +6,7 @@
 
 ## 变更摘要
 
-本次 QA 针对 feel-signoff 阶段发现的 BUG-001（顶部导航栏与 UX HTML 不一致）进行修复后的全量回归验证。
+本次 QA 针对 feel-signoff 阶段发现的 BUG-001（顶部导航栏与 UX HTML 不一致）及 BUG-002（整体布局结构错误、存在两个 Logo）进行修复后的全量回归验证。
 
 ---
 
@@ -45,6 +45,7 @@
 | BUG-ID | 修复内容 | 回归测试 | 状态 |
 |---|---|---|---|
 | BUG-001 | TopBar 实现与 UX HTML 对齐：品牌、搜索框、语言/主题/通知/设置图标按钮 | `topbar.test.cjs`（4 个 case） | ✅ 通过 |
+| BUG-002 | 重构全局布局为 TopBar 跨顶 + Sidebar + Main；移除 Sidebar 重复 Logo | `topbar.test.cjs` 布局断言 | ✅ 通过 |
 
 ## Playwright 产物
 
