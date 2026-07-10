@@ -1,6 +1,6 @@
 {
   "provider": "github",
-  "defaultRepo": "owner/repo",
+  "defaultRepo": "charonX/workstation",
   "enabled": true,
   "sync": {
     "onFileBugCreate": true,
