@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import Modal from "../shared/Modal.jsx";
 import "./ProjectFormModal.css";
 
 export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
+  const { t } = useTranslation();
   const [sourceType, setSourceType] = useState("local");
   const [name, setName] = useState("");
   const [localPath, setLocalPath] = useState("");
@@ -46,54 +48,54 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Add Project"
+      title={t("projectForm.title")}
       testid="project-form-modal"
     >
       <form onSubmit={handleSubmit}>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">Source</label>
+            <label className="form-label">{t("projectForm.source")}</label>
             <div className="radio-group">
               <button
                 type="button"
                 className={`radio-option ${sourceType === "local" ? "active" : ""}`}
                 onClick={() => setSourceType("local")}
               >
-                Local Directory
+                {t("projectForm.sourceLocal")}
               </button>
               <button
                 type="button"
                 className={`radio-option ${sourceType === "git" ? "active" : ""}`}
                 onClick={() => setSourceType("git")}
               >
-                Git Repository
+                {t("projectForm.sourceGit")}
               </button>
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Project Name</label>
+            <label className="form-label">{t("projectForm.projectName")}</label>
             <input
               type="text"
               className="form-input"
               data-testid="project-name-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="my-project"
+              placeholder={t("projectForm.projectNamePlaceholder")}
               required
             />
           </div>
 
           {sourceType === "local" && (
             <div className="form-group">
-              <label className="form-label">Local Path</label>
+              <label className="form-label">{t("projectForm.localPath")}</label>
               <input
                 type="text"
                 className="form-input"
                 data-testid="project-local-path-input"
                 value={localPath}
                 onChange={(e) => setLocalPath(e.target.value)}
-                placeholder="/Users/.../my-project"
+                placeholder={t("projectForm.localPathPlaceholder")}
               />
             </div>
           )}
@@ -101,26 +103,26 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
           {sourceType === "git" && (
             <>
               <div className="form-group">
-                <label className="form-label">Repository URL</label>
+                <label className="form-label">{t("projectForm.repoUrl")}</label>
                 <input
                   type="text"
                   className="form-input"
                   data-testid="project-repo-url-input"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/..."
+                  placeholder={t("projectForm.repoUrlPlaceholder")}
                   required
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Branch</label>
+                <label className="form-label">{t("projectForm.branch")}</label>
                 <input
                   type="text"
                   className="form-input"
                   data-testid="project-branch-input"
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
-                  placeholder="main"
+                  placeholder={t("projectForm.branchPlaceholder")}
                 />
               </div>
             </>
@@ -137,7 +139,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
             className="btn btn-secondary"
             onClick={handleClose}
           >
-            Cancel
+            {t("projectForm.cancel")}
           </button>
           <button
             type="submit"
@@ -145,7 +147,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
             data-testid="submit-project-button"
             disabled={submitting}
           >
-            {submitting ? "Adding..." : "Add Project"}
+            {submitting ? t("projectForm.adding") : t("projectForm.add")}
           </button>
         </div>
       </form>

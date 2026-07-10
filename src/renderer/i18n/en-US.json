@@ -132,6 +132,23 @@
     "schedule": "Schedule",
     "save": "Save"
   },
+  "projectForm": {
+    "title": "Add Project",
+    "source": "Source",
+    "sourceLocal": "Local Directory",
+    "sourceGit": "Git Repository",
+    "projectName": "Project Name",
+    "projectNamePlaceholder": "my-project",
+    "localPath": "Local Path",
+    "localPathPlaceholder": "/Users/.../my-project",
+    "repoUrl": "Repository URL",
+    "repoUrlPlaceholder": "https://github.com/...",
+    "branch": "Branch",
+    "branchPlaceholder": "main",
+    "cancel": "Cancel",
+    "add": "Add Project",
+    "adding": "Adding..."
+  },
   "projectDetail": {
     "title": "Project Detail",
     "close": "Close",

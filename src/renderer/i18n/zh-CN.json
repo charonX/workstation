@@ -132,6 +132,23 @@
     "schedule": "调度",
     "save": "保存"
   },
+  "projectForm": {
+    "title": "添加项目",
+    "source": "来源",
+    "sourceLocal": "本地目录",
+    "sourceGit": "Git 仓库",
+    "projectName": "项目名称",
+    "projectNamePlaceholder": "my-project",
+    "localPath": "本地路径",
+    "localPathPlaceholder": "/Users/.../my-project",
+    "repoUrl": "仓库地址",
+    "repoUrlPlaceholder": "https://github.com/...",
+    "branch": "分支",
+    "branchPlaceholder": "main",
+    "cancel": "取消",
+    "add": "添加项目",
+    "adding": "添加中..."
+  },
   "projectDetail": {
     "title": "项目详情",
     "close": "关闭",
