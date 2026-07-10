@@ -180,6 +180,20 @@ body {
   margin: 0;
 }
 
+.directory-input {
+  display: flex;
+  gap: var(--ch-space-3);
+}
+
+.directory-input .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.directory-input .btn {
+  flex-shrink: 0;
+}
+
 /* Settings grid */
 .settings-grid {
   display: grid;

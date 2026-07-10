@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import Modal from "../shared/Modal.jsx";
+import DirectoryInput from "../shared/DirectoryInput.jsx";
 import "./ProjectFormModal.css";
 
 export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
@@ -89,13 +90,12 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
           {sourceType === "local" && (
             <div className="form-group">
               <label className="form-label">{t("projectForm.localPath")}</label>
-              <input
-                type="text"
-                className="form-input"
-                data-testid="project-local-path-input"
+              <DirectoryInput
                 value={localPath}
-                onChange={(e) => setLocalPath(e.target.value)}
+                onChange={setLocalPath}
                 placeholder={t("projectForm.localPathPlaceholder")}
+                pickerTitle={t("projectForm.localPath")}
+                data-testid="project-local-path-input"
               />
             </div>
           )}

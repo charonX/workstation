@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
-import { useSettings } from "./hooks/useSettings.js";
+import { SettingsProvider, useSettings } from "./hooks/useSettings.jsx";
 import PageLayout from "./components/layout/PageLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Workspace from "./pages/Workspace.jsx";
@@ -10,7 +10,7 @@ import Skills from "./pages/Skills.jsx";
 import Settings from "./pages/Settings.jsx";
 import "./i18n/index.js";
 
-function App() {
+function AppRoutes() {
   const [, , loading, error] = useSettings();
 
   if (loading) {
@@ -46,4 +46,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <SettingsProvider>
+      <AppRoutes />
+    </SettingsProvider>
+  );
+}

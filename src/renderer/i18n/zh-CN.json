@@ -11,7 +11,8 @@
   "common": {
     "close": "关闭",
     "cancel": "取消",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "browse": "浏览"
   },
   "settings": {
     "title": "设置",

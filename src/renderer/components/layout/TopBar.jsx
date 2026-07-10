@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useSettings } from "../../hooks/useSettings.js";
+import { useSettings } from "../../hooks/useSettings.jsx";
 
 function IconButton({ label, onClick, children, testid }) {
   return (
@@ -27,13 +27,13 @@ export default function TopBar() {
   const language = settings?.language || "en-US";
 
   function toggleTheme() {
-    const current = document.documentElement.getAttribute("data-theme") || theme || "dark";
+    const current = settings?.theme || "dark";
     const next = current === "dark" ? "light" : "dark";
     updateSettings({ theme: next });
   }
 
   function toggleLanguage() {
-    const current = document.documentElement.getAttribute("lang") || language || "en-US";
+    const current = settings?.language || "en-US";
     const next = current === "en-US" ? "zh-CN" : "en-US";
     updateSettings({ language: next });
   }

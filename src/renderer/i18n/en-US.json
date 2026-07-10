@@ -11,7 +11,8 @@
   "common": {
     "loading": "Loading...",
     "close": "Close",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "browse": "Browse"
   },
   "settings": {
     "title": "Settings",

@@ -1,4 +1,4 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
 /**
  * Discover the local HTTP API base URL.
@@ -27,6 +27,28 @@ function discoverApiBaseUrl() {
 
 const apiBaseUrl = discoverApiBaseUrl();
 
+/**
+ * The implementation behind window.opc.selectDirectory.
+ * It is kept as a mutable closure variable so that E2E tests can replace it
+ * without needing to mutate the contextBridge-exposed window.opc object.
+ */
+let selectDirectoryImpl = (title, defaultPath) =>
+  ipcRenderer.invoke("opc-select-directory", { title, defaultPath });
+
 contextBridge.exposeInMainWorld("opc", {
   apiBaseUrl,
+
+  /**
+   * Open a native directory picker dialog.
+   * @param {string} title - Dialog title.
+   * @param {string} [defaultPath] - Initial directory path.
+   * @returns {Promise<string | null>} Selected directory path, or null if cancelled.
+   */
+  selectDirectory: (title, defaultPath) => selectDirectoryImpl(title, defaultPath),
+
+  /**
+   * Test-only hook to replace the directory picker implementation.
+   * @param {Function} fn - async (title, defaultPath) => string | null
+   */
+  __setSelectDirectoryImpl: (fn) => { selectDirectoryImpl = fn; },
 });

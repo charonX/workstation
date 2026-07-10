@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fsSync from "node:fs";
@@ -104,6 +104,17 @@ async function createWindow() {
     mainWindow = null;
   });
 }
+
+ipcMain.handle("opc-select-directory", async (_event, { title, defaultPath }) => {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(focusedWindow, {
+    title,
+    defaultPath,
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 
 app.whenReady().then(createWindow);
 

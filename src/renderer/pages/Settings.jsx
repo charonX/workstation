@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useSettings } from "../hooks/useSettings.js";
+import { useSettings } from "../hooks/useSettings.jsx";
+import DirectoryInput from "../components/shared/DirectoryInput.jsx";
 
 const DEFAULT_FORM = {
   workspaceRoot: "",
@@ -108,13 +109,13 @@ export default function Settings() {
                   <label className="form-label" htmlFor="workspace-root-input">
                     {t("settings.workspaceRoot")}
                   </label>
-                  <input
+                  <DirectoryInput
                     id="workspace-root-input"
-                    type="text"
-                    className="form-input"
-                    data-testid="workspace-root-input"
                     value={form.workspaceRoot}
-                    onChange={(e) => handleChange("workspaceRoot", e.target.value)}
+                    onChange={(value) => handleChange("workspaceRoot", value)}
+                    placeholder={t("settings.workspaceRoot")}
+                    pickerTitle={t("settings.workspaceRoot")}
+                    data-testid="workspace-root-input"
                   />
                   <p className="help-text">{t("settings.workspaceRootHelp")}</p>
                 </div>
@@ -123,13 +124,13 @@ export default function Settings() {
                   <label className="form-label" htmlFor="skill-repo-path-input">
                     {t("settings.skillRepoPath")}
                   </label>
-                  <input
+                  <DirectoryInput
                     id="skill-repo-path-input"
-                    type="text"
-                    className="form-input"
-                    data-testid="skill-repo-path-input"
                     value={form.skillRepoPath}
-                    onChange={(e) => handleChange("skillRepoPath", e.target.value)}
+                    onChange={(value) => handleChange("skillRepoPath", value)}
+                    placeholder={t("settings.skillRepoPath")}
+                    pickerTitle={t("settings.skillRepoPath")}
+                    data-testid="skill-repo-path-input"
                   />
                   <p className="help-text">{t("settings.skillRepoPathHelp")}</p>
                 </div>
