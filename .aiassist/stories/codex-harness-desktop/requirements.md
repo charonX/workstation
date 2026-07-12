@@ -170,6 +170,31 @@
 
 ---
 
+## REQ-WORKSPACE-008: 删除项目
+
+- **来源**：PRD §4.16 Workspace / Projects 首页
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `workspace-management`
+- **entity**: `project`
+- **scope**: cross-module
+- **modules**: `projectService`, `src/http/routes/projects.js`, `src/cli/commands/project.js`, renderer ProjectCard/ProjectDetailModal
+- **interface_contract**:
+  - `DELETE /api/projects/:id`
+  - CLI: `opc-workstation project delete --id <id>`
+  - 项目不存在返回 `404`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
+
+**验收标准**：
+- [ ] 删除后项目从 `GET /api/projects` 列表中消失。
+- [ ] 级联删除该项目的 flows、schedules、executions、logs 和 project_skills 关联。
+- [ ] 本地 git 检出目录**不**随项目删除而被删除（仅删除元数据）。
+- [ ] UI 删除操作需要二次确认。
+- [ ] 删除不存在的项目返回 `404`。
+
+---
+
 ## REQ-FLOW-001: Flows 列表页
 
 - **来源**：PRD §4.13 Flows 列表页
@@ -390,6 +415,32 @@
 
 ---
 
+## REQ-FLOW-011: 删除流程（逻辑删除）
+
+- **来源**：PRD §4.13 Flows 列表页
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `flowService`, `src/http/routes/flows.js`, `src/cli/commands/flow.js`, renderer FlowCard/FlowEditor
+- **interface_contract**:
+  - `DELETE /api/flows/:id`
+  - CLI: `opc-workstation flow delete --id <id>`
+  - Flow 不存在返回 `404`
+  - Flow 标记 `deletedAt` 后从列表/详情中隐藏
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.spec.js`
+
+**验收标准**：
+- [ ] 删除后 flow 从 `GET /api/flows` 列表和 `GET /api/flows/:id` 中隐藏（返回 `404`）。
+- [ ] 数据库记录保留，新增 `deletedAt` 字段标记删除时间。
+- [ ] 已删除 flow 的 schedules 和 executions 记录保留，但后续不再被调度触发。
+- [ ] UI 删除操作需要二次确认。
+- [ ] 删除不存在的 flow 返回 `404`。
+
+---
+
 ## REQ-SCHEDULE-001: 手动创建任务
 
 - **来源**：PRD §4.14 Tasks 页面
@@ -460,6 +511,30 @@
 
 ---
 
+## REQ-SCHEDULE-004: 删除定时任务
+
+- **来源**：PRD §4.14 Tasks 页面
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `scheduling-execution`
+- **entity**: `schedule`
+- **scope**: cross-module
+- **modules**: `taskService`, `src/http/routes/schedules.js`, `src/cli/commands/schedule.js`, renderer Schedule/Execution 列表
+- **interface_contract**:
+  - `DELETE /api/schedules/:id`
+  - CLI: `opc-workstation schedule delete --id <id>`
+  - Schedule 不存在返回 `404`
+- **测试类型**: CLI + HTTP API
+- **测试路径**: `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/`
+
+**验收标准**：
+- [ ] 删除后 schedule 从 `GET /api/schedules` 列表中消失。
+- [ ] 已存在的 execution 历史保留。
+- [ ] UI 删除操作需要二次确认。
+- [ ] 删除不存在的 schedule 返回 `404`。
+
+---
+
 ## REQ-SKILL-001: Skills 列表
 
 - **来源**：PRD §4.15 Skill 管理 UI
@@ -521,6 +596,32 @@
 **验收标准**：
 - [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
 - [ ] 安装后 skill 出现在列表中，并记录 `installSource`。
+
+---
+
+## REQ-SKILL-004: 删除 Skill
+
+- **来源**：PRD §4.15 Skill 管理 UI
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `skill-management`
+- **entity**: `skill`
+- **scope**: cross-module
+- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`, renderer SkillTable/SkillDetailModal
+- **interface_contract**:
+  - `DELETE /api/skills/:id`
+  - CLI: `opc-workstation skill delete --id <id>`
+  - Skill 仍被 project 关联时返回 `400 CONFLICT`
+  - Skill 不存在返回 `404`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
+
+**验收标准**：
+- [ ] 删除后 skill 从 `GET /api/skills` 列表中消失。
+- [ ] 物理删除数据库记录。
+- [ ] 若 skill 仍被任何 project 关联，删除失败并返回 `400`，提示先解除关联。
+- [ ] UI 删除操作需要二次确认。
+- [ ] 删除不存在的 skill 返回 `404`。
 
 ---
 
