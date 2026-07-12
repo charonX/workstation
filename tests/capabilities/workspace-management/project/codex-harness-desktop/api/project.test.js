@@ -34,11 +34,13 @@ describe("Projects", () => {
   beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-project-test-"));
     serverCtx = await startServer();
-    // Point workspaceRoot to a temp directory so git clones land there.
+    // Point workspaceRoot to a temp subdirectory so git clones don't collide with source repos.
+    const workspaceRoot = path.join(tempDir, "workspace");
+    fs.mkdirSync(workspaceRoot, { recursive: true });
     const settingsRes = await fetch(`${serverCtx.baseUrl}/api/settings`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspaceRoot: tempDir })
+      body: JSON.stringify({ workspaceRoot })
     });
     assert.equal(settingsRes.status, 200);
   });

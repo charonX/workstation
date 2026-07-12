@@ -6,20 +6,20 @@
 // ASSERTIONS-SIGNED: false
 
 const { test, expect } = require("@playwright/test");
-const fs = require("node:fs");
+const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
-function createLocalGitRepo(baseDir, repoName) {
+async function createLocalGitRepo(baseDir, repoName) {
   const repoPath = path.join(baseDir, repoName);
-  fs.mkdirSync(repoPath, { recursive: true });
+  await fs.mkdir(repoPath, { recursive: true });
   execFileSync("git", ["init"], { cwd: repoPath });
   execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoPath });
   execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoPath });
-  fs.writeFileSync(path.join(repoPath, "README.md"), `# ${repoName}\n`);
+  await fs.writeFile(path.join(repoPath, "README.md"), `# ${repoName}\n`);
   execFileSync("git", ["add", "."], { cwd: repoPath });
   execFileSync("git", ["commit", "-m", "initial"], { cwd: repoPath });
   return { repoPath, repoUrl: `file://${repoPath}/.git` };
@@ -40,7 +40,7 @@ test.describe("Onboarding", () => {
 
     // Seed a local skill fixture so Configure Skills has something to link.
     const skillDir = path.join(userDataDir, "skills", "demo-skill");
-    await fs.mkdirSync(skillDir, { recursive: true });
+    await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(
       path.join(skillDir, "SKILL.md"),
       ["---", "name: demo-skill", "description: A demo skill for E2E tests", "---", "", "# Demo Skill"].join("\n")
@@ -81,7 +81,7 @@ test.describe("Onboarding", () => {
   });
 
   test("user can add a git project from Workspace", async () => {
-    const { repoUrl } = createLocalGitRepo(userDataDir, "git-demo-project");
+    const { repoUrl } = await createLocalGitRepo(userDataDir, "git-demo-project");
 
     await firstWindow.click(locators.SETTINGS_LINK);
     await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
@@ -100,7 +100,7 @@ test.describe("Onboarding", () => {
     // Expected: modal closes and project card appears, and the repo is cloned locally.
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).not.toBeVisible();
     await expect(firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Git Demo Project" })).toBeVisible();
-    expect(fs.existsSync(path.join(userDataDir, "workspace", "git-demo-project", ".git"))).toBe(true);
+    await expect(fs.access(path.join(userDataDir, "workspace", "git-demo-project", ".git"))).resolves.toBeUndefined();
   });
 
   test("user can configure skills in Project Detail", async () => {
