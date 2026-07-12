@@ -26,6 +26,21 @@ export async function list() {
   return handleResponse(res);
 }
 
+async function deleteSchedule(flags) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/schedules/${flags.id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ message: "Request failed" }));
+    const err = new Error(data.message || "Request failed");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return { success: true };
+}
+
+export { deleteSchedule as delete };
+
 async function handleResponse(res, expectedStatus) {
   const data = await res.json();
   if (!res.ok || (expectedStatus && res.status !== expectedStatus)) {

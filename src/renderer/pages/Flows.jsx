@@ -4,15 +4,35 @@ import { useFlows } from "../hooks/useFlows.js";
 import { useProjects } from "../hooks/useProjects.js";
 import FlowCard from "../components/flow/FlowCard.jsx";
 import FlowFormModal from "../components/flow/FlowFormModal.jsx";
+import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
+import { deleteFlow } from "../api/flows.js";
 import "./Flows.css";
 
 export default function Flows() {
   const { t } = useTranslation();
-  const [flows, flowsLoading, flowsError, createFlow] = useFlows();
+  const [flows, flowsLoading, flowsError, createFlow, refreshFlows] = useFlows();
   const [projects, projectsLoading] = useProjects();
   const [showModal, setShowModal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   const loading = flowsLoading || projectsLoading;
+
+  function handleRequestDelete(flowId) {
+    setPendingDeleteId(flowId);
+    setConfirmOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDeleteId) return;
+    try {
+      await deleteFlow(pendingDeleteId);
+      await refreshFlows();
+    } finally {
+      setPendingDeleteId(null);
+      setConfirmOpen(false);
+    }
+  }
 
   return (
     <div className="page" data-testid="flows-page">
@@ -40,7 +60,7 @@ export default function Flows() {
       ) : (
         <div className="flow-grid">
           {flows.map((flow) => (
-            <FlowCard key={flow.id} flow={flow} />
+            <FlowCard key={flow.id} flow={flow} onDelete={handleRequestDelete} />
           ))}
           {flows.length === 0 && (
             <div className="empty-state">
@@ -57,6 +77,17 @@ export default function Flows() {
           onClose={() => setShowModal(false)}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title={t("flows.confirmDeleteTitle")}
+        message={t("flows.confirmDeleteMessage")}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingDeleteId(null);
+        }}
+      />
     </div>
   );
 }

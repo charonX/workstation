@@ -41,6 +41,17 @@ export function handleSkills(req, res, body, pathParts) {
       if (!skill) return notFound(res, "Skill not found");
       return ok(res, skill);
     }
+
+    if (req.method === "DELETE") {
+      const result = skillService.deleteSkill(skillId);
+      if (!result.deleted) {
+        if (result.reason === "not_found") return notFound(res, "Skill not found");
+        if (result.reason === "linked") return badRequest(res, "Skill is linked to one or more projects");
+        return badRequest(res, "Cannot delete skill");
+      }
+      return noContent(res);
+    }
+
     return notFound(res);
   }
 
@@ -55,6 +66,11 @@ function ok(res, data) {
 function badRequest(res, message) {
   res.writeHead(400, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
+}
+
+function noContent(res) {
+  res.writeHead(204);
+  res.end();
 }
 
 function notFound(res, message = "Not found") {

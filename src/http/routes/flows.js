@@ -36,6 +36,13 @@ export function handleFlows(req, res, body, pathParts) {
       if (!flow) return notFound(res, "Flow not found");
       return ok(res, flow);
     }
+
+    if (req.method === "DELETE") {
+      const deleted = flowService.deleteFlow(flowId);
+      if (!deleted) return notFound(res, "Flow not found");
+      return noContent(res);
+    }
+
     return notFound(res);
   }
 
@@ -83,6 +90,11 @@ function toListView(flow) {
 function ok(res, data) {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+function noContent(res) {
+  res.writeHead(204);
+  res.end();
 }
 
 function badRequest(res, message) {

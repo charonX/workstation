@@ -172,6 +172,14 @@ export function toggleSchedule(id) {
   return rowToSchedule({ ...row, enabled });
 }
 
+export function deleteSchedule(id) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM schedules WHERE id = ?").get(id);
+  if (!row) return false;
+  db.prepare("DELETE FROM schedules WHERE id = ?").run(id);
+  return true;
+}
+
 export function listSchedules() {
   const db = getDb();
   return db.prepare("SELECT * FROM schedules").all().map(rowToSchedule);

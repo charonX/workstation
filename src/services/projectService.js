@@ -184,3 +184,17 @@ export function filterProjects(projects, filter) {
   if (!term) return projects;
   return projects.filter(p => p.name.toLowerCase().includes(term));
 }
+
+export function deleteProject(projectId) {
+  const db = getDb();
+  const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(projectId);
+  if (!project) return false;
+
+  db.prepare("DELETE FROM logs WHERE executionId IN (SELECT id FROM executions WHERE projectId = ?)").run(projectId);
+  db.prepare("DELETE FROM executions WHERE projectId = ?").run(projectId);
+  db.prepare("DELETE FROM schedules WHERE projectId = ?").run(projectId);
+  db.prepare("DELETE FROM flows WHERE projectId = ?").run(projectId);
+  db.prepare("DELETE FROM project_skills WHERE projectId = ?").run(projectId);
+  db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
+  return true;
+}

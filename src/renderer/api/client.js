@@ -19,9 +19,11 @@ async function request(method, endpoint, body) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || `HTTP ${res.status}`);
   }
+  if (res.status === 204) return undefined;
   return res.json();
 }
 
 export const get = (endpoint) => request("GET", endpoint);
 export const patch = (endpoint, body) => request("PATCH", endpoint, body);
 export const post = (endpoint, body) => request("POST", endpoint, body);
+export const del = (endpoint) => request("DELETE", endpoint);

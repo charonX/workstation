@@ -30,6 +30,13 @@ export async function handleProjects(req, res, body, pathParts) {
       if (!detail) return notFound(res, "Project not found");
       return ok(res, detail);
     }
+
+    if (req.method === "DELETE") {
+      const deleted = projectService.deleteProject(projectId);
+      if (!deleted) return notFound(res, "Project not found");
+      return noContent(res);
+    }
+
     return notFound(res);
   }
 
@@ -103,6 +110,11 @@ function buildProjectDetail(projectId) {
 function ok(res, data) {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+function noContent(res) {
+  res.writeHead(204);
+  res.end();
 }
 
 function badRequest(res, message) {

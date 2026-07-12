@@ -178,3 +178,15 @@ export function getLinkedSkills(projectId) {
     SELECT skillId FROM project_skills WHERE projectId = ?
   `).all(projectId).map(row => row.skillId);
 }
+
+export function deleteSkill(skillId) {
+  const db = getDb();
+  const skill = db.prepare("SELECT id FROM skills WHERE id = ?").get(skillId);
+  if (!skill) return { deleted: false, reason: "not_found" };
+
+  const linked = db.prepare("SELECT 1 FROM project_skills WHERE skillId = ? LIMIT 1").get(skillId);
+  if (linked) return { deleted: false, reason: "linked" };
+
+  db.prepare("DELETE FROM skills WHERE id = ?").run(skillId);
+  return { deleted: true };
+}

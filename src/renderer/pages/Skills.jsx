@@ -4,12 +4,32 @@ import { useSkills } from "../hooks/useSkills.js";
 import SkillTable from "../components/skill/SkillTable.jsx";
 import SkillDetailModal from "../components/skill/SkillDetailModal.jsx";
 import InstallSkillModal from "../components/skill/InstallSkillModal.jsx";
+import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
+import { deleteSkill } from "../api/skills.js";
 
 export default function Skills() {
   const { t } = useTranslation();
-  const { skills, loading, error, install } = useSkills();
+  const { skills, loading, error, refetch, install } = useSkills();
   const [detailSkillId, setDetailSkillId] = useState(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  function handleRequestDelete(skillId) {
+    setPendingDeleteId(skillId);
+    setConfirmOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDeleteId) return;
+    try {
+      await deleteSkill(pendingDeleteId);
+      await refetch();
+    } finally {
+      setPendingDeleteId(null);
+      setConfirmOpen(false);
+    }
+  }
 
   return (
     <div className="page" data-testid="skills-page">
@@ -41,7 +61,7 @@ export default function Skills() {
       )}
 
       {!loading && !error && (
-        <SkillTable skills={skills} onRowClick={setDetailSkillId} />
+        <SkillTable skills={skills} onRowClick={setDetailSkillId} onDelete={handleRequestDelete} />
       )}
 
       {showInstallModal && (
@@ -57,6 +77,17 @@ export default function Skills() {
           onClose={() => setDetailSkillId(null)}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title={t("skills.confirmDeleteTitle")}
+        message={t("skills.confirmDeleteMessage")}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingDeleteId(null);
+        }}
+      />
     </div>
   );
 }

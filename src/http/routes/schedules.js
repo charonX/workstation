@@ -33,6 +33,13 @@ export function handleSchedules(req, res, body, pathParts) {
       if (!updated) return notFound(res, "Schedule not found");
       return ok(res, toListView(updated));
     }
+
+    if (req.method === "DELETE") {
+      const deleted = taskService.deleteSchedule(scheduleId);
+      if (!deleted) return notFound(res, "Schedule not found");
+      return noContent(res);
+    }
+
     return notFound(res);
   }
 
@@ -53,6 +60,11 @@ function toListView(schedule) {
 function ok(res, data) {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+function noContent(res) {
+  res.writeHead(204);
+  res.end();
 }
 
 function badRequest(res, message) {

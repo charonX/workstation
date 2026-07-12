@@ -1,7 +1,7 @@
 import React from "react";
 import "./ProjectCard.css";
 
-export default function ProjectCard({ project, onConfigureSkills }) {
+export default function ProjectCard({ project, onConfigureSkills, onDelete }) {
   return (
     <div className="project-card" data-testid="project-card">
       <div className="project-card-header">
@@ -21,6 +21,13 @@ export default function ProjectCard({ project, onConfigureSkills }) {
           onClick={() => onConfigureSkills(project.id)}
         >
           Configure Skills
+        </button>
+        <button
+          className="project-action project-action-danger"
+          data-testid="project-delete-button"
+          onClick={() => onDelete(project.id)}
+        >
+          Delete
         </button>
       </div>
     </div>

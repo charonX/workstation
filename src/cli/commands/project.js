@@ -34,6 +34,21 @@ export async function get(flags) {
   return handleResponse(res);
 }
 
+async function deleteProject(flags) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/projects/${flags.id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ message: "Request failed" }));
+    const err = new Error(data.message || "Request failed");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return { success: true };
+}
+
+export { deleteProject as delete };
+
 export async function linkSkill(flags) {
   const server = await ensureServer();
   const res = await fetch(`${server.baseUrl}/api/projects/${flags["project-id"]}/skills`, {

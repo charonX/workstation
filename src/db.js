@@ -105,7 +105,8 @@ function initSchema(database) {
       nodeList TEXT NOT NULL DEFAULT '[]',
       edges TEXT NOT NULL DEFAULT '[]',
       scheduleEnabled INTEGER NOT NULL DEFAULT 0,
-      updatedAt TEXT NOT NULL
+      updatedAt TEXT NOT NULL,
+      deletedAt TEXT
     );
 
     CREATE TABLE IF NOT EXISTS schedules (

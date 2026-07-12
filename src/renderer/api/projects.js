@@ -16,3 +16,7 @@ export function getProjectDetail(projectId) {
 export function updateProjectSkills(projectId, skillId, linked) {
   return patch(`/api/projects/${projectId}/skills`, { skillId, linked });
 }
+
+export function deleteProject(projectId) {
+  return del(`/api/projects/${projectId}`);
+}

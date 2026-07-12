@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-export default function FlowCard({ flow }) {
+export default function FlowCard({ flow, onDelete }) {
   const navigate = useNavigate();
 
   const nodeCount = flow.nodeCount ?? (Array.isArray(flow.nodeList) ? flow.nodeList.length : 0);
@@ -25,6 +25,18 @@ export default function FlowCard({ flow }) {
       </div>
       <div className="flow-footer">
         <span>Updated {formatTime(flow.updatedAt)}</span>
+        {onDelete && (
+          <button
+            className="flow-action-danger"
+            data-testid="flow-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(flow.id);
+            }}
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );

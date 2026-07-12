@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-export default function SkillTable({ skills, onRowClick }) {
+export default function SkillTable({ skills, onRowClick, onDelete }) {
   const { t } = useTranslation();
 
   return (
@@ -30,6 +30,18 @@ export default function SkillTable({ skills, onRowClick }) {
             <span className="skill-cell-text">{skill.version || "—"}</span>
             <span className="skill-cell-text">{skill.category || "—"}</span>
             <span className="skill-action-link">{t("skills.view")}</span>
+            {onDelete && (
+              <button
+                className="skill-action-danger"
+                data-testid="skill-delete-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(skill.id);
+                }}
+              >
+                {t("skills.delete")}
+              </button>
+            )}
           </div>
         ))
       )}

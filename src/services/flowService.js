@@ -8,8 +8,8 @@ export function resetFlows(seed = []) {
   resetDb();
   const db = getDb();
   const insert = db.prepare(`
-    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt, deletedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const flow of seed) {
     insert.run(
@@ -20,7 +20,8 @@ export function resetFlows(seed = []) {
       JSON.stringify(flow.nodeList || []),
       JSON.stringify(flow.edges || []),
       flow.scheduleEnabled ? 1 : 0,
-      flow.updatedAt ?? timestamp()
+      flow.updatedAt ?? timestamp(),
+      flow.deletedAt ?? null
     );
   }
 }
@@ -67,12 +68,13 @@ export function createFlow({ name, projectId, description, nodes, edges }) {
     nodeList: nodes || [],
     edges: edges || [],
     scheduleEnabled: false,
-    updatedAt: timestamp()
+    updatedAt: timestamp(),
+    deletedAt: null
   };
   const db = getDb();
   db.prepare(`
-    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt, deletedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     flow.id,
     flow.projectId,
@@ -81,7 +83,8 @@ export function createFlow({ name, projectId, description, nodes, edges }) {
     JSON.stringify(flow.nodeList),
     JSON.stringify(flow.edges),
     flow.scheduleEnabled ? 1 : 0,
-    flow.updatedAt
+    flow.updatedAt,
+    flow.deletedAt
   );
   return toFlowView(flow);
 }
@@ -97,12 +100,13 @@ export function importFlow(data) {
     nodeList: data.nodes || data.nodeList || [],
     edges: data.edges || [],
     scheduleEnabled: data.scheduleEnabled ?? false,
-    updatedAt: data.updatedAt || timestamp()
+    updatedAt: data.updatedAt || timestamp(),
+    deletedAt: data.deletedAt ?? null
   };
   const db = getDb();
   db.prepare(`
-    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO flows (id, projectId, name, description, nodeList, edges, scheduleEnabled, updatedAt, deletedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       projectId=excluded.projectId,
       name=excluded.name,
@@ -110,7 +114,8 @@ export function importFlow(data) {
       nodeList=excluded.nodeList,
       edges=excluded.edges,
       scheduleEnabled=excluded.scheduleEnabled,
-      updatedAt=excluded.updatedAt
+      updatedAt=excluded.updatedAt,
+      deletedAt=excluded.deletedAt
   `).run(
     flow.id,
     flow.projectId,
@@ -119,14 +124,15 @@ export function importFlow(data) {
     JSON.stringify(flow.nodeList),
     JSON.stringify(flow.edges),
     flow.scheduleEnabled ? 1 : 0,
-    flow.updatedAt
+    flow.updatedAt,
+    flow.deletedAt
   );
   return toFlowView(flow);
 }
 
 export function exportFlow(id) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(id);
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(id);
   if (!row) return undefined;
   const nodeList = safeJson(row.nodeList, []);
   return {
@@ -143,18 +149,26 @@ export function exportFlow(id) {
 
 export function listFlows() {
   const db = getDb();
-  return db.prepare("SELECT * FROM flows").all().map(toFlowView);
+  return db.prepare("SELECT * FROM flows WHERE deletedAt IS NULL").all().map(toFlowView);
 }
 
 export function getFlow(id) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(id);
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(id);
   return row ? toFlowView(row) : undefined;
+}
+
+export function deleteFlow(id) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(id);
+  if (!row) return false;
+  db.prepare("UPDATE flows SET deletedAt = ? WHERE id = ?").run(timestamp(), id);
+  return true;
 }
 
 export function addNode(flowId, node) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(flowId);
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(flowId);
   if (!row) return undefined;
   const nodeList = safeJson(row.nodeList, []);
   const newNode = { id: `n${nodeList.length + 1}`, ...node };
@@ -167,7 +181,7 @@ export function addNode(flowId, node) {
 
 export function connectNodes(flowId, sourceId, targetId) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(flowId);
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(flowId);
   if (!row) return undefined;
   const edges = safeJson(row.edges, []);
   const edge = { id: `e${edges.length + 1}`, sourceId, targetId };

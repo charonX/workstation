@@ -12,6 +12,7 @@
     "loading": "Loading...",
     "close": "Close",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "browse": "Browse"
   },
   "settings": {
@@ -67,7 +68,10 @@
     "paramDesc": "Description",
     "noParameters": "No parameters defined for this skill.",
     "noExamples": "No examples available.",
-    "noReadme": "No README available for this skill."
+    "noReadme": "No README available for this skill.",
+    "delete": "Delete",
+    "confirmDeleteTitle": "Delete Skill",
+    "confirmDeleteMessage": "Are you sure you want to delete this skill? It must not be linked to any project."
   },
   "topBar": {
     "searchPlaceholder": "Search projects, flows, tasks...",
@@ -116,13 +120,17 @@
     "searchPlaceholder": "Search projects...",
     "loading": "Loading projects...",
     "noSearchResults": "No projects match your search.",
-    "empty": "No projects yet. Click \"+ Add Project\" to get started."
+    "empty": "No projects yet. Click \"+ Add Project\" to get started.",
+    "confirmDeleteTitle": "Delete Project",
+    "confirmDeleteMessage": "Are you sure you want to delete this project? This will also delete all associated flows, schedules and execution history. The local directory will not be removed."
   },
   "flows": {
     "title": "Flows",
     "newFlow": "New Flow",
     "loading": "Loading flows...",
-    "empty": "No flows yet. Create your first flow to get started."
+    "empty": "No flows yet. Create your first flow to get started.",
+    "confirmDeleteTitle": "Delete Flow",
+    "confirmDeleteMessage": "Are you sure you want to delete this flow? The flow will be hidden but its configuration and execution history will be retained."
   },
   "flowEditor": {
     "loading": "Loading flow editor...",

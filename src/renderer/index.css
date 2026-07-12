@@ -332,6 +332,27 @@ body {
   color: var(--ch-text);
 }
 
+.btn-danger {
+  background: var(--ch-error, #ef4444);
+  color: #fff;
+}
+
+.project-action-danger,
+.flow-action-danger,
+.skill-action-danger {
+  color: var(--ch-error, #ef4444);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-weight: var(--ch-weight-medium);
+}
+
+.project-action-danger:hover,
+.flow-action-danger:hover,
+.skill-action-danger:hover {
+  text-decoration: underline;
+}
+
 /* Loading screen */
 .loading-screen {
   display: flex;

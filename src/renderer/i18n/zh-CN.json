@@ -11,6 +11,7 @@
   "common": {
     "close": "关闭",
     "cancel": "取消",
+    "confirm": "确认",
     "loading": "加载中...",
     "browse": "浏览"
   },
@@ -67,7 +68,10 @@
     "paramDesc": "描述",
     "noParameters": "该技能未定义参数。",
     "noExamples": "暂无示例。",
-    "noReadme": "该技能暂无 README。"
+    "noReadme": "该技能暂无 README。",
+    "delete": "删除",
+    "confirmDeleteTitle": "删除技能",
+    "confirmDeleteMessage": "确定要删除该技能吗？删除前需要先解除与所有项目的关联。"
   },
   "topBar": {
     "searchPlaceholder": "搜索项目、流程、任务...",
@@ -116,13 +120,17 @@
     "searchPlaceholder": "搜索项目...",
     "loading": "加载项目中...",
     "noSearchResults": "没有匹配的项目。",
-    "empty": "暂无项目。点击 \"+ 添加项目\" 开始。"
+    "empty": "暂无项目。点击 \"+ 添加项目\" 开始。",
+    "confirmDeleteTitle": "删除项目",
+    "confirmDeleteMessage": "确定要删除该项目吗？关联的流程、调度和执行历史也将一并删除，本地目录不会被移除。"
   },
   "flows": {
     "title": "流程",
     "newFlow": "新建流程",
     "loading": "加载流程中...",
-    "empty": "暂无流程。创建第一个流程开始。"
+    "empty": "暂无流程。创建第一个流程开始。",
+    "confirmDeleteTitle": "删除流程",
+    "confirmDeleteMessage": "确定要删除该流程吗？流程将被隐藏，但配置和执行历史会保留。"
   },
   "flowEditor": {
     "loading": "加载流程编辑器中...",

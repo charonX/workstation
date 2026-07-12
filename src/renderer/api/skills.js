@@ -1,4 +1,4 @@
-import { get, post } from "./client.js";
+import { get, post, del } from "./client.js";
 
 export function getSkills() {
   return get("/api/skills");
@@ -10,4 +10,8 @@ export function getSkill(skillId) {
 
 export function installSkill(body) {
   return post("/api/skills/install", body);
+}
+
+export function deleteSkill(skillId) {
+  return del(`/api/skills/${skillId}`);
 }

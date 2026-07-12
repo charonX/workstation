@@ -22,6 +22,21 @@ export async function install(flags) {
   return handleResponse(res, 201);
 }
 
+async function deleteSkill(flags) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/skills/${flags.id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ message: "Request failed" }));
+    const err = new Error(data.message || "Request failed");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return { success: true };
+}
+
+export { deleteSkill as delete };
+
 async function handleResponse(res, expectedStatus) {
   const data = await res.json();
   if (!res.ok || (expectedStatus && res.status !== expectedStatus)) {

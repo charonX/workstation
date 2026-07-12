@@ -5,16 +5,20 @@ import { useProjects } from "../hooks/useProjects.js";
 import ProjectCard from "../components/project/ProjectCard.jsx";
 import ProjectFormModal from "../components/project/ProjectFormModal.jsx";
 import ProjectDetailModal from "../components/project/ProjectDetailModal.jsx";
+import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
+import { deleteProject } from "../api/projects.js";
 import "./Workspace.css";
 
 export default function Workspace() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [projects, loading, error, createProject] = useProjects();
+  const [projects, loading, error, createProject, refreshProjects] = useProjects();
   const [formOpen, setFormOpen] = useState(false);
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   useEffect(() => {
     const q = searchParams.get("q") || "";
@@ -34,6 +38,24 @@ export default function Workspace() {
   function handleConfigureSkills(projectId) {
     setDetailProjectId(projectId);
     setDetailOpen(true);
+  }
+
+  function handleRequestDelete(projectId) {
+    setPendingDeleteId(projectId);
+    setConfirmOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDeleteId) return;
+    try {
+      await deleteProject(pendingDeleteId);
+      await refreshProjects();
+    } catch (err) {
+      // Refresh will surface the remaining state.
+    } finally {
+      setPendingDeleteId(null);
+      setConfirmOpen(false);
+    }
   }
 
   return (
@@ -90,6 +112,7 @@ export default function Workspace() {
               key={project.id}
               project={project}
               onConfigureSkills={handleConfigureSkills}
+              onDelete={handleRequestDelete}
             />
           ))}
         </div>
@@ -107,6 +130,17 @@ export default function Workspace() {
         onClose={() => {
           setDetailOpen(false);
           setDetailProjectId(null);
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title={t("workspace.confirmDeleteTitle")}
+        message={t("workspace.confirmDeleteMessage")}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingDeleteId(null);
         }}
       />
     </div>
