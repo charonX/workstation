@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-I18N-001, REQ-I18N-002
-// REQ-VERSION: v1-hash:5f19048eee0e43e5d60e4099f06fa1200a77261163b4bf0a7b64ec44177e0afd
+// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-WORKSPACE-008, REQ-I18N-001, REQ-I18N-002
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: workspace-management, internationalization-theme
 // ENTITY-TRACE: project, settings, theme, language
 // TEST-AUTHOR: agent
@@ -101,6 +101,30 @@ test.describe("Onboarding", () => {
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).not.toBeVisible();
     await expect(firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Git Demo Project" })).toBeVisible();
     await expect(fs.access(path.join(userDataDir, "workspace", "git-demo-project", ".git"))).resolves.toBeUndefined();
+  });
+
+  test("user can delete a project from Workspace with confirmation", async () => {
+    await firstWindow.click(locators.WORKSPACE_LINK);
+    await firstWindow.click(locators.ADD_PROJECT_BUTTON);
+    await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Delete Me Project");
+    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/delete-me-project`);
+    await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
+
+    const projectCard = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Delete Me Project" });
+    await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
+
+    // Confirmation dialog should appear; cancel keeps the project.
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+    await firstWindow.click(locators.CONFIRM_CANCEL_BUTTON);
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+    await expect(projectCard).toBeVisible();
+
+    // Confirm delete removes the project.
+    await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+    await firstWindow.click(locators.CONFIRM_OK_BUTTON);
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+    await expect(projectCard).not.toBeVisible();
   });
 
   test("user can configure skills in Project Detail", async () => {

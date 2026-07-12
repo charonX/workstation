@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, codex-harness-desktop/REQ-WORKSPACE-004, codex-harness-desktop/REQ-WORKSPACE-005, codex-harness-desktop/REQ-WORKSPACE-006
-// REQ-VERSION: v1-hash:5f19048eee0e43e5d60e4099f06fa1200a77261163b4bf0a7b64ec44177e0afd
+// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, codex-harness-desktop/REQ-WORKSPACE-004, codex-harness-desktop/REQ-WORKSPACE-005, codex-harness-desktop/REQ-WORKSPACE-006, codex-harness-desktop/REQ-WORKSPACE-008
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: workspace-management
 // ENTITY-TRACE: project
 // TEST-AUTHOR: agent
@@ -171,6 +171,60 @@ describe("Projects", () => {
     assert.equal(detail.skills.filter(s => s.id === "s1" && s.linked).length, 1);
   });
 
+  it("REQ-WORKSPACE-008: deletes a project and cascades related data", async () => {
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "To Delete", localPath: "~/opc-workspace/to-delete" })
+    })).json();
+
+    // Create a flow, schedule and execution referencing the project so we can verify cascade.
+    await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Flow", projectId: project.id })
+    });
+    await fetch(`${serverCtx.baseUrl}/api/schedules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, flowId: "f1", cron: "0 8 * * *" })
+    });
+    await fetch(`${serverCtx.baseUrl}/api/executions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, flowId: "f1" })
+    });
+
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`, { method: "DELETE" });
+    assert.equal(delRes.status, 204);
+
+    const getRes = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`);
+    assert.equal(getRes.status, 404);
+
+    const listRes = await fetch(`${serverCtx.baseUrl}/api/projects`);
+    const list = await listRes.json();
+    assert.ok(!list.some(p => p.id === project.id));
+  });
+
+  it("REQ-WORKSPACE-008: deleting a project preserves the cloned directory", async () => {
+    const { repoUrl } = createLocalGitRepo(tempDir, "preserve-me");
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Preserve Me", repoUrl })
+    })).json();
+
+    assert.ok(fs.existsSync(project.localPath), "cloned directory should exist before delete");
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`, { method: "DELETE" });
+    assert.equal(delRes.status, 204);
+    assert.ok(fs.existsSync(project.localPath), "cloned directory should still exist after project delete");
+  });
+
+  it("REQ-WORKSPACE-008: returns 404 when deleting non-existent project", async () => {
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/non-existent`, { method: "DELETE" });
+    assert.equal(res.status, 404);
+  });
+
   it("REQ-WORKSPACE-003: CLI creates a local project", () => {
     const out = execSync(`${CLI} project create --name "Hot News" --local-path ~/opc-workspace/hot-news`, { encoding: "utf-8" });
     const data = JSON.parse(out);
@@ -183,5 +237,14 @@ describe("Projects", () => {
     const out = execSync(`${CLI} project list --q hot`, { encoding: "utf-8" });
     const data = JSON.parse(out);
     assert.ok(data.some(p => p.name === "Hot News"));
+  });
+
+  it("REQ-WORKSPACE-008: CLI deletes a project", () => {
+    const out = execSync(`${CLI} project create --name "CLI Delete" --local-path ~/opc-workspace/cli-delete`, { encoding: "utf-8" });
+    const project = JSON.parse(out);
+    execSync(`${CLI} project delete --id ${project.id}`, { encoding: "utf-8" });
+    const listOut = execSync(`${CLI} project list --q cli-delete`, { encoding: "utf-8" });
+    const list = JSON.parse(listOut);
+    assert.ok(!list.some(p => p.id === project.id));
   });
 });

@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006
-// REQ-VERSION: v1-hash:71624856165d7ccd8e88041a8f92ec3a2c552457e9e514f29ef3eb747ccf1685
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006, codex-harness-desktop/REQ-FLOW-011
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -99,6 +99,45 @@ describe("Flows", () => {
     assert.equal(data.nodes.length, 1);
   });
 
+  it("REQ-FLOW-011: logically deletes a flow", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "To Delete", projectId: project.id })
+    })).json();
+
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, { method: "DELETE" });
+    assert.equal(delRes.status, 204);
+
+    const getRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`);
+    assert.equal(getRes.status, 404);
+
+    const listRes = await fetch(`${serverCtx.baseUrl}/api/flows`);
+    const list = await listRes.json();
+    assert.ok(!list.some(f => f.id === flow.id));
+  });
+
+  it("REQ-FLOW-011: keeps deleted flow records in database", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Soft Deleted", projectId: project.id })
+    })).json();
+
+    await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, { method: "DELETE" });
+
+    const { getDb } = await import("../../../../../../src/db.js");
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM flows WHERE id = ?").get(flow.id);
+    assert.ok(row, "flow row should still exist in database");
+    assert.ok(row.deletedAt, "deletedAt should be set");
+  });
+
+  it("REQ-FLOW-011: returns 404 when deleting non-existent flow", async () => {
+    const res = await fetch(`${serverCtx.baseUrl}/api/flows/non-existent`, { method: "DELETE" });
+    assert.equal(res.status, 404);
+  });
+
   it("REQ-FLOW-001: CLI lists flows", () => {
     execSync(`${CLI} flow create --name Fetch --project-id ${project.id}`, { encoding: "utf-8" });
     const out = execSync(`${CLI} flow list`, { encoding: "utf-8" });
@@ -111,5 +150,14 @@ describe("Flows", () => {
     const data = JSON.parse(out);
     assert.equal(data.name, "Fetch");
     assert.equal(data.scheduleEnabled, false);
+  });
+
+  it("REQ-FLOW-011: CLI deletes a flow", () => {
+    const out = execSync(`${CLI} flow create --name CLI-Delete --project-id ${project.id}`, { encoding: "utf-8" });
+    const flow = JSON.parse(out);
+    execSync(`${CLI} flow delete --id ${flow.id}`, { encoding: "utf-8" });
+    const listOut = execSync(`${CLI} flow list`, { encoding: "utf-8" });
+    const list = JSON.parse(listOut);
+    assert.ok(!list.some(f => f.id === flow.id));
   });
 });

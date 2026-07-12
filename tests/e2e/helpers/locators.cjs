@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-FLOW-003
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -51,6 +51,7 @@ module.exports = {
   PROJECT_BRANCH_INPUT: "[data-testid='project-branch-input']",
   SUBMIT_PROJECT_BUTTON: "[data-testid='submit-project-button']",
   PROJECT_CARD: "[data-testid='project-card']",
+  PROJECT_DELETE_BUTTON: "[data-testid='project-delete-button']",
   CONFIGURE_SKILLS_BUTTON: "[data-testid='configure-skills-button']",
   PROJECT_DETAIL_MODAL: "[data-testid='project-detail-modal']",
   SKILL_LINK_CHECKBOX: "[data-testid='skill-link-checkbox']",
@@ -62,6 +63,7 @@ module.exports = {
   FLOW_PROJECT_SELECT: "[data-testid='flow-project-select']",
   SUBMIT_FLOW_BUTTON: "[data-testid='submit-flow-button']",
   FLOW_CARD: "[data-testid='flow-card']",
+  FLOW_DELETE_BUTTON: "[data-testid='flow-delete-button']",
 
   // Flow Editor
   FLOW_EDITOR_PAGE: "[data-testid='flow-editor-page']",
@@ -90,11 +92,17 @@ module.exports = {
   SUBMIT_INSTALL_SKILL_BUTTON: "[data-testid='submit-install-skill-button']",
   SKILL_TABLE: "[data-testid='skill-table']",
   SKILL_ROW: "[data-testid='skill-row']",
+  SKILL_DELETE_BUTTON: "[data-testid='skill-delete-button']",
   SKILL_DETAIL_MODAL: "[data-testid='skill-detail-modal']",
   SKILL_TAB_OVERVIEW: "[data-testid='skill-tab-overview']",
   SKILL_TAB_PARAMETERS: "[data-testid='skill-tab-parameters']",
   SKILL_TAB_EXAMPLES: "[data-testid='skill-tab-examples']",
   SKILL_TAB_README: "[data-testid='skill-tab-readme']",
+
+  // Shared / Confirmation Dialog
+  CONFIRM_DIALOG: "[data-testid='confirm-dialog']",
+  CONFIRM_OK_BUTTON: "[data-testid='confirm-ok-button']",
+  CONFIRM_CANCEL_BUTTON: "[data-testid='confirm-cancel-button']",
 
   // Dashboard
   DASHBOARD_PAGE: "[data-testid='dashboard-page']",

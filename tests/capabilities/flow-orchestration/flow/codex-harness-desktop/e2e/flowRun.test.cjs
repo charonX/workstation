@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-004, REQ-FLOW-005, REQ-SCHEDULE-001, REQ-SCHEDULE-003
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-004, REQ-FLOW-005, REQ-FLOW-011, REQ-SCHEDULE-001, REQ-SCHEDULE-003
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: flow-orchestration, scheduling-execution
 // ENTITY-TRACE: flow, task
 // TEST-AUTHOR: agent
@@ -130,6 +130,22 @@ test.describe("Flow Run", () => {
     await firstWindow.click(locators.ZOOM_RESET_BUTTON);
     const resetScale = await getScale();
     expect(resetScale).toBeCloseTo(initialScale, 1);
+  });
+
+  test("user can delete a flow with confirmation", async () => {
+    await firstWindow.click(locators.FLOWS_LINK);
+    await firstWindow.click(locators.NEW_FLOW_BUTTON);
+    await firstWindow.fill(locators.FLOW_NAME_INPUT, "Delete Me Flow");
+    await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
+    await firstWindow.click(locators.SUBMIT_FLOW_BUTTON);
+
+    const flowCard = firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Delete Me Flow" });
+    await flowCard.locator(locators.FLOW_DELETE_BUTTON).click();
+
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+    await firstWindow.click(locators.CONFIRM_OK_BUTTON);
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+    await expect(flowCard).not.toBeVisible();
   });
 
   test("execution detail shows Logs / Variables / Output tabs", async () => {

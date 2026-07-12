@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-SCHEDULE-002
-// REQ-VERSION: v1-hash:71624856165d7ccd8e88041a8f92ec3a2c552457e9e514f29ef3eb747ccf1685
+// REQ-TRACE: codex-harness-desktop/REQ-SCHEDULE-002, codex-harness-desktop/REQ-SCHEDULE-004
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: scheduling-execution
 // ENTITY-TRACE: schedule
 // TEST-AUTHOR: agent
@@ -87,11 +87,43 @@ describe("Schedules", () => {
     assert.equal(data[0].enabled, true);
   });
 
+  it("REQ-SCHEDULE-004: deletes a schedule", async () => {
+    const schedule = await (await fetch(`${serverCtx.baseUrl}/api/schedules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: "0 8 * * *" })
+    })).json();
+
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/schedules/${schedule.id}`, { method: "DELETE" });
+    assert.equal(delRes.status, 204);
+
+    const getRes = await fetch(`${serverCtx.baseUrl}/api/schedules/${schedule.id}`);
+    assert.equal(getRes.status, 404);
+
+    const listRes = await fetch(`${serverCtx.baseUrl}/api/schedules`);
+    const list = await listRes.json();
+    assert.equal(list.length, 0);
+  });
+
+  it("REQ-SCHEDULE-004: returns 404 when deleting non-existent schedule", async () => {
+    const res = await fetch(`${serverCtx.baseUrl}/api/schedules/non-existent`, { method: "DELETE" });
+    assert.equal(res.status, 404);
+  });
+
   it("REQ-SCHEDULE-002: CLI creates and toggles schedule", () => {
     const out = execSync(`${CLI} schedule create --project-id ${project.id} --flow-id ${flow.id} --cron "0 8 * * *"`, { encoding: "utf-8" });
     const data = JSON.parse(out);
     assert.equal(data.enabled, true);
     const toggled = JSON.parse(execSync(`${CLI} schedule toggle --id ${data.id}`, { encoding: "utf-8" }));
     assert.equal(toggled.enabled, false);
+  });
+
+  it("REQ-SCHEDULE-004: CLI deletes a schedule", () => {
+    const out = execSync(`${CLI} schedule create --project-id ${project.id} --flow-id ${flow.id} --cron "0 8 * * *"`, { encoding: "utf-8" });
+    const schedule = JSON.parse(out);
+    execSync(`${CLI} schedule delete --id ${schedule.id}`, { encoding: "utf-8" });
+    const listOut = execSync(`${CLI} schedule list`, { encoding: "utf-8" });
+    const list = JSON.parse(listOut);
+    assert.ok(!list.some(s => s.id === schedule.id));
   });
 });

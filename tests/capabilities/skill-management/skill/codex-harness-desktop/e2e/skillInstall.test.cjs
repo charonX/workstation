@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, REQ-SKILL-003
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, REQ-SKILL-003, REQ-SKILL-004
+// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -75,5 +75,24 @@ test.describe("Skill Install", () => {
 
     await firstWindow.click(locators.SKILL_TAB_README);
     await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("This is the README.");
+  });
+
+  test("user can delete a skill with confirmation", async () => {
+    const skillDir = path.join(userDataDir, "skills", "delete-demo-skill");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      ["---", "name: delete-demo-skill", "description: A skill to delete in E2E tests", "---", "", "# Delete Demo Skill"].join("\n")
+    );
+    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
+
+    await firstWindow.click(locators.SKILLS_LINK);
+    const skillRow = firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "delete-demo-skill" });
+    await skillRow.locator(locators.SKILL_DELETE_BUTTON).click();
+
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+    await firstWindow.click(locators.CONFIRM_OK_BUTTON);
+    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+    await expect(skillRow).not.toBeVisible();
   });
 });
