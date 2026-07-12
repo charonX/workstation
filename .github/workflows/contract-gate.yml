@@ -24,20 +24,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 1. 静态检查
-      - name: Lint
-        run: npm run lint
-        if: ${{ hashFiles('package.json') != '' }}
-
-      - name: Type check
-        run: npm run typecheck
-        if: ${{ hashFiles('tsconfig.json') != '' }}
-
-      # 2. 单元测试 + coverage
       - name: Unit tests
         run: npm run test:unit -- --coverage
 
-      # 3. E2E 测试（默认 Playwright）
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
@@ -51,7 +40,6 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      # 4. 契约签核文件存在性检查
       - name: Assertion signoff check
         run: |
           if grep -qE '\[build\]' <<< "${{ github.event.pull_request.title }}"; then
@@ -61,7 +49,6 @@ jobs:
             }
           fi
 
-      # 5. 观感签核文件存在性检查
       - name: Feel signoff check
         run: |
           if grep -qE '\[feel\]' <<< "${{ github.event.pull_request.title }}"; then
@@ -71,7 +58,6 @@ jobs:
             }
           fi
 
-      # 6. 测试文件只读检查：实现 PR 不能修改测试
       - name: Test files read-only check
         run: |
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)

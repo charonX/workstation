@@ -111,43 +111,42 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
 | `/domain-model` | 统一领域术语与业务实体，维护 `CONTEXT.md` | 用户 |
 | `/tech-design` | 对抗式技术方案设计 | 用户 |
 | `/design` | 设计阶段统一入口：建/更新设计系统、导入设计源、迭代 HTML UX 原型 | 用户 |
-| `/file-bug` | 在当前 story 内登记、复现、分类 bug；支持从 GitHub/GitLab issue 拉取 | 用户 |
+| `/bug` | 在当前 story 内单 bug 人机协同处理：诊断根因 -> 分类（人确认）-> 修/补测试/就地补全/关闭；支持从 GitHub/GitLab issue 拉取 | 用户 |
 | `/review` | 手动审查 PRD/技术方案/代码（建议新会话）；`--stage=code --mode=panel` 启用 specialist 子代理并行审查 | 用户 |
-| `/signoff` | 两个循环的切换点：门 1 签断言、门 2 验观感 | 用户 |
-| `/reflect` | 捕获经验教训并更新全局知识、`adr/`、`checklists/` | 用户 |
+| `/signoff` | 门 1：签断言，把契约交给 AI | 用户 |
+| `/reflect` | 最终验收确认 + 捕获经验教训并更新全局知识、`adr/`、`checklists/` | 用户 |
 | `/research` | 针对技术/API/库问题做带引用的调研 | 用户 |
 | `/design-handoff` | 从已批准 UX 生成开发交接包 | 用户 |
 | `/sync-refs` | 同步参考项目并吸收上游变更 | 用户 |
 | `/crystallize` | 把 PRD 稳定块转成 REQ-ID；每个 REQ 至少一个自动化测试 | 模型 |
 | `/test-author` | 从 REQ 生成业务测试骨架；前端需求必须生成组件/浏览器结构行为测试；浏览器 E2E 默认 Playwright | 模型 |
-| `/tdd` | 内层实现纪律：RED → GREEN 写单元测试驱动代码 | 模型 |
-| `/implementer` | 针对已签核测试实现代码；默认子代理实现切片，父代理调度验证；内部用 `/tdd` RED → GREEN；每个 slice 绿后由 refactor subagent 做一轮安全重构 | 模型 |
-| `/qa-runner` | 运行 E2E（Playwright）、回归、收集证据；失败时建议 `/file-bug`；浏览器项目在 E2E 通过后可选调用 `/browser-verify` | 模型 |
-| `/fix-bugs` | 在当前 story 内批量修复已分类 bug、跑全量回归、输出修复报告；支持同步关闭外部 issue | 模型 |
+| `/tdd` | 内层实现纪律：RED -> GREEN 写单元测试驱动代码 | 模型 |
+| `/implementer` | 针对已签核测试实现代码；默认子代理实现切片，父代理调度验证；内部用 `/tdd` RED -> GREEN；每个 slice 绿后由 refactor subagent 做一轮安全重构 | 模型 |
+| `/qa-runner` | 运行 E2E（Playwright）、回归、收集证据；失败时建议 `/bug`；浏览器项目在 E2E 通过后可选调用 `/browser-verify` | 模型 |
 | `/browser-verify` | 用 Chrome DevTools MCP 做运行时浏览器验证（Console/DOM/Network/A11y/截图/性能） | 模型 |
 
-### 两个循环与两道门
+### 两个循环与门
 
 ```
 外层循环（人控制）
-  THINK → PRD → DESIGN → DOMAIN-MODEL → TECH-DESIGN → CRYSTALLIZE → TEST
-              ↑                                     │
-              └──────── FEEL-SIGNOFF 不通过，回流 ─────┘
+  THINK -> PRD -> DESIGN -> DOMAIN-MODEL -> TECH-DESIGN -> CRYSTALLIZE -> TEST
                                                    │
                                             门 1: ASSERTION-SIGNOFF
                                                    │
                                                    ▼
 内层循环（agent 控制）
-  BUILD → QA  （测试不绿就自修，不许改断言）
+  BUILD -> QA  （测试不绿就自修，不许改断言）
+    ↑    │
+    └────┘ 有缺陷 -> BUG ──────┘
                                                    │
-                                            门 2: FEEL-SIGNOFF
+                                      无 open bug，QA 全绿
                                                    │
                                                    ▼
-                                         人验收 → 通过 / 不通过回流
+                                         门 2: REFLECT（最终验收 + 知识沉淀）
 ```
 
 - **门 1 `/signoff --stage=assertion`**：人在实现前签核所有断言。**不签不准 BUILD。**
-- **门 2 `/signoff --stage=feel`**：人依据 HTML UX 参照验收实现观感。**不签不准合并。**
+- **门 2 `/reflect`**：QA 全绿、bug 处理结束后，人做最终验收确认并沉淀经验。**不接受不合并。**
 
 ### 产物目录
 
@@ -158,7 +157,7 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
 │   ├── tech-design.md         # 技术方案（一挡可推翻）
 │   ├── requirements.md        # 带 ID 的 REQ（契约）
 │   ├── requirements-v1.hash   # 版本哈希，检测过时测试
-│   ├── ux/                    # HTML UX 参照（用于 feel-signoff）
+│   ├── ux/                    # HTML UX 参照
 │   │   ├── *.html             # HTML 原型
 │   │   ├── components/        # （可选）story 局部组件
 │   │   ├── _ds_bundle.js      # （生成）组件 bundle
@@ -170,8 +169,8 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
 │   │   ├── README.md
 │   │   └── _handoff_manifest.json
 │   ├── test-plan.md           # 测试作者的计划
-│   ├── signoff.md             # 断言签核 + 观感签核记录
-│   ├── workflow-state.yaml    # 当前 phase / 阻塞项 / 归档历史
+│   ├── signoff.md             # 断言签核记录
+│   ├── workflow-state.yaml    # 当前阶段 / 阻塞项 / 归档历史
 │   └── archive/               # 归档重做时被推翻的承诺层产物 + reason.md
 └── global/
     ├── CONTEXT.md              # 领域词汇表与业务实体定义（由 /domain-model 维护）
@@ -185,6 +184,7 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
     │   ├── accessibility.md
     │   └── observability.md
     ├── codegraph.json           # CodeGraph 配置（可选，由 /bootstrap-workflow 初始化）
+    ├── issue-tracker.json       # 外部 issue tracker 配置（可选，由 /bootstrap-workflow 初始化）
     ├── DESIGN.md                # 项目级设计系统文档
     ├── tokens.css               # CSS token 入口
     ├── styles.css               # 全局样式入口
@@ -197,11 +197,11 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
 
 ### 核心规则
 
-1. **真理向下流**：PRD → REQ → 测试 → 代码。代码永远不是真理来源。
+1. **真理向下流**：PRD -> REQ -> 测试 -> 代码。代码永远不是真理来源。
 2. **错误向上回**：在受影响的最高层修复；永远不要因为测试或规格错了就直接改代码。
 3. **断言归人**：AI 写测试脚手架；人签 expected 值。
 4. **实现者对测试只读**：任何触及业务测试文件的代码差异都会让本轮作废。
-5. **`/signoff --stage=assertion` 阻塞 BUILD；`/signoff --stage=feel` 阻塞合并**。
+5. **`/signoff --stage=assertion` 阻塞 BUILD；`/reflect` 阻塞合并**。
 6. **没有 REQ-ID 就没有测试；没有自动化测试的 REQ 不能进入 BUILD**：每个测试文件必须声明：
    ```
    // REQ-TRACE: <story-id>/<req-id>
@@ -209,12 +209,27 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
    // CAPABILITY-TRACE: <capability-name>
    // ENTITY-TRACE: <entity-name>
    ```
-   测试按 `tests/capabilities/<capability>/<entity>/<story-id>/` 组织。feel-signoff 只覆盖纯审美判断。
+   测试按 `tests/capabilities/<capability>/<entity>/<story-id>/` 组织。不能自动化的纯审美判断（颜色、间距、动效曲线）在 REFLECT 中人工验收。
 7. **测试按 capability/entity 组织**：`tests/capabilities/<capability>/<entity>/<story-id>/...`
-8. **主观判断不进测试**：观感/美学在 `/signoff --stage=feel` 环节依据 HTML 参照验收；结构/行为必须有自动化测试。
-9. **story = 初衷**：初衷（痛点）不变 → 归档重做；初衷错 → 删 story。回流前先做根因诊断。
+8. **主观判断不进测试**：观感/美学问题通过 `/bug` 处理为 `code-defect`；结构/行为必须有自动化测试。
+9. **story = 初衷**：初衷（痛点）不变 -> 归档重做；初衷错 -> 删 story。回流前先做根因诊断。
 10. **测试全绿只是最低门槛**：实现还必须对齐 PRD 意图、`tech-design.md` 模块/数据流/接口契约、以及 UX HTML 结构/行为。禁止为绿而硬凑。
 11. **ADR 是硬约束**：已有 `adr/` 中的决策，在 `/tech-design`、`/review`、`/implementer` 阶段必须检查冲突。
+
+### bug 处理
+
+当 BUILD/QA 发现异常，或 QA 后发现观感/行为偏差时，用 `/bug` 单 bug 人机协同处理：
+
+```
+/bug（诊断根因 -> 分类，人确认）
+   │
+   ├─ code-defect -> 补失败回归测试 -> 修复 -> QA
+   ├─ test-gap -> /test-author（补测试）-> 可能转 code-defect
+   ├─ req-gap -> 就地补全 PRD/tech/测试，继续修
+   └─ not-a-bug -> 关闭并记录决策
+```
+
+`/bug` 一次一个，不批量、不落 bug 工件（见 `design/adr/0002-single-bug-fix-loop.md`）。当 QA 全绿且当前 story 无 open bug 时，进入 `/reflect` 最终验收。
 
 ### commit 约定
 
@@ -224,20 +239,13 @@ cp -R <workflow-path>/skills/engineering/* .claude/skills/
 |---|---|---|
 | `[test]` | 编写/修改测试、签核断言 | `test/`、`*.{test,spec}.*`、`e2e/` 等 |
 | `[build]` | 编写实现代码 | `src/`、`app/`、`lib/` 等 |
+| `[bugfix]` | `/bug` 修复 bug | 实现代码（不修改业务测试契约文件） |
 | `[docs]` | PRD/REQ 文档更新 | `.aiassist/stories/*/prd.md`、`requirements.md` 等 |
 | `[ux]` | UX 原型/设计系统更新 | `.aiassist/stories/*/ux/`、`global/DESIGN.md` 等 |
 | `[bootstrap]` | 工作流基础设施 | `.aiassist/`、`CLAUDE.md`、hooks 等 |
 
 **核心纪律：一个 commit 不能同时包含实现代码和测试文件。**
 仓库已配置 `.aiassist/hooks/pre-commit` 和 `commit-msg` 进行拦截。
-
-### 回流路径
-
-当 `/signoff --stage=feel` 不通过时：
-
-1. **偏差是缺陷**（实现偏离已签 REQ）→ 补标准增量 → `/crystallize` → `/test-author` → `/signoff --stage=assertion` → `/implementer`
-2. **偏差是需求变更**（REQ 没写或写错）→ 改 PRD/REQ → `/crystallize` → `/test-author` → `/signoff --stage=assertion` → `/implementer`
-3. **可接受偏差**（平台限制等 HTML 无法 1:1 翻译）→ 记录并放行
 
 ### 开始新 story
 
@@ -257,4 +265,3 @@ cp -R <workflow-path>/skills/productivity/* .claude/skills/
 cp -R <workflow-path>/skills/engineering/* .claude/skills/
 cp -R <workflow-path>/skills/maintenance/* .claude/skills/
 ```
-

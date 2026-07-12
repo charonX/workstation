@@ -41,7 +41,7 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - [ ] 交互状态变化（loading/empty/error/success/disabled）有测试
 - [ ] 导航/路由跳转有测试
 - [ ] 数据绑定正确渲染有测试
-- [ ] 纯视觉审美判断才留给 feel-signoff
+- [ ] 纯视觉审美判断才留给 REFLECT 人工验收
 
 ## Playwright E2E
 
