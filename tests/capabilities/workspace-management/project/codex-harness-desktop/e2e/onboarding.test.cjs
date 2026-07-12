@@ -1,16 +1,29 @@
-// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-I18N-001, REQ-I18N-002
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-I18N-001, REQ-I18N-002
+// REQ-VERSION: v1-hash:5f19048eee0e43e5d60e4099f06fa1200a77261163b4bf0a7b64ec44177e0afd
 // CAPABILITY-TRACE: workspace-management, internationalization-theme
 // ENTITY-TRACE: project, settings, theme, language
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
 const { test, expect } = require("@playwright/test");
-const fs = require("node:fs/promises");
+const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
+
+function createLocalGitRepo(baseDir, repoName) {
+  const repoPath = path.join(baseDir, repoName);
+  fs.mkdirSync(repoPath, { recursive: true });
+  execFileSync("git", ["init"], { cwd: repoPath });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoPath });
+  execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoPath });
+  fs.writeFileSync(path.join(repoPath, "README.md"), `# ${repoName}\n`);
+  execFileSync("git", ["add", "."], { cwd: repoPath });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: repoPath });
+  return { repoPath, repoUrl: `file://${repoPath}/.git` };
+}
 
 test.describe("Onboarding", () => {
   let electronApp;
@@ -27,7 +40,7 @@ test.describe("Onboarding", () => {
 
     // Seed a local skill fixture so Configure Skills has something to link.
     const skillDir = path.join(userDataDir, "skills", "demo-skill");
-    await fs.mkdir(skillDir, { recursive: true });
+    await fs.mkdirSync(skillDir, { recursive: true });
     await fs.writeFile(
       path.join(skillDir, "SKILL.md"),
       ["---", "name: demo-skill", "description: A demo skill for E2E tests", "---", "", "# Demo Skill"].join("\n")
@@ -65,6 +78,29 @@ test.describe("Onboarding", () => {
     // Expected: modal closes and project card appears
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).not.toBeVisible();
     await expect(firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Demo Project" })).toBeVisible();
+  });
+
+  test("user can add a git project from Workspace", async () => {
+    const { repoUrl } = createLocalGitRepo(userDataDir, "git-demo-project");
+
+    await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
+    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+
+    await firstWindow.click(locators.WORKSPACE_LINK);
+    await firstWindow.click(locators.ADD_PROJECT_BUTTON);
+    await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
+
+    // Switch to Git source.
+    await firstWindow.getByRole("button", { name: "Git Repository" }).click();
+    await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Git Demo Project");
+    await firstWindow.fill(locators.PROJECT_REPO_URL_INPUT, repoUrl);
+    await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
+
+    // Expected: modal closes and project card appears, and the repo is cloned locally.
+    await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).not.toBeVisible();
+    await expect(firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Git Demo Project" })).toBeVisible();
+    expect(fs.existsSync(path.join(userDataDir, "workspace", "git-demo-project", ".git"))).toBe(true);
   });
 
   test("user can configure skills in Project Detail", async () => {

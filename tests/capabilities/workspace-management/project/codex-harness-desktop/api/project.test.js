@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, codex-harness-desktop/REQ-WORKSPACE-004, codex-harness-desktop/REQ-WORKSPACE-005, codex-harness-desktop/REQ-WORKSPACE-006
-// REQ-VERSION: v1-hash:71624856165d7ccd8e88041a8f92ec3a2c552457e9e514f29ef3eb747ccf1685
+// REQ-VERSION: v1-hash:5f19048eee0e43e5d60e4099f06fa1200a77261163b4bf0a7b64ec44177e0afd
 // CAPABILITY-TRACE: workspace-management
 // ENTITY-TRACE: project
 // TEST-AUTHOR: agent
@@ -7,20 +7,45 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 
 const CLI = "node src/cli/opc-workstation.js";
 
+function createLocalGitRepo(baseDir, repoName) {
+  const repoPath = path.join(baseDir, repoName);
+  fs.mkdirSync(repoPath, { recursive: true });
+  execFileSync("git", ["init"], { cwd: repoPath });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoPath });
+  execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoPath });
+  fs.writeFileSync(path.join(repoPath, "README.md"), `# ${repoName}\n`);
+  execFileSync("git", ["add", "."], { cwd: repoPath });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: repoPath });
+  return { repoPath, repoUrl: `file://${repoPath}/.git` };
+}
+
 describe("Projects", () => {
   let serverCtx;
+  let tempDir;
 
   beforeEach(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-project-test-"));
     serverCtx = await startServer();
+    // Point workspaceRoot to a temp directory so git clones land there.
+    const settingsRes = await fetch(`${serverCtx.baseUrl}/api/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceRoot: tempDir })
+    });
+    assert.equal(settingsRes.status, 200);
   });
 
   afterEach(async () => {
     await stopServer(serverCtx);
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   it("REQ-WORKSPACE-003: creates a local project", async () => {
@@ -45,15 +70,35 @@ describe("Projects", () => {
   });
 
   it("REQ-WORKSPACE-004: creates a project from git checkout", async () => {
+    const { repoUrl } = createLocalGitRepo(tempDir, "hot-news");
     const res = await fetch(`${serverCtx.baseUrl}/api/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Hot News", repoUrl: "https://github.com/example/hot-news.git" })
+      body: JSON.stringify({ name: "Hot News", repoUrl })
     });
     assert.equal(res.status, 201);
     const data = await res.json();
     assert.equal(data.sourceType, "git");
     assert.equal(data.branch, "main");
+    assert.ok(data.localPath, "localPath should be set");
+    assert.ok(fs.existsSync(data.localPath), "cloned directory should exist");
+    assert.ok(fs.existsSync(path.join(data.localPath, ".git")), "cloned directory should be a git repo");
+    assert.ok(fs.existsSync(path.join(data.localPath, "README.md")), "cloned files should be present");
+  });
+
+  it("REQ-WORKSPACE-004: uses repo name when project name is empty", async () => {
+    const { repoUrl } = createLocalGitRepo(tempDir, "fallback-repo");
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "", repoUrl })
+    });
+    assert.equal(res.status, 201);
+    const data = await res.json();
+    assert.equal(data.name, "fallback-repo");
+    assert.equal(data.sourceType, "git");
+    assert.ok(data.localPath, "localPath should be set");
+    assert.ok(fs.existsSync(data.localPath), "cloned directory should exist");
   });
 
   it("REQ-WORKSPACE-004: rejects git project without repository URL", async () => {
