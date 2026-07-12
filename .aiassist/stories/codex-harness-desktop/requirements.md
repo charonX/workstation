@@ -85,16 +85,20 @@
 - **scope**: cross-module
 - **modules**: `projectService`, `src/http/routes/projects.js`, `src/cli/commands/project.js`
 - **interface_contract**:
-  - `POST /api/projects` → body `{name, repoUrl, branch?, cloneDirectory?}`
+  - `POST /api/projects` → body `{name?, repoUrl, branch?, cloneDirectory?}`
   - CLI: `opc-workstation project create --name <name> --repo-url <url> --branch main`
   - `repoUrl` 为空返回 `400 VALIDATION_ERROR`
+  - `name` 为空时，从 `repoUrl` 提取仓库名作为 `name`
+  - 项目创建后自动 `git clone` 到 `workspaceRoot/<repo-name>`，`cloneDirectory` 可覆盖相对目录名
 - **测试类型**: CLI + HTTP API + E2E
 - **测试路径**: `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/codex-harness-desktop/e2e/onboarding.spec.js`
 
 **验收标准**：
 - [ ] 创建后项目出现在列表中。
 - [ ] 元数据包含 `sourceType=git`、`repoUrl`、`branch`（默认 `main`）、`localPath`。
+- [ ] `localPath` 指向 `workspaceRoot` 下真实检出的目录。
 - [ ] `repoUrl` 为空时创建失败。
+- [ ] `name` 为空时，从 `repoUrl` 提取仓库名并成功创建。
 
 ---
 
