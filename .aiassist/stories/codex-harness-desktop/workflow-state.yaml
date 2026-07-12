@@ -1,18 +1,19 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUG
+current_phase: ASSERTION-SIGNOFF
 attempt: 3
 bug_counter: 7
 blockers: []
 slices: []
 gates:
-  assertion_signoff: passed
+  assertion_signoff: pending
   feel_signoff: pending
 history:
   - {at: 2026-07-12, from: QA, to: BUG, note: "用户报告：git 添加的项目未检出到本地；名称为空时应 fallback 到仓库名。登记 BUG-006。"}
   - {at: 2026-07-12, from: BUG, to: QA, note: "BUG-006 已修复：git 项目自动 clone 到 workspaceRoot，名称为空时 fallback 到仓库名；新增 API/E2E 回归测试，全量测试通过。"}
   - {at: 2026-07-12, from: QA, to: BUG, note: "用户报告：project/skill/flow 等实体缺少删除功能。登记 BUG-007。"}
+  - {at: 2026-07-12, from: BUG, to: ASSERTION-SIGNOFF, note: "BUG-007: 就地补全删除 REQ，生成回归测试，等待 assertion-signoff。"}
   - {at: 2026-07-01, from: THINK, to: PRD, note: "完成需求洞察，PRD 生成"}
   - {at: 2026-07-01, from: PRD, to: DESIGN, note: "PRD 稳定块结晶为 REQ，进入原型设计"}
   - {at: 2026-07-01, from: DESIGN, to: DESIGN, note: "探索 n8n 作执行后端（按块回流）：n8n 有 Public API/JSON/cron/SQLite 日志，许可证允许内部自用。但第一性原理复盘后回滚——computer-use 是主要功能、必须本地交互式桌面执行，n8n（headless/远程）无法承载，每个 agent 步骤都要 Wait+Webhook 握手，在产品核心位置加摩擦。引擎块重新稳定回自建 FlowEngine。未建 archive，初衷不变。"}
