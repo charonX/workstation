@@ -1,7 +1,7 @@
 import * as projectService from "../../services/projectService.js";
 import * as skillService from "../../services/skillService.js";
 
-export function handleProjects(req, res, body, pathParts) {
+export async function handleProjects(req, res, body, pathParts) {
   if (pathParts.length === 0) {
     if (req.method === "GET") {
       const q = new URL(req.url, `http://${req.headers.host}`).searchParams.get("q") || "";
@@ -11,7 +11,7 @@ export function handleProjects(req, res, body, pathParts) {
 
     if (req.method === "POST") {
       try {
-        const project = createProject(body);
+        const project = await createProject(body);
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(project));
       } catch (err) {
@@ -51,7 +51,7 @@ export function handleProjects(req, res, body, pathParts) {
   return notFound(res);
 }
 
-function createProject(body) {
+async function createProject(body) {
   if (body.sourceType === "git" || body.repoUrl) {
     if (!body.repoUrl) throw new Error("Repository URL is required");
     return projectService.createGitProject({
@@ -59,7 +59,7 @@ function createProject(body) {
       description: body.description,
       repoUrl: body.repoUrl,
       branch: body.branch,
-      localPath: body.localPath
+      cloneDirectory: body.cloneDirectory
     });
   }
   return projectService.createLocalProject({

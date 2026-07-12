@@ -1,7 +1,20 @@
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { simpleGit } from "simple-git";
 import { getDb, resetDb } from "../db.js";
+import * as settingsService from "./settingsService.js";
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+function expandHome(filePath) {
+  if (typeof filePath !== "string") return filePath;
+  if (filePath === "~" || filePath.startsWith("~/")) {
+    return path.join(os.homedir(), filePath.slice(1));
+  }
+  return filePath;
 }
 
 export function resetProjects(seed = []) {
@@ -73,12 +86,50 @@ export function createLocalProject({ name, description, localPath }) {
   return rowToProject(project);
 }
 
-export function createGitProject({ name, description, repoUrl, branch, localPath }) {
-  if (!name) throw new Error("Project name is required");
+function deriveRepoName(repoUrl) {
+  if (!repoUrl) return "";
+  try {
+    const url = new URL(repoUrl);
+    // Strip trailing ".git" so file://path/to/repo/.git yields "repo".
+    const normalized = url.pathname.replace(/\.git$/i, "");
+    const baseName = path.basename(normalized);
+    return baseName.replace(/\.git$/i, "");
+  } catch {
+    // Fallback for SCP-like URLs such as git@github.com:owner/repo.git
+    const match = repoUrl.match(/[:/]([^/]+?)(?:\.git)?$/i);
+    return match ? match[1] : "";
+  }
+}
+
+export async function createGitProject({ name, description, repoUrl, branch, cloneDirectory }) {
   if (!repoUrl) throw new Error("Repository URL is required");
+
+  const repoName = deriveRepoName(repoUrl);
+  const projectName = name || repoName;
+  if (!projectName) throw new Error("Project name is required and could not be derived from repository URL");
+
+  const settings = settingsService.loadSettings();
+  const workspaceRoot = expandHome(settings.workspaceRoot);
+  if (!workspaceRoot) throw new Error("Workspace root is not configured");
+
+  const targetDirName = cloneDirectory || repoName;
+  const localPath = path.join(workspaceRoot, targetDirName);
+
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+
+  if (fs.existsSync(localPath)) {
+    throw new Error(`Target directory already exists: ${localPath}`);
+  }
+
+  const git = simpleGit();
+  await git.clone(repoUrl, localPath, {
+    "--branch": branch || "main",
+    "--single-branch": null
+  });
+
   const project = {
     id: nextProjectId(),
-    name,
+    name: projectName,
     description,
     sourceType: "git",
     repoUrl,

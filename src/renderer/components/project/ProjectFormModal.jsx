@@ -4,6 +4,19 @@ import Modal from "../shared/Modal.jsx";
 import DirectoryInput from "../shared/DirectoryInput.jsx";
 import "./ProjectFormModal.css";
 
+function deriveRepoName(repoUrl) {
+  if (!repoUrl) return "";
+  try {
+    const url = new URL(repoUrl);
+    const normalized = url.pathname.replace(/\.git$/i, "");
+    const parts = normalized.split("/").filter(Boolean);
+    return parts[parts.length - 1] || "";
+  } catch {
+    const match = repoUrl.match(/[:/]([^/]+?)(?:\.git)?$/i);
+    return match ? match[1] : "";
+  }
+}
+
 export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
   const { t } = useTranslation();
   const [sourceType, setSourceType] = useState("local");
@@ -26,6 +39,13 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
     onClose();
   }
 
+  function handleRepoUrlChange(value) {
+    setRepoUrl(value);
+    if (!name) {
+      setName(deriveRepoName(value));
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -34,7 +54,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
     try {
       const body =
         sourceType === "git"
-          ? { name, repoUrl, branch, localPath: localPath || undefined }
+          ? { name, repoUrl, branch }
           : { name, localPath };
       await onSubmit(body);
       handleClose();
@@ -61,6 +81,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
                 type="button"
                 className={`radio-option ${sourceType === "local" ? "active" : ""}`}
                 onClick={() => setSourceType("local")}
+                data-testid="project-source-local"
               >
                 {t("projectForm.sourceLocal")}
               </button>
@@ -68,6 +89,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
                 type="button"
                 className={`radio-option ${sourceType === "git" ? "active" : ""}`}
                 onClick={() => setSourceType("git")}
+                data-testid="project-source-git"
               >
                 {t("projectForm.sourceGit")}
               </button>
@@ -83,7 +105,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t("projectForm.projectNamePlaceholder")}
-              required
+              required={sourceType === "local"}
             />
           </div>
 
@@ -109,7 +131,7 @@ export default function ProjectFormModal({ isOpen, onClose, onSubmit }) {
                   className="form-input"
                   data-testid="project-repo-url-input"
                   value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
+                  onChange={(e) => handleRepoUrlChange(e.target.value)}
                   placeholder={t("projectForm.repoUrlPlaceholder")}
                   required
                 />
