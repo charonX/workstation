@@ -12,6 +12,8 @@ export default defineConfig({
         "electron",
         "better-sqlite3",
         "node-cron",
+        "simple-git",
+        "electron-squirrel-startup",
         /^node:/
       ]
     }

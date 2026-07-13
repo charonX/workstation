@@ -112,7 +112,7 @@ export async function createGitProject({ name, description, repoUrl, branch, clo
   const workspaceRoot = expandHome(settings.workspaceRoot);
   if (!workspaceRoot) throw new Error("Workspace root is not configured");
 
-  const targetDirName = cloneDirectory || repoName;
+  const targetDirName = cloneDirectory || projectName;
   const localPath = path.join(workspaceRoot, targetDirName);
 
   fs.mkdirSync(workspaceRoot, { recursive: true });

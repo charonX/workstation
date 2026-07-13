@@ -33,6 +33,7 @@ export function getDb(dbPath) {
   db = new Database(target);
   currentPath = target;
   initSchema(db);
+  migrateSchema(db);
   return db;
 }
 
@@ -143,4 +144,16 @@ function initSchema(database) {
       message TEXT
     );
   `);
+}
+
+function hasColumn(database, table, column) {
+  const info = database.prepare(`PRAGMA table_info(${table})`).all();
+  return info.some(col => col.name === column);
+}
+
+function migrateSchema(database) {
+  // BUG-007: add soft-delete column to flows created before logical delete was introduced.
+  if (!hasColumn(database, "flows", "deletedAt")) {
+    database.exec(`ALTER TABLE flows ADD COLUMN deletedAt TEXT`);
+  }
 }
