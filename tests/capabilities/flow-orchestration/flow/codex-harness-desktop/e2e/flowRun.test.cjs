@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-004, REQ-FLOW-005, REQ-FLOW-011, REQ-SCHEDULE-001, REQ-SCHEDULE-003
-// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-004, REQ-FLOW-005, REQ-FLOW-011, REQ-FLOW-012, REQ-SCHEDULE-001, REQ-SCHEDULE-003
+// REQ-VERSION: v1-hash:ca916b86d94de45106288ca76c21ce1339928794689c940b13514e69136d1a5b
 // CAPABILITY-TRACE: flow-orchestration, scheduling-execution
 // ENTITY-TRACE: flow, task
 // TEST-AUTHOR: agent
@@ -164,5 +164,36 @@ test.describe("Flow Run", () => {
     await expect(firstWindow.locator(locators.LOGS_TAB)).toBeVisible();
     await expect(firstWindow.locator(locators.VARIABLES_TAB)).toBeVisible();
     await expect(firstWindow.locator(locators.OUTPUT_TAB)).toBeVisible();
+  });
+
+  test("REQ-FLOW-012: user can connect two nodes and save the edge", async () => {
+    await firstWindow.click(locators.FLOWS_LINK);
+    await firstWindow.click(locators.NEW_FLOW_BUTTON);
+    await firstWindow.fill(locators.FLOW_NAME_INPUT, "Connectable Flow");
+    await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
+    await firstWindow.click(locators.SUBMIT_FLOW_BUTTON);
+
+    await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Connectable Flow" }).click();
+    await expect(firstWindow.locator(locators.FLOW_EDITOR_PAGE)).toBeVisible();
+
+    // Add two agent nodes by clicking the Execution category label.
+    await firstWindow.getByText("Execution").click();
+    await firstWindow.getByText("Execution").click();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
+
+    // Drag from the source handle of the first node to the target handle of the second node.
+    const nodes = firstWindow.locator(locators.FLOW_NODE);
+    const sourceHandle = nodes.first().locator(".react-flow__handle-right");
+    const targetHandle = nodes.nth(1).locator(".react-flow__handle-left");
+    await sourceHandle.dragTo(targetHandle);
+
+    // Expect an edge to appear on the canvas.
+    await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(1);
+
+    // Save the flow and verify the edge persists after reload.
+    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.reload();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
+    await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(1);
   });
 });

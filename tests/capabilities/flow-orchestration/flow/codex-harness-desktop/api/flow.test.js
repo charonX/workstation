@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006, codex-harness-desktop/REQ-FLOW-011
-// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006, codex-harness-desktop/REQ-FLOW-011, codex-harness-desktop/REQ-FLOW-012
+// REQ-VERSION: v1-hash:ca916b86d94de45106288ca76c21ce1339928794689c940b13514e69136d1a5b
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -136,6 +136,37 @@ describe("Flows", () => {
   it("REQ-FLOW-011: returns 404 when deleting non-existent flow", async () => {
     const res = await fetch(`${serverCtx.baseUrl}/api/flows/non-existent`, { method: "DELETE" });
     assert.equal(res.status, 404);
+  });
+
+  it("REQ-FLOW-012: updates flow nodes and edges", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Connectable", projectId: project.id })
+    })).json();
+
+    const patchRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeList: [
+          { id: "n1", type: "agent", name: "A", position: { x: 0, y: 0 } },
+          { id: "n2", type: "agent", name: "B", position: { x: 200, y: 0 } }
+        ],
+        edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }]
+      })
+    });
+    assert.equal(patchRes.status, 200);
+    const updated = await patchRes.json();
+    assert.equal(updated.nodeList.length, 2);
+    assert.equal(updated.edges.length, 1);
+    assert.equal(updated.edges[0].sourceNodeId, "n1");
+    assert.equal(updated.edges[0].targetNodeId, "n2");
+
+    const getRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`);
+    assert.equal(getRes.status, 200);
+    const data = await getRes.json();
+    assert.equal(data.edges.length, 1);
   });
 
   it("REQ-FLOW-001: CLI lists flows", () => {
