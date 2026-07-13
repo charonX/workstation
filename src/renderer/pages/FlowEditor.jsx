@@ -69,6 +69,46 @@ export default function FlowEditor() {
     }
   }, [flow]);
 
+  const handleUpdateNodeData = useCallback(
+    (field, value) => {
+      if (!selectedNode || !canvasRef.current?.updateNodeData) return;
+      canvasRef.current.updateNodeData(selectedNode.id, { [field]: value });
+      setSelectedNode((prev) =>
+        prev ? { ...prev, data: { ...prev.data, [field]: value } } : prev
+      );
+    },
+    [selectedNode]
+  );
+
+  const handleUpdateConfig = useCallback(
+    (key, value) => {
+      if (!selectedNode || !canvasRef.current?.updateNodeData) return;
+      const nextConfig = { ...(selectedNode.data?.config || {}), [key]: value };
+      canvasRef.current.updateNodeData(selectedNode.id, { config: nextConfig });
+      setSelectedNode((prev) =>
+        prev ? { ...prev, data: { ...prev.data, config: nextConfig } } : prev
+      );
+    },
+    [selectedNode]
+  );
+
+  const handleDeleteNode = useCallback(() => {
+    if (!selectedNode || !canvasRef.current?.deleteNode) return;
+    canvasRef.current.deleteNode(selectedNode.id);
+    setSelectedNode(null);
+  }, [selectedNode]);
+
+  // Keyboard Delete to remove selected node
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === "Delete" && selectedNode) {
+        handleDeleteNode();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedNode, handleDeleteNode]);
+
   const handleZoomIn = useCallback(() => {
     if (canvasRef.current?.zoomIn) {
       canvasRef.current.zoomIn();
@@ -159,8 +199,9 @@ export default function FlowEditor() {
                 <input
                   type="text"
                   className="form-input"
-                  value={selectedNode.data?.label || selectedNode.data?.name || ""}
-                  readOnly
+                  data-testid="node-name-input"
+                  value={selectedNode.data?.label || ""}
+                  onChange={(e) => handleUpdateNodeData("label", e.target.value)}
                 />
               </div>
               <div className="form-group">
@@ -177,9 +218,25 @@ export default function FlowEditor() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="outputVar"
+                  data-testid="node-output-variable-input"
+                  value={selectedNode.data?.outputVariable || ""}
+                  onChange={(e) =>
+                    handleUpdateNodeData("outputVariable", e.target.value)
+                  }
                 />
               </div>
+              <NodeTypeFields
+                type={selectedNode.data?.type}
+                config={selectedNode.data?.config || {}}
+                onChange={handleUpdateConfig}
+              />
+              <button
+                className="btn btn-danger"
+                data-testid="node-delete-button"
+                onClick={handleDeleteNode}
+              >
+                Delete Node
+              </button>
             </div>
           ) : (
             <div className="properties-placeholder">
@@ -203,6 +260,92 @@ export default function FlowEditor() {
       </div>
     </div>
   );
+}
+
+function NodeTypeFields({ type, config, onChange }) {
+  switch (type) {
+    case "agent":
+      return (
+        <>
+          <div className="form-group">
+            <label className="form-label">Model</label>
+            <select
+              className="form-input"
+              data-testid="agent-model-select"
+              value={config.model || "codex"}
+              onChange={(e) => onChange("model", e.target.value)}
+            >
+              <option value="codex">Codex</option>
+              <option value="claude-code">Claude Code</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">System Prompt</label>
+            <textarea
+              className="form-textarea"
+              data-testid="agent-system-prompt-textarea"
+              value={config.systemPrompt || ""}
+              onChange={(e) => onChange("systemPrompt", e.target.value)}
+              rows={4}
+            />
+          </div>
+        </>
+      );
+    case "condition":
+      return (
+        <div className="form-group">
+          <label className="form-label">Expression</label>
+          <input
+            type="text"
+            className="form-input"
+            data-testid="condition-expression-input"
+            value={config.expression || ""}
+            onChange={(e) => onChange("expression", e.target.value)}
+          />
+        </div>
+      );
+    case "forEach":
+      return (
+        <div className="form-group">
+          <label className="form-label">Array</label>
+          <input
+            type="text"
+            className="form-input"
+            data-testid="foreach-array-input"
+            value={config.array || ""}
+            onChange={(e) => onChange("array", e.target.value)}
+          />
+        </div>
+      );
+    case "while":
+      return (
+        <div className="form-group">
+          <label className="form-label">Expression</label>
+          <input
+            type="text"
+            className="form-input"
+            data-testid="while-expression-input"
+            value={config.expression || ""}
+            onChange={(e) => onChange("expression", e.target.value)}
+          />
+        </div>
+      );
+    case "output":
+      return (
+        <div className="form-group">
+          <label className="form-label">Output Path</label>
+          <input
+            type="text"
+            className="form-input"
+            data-testid="output-path-input"
+            value={config.path || ""}
+            onChange={(e) => onChange("path", e.target.value)}
+          />
+        </div>
+      );
+    default:
+      return null;
+  }
 }
 
 function getIconForType(type) {
