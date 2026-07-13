@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getFlow } from "../api/flows.js";
+import { getFlow, updateFlow } from "../api/flows.js";
 import { createExecution } from "../api/executions.js";
 import NodePalette from "../components/flow/NodePalette.jsx";
 import FlowCanvas from "../components/flow/FlowCanvas.jsx";
@@ -58,6 +58,17 @@ export default function FlowEditor() {
     }
   }, [flow]);
 
+  const handleSave = useCallback(async () => {
+    if (!flow || !canvasRef.current?.getFlowState) return;
+    try {
+      const { nodeList, edges } = canvasRef.current.getFlowState();
+      const updated = await updateFlow(flow.id, { nodeList, edges });
+      setFlow(updated);
+    } catch (err) {
+      console.error("Failed to save flow:", err);
+    }
+  }, [flow]);
+
   const handleZoomIn = useCallback(() => {
     if (canvasRef.current?.zoomIn) {
       canvasRef.current.zoomIn();
@@ -111,7 +122,7 @@ export default function FlowEditor() {
         </div>
         <div className="flow-editor-topbar-right">
           <button className="btn btn-secondary">{t("flowEditor.schedule")}</button>
-          <button className="btn btn-secondary">{t("flowEditor.save")}</button>
+          <button className="btn btn-secondary" onClick={handleSave}>{t("flowEditor.save")}</button>
           <button
             className="btn btn-primary"
             data-testid="run-flow-button"

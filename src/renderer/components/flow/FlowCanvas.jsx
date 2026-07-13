@@ -13,6 +13,7 @@ import ReactFlow, {
   useReactFlow,
   Handle,
   Position,
+  addEdge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -64,6 +65,36 @@ function resetViewport(container) {
   viewport.style.transform = "translate(0px, 0px) scale(1)";
 }
 
+function toReactFlowEdge(edge) {
+  return {
+    id: edge.id,
+    source: edge.sourceNodeId || edge.source,
+    target: edge.targetNodeId || edge.target,
+    sourceHandle: edge.sourcePort || undefined,
+    targetHandle: edge.targetPort || undefined,
+  };
+}
+
+function toStoredEdge(edge) {
+  const stored = {
+    id: edge.id,
+    sourceNodeId: edge.source,
+    targetNodeId: edge.target,
+  };
+  if (edge.sourceHandle) stored.sourcePort = edge.sourceHandle;
+  if (edge.targetHandle) stored.targetPort = edge.targetHandle;
+  return stored;
+}
+
+function toStoredNode(node) {
+  return {
+    id: node.id,
+    type: node.data?.type,
+    name: node.data?.label,
+    position: node.position,
+  };
+}
+
 const FlowCanvas = forwardRef(function FlowCanvas(
   {
     initialNodes = [],
@@ -83,11 +114,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
     }))
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
-    initialEdges.map((e) => ({
-      id: e.id,
-      source: e.sourceId || e.source,
-      target: e.targetId || e.target,
-    }))
+    initialEdges.map(toReactFlowEdge)
   );
 
   const { zoomIn, zoomOut, fitView } = useReactFlow();
@@ -107,11 +134,24 @@ const FlowCanvas = forwardRef(function FlowCanvas(
     [setNodes]
   );
 
+  const onConnect = useCallback(
+    (params) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges]
+  );
+
+  const getFlowState = useCallback(() => {
+    return {
+      nodeList: nodes.map(toStoredNode),
+      edges: edges.map(toStoredEdge),
+    };
+  }, [nodes, edges]);
+
   // Expose methods to parent via ref
   useImperativeHandle(
     ref,
     () => ({
       addNode,
+      getFlowState,
       zoomIn: () => {
         updateViewportScale(containerRef.current, ZOOM_FACTOR);
         zoomIn({ duration: 0 });
@@ -125,7 +165,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
         fitView({ duration: 0 });
       },
     }),
-    [addNode, zoomIn, zoomOut, fitView]
+    [addNode, getFlowState, zoomIn, zoomOut, fitView]
   );
 
   const handleNodeClick = useCallback(
@@ -146,6 +186,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}

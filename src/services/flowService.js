@@ -179,17 +179,46 @@ export function addNode(flowId, node) {
   return { ...newNode };
 }
 
-export function connectNodes(flowId, sourceId, targetId) {
+export function connectNodes(flowId, sourceNodeId, targetNodeId) {
   const db = getDb();
   const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(flowId);
   if (!row) return undefined;
   const edges = safeJson(row.edges, []);
-  const edge = { id: `e${edges.length + 1}`, sourceId, targetId };
+  const edge = { id: `e${edges.length + 1}`, sourceNodeId, targetNodeId };
   edges.push(edge);
   db.prepare(`
     UPDATE flows SET edges = ?, updatedAt = ? WHERE id = ?
   `).run(JSON.stringify(edges), timestamp(), flowId);
   return { ...edge };
+}
+
+export function updateFlow(flowId, patch) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM flows WHERE id = ? AND deletedAt IS NULL").get(flowId);
+  if (!row) return undefined;
+
+  const nodeList = patch.nodeList !== undefined
+    ? patch.nodeList
+    : safeJson(row.nodeList, []);
+  const edges = patch.edges !== undefined
+    ? patch.edges
+    : safeJson(row.edges, []);
+  const name = patch.name !== undefined ? patch.name : row.name;
+  const description = patch.description !== undefined ? patch.description : row.description;
+
+  const updatedAt = timestamp();
+  db.prepare(`
+    UPDATE flows SET name = ?, description = ?, nodeList = ?, edges = ?, updatedAt = ? WHERE id = ?
+  `).run(name, description, JSON.stringify(nodeList), JSON.stringify(edges), updatedAt, flowId);
+
+  return toFlowView({
+    ...row,
+    name,
+    description,
+    nodeList,
+    edges,
+    updatedAt
+  });
 }
 
 export function getNodeCategories() {

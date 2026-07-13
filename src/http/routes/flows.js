@@ -37,6 +37,16 @@ export function handleFlows(req, res, body, pathParts) {
       return ok(res, flow);
     }
 
+    if (req.method === "PATCH") {
+      try {
+        const flow = flowService.updateFlow(flowId, body);
+        if (!flow) return notFound(res, "Flow not found");
+        return ok(res, flow);
+      } catch (err) {
+        return badRequest(res, err.message);
+      }
+    }
+
     if (req.method === "DELETE") {
       const deleted = flowService.deleteFlow(flowId);
       if (!deleted) return notFound(res, "Flow not found");
