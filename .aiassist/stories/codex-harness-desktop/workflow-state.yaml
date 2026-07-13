@@ -3,13 +3,18 @@ story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
 current_phase: BUILD
 attempt: 3
-bug_counter: 7
+bug_counter: 9
 blockers: []
 slices: []
 gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-13, from: BUILD, to: BUG, note: "用户报告：flow 添加两个 node 后无法拖出连线。登记 BUG-008。"}
+  - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-008 根因诊断：REQ-FLOW-003/004 未定义节点连线与保存语义，分类为 req-gap；就地补全 REQ-FLOW-012。"}
+  - {at: 2026-07-13, from: BUG, to: QA, note: "BUG-008 已修复：FlowCanvas 添加 onConnect/addEdge，实现 PATCH /api/flows/:id 与 Save 持久化，统一 edge 数据模型为 sourceNodeId/targetNodeId；新增 API/E2E 回归测试。"}
+  - {at: 2026-07-13, from: QA, to: BUG, note: "全量回归发现 BUG-007 引入的 git project clone 目录回归（使用 projectName 而非 repoName）。登记 BUG-009。"}
+  - {at: 2026-07-13, from: BUG, to: QA, note: "BUG-009 已修复：恢复 git clone 目录默认 fallback 到 repoName，符合 REQ-WORKSPACE-004。全量测试通过。"}
   - {at: 2026-07-12, from: QA, to: BUG, note: "用户报告：git 添加的项目未检出到本地；名称为空时应 fallback 到仓库名。登记 BUG-006。"}
   - {at: 2026-07-12, from: BUG, to: QA, note: "BUG-006 已修复：git 项目自动 clone 到 workspaceRoot，名称为空时 fallback 到仓库名；新增 API/E2E 回归测试，全量测试通过。"}
   - {at: 2026-07-12, from: QA, to: BUG, note: "用户报告：project/skill/flow 等实体缺少删除功能。登记 BUG-007。"}
