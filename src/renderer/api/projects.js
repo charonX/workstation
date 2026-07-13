@@ -1,4 +1,4 @@
-import { get, post, patch } from "./client.js";
+import { get, post, patch, del } from "./client.js";
 
 export function getProjects(q) {
   const endpoint = q ? `/api/projects?q=${encodeURIComponent(q)}` : "/api/projects";
