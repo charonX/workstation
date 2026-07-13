@@ -53,8 +53,8 @@ test.describe("Flow Editor Node Design", () => {
     await openNewFlow("Delete Node Flow");
 
     // Add two nodes and connect them.
-    await firstWindow.getByText("Execution").click();
-    await firstWindow.getByText("Execution").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
 
     const nodes = firstWindow.locator(locators.FLOW_NODE);
@@ -72,7 +72,7 @@ test.describe("Flow Editor Node Design", () => {
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(0);
 
     // Save and reload; deletion persists.
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(0);
@@ -81,7 +81,7 @@ test.describe("Flow Editor Node Design", () => {
   test("REQ-FLOW-014: Agent node config persists after save and reload", async () => {
     await openNewFlow("Agent Config Flow");
 
-    await firstWindow.getByText("Execution").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
@@ -92,7 +92,7 @@ test.describe("Flow Editor Node Design", () => {
     await firstWindow.fill(locators.AGENT_SYSTEM_PROMPT_TEXTAREA, "Summarize top tech news.");
     await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "headlines");
 
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
@@ -105,7 +105,7 @@ test.describe("Flow Editor Node Design", () => {
   test("REQ-FLOW-014: Condition node expression and outputVariable persist", async () => {
     await openNewFlow("Condition Config Flow");
 
-    await firstWindow.getByText("Condition").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Condition" }).click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
@@ -113,7 +113,7 @@ test.describe("Flow Editor Node Design", () => {
     await firstWindow.fill(locators.CONDITION_EXPRESSION_INPUT, "headlines.length > 0");
     await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "hasNews");
 
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
@@ -126,21 +126,21 @@ test.describe("Flow Editor Node Design", () => {
     await openNewFlow("Loop Config Flow");
 
     // ForEach
-    await firstWindow.getByText("ForEach").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "ForEach" }).click();
     await firstWindow.locator(locators.FLOW_NODE).first().click();
     await firstWindow.fill(locators.NODE_NAME_INPUT, "Iterate Headlines");
     await firstWindow.fill(locators.FOREACH_ARRAY_INPUT, "headlines");
     await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "headline");
 
     // While
-    await firstWindow.getByText("While").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "While" }).click();
     const nodes = firstWindow.locator(locators.FLOW_NODE);
-    await nodes.nth(1).click();
+    await nodes.nth(1).locator(".flow-node-header").click();
     await firstWindow.fill(locators.NODE_NAME_INPUT, "Keep Running");
     await firstWindow.fill(locators.WHILE_EXPRESSION_INPUT, "context.iteration < 3");
     await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "iterationResult");
 
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
 
     // Verify ForEach persisted.
@@ -159,12 +159,12 @@ test.describe("Flow Editor Node Design", () => {
   test("REQ-FLOW-014: Output node path persists", async () => {
     await openNewFlow("Output Config Flow");
 
-    await firstWindow.getByText("Output").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Output" }).click();
     await firstWindow.locator(locators.FLOW_NODE).first().click();
     await firstWindow.fill(locators.NODE_NAME_INPUT, "Save Output");
     await firstWindow.fill(locators.OUTPUT_PATH_INPUT, "./output/daily-news.md");
 
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
@@ -176,9 +176,9 @@ test.describe("Flow Editor Node Design", () => {
     await openNewFlow("Condition Branch Flow");
 
     // Add one Condition node and two Agent nodes.
-    await firstWindow.getByText("Condition").click();
-    await firstWindow.getByText("Agent").click();
-    await firstWindow.getByText("Agent").click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Condition" }).click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(3);
 
     const conditionNode = firstWindow.locator(locators.FLOW_NODE).first();
@@ -197,7 +197,7 @@ test.describe("Flow Editor Node Design", () => {
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(2);
 
     // Save and reload; edges remain connected to the correct handles.
-    await firstWindow.getByRole("button", { name: "Save" }).click();
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(3);
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(2);
