@@ -467,6 +467,86 @@
 
 ---
 
+## REQ-FLOW-013: 流程编辑器节点删除
+
+- **来源**：PRD §4.7 流程编辑器形态、UX 参照 flow-editor.html 中节点可编辑的预期
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: intra-module (renderer)
+- **modules**: `FlowCanvas`、`FlowEditor`
+- **interface_contract**:
+  - 选中节点后，可通过键盘 `Delete` 键或节点上的删除按钮移除节点
+  - 删除节点同时移除与其相连的所有 edge
+  - 点击 Save 调用 `PATCH /api/flows/:id`，被删除节点不再出现在 `nodeList` 中
+- **测试类型**: E2E
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowEditor.test.cjs`
+
+**验收标准**：
+- [ ] 选中一个节点并触发删除后，画布上该节点消失。
+- [ ] 与该节点相连的 edge 同步从画布上消失。
+- [ ] 点击 Save 并刷新页面后，被删除节点不再出现。
+- [ ] 删除未选中的节点不改变画布状态（可选实现，但必须有明确行为）。
+
+---
+
+## REQ-FLOW-014: 流程编辑器节点专属配置持久化
+
+- **来源**：PRD §4.8 基础节点类型、§6.3 数据模型（Node: `config`、`outputVariable`）、UX 参照 flow-editor.html 中 Properties 面板
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: Properties 面板、`FlowCanvas`、`flowService`、`src/http/routes/flows.js`、`src/renderer/api/flows.js`
+- **interface_contract**:
+  - 选中节点后 Properties 面板按节点类型展示可编辑字段
+  - 节点数据模型扩展 `config` 对象与 `outputVariable` 字段：`{ id, type, name, config, outputVariable, position }`
+  - 点击 Save 调用 `PATCH /api/flows/:id`，body 含 `nodeList`（含 `config` 与 `outputVariable`）与 `edges`
+  - `PATCH /api/flows/:id` 返回更新后的 flow 详情
+- **测试类型**: E2E
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowEditor.test.cjs`
+
+**验收标准**：
+- [ ] Agent 节点显示可编辑字段：`model`、`systemPrompt`、`outputVariable`。
+- [ ] Condition 节点显示可编辑字段：`expression`、`outputVariable`。
+- [ ] ForEach 节点显示可编辑字段：`array`（输入数组表达式）、`outputVariable`。
+- [ ] While 节点显示可编辑字段：`expression`、`outputVariable`。
+- [ ] Output 节点显示可编辑字段：`path`（输出路径）。
+- [ ] 修改字段后点击 Save，`config` 与 `outputVariable` 随 `nodeList` 一起持久化。
+- [ ] 刷新 Flow Editor 后，Properties 面板仍显示上次保存的值。
+
+---
+
+## REQ-FLOW-015: Condition 节点 true/false 双输出
+
+- **来源**：PRD §4.8 Condition 节点、§6.3 数据模型（Edge: `sourcePort`/`targetPort`）、UX 参照 flow-editor.html 中 Condition 节点两个 `port-out`
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `FlowCanvas`、`flowService`、`FlowEngine`、`executors/conditionExecutor`
+- **interface_contract**:
+  - Condition 节点在画布右侧渲染两个 source handle，分别对应 `true` 分支与 `false` 分支
+  - 从 `true` handle 拖曳创建的 edge 其 `sourcePort='true'`；从 `false` handle 创建的 edge 其 `sourcePort='false'`
+  - 存储格式：`{ id, sourceNodeId, sourcePort: 'true' | 'false', targetNodeId, targetPort? }`
+- **测试类型**: E2E
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowEditor.test.cjs`
+
+**验收标准**：
+- [ ] Condition 节点渲染两个右侧 source handle（视觉上可区分 true/false）。
+- [ ] 从 true handle 拖曳到目标节点创建的 edge，保存后 `sourcePort` 为 `'true'`。
+- [ ] 从 false handle 拖曳到目标节点创建的 edge，保存后 `sourcePort` 为 `'false'`。
+- [ ] 刷新 Flow Editor 后，两条 edge 仍分别连接在正确的 true/false handle 上。
+- [ ] FlowEngine 执行 Condition 节点时，根据表达式结果走对应 `sourcePort` 的下游分支（已由 REQ-FLOW-007 覆盖执行语义；本条验收编辑器侧数据正确性）。
+
+---
+
 ## REQ-SCHEDULE-001: 手动创建任务
 
 - **来源**：PRD §4.14 Tasks 页面

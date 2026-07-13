@@ -3,14 +3,19 @@ story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
 current_phase: BUILD
 attempt: 3
-bug_counter: 9
-blockers: []
+bug_counter: 10
+blockers:
+  - BUG-010 实现中：等待代码修复与全量 QA
 slices: []
 gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
-  - {at: 2026-07-13, from: BUILD, to: BUG, note: "用户报告：flow 添加两个 node 后无法拖出连线。登记 BUG-008。"}
+  - {at: 2026-07-13, from: BUILD, to: BUG, note: "用户报告：flow 编辑器节点无法删除、节点缺少专属配置、Condition 节点无双输出端点、循环节点无配置。登记 BUG-010。"}
+  - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-010 根因诊断：REQ-FLOW-003/004/012 未覆盖编辑器层节点删除、节点 config/outputVariable 持久化、Condition true/false 双输出；分类为 req-gap；就地补全 REQ-FLOW-013~015，更新 requirements-v1.hash 与 business-capabilities.md。"}
+  - {at: 2026-07-13, from: BUG, to: ASSERTION-SIGNOFF, note: "BUG-010: req-gap 补全完成，/test-author 生成 E2E 测试骨架，进入 assertion-signoff。"}
+  - {at: 2026-07-13, from: ASSERTION-SIGNOFF, to: BUILD, note: "BUG-010: 用户口头确认 assertion-signoff（'确认，没问题，继续吧'），解锁 BUILD。"}
+  - {at: 2026-07-13, from: BUG, to: BUG, note: "用户报告：flow 添加两个 node 后无法拖出连线。登记 BUG-008。"}
   - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-008 根因诊断：REQ-FLOW-003/004 未定义节点连线与保存语义，分类为 req-gap；就地补全 REQ-FLOW-012。"}
   - {at: 2026-07-13, from: BUG, to: QA, note: "BUG-008 已修复：FlowCanvas 添加 onConnect/addEdge，实现 PATCH /api/flows/:id 与 Save 持久化，统一 edge 数据模型为 sourceNodeId/targetNodeId；新增 API/E2E 回归测试。"}
   - {at: 2026-07-13, from: QA, to: BUG, note: "全量回归发现 BUG-007 引入的 git project clone 目录回归（使用 projectName 而非 repoName）。登记 BUG-009。"}

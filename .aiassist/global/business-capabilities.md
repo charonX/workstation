@@ -21,7 +21,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/` | REQ-FLOW-001~006 | `flow.test.js`, `flowRun.spec.js` (E2E) |
+| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/` | REQ-FLOW-001~006, REQ-FLOW-011~015 | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs` |
 | flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/` | REQ-FLOW-007~010 | `flowEngine.test.js` |
 
 ### scheduling-execution
