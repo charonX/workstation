@@ -104,27 +104,41 @@ test.describe("Onboarding", () => {
   });
 
   test("user can delete a project from Workspace with confirmation", async () => {
-    await firstWindow.click(locators.WORKSPACE_LINK);
-    await firstWindow.click(locators.ADD_PROJECT_BUTTON);
-    await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Delete Me Project");
-    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/delete-me-project`);
-    await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
+    const consoleMessages = [];
+    firstWindow.on("console", (msg) => consoleMessages.push(msg.text()));
 
-    const projectCard = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Delete Me Project" });
-    await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
+    try {
+      await firstWindow.click(locators.WORKSPACE_LINK);
+      await firstWindow.click(locators.ADD_PROJECT_BUTTON);
+      await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Delete Me Project");
+      await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/delete-me-project`);
+      await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
 
-    // Confirmation dialog should appear; cancel keeps the project.
-    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
-    await firstWindow.click(locators.CONFIRM_CANCEL_BUTTON);
-    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
-    await expect(projectCard).toBeVisible();
+      const projectCard = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Delete Me Project" });
+      await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
 
-    // Confirm delete removes the project.
-    await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
-    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
-    await firstWindow.click(locators.CONFIRM_OK_BUTTON);
-    await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
-    await expect(projectCard).not.toBeVisible();
+      // Confirmation dialog should appear; cancel keeps the project.
+      await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+      await firstWindow.click(locators.CONFIRM_CANCEL_BUTTON);
+      await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+      await expect(projectCard).toBeVisible();
+
+      // Confirm delete removes the project.
+      await projectCard.locator(locators.PROJECT_DELETE_BUTTON).click();
+      await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
+      await firstWindow.click(locators.CONFIRM_OK_BUTTON);
+      await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
+
+      // Verify via API that the project was deleted.
+      const projectsAfter = await (await fetch(`${apiBaseUrl}/api/projects`)).json();
+      expect(projectsAfter.some(p => p.name === "Delete Me Project")).toBe(false);
+
+      await expect(projectCard).not.toBeVisible();
+    } finally {
+      if (consoleMessages.length > 0) {
+        console.log("Renderer console:", consoleMessages.join("\n"));
+      }
+    }
   });
 
   test("user can configure skills in Project Detail", async () => {
