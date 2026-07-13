@@ -441,6 +441,32 @@
 
 ---
 
+## REQ-FLOW-012: 流程编辑器节点连线与保存
+
+- **来源**：PRD §6.3 数据模型（Edge: sourceNodeId/sourcePort/targetNodeId/targetPort）、UX 参照 flow-editor.html 中的 `.port-in`/`.port-out`/`.connection`
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `FlowCanvas`、`flowService`、`src/http/routes/flows.js`、`src/renderer/api/flows.js`、`FlowEditor`
+- **interface_contract**:
+  - 画布上从一个 node 右侧 source handle 拖曳到另一个 node 左侧 target handle 创建连边
+  - 连边数据模型遵循 PRD：`{ id, sourceNodeId, sourcePort?, targetNodeId, targetPort? }`
+  - 点击 Save 调用 `PATCH /api/flows/:id`，body 含 `nodeList` 与 `edges`
+  - `PATCH /api/flows/:id` 返回更新后的 flow 详情
+- **测试类型**: E2E
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/flow-editor.html`
+- **E2E 路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.test.cjs`
+
+**验收标准**：
+- [ ] 添加两个 node 后，可以从一个 node 的 source handle 拖曳到另一个 node 的 target handle 创建连边。
+- [ ] 连边创建后画布上显示连接线和箭头。
+- [ ] 点击 Save 后，连边随 nodes 一起持久化；刷新 Flow Editor 后连边仍然存在。
+- [ ] 保存的 edge 使用 `sourceNodeId`/`targetNodeId` 字段，与 PRD 数据模型和 FlowEngine 一致。
+
+---
+
 ## REQ-SCHEDULE-001: 手动创建任务
 
 - **来源**：PRD §4.14 Tasks 页面
