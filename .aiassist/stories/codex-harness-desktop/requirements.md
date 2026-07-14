@@ -547,6 +547,58 @@
 
 ---
 
+## REQ-FLOW-016: Flow 发布状态与快照
+
+- **来源**：用户反馈（BUG-013 后续 req-gap）
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `flowService`, `src/http/routes/flows.js`, `FlowEditor`, `ScheduleService`
+- **interface_contract**:
+  - `flows` 表新增字段：`status`（`'draft' | 'published'`）、`publishedNodeList`、`publishedEdges`、`publishedAt`
+  - `GET /api/flows/:id` 返回 `status`、`publishedAt`
+  - `PATCH /api/flows/:id` 支持 `status: 'published'`，将当前 `nodeList`/`edges` 复制到 `publishedNodeList`/`publishedEdges`
+  - `PATCH /api/flows/:id` 支持 `status: 'draft'`，不修改已发布快照
+  - 定时任务（ScheduleService）触发时只使用 `publishedNodeList`/`publishedEdges`
+- **测试类型**: HTTP API + E2E
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowEditor.test.cjs`
+
+**验收标准**：
+- [ ] 新建 flow 默认 `status='draft'`。
+- [ ] 发布 flow 后，`publishedNodeList`/`publishedEdges` 保存当前节点/连线快照，`publishedAt` 有值。
+- [ ] 编辑 draft 的 `nodeList`/`edges` 不影响 `publishedNodeList`/`publishedEdges`。
+- [ ] 定时任务只触发 `status='published'` 的 flow；draft flow 的 schedule 不触发执行。
+- [ ] 手动 Run 可以使用 draft 状态运行（用于调试）。
+
+---
+
+## REQ-FLOW-017: Flow Editor Debug 模式
+
+- **来源**：用户反馈（BUG-013 后续 req-gap）
+- **优先级**：P1
+- **必须性**：应该
+- **capability**: `flow-orchestration`
+- **entity**: `flow`
+- **scope**: cross-module
+- **modules**: `FlowEngine`, `FlowEditor`, `src/http/routes/flows.js`
+- **interface_contract**:
+  - Flow Editor 页面新增 "Debug" 按钮
+  - Debug 弹窗允许输入初始变量（JSON 对象）
+  - `POST /api/flows/:id/debug` → body `{ variables?: object, usePublished?: boolean }`
+  - 返回 `{ status, output, nodesRun, logs, iterations, branchPath }`，**不创建 execution 记录**
+- **测试类型**: HTTP API + E2E
+- **测试路径**: `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowEditor.test.cjs`
+
+**验收标准**：
+- [ ] Flow Editor 中 Debug 按钮可见。
+- [ ] 输入初始变量后点击 Debug，返回执行结果（status/output/logs/nodesRun）。
+- [ ] Debug 运行不创建 execution 记录。
+- [ ] Debug 默认使用 draft 状态运行；可选使用 published 快照运行。
+
+---
+
 ## REQ-SCHEDULE-001: 手动创建任务
 
 - **来源**：PRD §4.14 Tasks 页面
