@@ -95,7 +95,24 @@
   "tasks": {
     "tabTasks": "Tasks",
     "tabExecutions": "Executions",
-    "tasksPlaceholder": "Task definitions will be shown here."
+    "tasksPlaceholder": "Task definitions will be shown here.",
+    "newTask": "+ New Task",
+    "newTaskTitle": "New Task",
+    "taskName": "Task Name",
+    "taskNamePlaceholder": "e.g. Hot News Daily",
+    "project": "Project",
+    "flow": "Flow",
+    "trigger": "Trigger",
+    "manual": "Manual",
+    "scheduled": "Scheduled",
+    "cronExpression": "Cron Expression",
+    "cronPlaceholder": "0 9 * * *",
+    "inputVariables": "Input Variables (JSON)",
+    "inputVariablesPlaceholder": "{}",
+    "createTask": "Create Task",
+    "projectRequired": "Project is required.",
+    "cronRequired": "Cron expression is required for scheduled tasks.",
+    "invalidVariables": "Input variables must be valid JSON."
   },
   "execution": {
     "flow": "Flow",
