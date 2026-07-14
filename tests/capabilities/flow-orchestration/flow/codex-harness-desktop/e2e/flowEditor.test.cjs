@@ -2,7 +2,7 @@
 // REQ-VERSION: v1-hash:c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
-// BUG-TRACE: BUG-010
+// BUG-TRACE: BUG-010, BUG-013
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
@@ -201,5 +201,17 @@ test.describe("Flow Editor Node Design", () => {
     await firstWindow.reload();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(3);
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(2);
+  });
+
+  test("BUG-013: Save shows success feedback after saving", async () => {
+    await openNewFlow("Save Feedback Flow");
+
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
+
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
+
+    // After save completes, success feedback should appear.
+    await expect(firstWindow.locator('[data-testid="flow-save-success"]')).toBeVisible();
   });
 });
