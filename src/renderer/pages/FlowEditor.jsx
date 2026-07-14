@@ -17,6 +17,9 @@ export default function FlowEditor() {
   const [error, setError] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -59,15 +62,22 @@ export default function FlowEditor() {
   }, [flow]);
 
   const handleSave = useCallback(async () => {
-    if (!flow || !canvasRef.current?.getFlowState) return;
+    if (!flow || !canvasRef.current?.getFlowState || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
     try {
       const { nodeList, edges } = canvasRef.current.getFlowState();
       const updated = await updateFlow(flow.id, { nodeList, edges });
       setFlow(updated);
+      setSaveSuccess(true);
     } catch (err) {
       console.error("Failed to save flow:", err);
+      setSaveError(err.message || t("flowEditor.saveFailed"));
+    } finally {
+      setSaving(false);
     }
-  }, [flow]);
+  }, [flow, saving, t]);
 
   const handleUpdateNodeData = useCallback(
     (field, value) => {
@@ -161,8 +171,23 @@ export default function FlowEditor() {
           </div>
         </div>
         <div className="flow-editor-topbar-right">
+          {(saveSuccess || saveError) && (
+            <div
+              className={`save-feedback ${saveSuccess ? "save-success" : "save-error"}`}
+              data-testid={saveSuccess ? "flow-save-success" : "flow-save-error"}
+            >
+              {saveSuccess ? t("flowEditor.saveSuccess") : saveError}
+            </div>
+          )}
           <button className="btn btn-secondary">{t("flowEditor.schedule")}</button>
-          <button className="btn btn-secondary" onClick={handleSave}>{t("flowEditor.save")}</button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleSave}
+            disabled={saving}
+            data-testid="save-flow-button"
+          >
+            {saving ? t("flowEditor.saving") : t("flowEditor.save")}
+          </button>
           <button
             className="btn btn-primary"
             data-testid="run-flow-button"

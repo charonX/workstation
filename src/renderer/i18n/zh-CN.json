@@ -156,7 +156,10 @@
     "selectNode": "选择一个节点进行编辑",
     "breadcrumb": "流程",
     "schedule": "调度",
-    "save": "保存"
+    "save": "保存",
+    "saving": "保存中...",
+    "saveSuccess": "流程保存成功",
+    "saveFailed": "流程保存失败"
   },
   "projectForm": {
     "title": "添加项目",

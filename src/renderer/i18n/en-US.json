@@ -156,7 +156,10 @@
     "selectNode": "Select a node to edit",
     "breadcrumb": "Flows",
     "schedule": "Schedule",
-    "save": "Save"
+    "save": "Save",
+    "saving": "Saving...",
+    "saveSuccess": "Flow saved successfully",
+    "saveFailed": "Failed to save flow"
   },
   "projectForm": {
     "title": "Add Project",

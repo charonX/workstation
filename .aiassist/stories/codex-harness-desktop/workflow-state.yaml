@@ -1,12 +1,11 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: BUG
 attempt: 3
-bug_counter: 12
+bug_counter: 13
 blockers:
-  - BUG-012 已修复：createTask 接入 FlowEngine，运行后记录真实 output/logs/nodesRun/duration
-  - BUG-013 待处理：Save 按钮缺少反馈，保存中可刷新导致数据丢失；需加 loading/提示/拦截
+  - BUG-013 处理中：Save 按钮缺少反馈，保存中可刷新导致数据丢失；需加 loading/成功提示/保存中拦截
 slices: []
 gates:
   assertion_signoff: passed
