@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003
-// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-SCHEDULE-005
+// REQ-VERSION: v1-hash:c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -86,6 +86,16 @@ module.exports = {
   ZOOM_RESET_BUTTON: "[data-testid='zoom-reset-button']",
 
   // Tasks / Executions
+  NEW_TASK_BUTTON: "[data-testid='new-task-button']",
+  NEW_TASK_MODAL: "[data-testid='new-task-modal']",
+  TASK_NAME_INPUT: "[data-testid='task-name-input']",
+  TASK_PROJECT_SELECT: "[data-testid='task-project-select']",
+  TASK_FLOW_SELECT: "[data-testid='task-flow-select']",
+  TASK_TRIGGER_MANUAL: "[data-testid='task-trigger-manual']",
+  TASK_TRIGGER_SCHEDULED: "[data-testid='task-trigger-scheduled']",
+  TASK_CRON_INPUT: "[data-testid='task-cron-input']",
+  TASK_INPUT_VARIABLES_TEXTAREA: "[data-testid='task-input-variables-textarea']",
+  SUBMIT_TASK_BUTTON: "[data-testid='submit-task-button']",
   EXECUTIONS_TAB: "[data-testid='executions-tab']",
   EXECUTION_ROW: "[data-testid='execution-row']",
   EXECUTION_DETAIL_PANEL: "[data-testid='execution-detail-panel']",
