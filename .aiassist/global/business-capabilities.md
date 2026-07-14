@@ -21,7 +21,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/` | REQ-FLOW-001~006, REQ-FLOW-011~015 | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs` |
+| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/` | REQ-FLOW-001~006, REQ-FLOW-011~017 | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs` |
 | flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/` | REQ-FLOW-007~010 | `flowEngine.test.js` |
 
 ### scheduling-execution
@@ -78,7 +78,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
 | workspace-management | 2 | 19 | 2026-07-09 |
-| flow-orchestration | 2 | 15 | 2026-07-09 |
+| flow-orchestration | 2 | 19 | 2026-07-14 |
 | scheduling-execution | 2 | 12 | 2026-07-09 |
 | skill-management | 1 | 8 | 2026-07-09 |
 | information-aggregation | 1 | 5 | 2026-07-09 |
