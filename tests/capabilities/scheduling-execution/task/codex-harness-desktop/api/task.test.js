@@ -96,8 +96,50 @@ describe("Tasks and Executions", () => {
   });
 
   it("REQ-SCHEDULE-001: CLI runs a task", () => {
-    const out = execSync(`${CLI} task run --project-id ${project.id} --flow-id ${flow.id}`, { encoding: "utf-8" });
+    const projectOut = execSync(`${CLI} project create --name "CLI Run Project" --local-path "/tmp/cli-run-project"`, { encoding: "utf-8" });
+    const cliProject = JSON.parse(projectOut);
+
+    const flowOut = execSync(`${CLI} flow create --name "CLI Run Flow" --project-id ${cliProject.id}`, { encoding: "utf-8" });
+    const cliFlow = JSON.parse(flowOut);
+
+    const out = execSync(`${CLI} task run --project-id ${cliProject.id} --flow-id ${cliFlow.id}`, { encoding: "utf-8" });
     const data = JSON.parse(out);
     assert.equal(data.status, "running");
+  });
+
+  it("BUG-012: execution runs the flow engine and records real output, logs and nodesRun", async () => {
+    // Seed a flow with an agent node so the engine has real work to do.
+    const agentFlow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Agent Echo",
+        projectId: project.id,
+        nodes: [{ id: "n1", type: "agent", name: "Echo", config: { model: "mock", systemPrompt: "say hi" }, position: { x: 0, y: 0 } }],
+        edges: []
+      })
+    })).json();
+
+    const execution = await (await fetch(`${serverCtx.baseUrl}/api/executions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, flowId: agentFlow.id, trigger: "manual" })
+    })).json();
+
+    assert.equal(execution.status, "running");
+
+    // Poll until the asynchronous engine run completes.
+    let detail;
+    for (let i = 0; i < 20; i++) {
+      detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${execution.id}`)).json();
+      if (detail.status !== "running") break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    assert.equal(detail.status, "success");
+    assert.ok(detail.nodesRun > 0, "nodesRun should be greater than 0");
+    assert.ok(detail.output !== null && detail.output !== undefined, "output should not be null/undefined");
+    assert.ok(Array.isArray(detail.logs) && detail.logs.length > 0, "logs should contain entries");
+    assert.ok(detail.duration !== null && detail.duration !== undefined, "duration should be recorded");
   });
 });
