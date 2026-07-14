@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006, codex-harness-desktop/REQ-FLOW-011, codex-harness-desktop/REQ-FLOW-012
-// REQ-VERSION: v1-hash:ca916b86d94de45106288ca76c21ce1339928794689c940b13514e69136d1a5b
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-001, codex-harness-desktop/REQ-FLOW-002, codex-harness-desktop/REQ-FLOW-006, codex-harness-desktop/REQ-FLOW-011, codex-harness-desktop/REQ-FLOW-012, codex-harness-desktop/REQ-FLOW-016, codex-harness-desktop/REQ-FLOW-017
+// REQ-VERSION: v1-hash:469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -190,5 +190,107 @@ describe("Flows", () => {
     const listOut = execSync(`${CLI} flow list`, { encoding: "utf-8" });
     const list = JSON.parse(listOut);
     assert.ok(!list.some(f => f.id === flow.id));
+  });
+
+  it("REQ-FLOW-016: new flow defaults to draft status", async () => {
+    const res = await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Draft Flow", projectId: project.id })
+    });
+    assert.equal(res.status, 201);
+    const data = await res.json();
+    assert.equal(data.status, "draft");
+  });
+
+  it("REQ-FLOW-016: publishing a flow saves a snapshot and updates status", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Publish Flow", projectId: project.id })
+    })).json();
+
+    const patchRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeList: [{ id: "n1", type: "agent", name: "A", position: { x: 0, y: 0 } }],
+        edges: [],
+        status: "published"
+      })
+    });
+    assert.equal(patchRes.status, 200);
+    const published = await patchRes.json();
+    assert.equal(published.status, "published");
+    assert.ok(published.publishedAt);
+    assert.equal(published.publishedNodeList.length, 1);
+    assert.equal(published.publishedNodeList[0].id, "n1");
+    assert.deepEqual(published.publishedEdges, []);
+  });
+
+  it("REQ-FLOW-016: editing draft does not affect published snapshot", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Snapshot Flow", projectId: project.id })
+    })).json();
+
+    await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeList: [{ id: "n1", type: "agent", name: "A", position: { x: 0, y: 0 } }],
+        edges: [],
+        status: "published"
+      })
+    });
+
+    const editRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeList: [
+          { id: "n1", type: "agent", name: "A", position: { x: 0, y: 0 } },
+          { id: "n2", type: "agent", name: "B", position: { x: 200, y: 0 } }
+        ],
+        edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }]
+      })
+    });
+    assert.equal(editRes.status, 200);
+    const edited = await editRes.json();
+    assert.equal(edited.status, "draft");
+    assert.equal(edited.nodeList.length, 2);
+    assert.equal(edited.publishedNodeList.length, 1);
+    assert.equal(edited.publishedEdges.length, 0);
+  });
+
+  it("REQ-FLOW-017: debug endpoint runs flow without creating an execution", async () => {
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Debug Flow",
+        projectId: project.id,
+        nodes: [{ id: "n1", type: "agent", name: "Echo", config: { model: "mock", systemPrompt: "hi" }, position: { x: 0, y: 0 } }],
+        edges: []
+      })
+    })).json();
+
+    const before = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
+
+    const debugRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}/debug`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variables: { name: "world" } })
+    });
+    assert.equal(debugRes.status, 200);
+    const result = await debugRes.json();
+    assert.equal(result.status, "success");
+    assert.ok(result.output !== undefined && result.output !== null);
+    assert.ok(result.nodesRun > 0);
+    assert.ok(Array.isArray(result.logs));
+
+    const after = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
+    assert.equal(after.length, before.length);
   });
 });

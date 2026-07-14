@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-013, REQ-FLOW-014, REQ-FLOW-015
-// REQ-VERSION: v1-hash:c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-013, REQ-FLOW-014, REQ-FLOW-015, REQ-FLOW-016, REQ-FLOW-017
+// REQ-VERSION: v1-hash:469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // BUG-TRACE: BUG-010, BUG-013
@@ -213,5 +213,47 @@ test.describe("Flow Editor Node Design", () => {
 
     // After save completes, success feedback should appear.
     await expect(firstWindow.locator('[data-testid="flow-save-success"]')).toBeVisible();
+  });
+
+  test("REQ-FLOW-016: Publish button publishes the flow and shows published status", async () => {
+    await openNewFlow("Publish UI Flow");
+
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
+
+    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(firstWindow.locator('[data-testid="flow-save-success"]')).toBeVisible();
+
+    await firstWindow.click(locators.PUBLISH_FLOW_BUTTON);
+    await expect(firstWindow.locator(locators.FLOW_STATUS_BADGE)).toHaveText(/Published|已发布/);
+
+    // Add a second node as a draft edit; published status should remain.
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
+    await expect(firstWindow.locator(locators.FLOW_STATUS_BADGE)).toHaveText(/Draft|草稿/);
+  });
+
+  test("REQ-FLOW-017: Debug button opens modal and shows execution-like output", async () => {
+    await openNewFlow("Debug UI Flow");
+
+    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Agent" }).click();
+    await firstWindow.locator(locators.FLOW_NODE).first().click();
+    await firstWindow.fill(locators.NODE_NAME_INPUT, "Echo");
+
+    // Query executions before debug.
+    const beforeRes = await fetch(`${apiBaseUrl}/api/executions`);
+    const before = await beforeRes.json();
+
+    await firstWindow.click(locators.DEBUG_FLOW_BUTTON);
+    await expect(firstWindow.locator(locators.DEBUG_MODAL)).toBeVisible();
+    await expect(firstWindow.locator(locators.DEBUG_OUTPUT_PANEL)).not.toBeEmpty();
+
+    await firstWindow.click(locators.DEBUG_CLOSE_BUTTON);
+    await expect(firstWindow.locator(locators.DEBUG_MODAL)).not.toBeVisible();
+
+    // No execution record should be created.
+    const afterRes = await fetch(`${apiBaseUrl}/api/executions`);
+    const after = await afterRes.json();
+    expect(after.length).toBe(before.length);
   });
 });

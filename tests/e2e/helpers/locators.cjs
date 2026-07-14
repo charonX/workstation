@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-SCHEDULE-005
-// REQ-VERSION: v1-hash:c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-FLOW-016, codex-harness-desktop/REQ-FLOW-017, codex-harness-desktop/REQ-SCHEDULE-005
+// REQ-VERSION: v1-hash:469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -81,6 +81,12 @@ module.exports = {
   WHILE_EXPRESSION_INPUT: "[data-testid='while-expression-input']",
   OUTPUT_PATH_INPUT: "[data-testid='output-path-input']",
   RUN_FLOW_BUTTON: "[data-testid='run-flow-button']",
+  PUBLISH_FLOW_BUTTON: "[data-testid='publish-flow-button']",
+  FLOW_STATUS_BADGE: "[data-testid='flow-status-badge']",
+  DEBUG_FLOW_BUTTON: "[data-testid='debug-flow-button']",
+  DEBUG_MODAL: "[data-testid='debug-modal']",
+  DEBUG_OUTPUT_PANEL: "[data-testid='debug-output-panel']",
+  DEBUG_CLOSE_BUTTON: "[data-testid='debug-close-button']",
   ZOOM_IN_BUTTON: "[data-testid='zoom-in-button']",
   ZOOM_OUT_BUTTON: "[data-testid='zoom-out-button']",
   ZOOM_RESET_BUTTON: "[data-testid='zoom-reset-button']",
