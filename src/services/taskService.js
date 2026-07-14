@@ -137,11 +137,73 @@ export function createTask({ projectId, flowId, trigger }) {
   return { ...execution };
 }
 
+export async function debugFlow(flowId, { variables, usePublished, nodeList, edges } = {}) {
+  const flow = flowService.getFlow(flowId);
+  if (!flow) return undefined;
+
+  const project = projectService.getProjectDetail(flow.projectId) || {};
+
+  let effectiveNodeList = nodeList;
+  let effectiveEdges = edges;
+  if (effectiveNodeList === undefined) {
+    if (usePublished) {
+      effectiveNodeList = flow.publishedNodeList || [];
+      effectiveEdges = edges === undefined ? (flow.publishedEdges || []) : edges;
+    } else {
+      effectiveNodeList = flow.nodeList || [];
+      effectiveEdges = edges === undefined ? (flow.edges || []) : edges;
+    }
+  }
+
+  const inputVariables = parseVariables(variables);
+
+  const result = await run(
+    { flow: { ...flow, nodeList: effectiveNodeList, edges: effectiveEdges }, project },
+    { maxDepth: 100, maxIterations: 1000 },
+    inputVariables
+  );
+
+  return {
+    status: result.status,
+    output: result.output,
+    nodesRun: result.nodesRun ?? 0,
+    logs: result.logs ?? [],
+    iterations: result.iterations ?? 0,
+    branchPath: result.branch ? [result.branch] : []
+  };
+}
+
+function parseVariables(variables) {
+  if (variables === undefined || variables === null) return {};
+  if (typeof variables === "object") return variables;
+  try {
+    return JSON.parse(variables);
+  } catch {
+    throw new Error("Invalid variables JSON");
+  }
+}
+
 async function runFlowEngine(execution, flow, project) {
   const startedAtMs = Date.parse(execution.startedAt);
+
+  const isScheduled = execution.trigger === "schedule";
+  let effectiveFlow = flow;
+  if (isScheduled) {
+    if (flow.status !== "published") {
+      const endedAt = timestamp();
+      const duration = Date.parse(endedAt) - startedAtMs;
+      completeExecution(execution.id, { duration, nodesRun: 0, output: null, branchPath: [], iterations: [] });
+      const db = getDb();
+      db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
+      addExecutionLog(execution.id, { node: "engine", status: "error", message: "Scheduled execution skipped: flow is not published" });
+      return;
+    }
+    effectiveFlow = { ...flow, nodeList: flow.publishedNodeList || [], edges: flow.publishedEdges || [] };
+  }
+
   try {
     const result = await run(
-      { flow, project },
+      { flow: effectiveFlow, project },
       { maxDepth: 100, maxIterations: 1000 },
       {}
     );

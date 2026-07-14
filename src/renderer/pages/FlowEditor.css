@@ -226,6 +226,110 @@
   gap: var(--ch-space-4);
 }
 
+/* Flow status badge */
+.flow-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border-radius: var(--ch-radius-full);
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-draft {
+  background: var(--ch-warning-bg, rgba(245, 158, 11, 0.15));
+  color: var(--ch-warning, #f59e0b);
+  border: 1px solid var(--ch-warning, #f59e0b);
+}
+
+.status-published {
+  background: var(--ch-success-bg, rgba(34, 197, 94, 0.15));
+  color: var(--ch-success, #22c55e);
+  border: 1px solid var(--ch-success, #22c55e);
+}
+
+/* Debug modal */
+.debug-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--ch-space-4);
+}
+
+.debug-modal-content {
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-lg);
+  box-shadow: var(--ch-shadow-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.debug-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.debug-modal-header h3 {
+  margin: 0;
+  font-size: var(--ch-text-lg);
+  font-weight: var(--ch-weight-semibold);
+}
+
+.debug-close-button {
+  background: none;
+  border: none;
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+  font-size: var(--ch-text-sm);
+}
+
+.debug-close-button:hover {
+  color: var(--ch-text);
+}
+
+.debug-modal-body {
+  padding: var(--ch-space-4);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-4);
+}
+
+.debug-output-panel {
+  background: var(--ch-bg);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  padding: var(--ch-space-3);
+  min-height: 120px;
+  overflow: auto;
+}
+
+.debug-output-panel pre {
+  margin: 0;
+  font-size: var(--ch-text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.debug-error {
+  color: var(--ch-error);
+  font-size: var(--ch-text-sm);
+}
+
 /* Zoom Controls Overlay */
 .zoom-controls-overlay {
   position: absolute;

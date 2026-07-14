@@ -159,7 +159,20 @@
     "save": "Save",
     "saving": "Saving...",
     "saveSuccess": "Flow saved successfully",
-    "saveFailed": "Failed to save flow"
+    "saveFailed": "Failed to save flow",
+    "publish": "Publish",
+    "unpublish": "Unpublish",
+    "published": "Published",
+    "draft": "Draft",
+    "debug": "Debug",
+    "debugTitle": "Debug Flow",
+    "debugVariables": "Input Variables (JSON)",
+    "debugRun": "Run Debug",
+    "debugRunning": "Debugging...",
+    "debugClose": "Close",
+    "debugOutput": "Output",
+    "debugNoOutput": "(no output)",
+    "debugFailed": "Debug failed"
   },
   "projectForm": {
     "title": "Add Project",

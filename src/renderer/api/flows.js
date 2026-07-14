@@ -19,3 +19,7 @@ export function updateFlow(flowId, body) {
 export function deleteFlow(flowId) {
   return del(`/api/flows/${flowId}`);
 }
+
+export function debugFlow(flowId, body) {
+  return post(`/api/flows/${flowId}/debug`, body);
+}

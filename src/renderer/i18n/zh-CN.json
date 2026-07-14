@@ -159,7 +159,20 @@
     "save": "保存",
     "saving": "保存中...",
     "saveSuccess": "流程保存成功",
-    "saveFailed": "流程保存失败"
+    "saveFailed": "流程保存失败",
+    "publish": "发布",
+    "unpublish": "撤销发布",
+    "published": "已发布",
+    "draft": "草稿",
+    "debug": "调试",
+    "debugTitle": "调试流程",
+    "debugVariables": "输入变量 (JSON)",
+    "debugRun": "运行调试",
+    "debugRunning": "调试中...",
+    "debugClose": "关闭",
+    "debugOutput": "输出",
+    "debugNoOutput": "（无输出）",
+    "debugFailed": "调试失败"
   },
   "projectForm": {
     "title": "添加项目",

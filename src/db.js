@@ -106,6 +106,10 @@ function initSchema(database) {
       nodeList TEXT NOT NULL DEFAULT '[]',
       edges TEXT NOT NULL DEFAULT '[]',
       scheduleEnabled INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      publishedNodeList TEXT NOT NULL DEFAULT '[]',
+      publishedEdges TEXT NOT NULL DEFAULT '[]',
+      publishedAt TEXT,
       updatedAt TEXT NOT NULL,
       deletedAt TEXT
     );
@@ -155,5 +159,17 @@ function migrateSchema(database) {
   // BUG-007: add soft-delete column to flows created before logical delete was introduced.
   if (!hasColumn(database, "flows", "deletedAt")) {
     database.exec(`ALTER TABLE flows ADD COLUMN deletedAt TEXT`);
+  }
+  if (!hasColumn(database, "flows", "status")) {
+    database.exec(`ALTER TABLE flows ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`);
+  }
+  if (!hasColumn(database, "flows", "publishedNodeList")) {
+    database.exec(`ALTER TABLE flows ADD COLUMN publishedNodeList TEXT NOT NULL DEFAULT '[]'`);
+  }
+  if (!hasColumn(database, "flows", "publishedEdges")) {
+    database.exec(`ALTER TABLE flows ADD COLUMN publishedEdges TEXT NOT NULL DEFAULT '[]'`);
+  }
+  if (!hasColumn(database, "flows", "publishedAt")) {
+    database.exec(`ALTER TABLE flows ADD COLUMN publishedAt TEXT`);
   }
 }

@@ -1,7 +1,8 @@
 import * as flowService from "../../services/flowService.js";
 import * as projectService from "../../services/projectService.js";
+import * as taskService from "../../services/taskService.js";
 
-export function handleFlows(req, res, body, pathParts) {
+export async function handleFlows(req, res, body, pathParts) {
   if (pathParts.length === 0) {
     if (req.method === "GET") {
       const flows = flowService.listFlows().map(toListView);
@@ -69,6 +70,19 @@ export function handleFlows(req, res, body, pathParts) {
     // handled at length 0 via url check in server
   }
 
+  if (pathParts.length === 2 && pathParts[1] === "debug") {
+    if (req.method === "POST") {
+      try {
+        const result = await taskService.debugFlow(flowId, body);
+        if (!result) return notFound(res, "Flow not found");
+        return ok(res, result);
+      } catch (err) {
+        return badRequest(res, err.message);
+      }
+    }
+    return notFound(res);
+  }
+
   return notFound(res);
 }
 
@@ -91,6 +105,8 @@ function toListView(flow) {
     projectName: project?.name || null,
     nodeCount: flow.nodeList?.length ?? flow.nodes ?? 0,
     scheduleEnabled: flow.scheduleEnabled,
+    status: flow.status || "draft",
+    publishedAt: flow.publishedAt || null,
     updatedAt: flow.updatedAt,
     nodes: flow.nodeList || [],
     edges: flow.edges || []
