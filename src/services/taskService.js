@@ -1,5 +1,8 @@
 import { getDb, resetDb } from "../db.js";
 import * as eventBus from "./eventBus.js";
+import { run } from "../flowEngine/flowEngine.js";
+import * as flowService from "./flowService.js";
+import * as projectService from "./projectService.js";
 
 function timestamp() {
   return new Date().toISOString();
@@ -88,6 +91,9 @@ function rowToSchedule(row) {
 
 export function createTask({ projectId, flowId, trigger }) {
   if (!projectId) throw new Error("Project is required");
+  const flow = flowService.getFlow(flowId);
+  if (!flow) throw new Error("Flow not found");
+
   const execution = {
     id: nextExecutionId(),
     projectId,
@@ -124,17 +130,67 @@ export function createTask({ projectId, flowId, trigger }) {
     JSON.stringify(execution.iterations),
     JSON.stringify(execution.logs)
   );
-  // Placeholder: auto-complete executions until a real flow engine is wired in.
-  setImmediate(() => {
+
+  const project = projectService.getProjectDetail(projectId);
+  runFlowEngine(execution, flow, project || {});
+
+  return { ...execution };
+}
+
+async function runFlowEngine(execution, flow, project) {
+  const startedAtMs = Date.parse(execution.startedAt);
+  try {
+    const result = await run(
+      { flow, project },
+      { maxDepth: 100, maxIterations: 1000 },
+      {}
+    );
+
+    const endedAt = timestamp();
+    const duration = Date.parse(endedAt) - startedAtMs;
+    const status = result.status === "success" ? "success" : "error";
+
     completeExecution(execution.id, {
-      duration: 0,
+      duration,
+      nodesRun: result.nodesRun ?? 0,
+      output: result.output,
+      branchPath: result.branch ? [result.branch] : [],
+      iterations: Array.from({ length: result.iterations ?? 0 }, (_, i) => i + 1)
+    });
+
+    // Override status when the engine returned an error.
+    if (status === "error") {
+      const db = getDb();
+      db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
+    }
+
+    if (result.logs && result.logs.length > 0) {
+      for (const log of result.logs) {
+        addExecutionLog(execution.id, {
+          node: log.node ?? "unknown",
+          status: status,
+          message: log.message || JSON.stringify(log)
+        });
+      }
+    }
+
+    if (result.status === "error" && result.error) {
+      addExecutionLog(execution.id, { node: "engine", status: "error", message: result.error });
+    }
+  } catch (err) {
+    const endedAt = timestamp();
+    const duration = Date.parse(endedAt) - startedAtMs;
+    completeExecution(execution.id, {
+      duration,
       nodesRun: 0,
       output: null,
       branchPath: [],
       iterations: []
     });
-  });
-  return { ...execution };
+    const db = getDb();
+    db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
+    addExecutionLog(execution.id, { node: "engine", status: "error", message: err.message });
+  }
 }
 
 export function createSchedule({ projectId, flowId, cron }) {

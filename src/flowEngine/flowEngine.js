@@ -7,22 +7,22 @@ const defaultExecutors = {
   agent: agentExecutor
 };
 
-export function run(flowOrConfig, options = {}, inputVariables = {}) {
+export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   const flow = flowOrConfig.flow || flowOrConfig;
   const project = flowOrConfig.project || {};
   const executors = flowOrConfig.executors || defaultExecutors;
-
-  const executionId = generateExecutionId();
 
   const maxDepth = options.maxDepth ?? 100;
   const maxIterations = options.maxIterations ?? 1000;
 
   // Support both test-facing `nodes` and service-facing `nodeList`.
-  const nodeList = flow?.nodes ?? flow?.nodeList ?? [];
+  // Service layer uses `nodeList` for the array and `nodes` for the count,
+  // so prefer `nodeList` when present.
+  const nodeList = flow?.nodeList ?? flow?.nodes ?? [];
   const edges = flow?.edges ?? [];
 
   if (nodeList.length === 0) {
-    return { status: "success", output: undefined, branch: undefined, iterations: 0 };
+    return { status: "success", output: undefined, branch: undefined, iterations: 0, nodesRun: 0, logs: [] };
   }
 
   const nodesById = new Map(nodeList.map((node) => [node.id, node]));
@@ -52,6 +52,7 @@ export function run(flowOrConfig, options = {}, inputVariables = {}) {
   const nodeVisitCount = new Map();
   let loopBodyCount = 0;
   let controlType = null;
+  const logs = [];
 
   while (currentNodeId) {
     iterationCount++;
@@ -72,16 +73,12 @@ export function run(flowOrConfig, options = {}, inputVariables = {}) {
       throw new Error(`No executor registered for node type "${node.type}"`);
     }
 
-    const result = executeWithRetry(executor, {
+    const result = await executeWithRetry(executor, {
       node,
       context,
       project,
       iteration: visitIndex
     });
-
-    if (result && typeof result.then === "function") {
-      throw new Error("Async executors are not supported in synchronous run mode");
-    }
 
     if (result.status === "fatal") {
       throw new Error(`fatal: ${result.error || `Node "${node.id}" failed fatally`}`);
@@ -89,6 +86,12 @@ export function run(flowOrConfig, options = {}, inputVariables = {}) {
 
     if (result.status === "error") {
       throw new Error(`fatal: ${result.error || `Node "${node.id}" failed`}`);
+    }
+
+    if (result.logs && Array.isArray(result.logs)) {
+      for (const log of result.logs) {
+        logs.push({ node: node.id, ...log });
+      }
     }
 
     if (result.output !== undefined) {
@@ -129,17 +132,16 @@ export function run(flowOrConfig, options = {}, inputVariables = {}) {
     status: "success",
     output: lastOutput,
     branch: controlType === "condition" && typeof lastOutput === "string" ? lastOutput : undefined,
-    iterations: loopBodyCount
+    iterations: loopBodyCount,
+    nodesRun: iterationCount,
+    logs
   };
 }
 
-function executeWithRetry(executor, input) {
-  let result = executor(input);
-  if (result && typeof result.then === "function") {
-    return result;
-  }
+async function executeWithRetry(executor, input) {
+  let result = await executor(input);
   if (result.status === "error") {
-    result = executor(input);
+    result = await executor(input);
   }
   return result;
 }
@@ -178,8 +180,4 @@ function incrementFirstNumericContext(context) {
       return;
     }
   }
-}
-
-function generateExecutionId() {
-  return `exec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }

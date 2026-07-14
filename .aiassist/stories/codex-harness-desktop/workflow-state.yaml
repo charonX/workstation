@@ -1,11 +1,11 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: BUG
 attempt: 3
-bug_counter: 11
+bug_counter: 12
 blockers:
-  - BUG-010 修复完成，等待全量 QA 验证
+  - BUG-012 运行无输出：taskService 为 placeholder，未接入 FlowEngine；保存问题待用户确认复现步骤
 slices: []
 gates:
   assertion_signoff: passed
