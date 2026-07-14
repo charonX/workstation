@@ -1,18 +1,19 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUG
+current_phase: QA
 attempt: 3
 bug_counter: 12
 blockers:
-  - BUG-012 运行无输出：taskService 为 placeholder，未接入 FlowEngine；保存问题待用户确认复现步骤
+  - BUG-012 已修复：createTask 接入 FlowEngine，运行后记录真实 output/logs/nodesRun/duration
+  - BUG-013 待处理：Save 按钮缺少反馈，保存中可刷新导致数据丢失；需加 loading/提示/拦截
 slices: []
 gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
-  - {at: 2026-07-14, from: BUILD, to: QA, note: "BUG-011 已修复：Tasks 页面新增 + New Task 按钮与 NewTaskModal 弹层，支持 Manual/Scheduled 触发，接入 POST /api/executions 与 POST /api/schedules；新增 E2E 回归测试 taskCreation.test.cjs；全量 78 单元测试 + 43 E2E 测试通过。"}
-  - {at: 2026-07-14, from: ASSERTION-SIGNOFF, to: BUILD, note: "BUG-011: 用户确认 REQ-SCHEDULE-005 E2E 断言签核，解锁 BUILD。"}
+  - {at: 2026-07-14, from: BUG, to: QA, note: "BUG-012 已修复：FlowEngine.run 改为 async 支持异步 executor；taskService.createTask 接入 FlowEngine 异步执行并更新 execution；新增 BUG-012 回归测试；全量 79 单元测试 + 43 E2E 测试通过。"}
+  - {at: 2026-07-14, from: QA, to: BUG, note: "用户报告：流程保存后刷新丢失；运行无输出；质疑引擎是否真实存在。登记 BUG-012。"}
   - {at: 2026-07-13, from: QA, to: BUG, note: "用户报告：Tasks 页面没有创建任务的按钮，询问是否有需求。登记 BUG-011。"}
   - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-011 根因诊断：REQ-SCHEDULE-001 未覆盖 UI 层任务创建；已批准 UX HTML tasks.html 包含 + New Task 弹层；分类为 req-gap；就地补全 REQ-SCHEDULE-005，更新 requirements-v1.hash、business-capabilities.md、test-plan.md，/test-author 生成 E2E 回归测试 taskCreation.test.cjs。"}
   - {at: 2026-07-13, from: BUILD, to: BUG, note: "用户报告：flow 编辑器节点无法删除、节点缺少专属配置、Condition 节点无双输出端点、循环节点无配置。登记 BUG-010。"}
