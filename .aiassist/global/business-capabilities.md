@@ -29,8 +29,8 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `task.test.js`, `flowRun.spec.js` (E2E) |
-| schedule | `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/` | REQ-SCHEDULE-002 | `schedule.test.js` |
+| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/scheduling-execution/task/codex-harness-desktop/e2e/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003, REQ-SCHEDULE-005 | `task.test.js`, `taskCreation.test.cjs` (E2E) |
+| schedule | `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/` | REQ-SCHEDULE-002, REQ-SCHEDULE-004 | `schedule.test.js` |
 
 ### skill-management
 > 集中式 skill 仓库、多源安装、项目关联。

@@ -641,6 +641,35 @@
 
 ---
 
+## REQ-SCHEDULE-005: 从 Tasks 页面 UI 创建任务
+
+- **来源**：PRD §4.14 Tasks 页面、已批准 UX HTML `tasks.html`
+- **优先级**：P0
+- **必须性**：必须
+- **capability**: `scheduling-execution`
+- **entity**: `task`
+- **scope**: renderer
+- **modules**: `src/renderer/pages/Tasks.jsx`, `src/renderer/components/task/NewTaskModal.jsx`
+- **interface_contract**:
+  - Tasks 页面头部显示主按钮 `+ New Task`
+  - 点击后打开 New Task 弹层，字段：Task Name、Project（下拉）、Flow（下拉）、Trigger（Manual / Scheduled）、Cron Expression（Scheduled 时可见）、Input Variables (JSON)
+  - Manual trigger：调用 `POST /api/executions` 创建 execution
+  - Scheduled trigger：调用 `POST /api/schedules` 创建 schedule
+  - 未选择 Project 时表单校验失败，不提交
+- **测试类型**: E2E
+- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/tasks.html`
+- **E2E 路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/e2e/taskCreation.test.cjs`
+
+**验收标准**：
+- [ ] Tasks 页面显示 `+ New Task` 按钮。
+- [ ] 点击按钮打开 New Task 弹层，包含 Task Name、Project、Flow、Trigger、Cron（Scheduled 时）、Input Variables 字段。
+- [ ] Project/Flow 下拉从现有数据中加载。
+- [ ] Manual trigger：提交后创建一条 execution，弹层关闭，Executions 列表可见新记录。
+- [ ] Scheduled trigger：提交后创建一条 schedule，弹层关闭。
+- [ ] 未选择 Project 时显示校验错误，不调用 API。
+
+---
+
 ## REQ-SKILL-001: Skills 列表
 
 - **来源**：PRD §4.15 Skill 管理 UI

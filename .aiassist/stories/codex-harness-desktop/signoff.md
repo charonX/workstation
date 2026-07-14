@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1`
+> requirements-v1.hash: `c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14）
 
 ### 检查清单
 
@@ -46,6 +46,7 @@
 | REQ-SCHEDULE-001 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 手动任务创建、完成状态 |
 | REQ-SCHEDULE-002 | scheduling-execution / schedule | `schedule.test.js` | Schedule 创建/启用停用/cron 描述/必填校验 |
 | REQ-SCHEDULE-003 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 执行历史倒序、Logs/Variables/Output、分支路径/迭代 |
+| REQ-SCHEDULE-005 | scheduling-execution / task | `taskCreation.test.cjs` (E2E) | Tasks 页 + New Task 弹层、Manual/Scheduled 创建、Project 必填校验 |
 | REQ-SKILL-001 | skill-management / skill | `skill.test.js` | Skill 列表无 Linked Projects、含 category |
 | REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、无项目链接 |
 | REQ-SKILL-003 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) | npm/npx、Claude Plugin、Local Files 安装 |

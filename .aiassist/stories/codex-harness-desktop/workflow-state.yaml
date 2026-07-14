@@ -3,7 +3,7 @@ story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
 current_phase: QA
 attempt: 3
-bug_counter: 10
+bug_counter: 11
 blockers:
   - BUG-010 修复完成，等待全量 QA 验证
 slices: []
@@ -11,6 +11,10 @@ gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-14, from: BUILD, to: QA, note: "BUG-011 已修复：Tasks 页面新增 + New Task 按钮与 NewTaskModal 弹层，支持 Manual/Scheduled 触发，接入 POST /api/executions 与 POST /api/schedules；新增 E2E 回归测试 taskCreation.test.cjs；全量 78 单元测试 + 43 E2E 测试通过。"}
+  - {at: 2026-07-14, from: ASSERTION-SIGNOFF, to: BUILD, note: "BUG-011: 用户确认 REQ-SCHEDULE-005 E2E 断言签核，解锁 BUILD。"}
+  - {at: 2026-07-13, from: QA, to: BUG, note: "用户报告：Tasks 页面没有创建任务的按钮，询问是否有需求。登记 BUG-011。"}
+  - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-011 根因诊断：REQ-SCHEDULE-001 未覆盖 UI 层任务创建；已批准 UX HTML tasks.html 包含 + New Task 弹层；分类为 req-gap；就地补全 REQ-SCHEDULE-005，更新 requirements-v1.hash、business-capabilities.md、test-plan.md，/test-author 生成 E2E 回归测试 taskCreation.test.cjs。"}
   - {at: 2026-07-13, from: BUILD, to: BUG, note: "用户报告：flow 编辑器节点无法删除、节点缺少专属配置、Condition 节点无双输出端点、循环节点无配置。登记 BUG-010。"}
   - {at: 2026-07-13, from: BUG, to: BUG, note: "BUG-010 根因诊断：REQ-FLOW-003/004/012 未覆盖编辑器层节点删除、节点 config/outputVariable 持久化、Condition true/false 双输出；分类为 req-gap；就地补全 REQ-FLOW-013~015，更新 requirements-v1.hash 与 business-capabilities.md。"}
   - {at: 2026-07-13, from: BUG, to: ASSERTION-SIGNOFF, note: "BUG-010: req-gap 补全完成，/test-author 生成 E2E 测试骨架，进入 assertion-signoff。"}
