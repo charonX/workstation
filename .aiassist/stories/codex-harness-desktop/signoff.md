@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `c4549c262b3062f8d215c299e057564fbed83e990064ab4153b82cbbf7c40b54`
+> requirements-v1.hash: `469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14）
 
 ### 检查清单
 
@@ -39,6 +39,8 @@
 | REQ-FLOW-004 | flow-orchestration / flow | `flowRun.test.js` (E2E) + feel-signoff | Agent 节点暴露 model/systemPrompt |
 | REQ-FLOW-005 | flow-orchestration / flow | `flowRun.test.js` (E2E) + feel-signoff | Run 状态切换、Zoom 控制 |
 | REQ-FLOW-006 | flow-orchestration / flow | `flow.test.js` | Flow JSON import/export |
+| REQ-FLOW-016 | flow-orchestration / flow | `flow.test.js`, `flowEditor.test.cjs` (E2E) | 默认 draft、发布快照、草稿编辑不影响 published snapshot、定时只触发 published |
+| REQ-FLOW-017 | flow-orchestration / flow | `flow.test.js`, `flowEditor.test.cjs` (E2E) | Debug 弹窗/端点、返回结果、不创建 execution 记录 |
 | REQ-FLOW-007 | flow-orchestration / flow-engine | `flowEngine.test.js` | Condition true/false 分支、非法表达式 fatal |
 | REQ-FLOW-008 | flow-orchestration / flow-engine | `flowEngine.test.js` | ForEach 遍历数组 |
 | REQ-FLOW-009 | flow-orchestration / flow-engine | `flowEngine.test.js` | While 循环 |
@@ -60,7 +62,7 @@
 | Capability | Entities | 测试数 |
 |---|---|---|
 | workspace-management | settings, project | 19 |
-| flow-orchestration | flow, flow-engine | 15 |
+| flow-orchestration | flow, flow-engine | 19 |
 | scheduling-execution | task, schedule | 12 |
 | skill-management | skill | 8 |
 | information-aggregation | dashboard | 5 |
@@ -69,9 +71,9 @@
 
 ### 当前测试运行状态
 
-- 现有 API/CLI 单元测试：61 个（attempt-2 保留）
-- 新增 E2E 测试：5 个 spec 文件，约 18 个 test case
-- 预计 `npm test:unit` 与 `npm run test:e2e` 当前均无法全绿，等待 implementer 在 BUILD 阶段实现前端与 E2E fixtures 后变绿。
+- 现有 API/CLI 单元测试：61 个（attempt-2 保留）+ 4 个新增 API 测试（REQ-FLOW-016/017）
+- 新增 E2E 测试：6 个 spec 文件（含 flowEditor.test.cjs 新增 2 个 case），约 20 个 test case
+- 预计 `npm test:unit` 与 `npm run test:e2e` 当前无法全绿，等待 implementer 在 BUILD 阶段实现新 seam 后变绿。
 
 ---
 
