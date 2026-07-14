@@ -1,16 +1,17 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: ASSERTION-SIGNOFF
+current_phase: BUILD
 attempt: 3
 bug_counter: 13
 blockers:
-  - 等待用户 /signoff --stage=assertion：REQ-FLOW-016（发布/草稿/快照）与 REQ-FLOW-017（调试模式）测试骨架已生成
+  - 无
 slices: []
 gates:
-  assertion_signoff: pending
+  assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-14, from: ASSERTION-SIGNOFF, to: BUILD, note: "REQ-FLOW-016/017 assertion-signoff 通过，解锁 BUILD。"}
   - {at: 2026-07-14, from: QA, to: ASSERTION-SIGNOFF, note: "req-gap 就地补全：用户批准实现 A（publish/draft + snapshots）与 B（debug mode）；更新 requirements.md、requirements-v1.hash、test-plan.md；/test-author 生成 API/E2E 测试骨架。等待 assertion-signoff。"}
   - {at: 2026-07-14, from: BUG, to: QA, note: "BUG-013 已修复：Flow Editor Save 按钮加 loading/成功/失败提示；新增 BUG-013 E2E 回归测试；全量 79 单元测试 + 44 E2E 测试通过。"}
   - {at: 2026-07-14, from: QA, to: BUG, note: "用户报告保存后刷新丢失，确认复现步骤为 Save 后立即 reload。登记 BUG-013。"}
