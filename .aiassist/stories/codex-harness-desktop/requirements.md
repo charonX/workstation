@@ -599,26 +599,28 @@
 
 ---
 
-## REQ-SCHEDULE-001: 手动创建任务
+## REQ-SCHEDULE-001: 手动触发执行
 
-- **来源**：PRD §4.14 Tasks 页面
+- **来源**：PRD §4.14 Executions 页面
 - **优先级**：P0
 - **必须性**：必须
 - **capability**: `scheduling-execution`
-- **entity**: `task`
+- **entity**: `task`（API/CLI 层手动触发的别名；UI 无独立 Task 页面）
 - **scope**: cross-module
-- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`
+- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`, Flow Editor Run 按钮
 - **interface_contract**:
   - `POST /api/executions` → body `{projectId, flowId, trigger?: "manual" | "schedule"}`
   - CLI: `opc-workstation task run --project-id <id> --flow-id <id>`
+  - Flow Editor Run 按钮调用 `POST /api/executions` 并导航到 `/executions`
   - `projectId` 缺失返回 `400`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.test.cjs`
 
 **验收标准**：
 - [ ] 提交后创建一条 `running` 的 execution。
 - [ ] 完成后状态更新为 `success`/`error`，并记录 `duration`、`nodesRun`。
 - [ ] 未选择 `projectId` 时失败。
+- [ ] Flow Editor Run 按钮触发后可在 `/executions` 看到新记录。
 
 ---
 
@@ -646,21 +648,21 @@
 
 ---
 
-## REQ-SCHEDULE-003: 任务执行历史与详情
+## REQ-SCHEDULE-003: 执行历史与详情
 
-- **来源**：PRD §4.14 Tasks 页面
+- **来源**：PRD §4.14 Executions 页面
 - **优先级**：P0
 - **必须性**：必须
 - **capability**: `scheduling-execution`
-- **entity**: `task`
+- **entity**: `execution`
 - **scope**: cross-module
-- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`
+- **modules**: `taskService`, `src/http/routes/executions.js`, `src/cli/commands/task.js`, `src/renderer/pages/Executions.jsx`, `src/renderer/components/task/ExecutionList.jsx`, `src/renderer/components/task/ExecutionDetail.jsx`
 - **interface_contract**:
   - `GET /api/executions` → 按时间倒序
   - `GET /api/executions/:id` → `{logs, variables, output, branchPath, iterations}`
   - CLI: `opc-workstation execution list/get`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/flowRun.test.cjs`
 
 **验收标准**：
 - [ ] 执行历史按时间倒序排列。
@@ -690,35 +692,6 @@
 - [ ] 已存在的 execution 历史保留。
 - [ ] UI 删除操作需要二次确认。
 - [ ] 删除不存在的 schedule 返回 `404`。
-
----
-
-## REQ-SCHEDULE-005: 从 Tasks 页面 UI 创建任务
-
-- **来源**：PRD §4.14 Tasks 页面、已批准 UX HTML `tasks.html`
-- **优先级**：P0
-- **必须性**：必须
-- **capability**: `scheduling-execution`
-- **entity**: `task`
-- **scope**: renderer
-- **modules**: `src/renderer/pages/Tasks.jsx`, `src/renderer/components/task/NewTaskModal.jsx`
-- **interface_contract**:
-  - Tasks 页面头部显示主按钮 `+ New Task`
-  - 点击后打开 New Task 弹层，字段：Task Name、Project（下拉）、Flow（下拉）、Trigger（Manual / Scheduled）、Cron Expression（Scheduled 时可见）、Input Variables (JSON)
-  - Manual trigger：调用 `POST /api/executions` 创建 execution
-  - Scheduled trigger：调用 `POST /api/schedules` 创建 schedule
-  - 未选择 Project 时表单校验失败，不提交
-- **测试类型**: E2E
-- **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/tasks.html`
-- **E2E 路径**: `tests/capabilities/scheduling-execution/task/codex-harness-desktop/e2e/taskCreation.test.cjs`
-
-**验收标准**：
-- [ ] Tasks 页面显示 `+ New Task` 按钮。
-- [ ] 点击按钮打开 New Task 弹层，包含 Task Name、Project、Flow、Trigger、Cron（Scheduled 时）、Input Variables 字段。
-- [ ] Project/Flow 下拉从现有数据中加载。
-- [ ] Manual trigger：提交后创建一条 execution，弹层关闭，Executions 列表可见新记录。
-- [ ] Scheduled trigger：提交后创建一条 schedule，弹层关闭。
-- [ ] 未选择 Project 时显示校验错误，不调用 API。
 
 ---
 

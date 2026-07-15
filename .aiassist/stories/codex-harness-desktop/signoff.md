@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c`
+> requirements-v1.hash: `6d1ad5a74173976f1edf2c739c79f951e2e74e40c833a28e05922f6045f67690`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**待重新签核**（2026-07-15：删除 REQ-SCHEDULE-005，调整 task/execution UI 契约）
 
 ### 检查清单
 
@@ -45,10 +45,9 @@
 | REQ-FLOW-008 | flow-orchestration / flow-engine | `flowEngine.test.js` | ForEach 遍历数组 |
 | REQ-FLOW-009 | flow-orchestration / flow-engine | `flowEngine.test.js` | While 循环 |
 | REQ-FLOW-010 | flow-orchestration / flow-engine | `flowEngine.test.js` | maxIterations / maxDepth 循环保护 |
-| REQ-SCHEDULE-001 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 手动任务创建、完成状态 |
+| REQ-SCHEDULE-001 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 手动触发执行、Flow Editor Run 按钮、完成状态 |
 | REQ-SCHEDULE-002 | scheduling-execution / schedule | `schedule.test.js` | Schedule 创建/启用停用/cron 描述/必填校验 |
-| REQ-SCHEDULE-003 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 执行历史倒序、Logs/Variables/Output、分支路径/迭代 |
-| REQ-SCHEDULE-005 | scheduling-execution / task | `taskCreation.test.cjs` (E2E) | Tasks 页 + New Task 弹层、Manual/Scheduled 创建、Project 必填校验 |
+| REQ-SCHEDULE-003 | scheduling-execution / execution | `task.test.js`, `flowRun.test.js` (E2E) | 执行历史倒序、Logs/Variables/Output、分支路径/迭代 |
 | REQ-SKILL-001 | skill-management / skill | `skill.test.js` | Skill 列表无 Linked Projects、含 category |
 | REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、无项目链接 |
 | REQ-SKILL-003 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) | npm/npx、Claude Plugin、Local Files 安装 |
@@ -63,7 +62,7 @@
 |---|---|---|
 | workspace-management | settings, project | 19 |
 | flow-orchestration | flow, flow-engine | 19 |
-| scheduling-execution | task, schedule | 12 |
+| scheduling-execution | task, schedule, execution | 12 |
 | skill-management | skill | 8 |
 | information-aggregation | dashboard | 5 |
 | internationalization-theme | language, theme | 6 |
@@ -71,9 +70,9 @@
 
 ### 当前测试运行状态
 
-- 现有 API/CLI 单元测试：61 个（attempt-2 保留）+ 4 个新增 API 测试（REQ-FLOW-016/017）
-- 新增 E2E 测试：6 个 spec 文件（含 flowEditor.test.cjs 新增 2 个 case），约 20 个 test case
-- 预计 `npm test:unit` 与 `npm run test:e2e` 当前无法全绿，等待 implementer 在 BUILD 阶段实现新 seam 后变绿。
+- 现有 API/CLI 单元测试：61 个（attempt-2 保留）+ 4 个新增 API 测试（REQ-FLOW-016/017）+ 2 个回归测试（BUG-014/015）
+- 新增 E2E 测试：5 个 spec 文件（已删除 `taskCreation.test.cjs`），约 18 个 test case
+- 本次契约调整后需重新 `/signoff --stage=assertion`，再进入 BUILD 实现 UI 变更。
 
 ---
 

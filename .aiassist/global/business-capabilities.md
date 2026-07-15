@@ -25,12 +25,13 @@
 | flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/` | REQ-FLOW-007~010 | `flowEngine.test.js` |
 
 ### scheduling-execution
-> 手动触发、定时触发、查看执行历史与详情。
+> 手动触发、定时触发、查看执行历史与详情。UI 仅保留执行历史页；任务创建 UI 已移除，Task 在 API/CLI 层作为手动触发的别名保留。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/scheduling-execution/task/codex-harness-desktop/e2e/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003, REQ-SCHEDULE-005 | `task.test.js`, `taskCreation.test.cjs` (E2E) |
+| task | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/` | REQ-SCHEDULE-001 | `task.test.js` |
 | schedule | `tests/capabilities/scheduling-execution/schedule/codex-harness-desktop/api/` | REQ-SCHEDULE-002, REQ-SCHEDULE-004 | `schedule.test.js` |
+| execution | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `task.test.js`, `flowRun.test.js` (E2E) |
 
 ### skill-management
 > 集中式 skill 仓库、多源安装、项目关联。
@@ -79,7 +80,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 |------|--------|--------|----------|
 | workspace-management | 2 | 19 | 2026-07-09 |
 | flow-orchestration | 2 | 19 | 2026-07-14 |
-| scheduling-execution | 2 | 12 | 2026-07-09 |
+| scheduling-execution | 3 | 12 | 2026-07-15 |
 | skill-management | 1 | 8 | 2026-07-09 |
 | information-aggregation | 1 | 5 | 2026-07-09 |
 | internationalization-theme | 2 | 6 | 2026-07-09 |
