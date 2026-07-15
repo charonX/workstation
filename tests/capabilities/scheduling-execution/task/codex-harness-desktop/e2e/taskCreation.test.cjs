@@ -74,7 +74,7 @@ test.describe("Tasks Page New Task UI", () => {
     // New execution appears in the executions list.
     await firstWindow.click(locators.EXECUTIONS_TAB);
     await expect(firstWindow.locator(locators.EXECUTION_ROW)).toHaveCount(1);
-    await expect(firstWindow.locator(locators.EXECUTION_ROW).first()).toContainText(flow.id);
+    await expect(firstWindow.locator(locators.EXECUTION_ROW).first()).toContainText(flow.name);
   });
 
   test("REQ-SCHEDULE-005: scheduled trigger creates a schedule from the UI", async () => {
