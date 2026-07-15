@@ -1,10 +1,11 @@
-import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor } from "./executors/index.js";
+import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor } from "./executors/index.js";
 
 const defaultExecutors = {
   condition: conditionExecutor,
   foreach: forEachExecutor,
   while: whileExecutor,
-  agent: agentExecutor
+  agent: agentExecutor,
+  trigger: triggerExecutor
 };
 
 export async function run(flowOrConfig, options = {}, inputVariables = {}) {
