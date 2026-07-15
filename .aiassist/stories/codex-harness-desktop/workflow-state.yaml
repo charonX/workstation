@@ -1,17 +1,17 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: ASSERTION-SIGNOFF
 attempt: 3
 bug_counter: 15
 blockers:
   - 无
 slices: []
 gates:
-  assertion_signoff: passed
+  assertion_signoff: pending
   feel_signoff: pending
 history:
-  - {at: 2026-07-15, from: BUG, to: QA, note: "BUG-014/015 已修复：新增 trigger executor；execution 记录与 UI 显示 flowName/projectName；更新相关 E2E 断言；全量 84 单元测试 + 46 E2E 测试通过。"}
+  - {at: 2026-07-15, from: QA, to: ASSERTION-SIGNOFF, note: "用户确认简化 task/execution 模型：删除 REQ-SCHEDULE-005，移除 Tasks 创建 UI，保留 Executions 历史页。已更新 requirements.md、requirements-v1.hash、test-plan.md、signoff.md、business-capabilities.md 及相关测试。等待 assertion-signoff。"}
   - {at: 2026-07-15, from: QA, to: BUG, note: "用户报告：执行列表显示 flowId/projectId 像假数据；含 trigger 节点的流程运行报错 No executor registered。登记 BUG-014/015。"}
   - {at: 2026-07-14, from: ASSERTION-SIGNOFF, to: BUILD, note: "REQ-FLOW-016/017 assertion-signoff 通过，解锁 BUILD。"}
   - {at: 2026-07-14, from: QA, to: ASSERTION-SIGNOFF, note: "req-gap 就地补全：用户批准实现 A（publish/draft + snapshots）与 B（debug mode）；更新 requirements.md、requirements-v1.hash、test-plan.md；/test-author 生成 API/E2E 测试骨架。等待 assertion-signoff。"}
