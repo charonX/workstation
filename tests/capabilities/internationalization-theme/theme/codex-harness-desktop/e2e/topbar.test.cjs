@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-I18N-001, REQ-I18N-002, REQ-WORKSPACE-005, REQ-DASH-001
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-VERSION: v1-hash:6d1ad5a74173976f1edf2c739c79f951e2e74e40c833a28e05922f6045f67690
 // CAPABILITY-TRACE: internationalization-theme
 // ENTITY-TRACE: theme
 // TEST-AUTHOR: agent
@@ -31,7 +31,7 @@ test.describe("TopBar", () => {
 
     const searchInput = firstWindow.locator(locators.TOPBAR_SEARCH_INPUT);
     await expect(searchInput).toBeVisible();
-    await expect(searchInput).toHaveAttribute("placeholder", /Search projects, flows, tasks/i);
+    await expect(searchInput).toHaveAttribute("placeholder", /Search projects, flows, executions/i);
 
     await expect(firstWindow.locator(locators.TOPBAR_LANGUAGE_BUTTON)).toBeVisible();
     await expect(firstWindow.locator(locators.TOPBAR_THEME_BUTTON)).toBeVisible();

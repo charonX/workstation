@@ -175,8 +175,9 @@ test.describe("Flow Run", () => {
     await expect(firstWindow.locator(locators.FLOW_EDITOR_PAGE)).toBeVisible();
 
     // Add two agent nodes by clicking the Execution category label.
-    await firstWindow.getByText("Execution").click();
-    await firstWindow.getByText("Execution").click();
+    const executionCategory = firstWindow.locator(".palette-label").filter({ hasText: "Execution" });
+    await executionCategory.click();
+    await executionCategory.click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
 
     // Drag from the source handle of the first node to the target handle of the second node.
