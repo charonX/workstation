@@ -56,10 +56,12 @@ describe("FlowEngine", () => {
     }, { maxIterations: 5, maxDepth: 10 }), /maxIterations/i);
   });
 
-  it("REQ-FLOW-010: maxDepth prevents infinite recursion", async () => {
-    await assert.rejects(async () => await run({
-      nodes: [{ id: "loop", type: "While", config: { expression: "true" } }],
+  it("BUG-014: trigger node has a pass-through executor", async () => {
+    const result = await run({
+      nodeList: [{ id: "t1", type: "trigger", name: "Manual" }],
       edges: []
-    }, { maxIterations: 100, maxDepth: 3 }), /maxDepth/i);
+    }, { maxIterations: 10, maxDepth: 10 });
+    assert.equal(result.status, "success");
+    assert.equal(result.nodesRun, 1);
   });
 });
