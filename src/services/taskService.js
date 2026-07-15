@@ -61,10 +61,14 @@ function nextScheduleId() {
 }
 
 function rowToExecution(row) {
+  const flow = flowService.getFlow(row.flowId);
+  const project = projectService.getProjectDetail(row.projectId);
   return {
     id: row.id,
     projectId: row.projectId,
     flowId: row.flowId,
+    flowName: flow?.name || row.flowId,
+    projectName: project?.name || row.projectId,
     trigger: row.trigger,
     status: row.status,
     startedAt: row.startedAt,

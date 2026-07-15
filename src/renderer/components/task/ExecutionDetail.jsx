@@ -40,7 +40,7 @@ export default function ExecutionDetail({ execution }) {
             {t("execution.detailTitle")} #{execution.id}
           </h2>
           <div className="detail-subtitle">
-            {execution.flowId} · {execution.projectId} · {execution.trigger} · {formatDate(execution.startedAt)}
+            {execution.flowName || execution.flowId} · {execution.projectName || execution.projectId} · {execution.trigger} · {formatDate(execution.startedAt)}
           </div>
         </div>
         <div className="detail-status">

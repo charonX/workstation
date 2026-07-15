@@ -51,10 +51,10 @@ export default function ExecutionList({ executions, selectedId, onSelect }) {
               }}
             >
               <div className="cell-main">
-                <span className="cell-title">{ex.flowId || "—"}</span>
+                <span className="cell-title">{ex.flowName || "—"}</span>
                 <span className="cell-meta">{ex.id}</span>
               </div>
-              <span className="cell-text">{ex.projectId || "—"}</span>
+              <span className="cell-text">{ex.projectName || "—"}</span>
               <span className="cell-text">{ex.trigger || "manual"}</span>
               <span className={`status status-${ex.status}`}>
                 <span className="status-dot"></span>
