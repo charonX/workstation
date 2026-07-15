@@ -142,4 +142,22 @@ describe("Tasks and Executions", () => {
     assert.ok(Array.isArray(detail.logs) && detail.logs.length > 0, "logs should contain entries");
     assert.ok(detail.duration !== null && detail.duration !== undefined, "duration should be recorded");
   });
+
+  it("BUG-015: execution list and detail include flowName and projectName", async () => {
+    await fetch(`${serverCtx.baseUrl}/api/executions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, flowId: flow.id })
+    });
+
+    const listRes = await fetch(`${serverCtx.baseUrl}/api/executions`);
+    const list = await listRes.json();
+    assert.equal(list[0].flowName, flow.name);
+    assert.equal(list[0].projectName, project.name);
+
+    const detailRes = await fetch(`${serverCtx.baseUrl}/api/executions/${list[0].id}`);
+    const detail = await detailRes.json();
+    assert.equal(detail.flowName, flow.name);
+    assert.equal(detail.projectName, project.name);
+  });
 });
