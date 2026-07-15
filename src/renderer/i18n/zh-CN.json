@@ -3,7 +3,7 @@
     "dashboard": "概览",
     "workspace": "工作区",
     "flows": "流程",
-    "tasks": "任务",
+    "executions": "执行历史",
     "skills": "技能",
     "settings": "设置",
     "system": "系统"
@@ -74,7 +74,7 @@
     "confirmDeleteMessage": "确定要删除该技能吗？删除前需要先解除与所有项目的关联。"
   },
   "topBar": {
-    "searchPlaceholder": "搜索项目、流程、任务...",
+    "searchPlaceholder": "搜索项目、流程、执行历史...",
     "switchToDark": "切换到深色主题",
     "switchToLight": "切换到浅色主题",
     "notifications": "通知",
@@ -91,28 +91,6 @@
     "noProjects": "暂无项目。",
     "unknownFlow": "未知流程",
     "loading": "加载概览中..."
-  },
-  "tasks": {
-    "tabTasks": "任务",
-    "tabExecutions": "执行历史",
-    "tasksPlaceholder": "任务定义将在此显示。",
-    "newTask": "+ 新建任务",
-    "newTaskTitle": "新建任务",
-    "taskName": "任务名称",
-    "taskNamePlaceholder": "例如 每日热点新闻",
-    "project": "项目",
-    "flow": "流程",
-    "trigger": "触发方式",
-    "manual": "手动",
-    "scheduled": "定时",
-    "cronExpression": "Cron 表达式",
-    "cronPlaceholder": "0 9 * * *",
-    "inputVariables": "输入变量 (JSON)",
-    "inputVariablesPlaceholder": "{}",
-    "createTask": "创建任务",
-    "projectRequired": "请选择项目。",
-    "cronRequired": "定时任务需要填写 Cron 表达式。",
-    "invalidVariables": "输入变量必须是合法 JSON。"
   },
   "execution": {
     "flow": "流程",

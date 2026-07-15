@@ -1,11 +1,11 @@
-import { HashRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SettingsProvider, useSettings } from "./hooks/useSettings.jsx";
 import PageLayout from "./components/layout/PageLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Workspace from "./pages/Workspace.jsx";
 import Flows from "./pages/Flows.jsx";
 import FlowEditor from "./pages/FlowEditor.jsx";
-import Tasks from "./pages/Tasks.jsx";
+import Executions from "./pages/Executions.jsx";
 import Skills from "./pages/Skills.jsx";
 import Settings from "./pages/Settings.jsx";
 import "./i18n/index.js";
@@ -37,7 +37,8 @@ function AppRoutes() {
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/flows" element={<Flows />} />
           <Route path="/flows/:id" element={<FlowEditor />} />
-          <Route path="/tasks" element={<Tasks />} />
+          <Route path="/executions" element={<Executions />} />
+          <Route path="/tasks" element={<Navigate to="/executions" replace />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
