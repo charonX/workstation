@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-004, REQ-FLOW-005, REQ-FLOW-011, REQ-FLOW-012, REQ-SCHEDULE-001, REQ-SCHEDULE-003
-// REQ-VERSION: v1-hash:ca916b86d94de45106288ca76c21ce1339928794689c940b13514e69136d1a5b
+// REQ-VERSION: v1-hash:6d1ad5a74173976f1edf2c739c79f951e2e74e40c833a28e05922f6045f67690
 // CAPABILITY-TRACE: flow-orchestration, scheduling-execution
 // ENTITY-TRACE: flow, task
 // TEST-AUTHOR: agent
@@ -94,9 +94,8 @@ test.describe("Flow Run", () => {
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Runnable Flow" }).click();
     await firstWindow.click(locators.RUN_FLOW_BUTTON);
 
-    // Expected: navigate to Tasks/Executions and a new execution row appears
-    await firstWindow.click(locators.TASKS_LINK);
-    await firstWindow.click(locators.EXECUTIONS_TAB);
+    // Expected: navigate to Executions and a new execution row appears
+    await firstWindow.click(locators.EXECUTIONS_LINK);
     await expect(firstWindow.locator(locators.EXECUTION_ROW).first()).toBeVisible();
   });
 
@@ -156,8 +155,7 @@ test.describe("Flow Run", () => {
     });
     await createExecution(apiBaseUrl, { projectId: seededProject.id, flowId: flow.id });
 
-    await firstWindow.click(locators.TASKS_LINK);
-    await firstWindow.click(locators.EXECUTIONS_TAB);
+    await firstWindow.click(locators.EXECUTIONS_LINK);
     await firstWindow.locator(locators.EXECUTION_ROW).first().click();
 
     await expect(firstWindow.locator(locators.EXECUTION_DETAIL_PANEL)).toBeVisible();

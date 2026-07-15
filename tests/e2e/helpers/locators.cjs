@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-FLOW-016, codex-harness-desktop/REQ-FLOW-017, codex-harness-desktop/REQ-SCHEDULE-005
-// REQ-VERSION: v1-hash:469fb13d5e51e0d7d78a8b6f523f85a3c13005f44f56c080f10d1a1c2d63409c
+// REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-FLOW-016, codex-harness-desktop/REQ-FLOW-017, codex-harness-desktop/REQ-SCHEDULE-001, codex-harness-desktop/REQ-SCHEDULE-003
+// REQ-VERSION: v1-hash:6d1ad5a74173976f1edf2c739c79f951e2e74e40c833a28e05922f6045f67690
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -17,7 +17,7 @@ module.exports = {
   SETTINGS_LINK: "[data-testid='nav-settings']",
   WORKSPACE_LINK: "[data-testid='nav-workspace']",
   FLOWS_LINK: "[data-testid='nav-flows']",
-  TASKS_LINK: "[data-testid='nav-tasks']",
+  EXECUTIONS_LINK: "[data-testid='nav-executions']",
   SKILLS_LINK: "[data-testid='nav-skills']",
   DASHBOARD_LINK: "[data-testid='nav-dashboard']",
 
@@ -91,18 +91,7 @@ module.exports = {
   ZOOM_OUT_BUTTON: "[data-testid='zoom-out-button']",
   ZOOM_RESET_BUTTON: "[data-testid='zoom-reset-button']",
 
-  // Tasks / Executions
-  NEW_TASK_BUTTON: "[data-testid='new-task-button']",
-  NEW_TASK_MODAL: "[data-testid='new-task-modal']",
-  TASK_NAME_INPUT: "[data-testid='task-name-input']",
-  TASK_PROJECT_SELECT: "[data-testid='task-project-select']",
-  TASK_FLOW_SELECT: "[data-testid='task-flow-select']",
-  TASK_TRIGGER_MANUAL: "[data-testid='task-trigger-manual']",
-  TASK_TRIGGER_SCHEDULED: "[data-testid='task-trigger-scheduled']",
-  TASK_CRON_INPUT: "[data-testid='task-cron-input']",
-  TASK_INPUT_VARIABLES_TEXTAREA: "[data-testid='task-input-variables-textarea']",
-  SUBMIT_TASK_BUTTON: "[data-testid='submit-task-button']",
-  EXECUTIONS_TAB: "[data-testid='executions-tab']",
+  // Executions
   EXECUTION_ROW: "[data-testid='execution-row']",
   EXECUTION_DETAIL_PANEL: "[data-testid='execution-detail-panel']",
   LOGS_TAB: "[data-testid='logs-tab']",

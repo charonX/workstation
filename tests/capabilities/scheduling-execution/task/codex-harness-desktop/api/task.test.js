@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-SCHEDULE-001, codex-harness-desktop/REQ-SCHEDULE-003
-// REQ-VERSION: v1-hash:71624856165d7ccd8e88041a8f92ec3a2c552457e9e514f29ef3eb747ccf1685
+// REQ-VERSION: v1-hash:6d1ad5a74173976f1edf2c739c79f951e2e74e40c833a28e05922f6045f67690
 // CAPABILITY-TRACE: scheduling-execution
 // ENTITY-TRACE: task
 // TEST-AUTHOR: agent
