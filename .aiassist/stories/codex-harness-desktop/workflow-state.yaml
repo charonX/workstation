@@ -1,7 +1,7 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUILD
+current_phase: QA
 attempt: 3
 bug_counter: 15
 blockers:
@@ -11,6 +11,7 @@ gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-15, from: BUILD, to: QA, note: "BUILD 完成：移除 Tasks 创建 UI，保留 Executions 历史页；/tasks → /executions；Sidebar、i18n、UX 原型同步；84 单元测试 + 42 E2E 测试全绿。"}
   - {at: 2026-07-15, from: ASSERTION-SIGNOFF, to: BUILD, note: "task/execution UI 契约调整 assertion-signoff 通过：删除 REQ-SCHEDULE-005，保留 Executions 历史页。解锁 BUILD。"}
   - {at: 2026-07-15, from: QA, to: ASSERTION-SIGNOFF, note: "用户确认简化 task/execution 模型：删除 REQ-SCHEDULE-005，移除 Tasks 创建 UI，保留 Executions 历史页。已更新 requirements.md、requirements-v1.hash、test-plan.md、signoff.md、business-capabilities.md 及相关测试。等待 assertion-signoff。"}
   - {at: 2026-07-15, from: QA, to: BUG, note: "用户报告：执行列表显示 flowId/projectId 像假数据；含 trigger 节点的流程运行报错 No executor registered。登记 BUG-014/015。"}
@@ -95,7 +96,7 @@ design_system:
   preview: .aiassist/global/preview.html
   primary: true
   regenerated_at: 2026-07-06
-  note: 重新建立项目级设计系统，亮色默认，冷青强调色；Tasks/Executions 分离，新增 Skills/Settings 页面；Skills 支持 npx/Claude plugin/本地文件安装与项目同步配置；Projects 不区分 git/local 来源；所有原型已添加点击/跳转/弹层/标签页交互；新增 New Task 弹层；支持中/英文语言切换；Skills 列表/详情不再显示 Linked Projects，改为 Project 详情弹层内配置关联 Skills
+  note: 重新建立项目级设计系统，亮色默认，冷青强调色；Tasks 创建 UI 已移除，仅保留 Executions 历史页；Flows 列表简化、Skills 多源安装、Project 详情配置 Skills、Dashboard/语言/Density 等设计。支持中/英文语言切换。Skills 列表/详情不再显示 Linked Projects，改为 Project 详情弹层内配置关联 Skills。
   assets:
     recorded: true
     ux_preview: .aiassist/stories/codex-harness-desktop/ux/preview.html
@@ -106,7 +107,7 @@ design_system:
       - Dashboard as Overview (Variant B)
       - Flows List
       - Flow Editor
-      - Tasks and Executions
+      - Executions
       - Skills Management
       - Settings
   variants:
