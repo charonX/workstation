@@ -9,7 +9,7 @@
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**待重新签核**（2026-07-15：删除 REQ-SCHEDULE-005，调整 task/execution UI 契约）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15：删除 REQ-SCHEDULE-005，保留 Executions 历史页）
 
 ### 检查清单
 
@@ -72,7 +72,7 @@
 
 - 现有 API/CLI 单元测试：61 个（attempt-2 保留）+ 4 个新增 API 测试（REQ-FLOW-016/017）+ 2 个回归测试（BUG-014/015）
 - 新增 E2E 测试：5 个 spec 文件（已删除 `taskCreation.test.cjs`），约 18 个 test case
-- 本次契约调整后需重新 `/signoff --stage=assertion`，再进入 BUILD 实现 UI 变更。
+- assertion-signoff 已于 2026-07-15 重新签核通过，当前解锁 BUILD 实现 UI 变更。
 
 ---
 
