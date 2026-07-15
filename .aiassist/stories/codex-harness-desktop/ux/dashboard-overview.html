@@ -180,7 +180,7 @@
         <a href="workspace-home.html" class="nav-item"><span class="nav-icon">◧</span> <span data-i18n="projects">Projects</span></a>
         <a href="dashboard-overview.html" class="nav-item active"><span class="nav-icon">▤</span> <span data-i18n="dashboard">Overview</span></a>
         <a href="flows.html" class="nav-item"><span class="nav-icon">⟳</span> <span data-i18n="flows">Flows</span></a>
-        <a href="tasks.html" class="nav-item"><span class="nav-icon">▶</span> <span data-i18n="tasks">Tasks</span></a>
+        <a href="executions.html" class="nav-item"><span class="nav-icon">▶</span> <span data-i18n="executions">Executions</span></a>
       </nav>
       <nav class="nav-group">
         <div class="nav-label" data-i18n="system">System</div>
@@ -192,7 +192,6 @@
     <main class="main">
       <div class="page-header">
         <h1 class="page-title" data-i18n="dashboard">Overview</h1>
-        <button class="btn btn-primary" data-open-modal="new-task" data-i18n="newTask">+ New Task</button>
       </div>
 
       <div class="stats-grid">
@@ -279,59 +278,6 @@
       </div>
     </main>
   </div>
-  <!-- New Task Modal -->
-  <div class="modal-overlay" data-modal="new-task">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 class="modal-title" data-i18n="newTask">New Task</h2>
-        <button class="icon-btn" data-close-modal>✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label" data-i18n="taskName">Task Name</label>
-          <input type="text" class="form-input" placeholder="e.g. Hot News Daily">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="project">Project</label>
-            <select class="form-input">
-              <option>content-ops</option>
-              <option>growth</option>
-              <option>analytics</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="flow">Flow</label>
-            <select class="form-input">
-              <option>hot-news-fetch</option>
-              <option>site-sync</option>
-              <option>tk-filter</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="trigger">Trigger</label>
-          <div class="radio-group" data-radio-group="task-trigger">
-            <div class="radio-option active" data-radio-option data-i18n="manual">Manual</div>
-            <div class="radio-option" data-radio-option data-i18n="scheduled">Scheduled</div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="cronExpression">Cron Expression</label>
-          <input type="text" class="form-input" placeholder="0 9 * * *">
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="inputVariables">Input Variables (JSON)</label>
-          <textarea class="form-textarea" placeholder="{}"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal data-i18n="cancel">Cancel</button>
-        <button class="btn btn-primary" data-i18n="createTask">Create Task</button>
-      </div>
-    </div>
-  </div>
-
   <script src="app.js"></script>
 </body>
 </html>

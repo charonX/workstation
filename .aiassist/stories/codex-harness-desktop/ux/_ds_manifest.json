@@ -46,11 +46,11 @@
       "name": "Skills Management"
     },
     {
-      "path": "tasks.html",
-      "group": "tasks",
+      "path": "executions.html",
+      "group": "execution",
       "viewport": "desktop",
       "subtitle": "",
-      "name": "Tasks and Executions"
+      "name": "Executions"
     },
     {
       "path": "workspace-home.html",

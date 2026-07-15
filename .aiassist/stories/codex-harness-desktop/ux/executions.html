@@ -1,10 +1,10 @@
-<!-- @dsCard group="tasks" name="Tasks and Executions" viewport="desktop" -->
+<!-- @dsCard group="execution" name="Executions" viewport="desktop" -->
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OPC Workstation — Tasks</title>
+  <title>OPC Workstation — Executions</title>
   <link rel="stylesheet" href="_ds/global/tokens.css">
   <link rel="stylesheet" href="_ds/global/styles.css">
   <link rel="stylesheet" href="shared.css">
@@ -101,34 +101,17 @@
       margin-bottom: var(--ch-space-5);
     }
     .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
-    .tabs {
-      display: flex; gap: var(--ch-space-1);
-      border-bottom: 1px solid var(--ch-border);
-      margin-bottom: var(--ch-space-5);
-    }
-    .tab {
-      padding: var(--ch-space-2) var(--ch-space-4);
-      border-bottom: 2px solid transparent;
-      color: var(--ch-text-secondary);
-      font-size: var(--ch-text-sm);
-      cursor: pointer;
-    }
-    .tab.active { color: var(--ch-accent); border-bottom-color: var(--ch-accent); }
-    .toolbar {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: var(--ch-space-4);
-      gap: var(--ch-space-3);
-    }
     .table {
       width: 100%;
       border: 1px solid var(--ch-border);
       border-radius: var(--ch-radius-lg);
       overflow: hidden;
       background: var(--ch-surface);
+      margin-bottom: var(--ch-space-5);
     }
     .table-header {
       display: grid;
-      grid-template-columns: 2fr 1fr 1.5fr 100px 120px 80px;
+      grid-template-columns: 2fr 1fr 1fr 100px 140px 80px;
       gap: var(--ch-space-3);
       padding: var(--ch-space-2) var(--ch-space-4);
       background: var(--ch-surface-high);
@@ -141,7 +124,7 @@
     }
     .table-row {
       display: grid;
-      grid-template-columns: 2fr 1fr 1.5fr 100px 120px 80px;
+      grid-template-columns: 2fr 1fr 1fr 100px 140px 80px;
       gap: var(--ch-space-3);
       align-items: center;
       padding: var(--ch-space-3) var(--ch-space-4);
@@ -171,29 +154,7 @@
     .status-error { background: var(--ch-error-soft); color: var(--ch-error); }
     .status-error .status-dot { background: var(--ch-error); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .toggle {
-      width: 32px; height: 18px;
-      background: var(--ch-accent);
-      border-radius: 999px;
-      position: relative;
-      cursor: pointer;
-    }
-    .toggle::after {
-      content: ''; position: absolute;
-      width: 14px; height: 14px;
-      background: white; border-radius: 50%;
-      top: 2px; right: 2px;
-    }
-    .toggle.off { background: var(--ch-border-strong); }
-    .toggle.off::after { right: auto; left: 2px; }
-    .action-link {
-      color: var(--ch-accent);
-      font-size: var(--ch-text-xs);
-      cursor: pointer;
-    }
-    .action-link:hover { text-decoration: underline; }
     .detail-panel {
-      margin-top: var(--ch-space-5);
       border: 1px solid var(--ch-border);
       border-radius: var(--ch-radius-lg);
       background: var(--ch-surface);
@@ -259,7 +220,7 @@
     <header class="topbar">
       <div class="topbar-left">
         <div class="logo">OPC Workstation</div>
-        <input type="text" class="search-box" data-i18n="searchPlaceholder" data-i18n-target="placeholder" placeholder="Search projects, flows, tasks...">
+        <input type="text" class="search-box" data-i18n="searchPlaceholder" data-i18n-target="placeholder" placeholder="Search projects, flows, executions...">
       </div>
       <div class="topbar-right">
         <button class="icon-btn" data-lang-toggle>中</button>
@@ -275,7 +236,7 @@
         <a href="index.html" class="nav-item"><span class="nav-icon">▤</span> <span data-i18n="dashboard">Dashboard</span></a>
         <a href="workspace.html" class="nav-item"><span class="nav-icon">◧</span> <span data-i18n="projects">Projects</span></a>
         <a href="flows.html" class="nav-item"><span class="nav-icon">⟳</span> <span data-i18n="flows">Flows</span></a>
-        <a href="tasks.html" class="nav-item active"><span class="nav-icon">▶</span> <span data-i18n="tasks">Tasks</span></a>
+        <a href="executions.html" class="nav-item active"><span class="nav-icon">▶</span> <span data-i18n="executions">Executions</span></a>
       </nav>
       <nav class="nav-group">
         <div class="nav-label" data-i18n="system">System</div>
@@ -286,84 +247,58 @@
 
     <main class="main">
       <div class="page-header">
-        <h1 class="page-title" data-i18n="tasks">Tasks</h1>
-        <button class="btn btn-primary" data-open-modal="new-task" data-i18n="newTask">+ New Task</button>
-      </div>
-
-      <div class="tabs" data-tab-group="main-tabs">
-        <div class="tab active" data-tab="tasks" data-i18n="tasks">Tasks</div>
-        <div class="tab" data-tab="executions" data-i18n="execution">Executions</div>
-      </div>
-
-      <!-- Tasks Tab -->
-      <div data-tab-panel="tasks">
-      <div class="toolbar">
-        <span class="cell-text">4 task definitions</span>
-        <input type="text" class="search-box" placeholder="Filter tasks..." style="width:240px;">
+        <h1 class="page-title" data-i18n="executions">Executions</h1>
       </div>
 
       <div class="table">
         <div class="table-header">
-          <span data-i18n="taskName">Task</span>
-          <span data-i18n="project">Project</span>
           <span data-i18n="flow">Flow</span>
+          <span data-i18n="project">Project</span>
           <span data-i18n="trigger">Trigger</span>
-          <span data-i18n="lastRun">Last Run</span>
-          <span></span>
+          <span data-i18n="execution">Status</span>
+          <span data-i18n="lastRun">Started At</span>
+          <span data-i18n="duration">Duration</span>
         </div>
-        <div class="table-row">
+        <div class="table-row active">
           <div class="cell-main">
-            <span class="cell-title">Hot News Daily</span>
-            <span class="cell-meta">0 9 * * *</span>
+            <span class="cell-title">hot-news-fetch</span>
+            <span class="cell-meta">#1042</span>
           </div>
           <span class="cell-text">content-ops</span>
-          <span class="cell-text">hot-news-fetch</span>
           <span class="cell-text">Scheduled</span>
           <span class="status status-success"><span class="status-dot"></span> Success</span>
-          <div class="toggle" data-toggle></div>
+          <span class="cell-text">2026-07-06 09:00:12</span>
+          <span class="cell-text">14s</span>
         </div>
         <div class="table-row">
           <div class="cell-main">
-            <span class="cell-title">Site Sync Every 6h</span>
-            <span class="cell-meta">0 */6 * * *</span>
+            <span class="cell-title">site-sync</span>
+            <span class="cell-meta">#1041</span>
           </div>
           <span class="cell-text">content-ops</span>
-          <span class="cell-text">site-sync</span>
           <span class="cell-text">Scheduled</span>
           <span class="status status-running"><span class="status-dot"></span> Running</span>
-          <div class="toggle" data-toggle></div>
+          <span class="cell-text">2026-07-06 08:35:00</span>
+          <span class="cell-text">—</span>
         </div>
         <div class="table-row">
           <div class="cell-main">
-            <span class="cell-title">TikTok Filter Manual</span>
-            <span class="cell-meta">—</span>
+            <span class="cell-title">tk-filter</span>
+            <span class="cell-meta">#1040</span>
           </div>
           <span class="cell-text">growth</span>
-          <span class="cell-text">tk-filter</span>
           <span class="cell-text">Manual</span>
           <span class="status status-error"><span class="status-dot"></span> Failed</span>
-          <div class="toggle" data-toggle></div>
+          <span class="cell-text">2026-07-06 07:12:44</span>
+          <span class="cell-text">32s</span>
         </div>
-        <div class="table-row">
-          <div class="cell-main">
-            <span class="cell-title">Weekly Report</span>
-            <span class="cell-meta">0 10 * * 1</span>
-          </div>
-          <span class="cell-text">analytics</span>
-          <span class="cell-text">anomaly-check</span>
-          <span class="cell-text">Scheduled</span>
-          <span class="cell-text">—</span>
-          <div class="toggle off" data-toggle></div>
-        </div>
-      </div>      </div>
+      </div>
 
-      <!-- Executions Tab -->
-      <div data-tab-panel="executions" style="display:none;">
       <div class="detail-panel">
         <div class="detail-header">
           <div>
             <h2 class="detail-title">Execution #1042</h2>
-            <div class="detail-subtitle">Hot News Daily · content-ops · hot-news-fetch · 14s · 2026-07-06 09:00:12</div>
+            <div class="detail-subtitle">hot-news-fetch · content-ops · Scheduled · 14s · 2026-07-06 09:00:12</div>
           </div>
           <div style="display:flex;align-items:center;gap:var(--ch-space-3);">
             <span class="status status-success"><span class="status-dot"></span> Success</span>
@@ -436,60 +371,7 @@
 }</div>
         </div>
       </div>
-      </div>
     </main>
-  </div>
-  <!-- New Task Modal -->
-  <div class="modal-overlay" data-modal="new-task">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 class="modal-title" data-i18n="newTask">New Task</h2>
-        <button class="icon-btn" data-close-modal>✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label" data-i18n="taskName">Task Name</label>
-          <input type="text" class="form-input" placeholder="e.g. Hot News Daily">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="project">Project</label>
-            <select class="form-input">
-              <option>content-ops</option>
-              <option>growth</option>
-              <option>analytics</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="flow">Flow</label>
-            <select class="form-input">
-              <option>hot-news-fetch</option>
-              <option>site-sync</option>
-              <option>tk-filter</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="trigger">Trigger</label>
-          <div class="radio-group" data-radio-group="task-trigger">
-            <div class="radio-option active" data-radio-option data-i18n="manual">Manual</div>
-            <div class="radio-option" data-radio-option data-i18n="scheduled">Scheduled</div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="cronExpression">Cron Expression</label>
-          <input type="text" class="form-input" placeholder="0 9 * * *">
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="inputVariables">Input Variables (JSON)</label>
-          <textarea class="form-textarea" placeholder="{}"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal data-i18n="cancel">Cancel</button>
-        <button class="btn btn-primary" data-i18n="createTask">Create Task</button>
-      </div>
-    </div>
   </div>
 
   <script src="app.js"></script>
