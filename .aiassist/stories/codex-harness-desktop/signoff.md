@@ -3,24 +3,24 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569`
+> requirements-v1.hash: `4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath` 断言已确认）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL-003 npm 安装日志流式展示签核中**（2026-07-16：新增 npm 命令执行与弹层日志，需重新 assertion-signoff）
 
 ### 检查清单
 
-- [x] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
-- [x] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
-- [x] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
-- [x] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
-- [x] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
-- [x] 无快照当判定依据。
-- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill 安装失败）。
-- [x] `signoff.md` Assertion 部分已更新。
+- [ ] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
+- [ ] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
+- [ ] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
+- [ ] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
+- [ ] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
+- [ ] 无快照当判定依据。
+- [ ] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill 安装失败与日志）。
+- [ ] `signoff.md` Assertion 部分已更新。
 
 ### REQ 覆盖
 
@@ -50,7 +50,7 @@
 | REQ-SCHEDULE-003 | scheduling-execution / execution | `task.test.js`, `flowRun.test.js` (E2E) | 执行历史倒序、Logs/Variables/Output、分支路径/迭代 |
 | REQ-SKILL-001 | skill-management / skill | `skill.test.js` | Skill 列表无 Linked Projects、含 category |
 | REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、无项目链接 |
-| REQ-SKILL-003 | skill-management / skill | `skill.test.js`, `skillInstall.test.cjs` (E2E) | `npm`/`npx`、`plugin`、`local` 真实安装到 `skillRepoPath`；`repoPath` 位于 `skillRepoPath` 下；`SKILL.md` 解析为元数据；安装失败返回 400/500 |
+| REQ-SKILL-003 | skill-management / skill | `skill.test.js`, `skillInstall.test.cjs` (E2E) | `npm`/`npx` 执行真实 `npm install`；弹层实时展示命令日志；失败保留日志且不创建记录；`repoPath` 位于 `skillRepoPath` 下 |
 | REQ-DASH-001 | information-aggregation / dashboard | `dashboard.test.js`, `dashboard.test.js` (E2E) + feel-signoff | 指标卡片、最近执行、快捷项目入口 |
 | REQ-I18N-001 | internationalization-theme / theme | `theme.test.js`, `themeLanguage.test.js` (E2E) + feel-signoff | dark/light 切换与持久化 |
 | REQ-I18N-002 | internationalization-theme / language | `language.test.js`, `themeLanguage.test.js` (E2E) | 语言偏好持久化（zh-CN / en-US），默认 en-US |
@@ -70,9 +70,9 @@
 
 ### 当前测试运行状态
 
-- 现有 API/CLI 单元测试：85 个（含 REQ-SKILL-003 新增 4 个断言）
-- 新增 E2E 测试：5 个 spec 文件（已删除 `taskCreation.test.cjs`），42 个 test case 全绿
-- assertion-signoff 已于 2026-07-16 重新签核通过，BUILD 已完成并进入 QA。
+- 现有 API/CLI 单元测试：待根据更新后的 REQ-SKILL-003 补充 npm 安装日志流式断言后重新统计。
+- 新增 E2E 测试：5 个 spec 文件，待补充 npm 安装日志面板断言。
+- **当前状态**：REQ-SKILL-003 已新增 npm 命令执行与弹层日志要求，等待 assertion-signoff 重新签核；签核通过前禁止 BUILD。
 
 ---
 

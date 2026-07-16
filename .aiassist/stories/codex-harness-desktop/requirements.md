@@ -756,12 +756,14 @@
 **验收标准**：
 - [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
 - [ ] 安装后 skill 出现在列表中，并记录 `installSource`。
-- [ ] `npm`/`npx` 来源：将包内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
+- [ ] `npm`/`npx` 来源：执行真实 `npm install` 命令，将包内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
+- [ ] `npm`/`npx` 来源：安装过程产生命令日志，并通过 `GET /api/skills/install/:jobId/stream` 实时流式返回；UI 安装弹层展示该日志。
 - [ ] `plugin` 来源：将插件内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
 - [ ] `local` 来源：将 `identifier` 指向的本地目录复制到 `skillRepoPath/<name>`；`repoPath` 指向该目录。
 - [ ] 安装目录根节点存在 `SKILL.md`；解析其 frontmatter（`name`、`description` 等）和正文（`readme`）作为 skill 元数据。
-- [ ] 若 `skillRepoPath` 未配置或安装过程失败，返回 `400`/`500` 错误且不创建 skill 记录。
+- [ ] 若 `skillRepoPath` 未配置或安装过程失败，返回 `400`/`500` 错误且不创建 skill 记录；失败时 UI 保留日志供用户查看。
 - [ ] `GET /api/skills/:id` 返回的 `repoPath` 位于当前 `skillRepoPath` 之下。
+- [ ] CLI `opc-workstation skill install` 在安装过程中将日志输出到终端，失败时展示完整日志。
 
 ---
 
