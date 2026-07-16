@@ -92,3 +92,45 @@
 - [ ] 需回 REQ
 
 全部 61 个单元测试与 28 个 Playwright Electron E2E 测试通过，无连续失败、无 flaky。BUG-001~005 修复已验证，建议推进到 **feel-signoff** 进行观感验收。
+
+---
+
+# QA 报告 — codex-harness-desktop（REQ-SKILL-003 npm 安装日志流式展示 BUILD 后）
+
+生成时间：2026-07-16  
+requirements-v1.hash: `4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035`
+
+## 变更摘要
+
+本次 BUILD 针对 `REQ-SKILL-003` 新增：
+
+- npm 源执行真实 `npm install` 命令。
+- `POST /api/skills/install` 返回 `jobId`，`GET /api/skills/install/:jobId/stream` 通过 SSE 实时推送命令日志。
+- Install Skill 弹层展示可滚动日志面板。
+- CLI 安装时打印日志并返回 `{ skill, logs }`。
+- 失败时保留日志且不创建 skill 记录。
+
+## 测试结果
+
+| 测试层 | 命令 | 结果 |
+|---|---|---|
+| 单元 / API / CLI | `npm run test:unit` | ✅ 86 通过，0 失败 |
+| E2E (Playwright + Electron) | `npm run test:e2e` | ✅ 43 通过，0 失败 |
+
+## 关键验证点
+
+- API 使用本地 fixture `tests/fixtures/npm-skill` 验证 npm 安装、日志流、失败不创建记录。
+- E2E 验证 local/npm 安装均展示日志面板且内容非空。
+- CLI 验证返回 skill 与 logs。
+
+## 已知问题 / 待 feel-signoff 项
+
+- 日志面板视觉细节（颜色、间距、动效）进入 feel-signoff 范围。
+
+## 结论
+
+- [x] 可进入 `/signoff --stage=feel`
+- [ ] 需回 BUILD
+- [ ] 需回 REQ
+
+全量自动化测试通过，无 open bug，建议推进到 **feel-signoff**。

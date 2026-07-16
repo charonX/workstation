@@ -72,7 +72,7 @@
 
 - 现有 API/CLI 单元测试：待根据更新后的 REQ-SKILL-003 补充 npm 安装日志流式断言后重新统计。
 - 新增 E2E 测试：5 个 spec 文件，待补充 npm 安装日志面板断言。
-- **当前状态**：REQ-SKILL-003 npm 命令执行与弹层日志 assertion-signoff 重新签核通过；已解锁 BUILD。
+- **当前状态**：REQ-SKILL-003 BUILD 完成，86 个单元测试 + 43 个 E2E 测试全绿；等待 feel-signoff 最终验收。
 
 ---
 
