@@ -86,6 +86,68 @@ function sanitizeSkillName(identifier) {
   return path.basename(identifier).replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+function parseScalar(raw) {
+  if (raw == null) return "";
+  const v = raw.trim();
+  return v.replace(/^["']|["']$/g, "");
+}
+
+function parseList(raw) {
+  if (raw == null) return [];
+  const v = raw.trim();
+  if (!v) return [];
+  if (v.startsWith("[") && v.endsWith("]")) {
+    return v
+      .slice(1, -1)
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^["']|["']$/g, ""));
+  }
+  const lines = v.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length > 0 && lines.every(l => l.startsWith("-"))) {
+    return lines
+      .map(l => l.replace(/^-\s*/, "").trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^["']|["']$/g, ""));
+  }
+  if (v.includes(",")) {
+    return v
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^["']|["']$/g, ""));
+  }
+  return [parseScalar(raw)];
+}
+
+function parseFrontmatter(text) {
+  const result = {};
+  const lines = text.split("\n");
+  let currentKey = null;
+  const currentRaw = [];
+
+  function flush() {
+    if (currentKey) {
+      result[currentKey] = currentRaw.join("\n").trim();
+      currentRaw.length = 0;
+    }
+  }
+
+  for (const line of lines) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (match) {
+      flush();
+      currentKey = match[1];
+      currentRaw.push(match[2]);
+    } else if (currentKey) {
+      currentRaw.push(line);
+    }
+  }
+  flush();
+  return result;
+}
+
 function parseSkillMarkdown(filePath) {
   try {
     const content = fs.readFileSync(filePath, "utf8");
@@ -93,14 +155,7 @@ function parseSkillMarkdown(filePath) {
     if (!match) {
       return { frontmatter: {}, body: content.trim() };
     }
-    const frontmatter = {};
-    for (const line of match[1].split("\n")) {
-      const idx = line.indexOf(":");
-      if (idx > 0) {
-        frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-      }
-    }
-    return { frontmatter, body: match[2].trim() };
+    return { frontmatter: parseFrontmatter(match[1]), body: match[2].trim() };
   } catch {
     return { frontmatter: {}, body: "" };
   }
@@ -143,6 +198,7 @@ function scanRepoSkills(repoRoot) {
       author: parsed.frontmatter.author || null,
       version: parsed.frontmatter.version || null,
       repoPath: relativePath,
+      tags: parseList(parsed.frontmatter.tags || ""),
       readme: parsed.body || null
     };
   });

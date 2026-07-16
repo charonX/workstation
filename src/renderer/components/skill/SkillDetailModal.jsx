@@ -56,28 +56,20 @@ export default function SkillDetailModal({ skillId, onClose }) {
         <div className="tab-panel active">
           <p className="skill-description">{skill.description}</p>
           <div className="meta-list">
-            <div className="meta-row">
-              <span className="meta-label">{t("skills.repoPath")}</span>
-              <span className="meta-value">{skill.repoPath}</span>
-            </div>
-            <div className="meta-row">
-              <span className="meta-label">{t("skills.version")}</span>
-              <span className="meta-value">{skill.version || "—"}</span>
-            </div>
-            <div className="meta-row">
-              <span className="meta-label">{t("skills.author")}</span>
-              <span className="meta-value">{skill.author || "—"}</span>
-            </div>
-            <div className="meta-row">
-              <span className="meta-label">{t("skills.category")}</span>
-              <span className="meta-value">{skill.category || "—"}</span>
-            </div>
-            <div className="meta-row">
-              <span className="meta-label">{t("skills.tags")}</span>
-              <span className="meta-value">
-                {skill.tags?.length > 0 ? skill.tags.join(", ") : "—"}
-              </span>
-            </div>
+            {[
+              { key: "repoPath", label: t("skills.repoPath"), value: skill.repoPath },
+              { key: "version", label: t("skills.version"), value: skill.version },
+              { key: "author", label: t("skills.author"), value: skill.author },
+              { key: "category", label: t("skills.category"), value: skill.category },
+              { key: "tags", label: t("skills.tags"), value: skill.tags?.length > 0 ? skill.tags.join(", ") : null }
+            ].map((item) =>
+              item.value ? (
+                <div className="meta-row" key={item.key} data-testid={`skill-meta-${item.key}`}>
+                  <span className="meta-label">{item.label}</span>
+                  <span className="meta-value">{item.value}</span>
+                </div>
+              ) : null
+            )}
           </div>
         </div>
       )}
