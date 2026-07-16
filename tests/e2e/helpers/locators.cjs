@@ -114,6 +114,10 @@ module.exports = {
   SKILL_TAB_PARAMETERS: "[data-testid='skill-tab-parameters']",
   SKILL_TAB_EXAMPLES: "[data-testid='skill-tab-examples']",
   SKILL_TAB_README: "[data-testid='skill-tab-readme']",
+  SKILL_META_VERSION: "[data-testid='skill-meta-version']",
+  SKILL_META_AUTHOR: "[data-testid='skill-meta-author']",
+  SKILL_META_CATEGORY: "[data-testid='skill-meta-category']",
+  SKILL_META_TAGS: "[data-testid='skill-meta-tags']",
 
   // Shared / Confirmation Dialog
   CONFIRM_DIALOG: "[data-testid='confirm-dialog']",

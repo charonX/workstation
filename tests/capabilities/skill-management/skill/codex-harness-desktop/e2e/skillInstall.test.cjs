@@ -96,6 +96,28 @@ test.describe("Skill Install", () => {
     await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("This skill is only used to verify");
   });
 
+  test("Skill Detail shows metadata when present and hides absent rows", async () => {
+    await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
+
+    await firstWindow.click(locators.SKILLS_LINK);
+    await firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "npm-fixture-skill" }).click();
+
+    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_META_VERSION)).toContainText("1.0.0");
+    await expect(firstWindow.locator(locators.SKILL_META_AUTHOR)).toContainText("Test Author");
+    await expect(firstWindow.locator(locators.SKILL_META_CATEGORY)).toContainText("Test");
+    await expect(firstWindow.locator(locators.SKILL_META_TAGS)).toContainText("test, fixture");
+
+    await firstWindow.locator(locators.SKILL_DETAIL_MODAL).locator(".btn-ghost").click();
+
+    await firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "helper-skill" }).click();
+    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_META_VERSION)).not.toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_META_AUTHOR)).not.toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_META_CATEGORY)).not.toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_META_TAGS)).not.toBeVisible();
+  });
+
   test("user can delete a skill repo with confirmation", async () => {
     const { repo } = await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
 

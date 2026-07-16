@@ -130,6 +130,10 @@ describe("Skills", () => {
     assert.deepEqual(data.tabs, ["Overview", "Parameters", "Examples", "README"]);
     assert.equal(data.repoId, final.repo.id);
     assert.equal(data.canLinkProjects, undefined);
+    assert.equal(data.version, "1.0.0");
+    assert.equal(data.author, "Test Author");
+    assert.equal(data.category, "Test");
+    assert.deepEqual(data.tags, ["test", "fixture"]);
   });
 
   it("REQ-SKILL-003: npm install runs a real command, streams logs and records repoPath under skillRepoPath", async () => {
