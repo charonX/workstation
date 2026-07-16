@@ -24,6 +24,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure Git for tests
+        run: |
+          git config --global init.defaultBranch main
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI User"
+
       - name: Unit tests
         run: npm run test:unit
 

@@ -4,42 +4,19 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { startServer as startInProcessServer } from "../http/server.js";
+import {
+  readServerInfoRaw,
+  pruneDeadServerRecords,
+  registerServerRecord,
+  unregisterServerRecord
+} from "../serverRegistry.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let managedServer = null;
 
-export function getConfigDir() {
-  return path.join(os.homedir(), ".opc-workstation");
-}
-
-export function getServerInfoFile() {
-  return path.join(getConfigDir(), "server.json");
-}
-
-function readServerInfoRaw() {
-  try {
-    const data = fs.readFileSync(getServerInfoFile(), "utf8");
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
-  } catch {
-    return [];
-  }
-}
-
-export function readServerInfo() {
-  return readServerInfoRaw();
-}
-
-function writeServerInfo(records) {
-  try {
-    fs.mkdirSync(getConfigDir(), { recursive: true });
-    fs.writeFileSync(getServerInfoFile(), JSON.stringify(records, null, 2));
-  } catch {
-    // Ignore write failures in restricted environments.
-  }
-}
+export { readServerInfo } from "../serverRegistry.js";
 
 function getOwner() {
   return String(process.ppid || process.pid);
@@ -57,29 +34,28 @@ function isProcessAlive(pid) {
 export async function discoverServer() {
   const owner = getOwner();
   const records = readServerInfoRaw();
-  const kept = [];
+  const deadPids = [];
   let match = null;
   for (const info of records) {
     if (!info.port || !info.pid || !isProcessAlive(info.pid)) {
+      if (info.pid) deadPids.push(info.pid);
       continue;
     }
     try {
       const res = await fetch(`http://127.0.0.1:${info.port}/api/settings`, { signal: AbortSignal.timeout(2000) });
       if (!res.ok) {
+        deadPids.push(info.pid);
         continue;
       }
-      kept.push(info);
       if (!match && info.owner === owner) {
         match = { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
       }
     } catch {
       // Server not reachable.
+      if (info.pid) deadPids.push(info.pid);
     }
   }
-  // Prune stale records so the registry does not grow unbounded.
-  if (kept.length !== records.length) {
-    writeServerInfo(kept);
-  }
+  pruneDeadServerRecords(deadPids);
   return match;
 }
 
@@ -140,23 +116,3 @@ export async function stopManagedServer() {
   }
 }
 
-export function registerServerRecord(port, pid, owner = getOwner()) {
-  owner = String(owner);
-  const records = readServerInfoRaw().filter(r => r.owner !== owner);
-  records.push({ port, pid, owner, startedAt: new Date().toISOString() });
-  writeServerInfo(records);
-}
-
-export function unregisterServerRecord(owner = getOwner()) {
-  owner = String(owner);
-  const records = readServerInfoRaw().filter(r => r.owner !== owner);
-  if (records.length === 0) {
-    try {
-      fs.unlinkSync(getServerInfoFile());
-    } catch {
-      // Ignore.
-    }
-  } else {
-    writeServerInfo(records);
-  }
-}

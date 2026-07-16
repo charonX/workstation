@@ -1,5 +1,5 @@
 import { startServer } from "../http/server.js";
-import { registerServerRecord, unregisterServerRecord } from "./server.js";
+import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
 
 const owner = process.env.OPC_SERVER_OWNER || process.ppid || process.pid;
 

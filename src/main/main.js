@@ -19,7 +19,6 @@ process.env.OPC_WORKSTATION_CONFIG_DIR = userData;
 process.env.DB_PATH = path.join(userData, "data.db");
 
 const { startServer, stopServer } = await import("../http/server.js");
-const { registerServerRecord, unregisterServerRecord } = await import("../cli/server.js");
 
 function resolvePreloadPath() {
   const candidates = [
@@ -47,7 +46,6 @@ async function cleanupServer() {
     serverCtx = null;
     apiBaseUrl = null;
   }
-  unregisterServerRecord();
 }
 
 async function createWindow() {
@@ -68,9 +66,6 @@ async function createWindow() {
     const serverJsonPath = path.join(userData, "server.json");
     await fs.mkdir(userData, { recursive: true });
     await fs.writeFile(serverJsonPath, JSON.stringify({ port, baseUrl }, null, 2));
-
-    // Register server record for CLI discovery
-    registerServerRecord(port, process.pid);
   }
 
   const currentBaseUrl = apiBaseUrl;

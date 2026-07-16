@@ -1,6 +1,7 @@
 import http from "node:http";
 import { resetDb, getDb } from "../db.js";
 import * as settingsService from "../services/settingsService.js";
+import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
 import { handleProjects } from "./routes/projects.js";
 import { handleFlows, handleFlowImport } from "./routes/flows.js";
 import { handleSchedules } from "./routes/schedules.js";
@@ -33,6 +34,11 @@ export function startServer(options = {}) {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
       activeServers.add(server);
+      try {
+        registerServerRecord(port, process.pid, process.pid);
+      } catch {
+        // Ignore registry failures in restricted environments.
+      }
       resolve({ server, baseUrl: `http://127.0.0.1:${port}` });
     });
   });
@@ -41,6 +47,14 @@ export function startServer(options = {}) {
 export function stopServer({ server }) {
   return new Promise((resolve) => {
     activeServers.delete(server);
+    try {
+      const address = server.address();
+      if (address) {
+        unregisterServerRecord(process.pid);
+      }
+    } catch {
+      // Ignore registry failures.
+    }
     server.close(resolve);
   });
 }
