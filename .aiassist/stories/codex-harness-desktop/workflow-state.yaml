@@ -1,7 +1,7 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: BUILD
+current_phase: QA
 attempt: 3
 bug_counter: 15
 blockers:
@@ -11,6 +11,7 @@ gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-16, from: BUILD, to: QA, note: "REQ-SKILL-003 BUILD 完成：local skill 真实复制到 skillRepoPath 并解析 SKILL.md；npm/plugin 创建管理目录与 SKILL.md；42 个 E2E 测试全绿。系统 Node 与 better-sqlite3 ABI 不匹配，API 单元测试需本地 rebuild 后运行。"}
   - {at: 2026-07-16, from: ASSERTION-SIGNOFF, to: BUILD, note: "REQ-SKILL-003 修订后 assertion-signoff 重新签核通过；用户确认真实安装到 skillRepoPath 的测试断言；解锁 BUILD。"}
   - {at: 2026-07-16, from: QA, to: ASSERTION-SIGNOFF, note: "就地补全 REQ-SKILL-003：skill 必须真实安装到 skillRepoPath，解析 SKILL.md，repoPath 位于 skillRepoPath 下，安装失败返回 400/500。更新 requirements.md、requirements-v1.hash、test-plan.md、signoff.md、business-capabilities.md 及 skill 相关测试。等待 assertion-signoff 重新签核。"}
   - {at: 2026-07-15, from: BUILD, to: QA, note: "BUILD 完成：移除 Tasks 创建 UI，保留 Executions 历史页；/tasks → /executions；Sidebar、i18n、UX 原型同步；84 单元测试 + 42 E2E 测试全绿。"}
