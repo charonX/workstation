@@ -58,6 +58,7 @@ export function resetDb() {
     DROP TABLE IF EXISTS flows;
     DROP TABLE IF EXISTS project_skills;
     DROP TABLE IF EXISTS skills;
+    DROP TABLE IF EXISTS skill_repos;
     DROP TABLE IF EXISTS projects;
   `);
   initSchema(database);
@@ -76,15 +77,24 @@ function initSchema(database) {
       updatedAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS skill_repos (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      repoPath TEXT NOT NULL,
+      installSource TEXT NOT NULL,
+      originalIdentifier TEXT,
+      createdAt TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS skills (
       id TEXT PRIMARY KEY,
+      repoId TEXT NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
       repoPath TEXT NOT NULL,
       version TEXT,
       dependencies TEXT,
       category TEXT,
-      installSource TEXT,
       author TEXT,
       tags TEXT,
       parameters TEXT,
@@ -171,5 +181,19 @@ function migrateSchema(database) {
   }
   if (!hasColumn(database, "flows", "publishedAt")) {
     database.exec(`ALTER TABLE flows ADD COLUMN publishedAt TEXT`);
+  }
+  // Skill repo information architecture migration.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS skill_repos (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      repoPath TEXT NOT NULL,
+      installSource TEXT NOT NULL,
+      originalIdentifier TEXT,
+      createdAt TEXT NOT NULL
+    )
+  `);
+  if (!hasColumn(database, "skills", "repoId")) {
+    database.exec(`ALTER TABLE skills ADD COLUMN repoId TEXT`);
   }
 }

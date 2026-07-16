@@ -2,8 +2,8 @@ import { get, post, del } from "./client.js";
 
 const API_BASE = () => (typeof window !== "undefined" && window.opc?.apiBaseUrl) || "";
 
-export function getSkills() {
-  return get("/api/skills");
+export function getSkillRepos() {
+  return get("/api/skill-repos");
 }
 
 export function getSkill(skillId) {
@@ -28,7 +28,7 @@ export function subscribeInstallJob(jobId, { onLog, onSuccess, onError }) {
       onLog?.(data.text);
     } else if (data.type === "success") {
       es.close();
-      onSuccess?.(data.skill);
+      onSuccess?.(data.repo, data.skills);
     } else if (data.type === "error") {
       es.close();
       onError?.(new Error(data.message || "Installation failed"));
@@ -45,6 +45,6 @@ export function installSkill(body) {
   return post("/api/skills/install", body);
 }
 
-export function deleteSkill(skillId) {
-  return del(`/api/skills/${skillId}`);
+export function deleteSkillRepo(repoId) {
+  return del(`/api/skill-repos/${repoId}`);
 }

@@ -788,6 +788,40 @@ body {
   font-size: var(--ch-text-sm);
 }
 
+.skill-repo-group {
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.skill-repo-group:last-child {
+  border-bottom: none;
+}
+
+.skill-repo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ch-space-3) var(--ch-space-4);
+  background: var(--ch-surface-high);
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.skill-repo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-repo-name {
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+}
+
+.skill-repo-meta {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono);
+}
+
 .skill-cell-main {
   display: flex;
   flex-direction: column;

@@ -85,7 +85,8 @@ async function main() {
   }
 
   const entity = entities[entityName];
-  const handler = action ? entity[action] : (entity.default || entity.stats);
+  const camelAction = action ? action.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) : action;
+  const handler = camelAction ? entity[camelAction] : (entity.default || entity.stats);
 
   if (typeof handler !== "function") {
     return fail({ error: "NOT_IMPLEMENTED", message: `Command not implemented: ${rawArgs.join(" ")}` }, 1);

@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
-import { getSkills, getSkill, startInstallJob, subscribeInstallJob } from "../api/skills.js";
+import { getSkillRepos, getSkill, startInstallJob, subscribeInstallJob } from "../api/skills.js";
 
 export function useSkills() {
-  const [skills, setSkills] = useState([]);
+  const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchSkills = useCallback(async () => {
+  const fetchRepos = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSkills();
-      setSkills(data);
+      const data = await getSkillRepos();
+      setRepos(data);
     } catch (err) {
       setError(err.message || "Failed to load skills");
     } finally {
@@ -20,18 +20,18 @@ export function useSkills() {
   }, []);
 
   useEffect(() => {
-    fetchSkills();
-  }, [fetchSkills]);
+    fetchRepos();
+  }, [fetchRepos]);
 
   const install = useCallback(async (source, identifier, { onLog } = {}) => {
     const jobId = await startInstallJob({ source, identifier });
     return new Promise((resolve, reject) => {
       const unsubscribe = subscribeInstallJob(jobId, {
         onLog,
-        onSuccess: (skill) => {
+        onSuccess: (repo, skills) => {
           unsubscribe();
-          setSkills((prev) => [...prev, skill]);
-          resolve(skill);
+          setRepos((prev) => [{ repo, skills }, ...prev]);
+          resolve({ repo, skills });
         },
         onError: (err) => {
           unsubscribe();
@@ -41,7 +41,7 @@ export function useSkills() {
     });
   }, []);
 
-  return { skills, loading, error, refetch: fetchSkills, install };
+  return { repos, loading, error, refetch: fetchRepos, install };
 }
 
 export function useSkillDetail(skillId) {

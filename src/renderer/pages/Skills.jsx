@@ -5,28 +5,30 @@ import SkillTable from "../components/skill/SkillTable.jsx";
 import SkillDetailModal from "../components/skill/SkillDetailModal.jsx";
 import InstallSkillModal from "../components/skill/InstallSkillModal.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
-import { deleteSkill } from "../api/skills.js";
+import { deleteSkillRepo } from "../api/skills.js";
 
 export default function Skills() {
   const { t } = useTranslation();
-  const { skills, loading, error, refetch, install } = useSkills();
+  const { repos, loading, error, refetch, install } = useSkills();
   const [detailSkillId, setDetailSkillId] = useState(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [pendingDeleteRepoId, setPendingDeleteRepoId] = useState(null);
 
-  function handleRequestDelete(skillId) {
-    setPendingDeleteId(skillId);
+  const skillCount = repos.reduce((sum, group) => sum + group.skills.length, 0);
+
+  function handleRequestDeleteRepo(repoId) {
+    setPendingDeleteRepoId(repoId);
     setConfirmOpen(true);
   }
 
   async function handleConfirmDelete() {
-    if (!pendingDeleteId) return;
+    if (!pendingDeleteRepoId) return;
     try {
-      await deleteSkill(pendingDeleteId);
+      await deleteSkillRepo(pendingDeleteRepoId);
       await refetch();
     } finally {
-      setPendingDeleteId(null);
+      setPendingDeleteRepoId(null);
       setConfirmOpen(false);
     }
   }
@@ -46,7 +48,7 @@ export default function Skills() {
 
       <div className="toolbar">
         <span className="skill-count">
-          {skills.length} {t("skills.countSuffix")}
+          {skillCount} {t("skills.countSuffix")}
         </span>
       </div>
 
@@ -61,7 +63,11 @@ export default function Skills() {
       )}
 
       {!loading && !error && (
-        <SkillTable skills={skills} onRowClick={setDetailSkillId} onDelete={handleRequestDelete} />
+        <SkillTable
+          repos={repos}
+          onSkillClick={setDetailSkillId}
+          onRepoDelete={handleRequestDeleteRepo}
+        />
       )}
 
       {showInstallModal && (
@@ -80,12 +86,12 @@ export default function Skills() {
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title={t("skills.confirmDeleteTitle")}
-        message={t("skills.confirmDeleteMessage")}
+        title={t("skills.confirmDeleteRepoTitle")}
+        message={t("skills.confirmDeleteRepoMessage")}
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setConfirmOpen(false);
-          setPendingDeleteId(null);
+          setPendingDeleteRepoId(null);
         }}
       />
     </div>

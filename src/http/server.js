@@ -7,6 +7,7 @@ import { handleSchedules } from "./routes/schedules.js";
 import { handleExecutions } from "./routes/executions.js";
 import { handleSkills } from "./routes/skills.js";
 import { handleSettings } from "./routes/settings.js";
+import { handleSkillRepos } from "./routes/skillRepos.js";
 import { handleDashboard } from "./routes/dashboard.js";
 
 const activeServers = new Set();
@@ -80,6 +81,8 @@ async function handleRequest(req, res) {
       return handleExecutions(req, res, body, subPath);
     case "skills":
       return handleSkills(req, res, body, subPath);
+    case "skill-repos":
+      return handleSkillRepos(req, res, body, subPath);
     case "dashboard":
       return handleDashboard(req, res);
     default:

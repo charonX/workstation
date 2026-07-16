@@ -5,7 +5,6 @@ import Modal from "../shared/Modal.jsx";
 const SOURCE_OPTIONS = [
   { value: "npm", label: "npm / npx" },
   { value: "plugin", label: "Claude Plugin" },
-  { value: "local", label: "Local Files" },
 ];
 
 export default function InstallSkillModal({ onClose, onInstall }) {

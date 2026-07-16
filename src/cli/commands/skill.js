@@ -2,7 +2,7 @@ import { ensureServer } from "../server.js";
 
 export async function list() {
   const server = await ensureServer();
-  const res = await fetch(`${server.baseUrl}/api/skills`);
+  const res = await fetch(`${server.baseUrl}/api/skill-repos`);
   return handleResponse(res);
 }
 
@@ -58,7 +58,7 @@ export async function install(flags) {
         logs.push(event.text);
         console.error(event.text);
       } else if (event.type === "success") {
-        return { skill: event.skill, logs };
+        return { repo: event.repo, skills: event.skills, logs };
       } else if (event.type === "error") {
         const err = new Error(event.message || "Installation failed");
         err.logs = logs;
@@ -70,9 +70,9 @@ export async function install(flags) {
   throw new Error("Installation stream ended without result");
 }
 
-async function deleteSkill(flags) {
+export async function repoDelete(flags) {
   const server = await ensureServer();
-  const res = await fetch(`${server.baseUrl}/api/skills/${flags.id}`, { method: "DELETE" });
+  const res = await fetch(`${server.baseUrl}/api/skill-repos/${flags.id}`, { method: "DELETE" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ message: "Request failed" }));
     const err = new Error(data.message || "Request failed");
@@ -82,8 +82,6 @@ async function deleteSkill(flags) {
   }
   return { success: true };
 }
-
-export { deleteSkill as delete };
 
 async function handleResponse(res, expectedStatus) {
   const data = await res.json();

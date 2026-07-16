@@ -72,8 +72,12 @@
     "noExamples": "暂无示例。",
     "noReadme": "该技能暂无 README。",
     "delete": "删除",
+    "deleteRepo": "删除仓库",
+    "noSkillsInRepo": "该仓库下暂无技能。",
     "confirmDeleteTitle": "删除技能",
-    "confirmDeleteMessage": "确定要删除该技能吗？删除前需要先解除与所有项目的关联。"
+    "confirmDeleteMessage": "确定要删除该技能吗？删除前需要先解除与所有项目的关联。",
+    "confirmDeleteRepoTitle": "删除技能仓库",
+    "confirmDeleteRepoMessage": "确定要删除该技能仓库吗？仓库内所有技能及项目关联都会被移除。"
   },
   "topBar": {
     "searchPlaceholder": "搜索项目、流程、执行历史...",

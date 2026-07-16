@@ -72,8 +72,12 @@
     "noExamples": "No examples available.",
     "noReadme": "No README available for this skill.",
     "delete": "Delete",
+    "deleteRepo": "Delete Repo",
+    "noSkillsInRepo": "No skills in this repo.",
     "confirmDeleteTitle": "Delete Skill",
-    "confirmDeleteMessage": "Are you sure you want to delete this skill? It must not be linked to any project."
+    "confirmDeleteMessage": "Are you sure you want to delete this skill? It must not be linked to any project.",
+    "confirmDeleteRepoTitle": "Delete Skill Repo",
+    "confirmDeleteRepoMessage": "Are you sure you want to delete this skill repo? All contained skills and project associations will be removed."
   },
   "topBar": {
     "searchPlaceholder": "Search projects, flows, executions...",

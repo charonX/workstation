@@ -9,19 +9,19 @@ export function resetSkills(seed = []) {
   resetDb();
   const db = getDb();
   const insertSkill = db.prepare(`
-    INSERT INTO skills (id, name, description, repoPath, version, dependencies, category, installSource, author, tags, parameters, examples, readme)
+    INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const skill of seed) {
     insertSkill.run(
       skill.id,
+      skill.repoId ?? "legacy-repo",
       skill.name,
       skill.description ?? null,
       skill.repoPath,
       skill.version ?? null,
       JSON.stringify(skill.dependencies ?? []),
       skill.category ?? null,
-      skill.installSource ?? null,
       skill.author ?? null,
       JSON.stringify(skill.tags ?? []),
       JSON.stringify(skill.parameters ?? []),
@@ -34,6 +34,7 @@ export function resetSkills(seed = []) {
 function rowToSkill(row) {
   return {
     id: row.id,
+    repoId: row.repoId,
     name: row.name,
     description: row.description,
     repoPath: row.repoPath,
@@ -45,6 +46,17 @@ function rowToSkill(row) {
     parameters: JSON.parse(row.parameters || "[]"),
     examples: JSON.parse(row.examples || "[]"),
     readme: row.readme
+  };
+}
+
+function rowToRepo(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    repoPath: row.repoPath,
+    installSource: row.installSource,
+    originalIdentifier: row.originalIdentifier,
+    createdAt: row.createdAt
   };
 }
 
@@ -94,21 +106,85 @@ function parseSkillMarkdown(filePath) {
   }
 }
 
-export function createSkill(skill) {
+function findRepoSkillDirs(repoRoot) {
+  const skillsDir = path.join(repoRoot, "skills");
+  if (!fs.existsSync(skillsDir) || !fs.statSync(skillsDir).isDirectory()) {
+    return [];
+  }
+
+  const results = [];
+  function walk(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    let hasSkillMd = false;
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        walk(path.join(dir, entry.name));
+      } else if (entry.name.toLowerCase() === "SKILL.md".toLowerCase()) {
+        hasSkillMd = true;
+      }
+    }
+    if (hasSkillMd) {
+      results.push(dir);
+    }
+  }
+  walk(skillsDir);
+  return results;
+}
+
+function scanRepoSkills(repoRoot) {
+  const skillDirs = findRepoSkillDirs(repoRoot);
+  return skillDirs.map((dir) => {
+    const parsed = parseSkillMarkdown(path.join(dir, "SKILL.md"));
+    const relativePath = path.relative(repoRoot, dir);
+    return {
+      name: parsed.frontmatter.name || path.basename(dir),
+      description: parsed.frontmatter.description || null,
+      category: parsed.frontmatter.category || null,
+      author: parsed.frontmatter.author || null,
+      version: parsed.frontmatter.version || null,
+      repoPath: relativePath,
+      readme: parsed.body || null
+    };
+  });
+}
+
+export function createSkillRepo({ name, repoPath, installSource, originalIdentifier }) {
+  const db = getDb();
+  const id = `repo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  db.prepare(`
+    INSERT INTO skill_repos (id, name, repoPath, installSource, originalIdentifier, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, name, repoPath, installSource, originalIdentifier ?? null, new Date().toISOString());
+  return getSkillRepo(id);
+}
+
+export function getSkillRepo(repoId) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
+  return row ? rowToRepo(row) : undefined;
+}
+
+export function getSkillRepoByPath(repoPath) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM skill_repos WHERE repoPath = ?").get(repoPath);
+  return row ? rowToRepo(row) : undefined;
+}
+
+export function createSkill(skill, repoId) {
   const db = getDb();
   const id = skill.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   db.prepare(`
-    INSERT INTO skills (id, name, description, repoPath, version, dependencies, category, installSource, author, tags, parameters, examples, readme)
+    INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
+    repoId,
     skill.name,
     skill.description ?? null,
     skill.repoPath,
     skill.version ?? null,
     JSON.stringify(skill.dependencies || []),
     skill.category ?? null,
-    skill.installSource ?? skill.source ?? null,
     skill.author ?? null,
     JSON.stringify(skill.tags || []),
     JSON.stringify(skill.parameters || []),
@@ -125,20 +201,25 @@ export function getSkillDetail(skillId) {
     return undefined;
   }
   return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    repoPath: row.repoPath,
-    version: row.version,
-    category: row.category,
-    author: row.author,
-    installSource: row.installSource,
-    tags: JSON.parse(row.tags || "[]"),
-    parameters: JSON.parse(row.parameters || "[]"),
-    examples: JSON.parse(row.examples || "[]"),
-    readme: row.readme,
+    ...rowToSkill(row),
     tabs: ["Overview", "Parameters", "Examples", "README"]
   };
+}
+
+export function listSkills() {
+  const db = getDb();
+  return db.prepare("SELECT * FROM skills").all().map(rowToSkill);
+}
+
+export function listSkillRepos() {
+  const db = getDb();
+  const repos = db.prepare("SELECT * FROM skill_repos ORDER BY createdAt DESC").all().map(rowToRepo);
+  const skills = db.prepare("SELECT * FROM skills").all().map(rowToSkill);
+  const byRepo = new Map(repos.map((r) => [r.id, []]));
+  for (const skill of skills) {
+    byRepo.get(skill.repoId)?.push(skill);
+  }
+  return repos.map((repo) => ({ repo, skills: byRepo.get(repo.id) || [] }));
 }
 
 const installJobs = new Map();
@@ -148,7 +229,7 @@ function emitJobEvent(job, event) {
     job.logs.push(event.text);
   } else if (event.type === "success") {
     job.status = "success";
-    job.skill = event.skill;
+    job.result = { repo: event.repo, skills: event.skills };
   } else if (event.type === "error") {
     job.status = "error";
     job.errorMessage = event.message;
@@ -186,6 +267,20 @@ function guessPackageName(identifier, dependencies) {
   return dependencies[0];
 }
 
+function recordRepoAndSkills(repoPath, { name, installSource, originalIdentifier }, job) {
+  const skillDirs = findRepoSkillDirs(repoPath);
+  if (skillDirs.length === 0) {
+    throw new Error(`Installed repo does not contain any skill directories with SKILL.md under skills/`);
+  }
+
+  const repo = createSkillRepo({ name, repoPath, installSource, originalIdentifier });
+  const skills = [];
+  for (const skillData of scanRepoSkills(repoPath)) {
+    skills.push(createSkill(skillData, repo.id));
+  }
+  emitJobEvent(job, { type: "success", repo, skills });
+}
+
 async function runInstallJob(job, { source, identifier }) {
   try {
     job.status = "running";
@@ -199,29 +294,13 @@ async function runInstallJob(job, { source, identifier }) {
       throw err;
     }
 
-    let name;
-    let repoPath;
-    let description = null;
-    let readme = null;
-
     if (source === "local") {
-      const sourceDir = resolveTilde(identifier);
-      if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
-        const err = new Error("Local skill path does not exist or is not a directory");
-        err.status = 400;
-        throw err;
-      }
+      const err = new Error("Local install source is not supported");
+      err.status = 400;
+      throw err;
+    }
 
-      const parsed = parseSkillMarkdown(path.join(sourceDir, "SKILL.md"));
-      name = parsed.frontmatter.name || path.basename(sourceDir);
-      description = parsed.frontmatter.description || null;
-      readme = parsed.body || null;
-      repoPath = path.join(skillRepoPath, name);
-
-      emitJobEvent(job, { type: "log", text: `Copying local skill from ${sourceDir} to ${repoPath}` });
-      fs.cpSync(sourceDir, repoPath, { recursive: true, force: true, dereference: true });
-      emitJobEvent(job, { type: "log", text: "Local skill copied successfully" });
-    } else if (source === "npm") {
+    if (source === "npm") {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-skill-install-"));
       emitJobEvent(job, { type: "log", text: `Running npm install --prefix ${tempDir} ${identifier}` });
       await runCommand("npm", ["install", "--prefix", tempDir, identifier], undefined, job);
@@ -240,40 +319,37 @@ async function runInstallJob(job, { source, identifier }) {
       }
 
       const pkgJson = JSON.parse(fs.readFileSync(path.join(installedDir, "package.json"), "utf8"));
-      const parsed = parseSkillMarkdown(path.join(installedDir, "SKILL.md"));
-      name = parsed.frontmatter.name || pkgJson.name || path.basename(identifier);
-      description = parsed.frontmatter.description || pkgJson.description || null;
-      readme = parsed.body || null;
-      repoPath = path.join(skillRepoPath, name);
+      const name = pkgJson.name || packageName;
+      const repoPath = path.join(skillRepoPath, sanitizeSkillName(name));
 
       emitJobEvent(job, { type: "log", text: `Copying installed package to ${repoPath}` });
       fs.cpSync(installedDir, repoPath, { recursive: true, force: true, dereference: true });
       emitJobEvent(job, { type: "log", text: "Installed package copied successfully" });
+
+      recordRepoAndSkills(repoPath, { name, installSource: source, originalIdentifier: identifier }, job);
     } else if (source === "plugin") {
-      name = sanitizeSkillName(identifier);
-      repoPath = path.join(skillRepoPath, name);
-      fs.mkdirSync(repoPath, { recursive: true });
+      const name = sanitizeSkillName(identifier);
+      const repoPath = path.join(skillRepoPath, name);
+      const skillDir = path.join(repoPath, "skills", name);
+      fs.mkdirSync(skillDir, { recursive: true });
 
       const skillMd = [
         "---",
         `name: ${name}`,
-        `description: Installed from ${source}`,
-        `installSource: ${source}`,
-        `originalIdentifier: ${identifier}`,
+        `description: Installed from plugin`,
         "---",
         "",
         `# ${name}`,
         "",
-        `Installed from ${source} identifier: ${identifier}`
+        `Installed from plugin identifier: ${identifier}`
       ].join("\n");
-      fs.writeFileSync(path.join(repoPath, "SKILL.md"), skillMd);
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillMd);
       emitJobEvent(job, { type: "log", text: `Created managed plugin directory at ${repoPath}` });
+
+      recordRepoAndSkills(repoPath, { name, installSource: source, originalIdentifier: identifier }, job);
     } else {
       throw new Error(`Unsupported install source: ${source}`);
     }
-
-    const skill = createSkill({ name, description, repoPath, version: null, installSource: source, readme });
-    emitJobEvent(job, { type: "success", skill });
   } catch (err) {
     emitJobEvent(job, { type: "error", message: err.message });
   }
@@ -283,6 +359,12 @@ export function startInstallJob(body) {
   const { source, identifier } = body || {};
   if (!source || !identifier) {
     const err = new Error("source and identifier are required");
+    err.status = 400;
+    throw err;
+  }
+
+  if (source === "local") {
+    const err = new Error("Local install source is not supported");
     err.status = 400;
     throw err;
   }
@@ -316,18 +398,13 @@ export function subscribeInstallJob(jobId, listener) {
     listener({ type: "log", text });
   }
   if (job.status === "success") {
-    listener({ type: "success", skill: job.skill });
+    listener({ type: "success", repo: job.result.repo, skills: job.result.skills });
   }
   if (job.status === "error") {
     listener({ type: "error", message: job.errorMessage });
   }
   job.listeners.add(listener);
   return () => job.listeners.delete(listener);
-}
-
-export function listSkills() {
-  const db = getDb();
-  return db.prepare("SELECT * FROM skills").all().map(rowToSkill);
 }
 
 export function linkSkill(skillId, projectId) {
@@ -356,14 +433,23 @@ export function getLinkedSkills(projectId) {
   `).all(projectId).map(row => row.skillId);
 }
 
-export function deleteSkill(skillId) {
+export function deleteSkillRepo(repoId) {
   const db = getDb();
-  const skill = db.prepare("SELECT id FROM skills WHERE id = ?").get(skillId);
-  if (!skill) return { deleted: false, reason: "not_found" };
+  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
+  if (!repo) return { deleted: false, reason: "not_found" };
 
-  const linked = db.prepare("SELECT 1 FROM project_skills WHERE skillId = ? LIMIT 1").get(skillId);
-  if (linked) return { deleted: false, reason: "linked" };
+  const skillIds = db.prepare("SELECT id FROM skills WHERE repoId = ?").all(repoId).map(row => row.id);
 
-  db.prepare("DELETE FROM skills WHERE id = ?").run(skillId);
+  if (fs.existsSync(repo.repoPath)) {
+    fs.rmSync(repo.repoPath, { recursive: true, force: true });
+  }
+
+  const idList = skillIds.map(() => "?").join(",");
+  if (skillIds.length > 0) {
+    db.prepare(`DELETE FROM project_skills WHERE skillId IN (${idList})`).run(...skillIds);
+    db.prepare(`DELETE FROM skills WHERE repoId = ?`).run(repoId);
+  }
+  db.prepare("DELETE FROM skill_repos WHERE id = ?").run(repoId);
+
   return { deleted: true };
 }
