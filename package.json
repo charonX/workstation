@@ -6,7 +6,7 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run rebuild:node && node --test tests/capabilities/**/api/*.test.js tests/capabilities/**/cli/*.test.js",
+    "test:unit": "npm run rebuild:node && node --test $(find tests/capabilities -type f \\( -path '*/api/*.test.js' -o -path '*/cli/*.test.js' \\))",
     "test:e2e": "npm run rebuild:electron && playwright test",
     "start": "electron-forge start",
     "package": "electron-forge package",
