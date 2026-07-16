@@ -3,13 +3,14 @@ story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
 current_phase: QA
 attempt: 3
-bug_counter: 16
+bug_counter: 17
 blockers: []
 slices: []
 gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-16, from: QA, to: QA, note: "feel-signoff 反馈：Project Detail 的可用技能列表出现 3 个仓库名称（mattpocock/skills、mattpocock-skills x2），实际为 repo 模型迁移前的 orphan skill（repoId 为 NULL）。登记并修复 BUG-017：project detail 只返回属于有效 skill_repo 的 skill；migration 清理遗留 orphan skill。新增 API 回归测试，全量 85 单元测试 + 43 E2E 测试通过。"}
   - {at: 2026-07-16, from: QA, to: QA, note: "feel-signoff 反馈：Skill Detail Overview 中 version/author/category/tags 在 SKILL.md 存在时未解析、为空时仍显示“—”。登记并修复 BUG-016：增强 parseSkillMarkdown 多行 frontmatter/YAML 列表解析，提取 tags；前端无值时隐藏 meta 行。新增 API/E2E 回归测试，全量 84 单元测试 + 43 E2E 测试通过。"}
   - {at: 2026-07-16, from: BUILD, to: QA, note: "skill repo 信息架构 BUILD 完成：新增 skill_repos 表、递归扫描 skills/ 目录、按 repo 分组列表、repo 级联删除、取消 local 来源；前端按 repo 分组展示并支持删除仓库；CLI 支持 skill repo-delete。84 个单元测试 + 42 个 E2E 测试全绿，进入 QA/feel-signoff。"}
   - {at: 2026-07-16, from: ASSERTION-SIGNOFF, to: ASSERTION-SIGNOFF, note: "skill repo 信息架构 req-gap 就地补全完成：更新 requirements.md（REQ-SKILL-001/003/004 改为 repo 模型、取消 local）、tech-design.md（新增 §5.1）、test-plan.md、business-capabilities.md（新增 skill-repo 实体）、requirements-v1.hash。等待更新测试与实现后重新签核。"}

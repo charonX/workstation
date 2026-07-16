@@ -1,5 +1,21 @@
 # QA 报告 — codex-harness-desktop
 
+## BUG-017 修复验证
+
+- 症状：Project Detail → 技能 tab 的“可用技能”里出现 `mattpocock/skills`、`mattpocock-skills` 等 3 个仓库名称，且它们本身是可以勾选的 skill 项。
+- 根因：早期 skill 数据模型以单个 skill 为单位，迁移到 skill-repo 模型后只给 `skills` 表加了 `repoId` 列，没有清理遗留的 orphan skill（`repoId` 为 `NULL`）。Project Detail 的可用技能列表直接取 `listSkills()`，把这些旧记录也暴露出来了。
+- 修复：
+  - `src/services/skillService.js`：新增 `listLinkableSkills()`，只返回 `repoId` 对应有效 `skill_repo` 的 skill。
+  - `src/http/routes/projects.js`：`buildProjectDetail` 改用 `listLinkableSkills()` 生成可用技能列表。
+  - `src/db.js`：migration 增加清理逻辑，删除 `repoId IS NULL` 的 orphan skill 及其 `project_skills` 关联。
+- 回归测试：
+  - API 测试直接插入有效 skill 与 orphan skill，断言 project detail 只包含前者。
+- 验证结果：
+  - `npm run test:unit`：85 通过，0 失败
+  - `npm run test:e2e`：43 通过，0 失败
+
+---
+
 ## BUG-016 修复验证
 
 - 症状：Skill Detail Overview 中 version / author / category / tags 全部显示为“—”。
