@@ -9,18 +9,18 @@
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15：删除 REQ-SCHEDULE-005，保留 Executions 历史页），**REQ-SKILL-003 修订后待重新签核**（2026-07-16：要求真实安装到 `skillRepoPath`，新增 `repoPath`、`SKILL.md` 解析、安装失败 400/500 等验收标准）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath` 断言已确认）
 
 ### 检查清单
 
-- [ ] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
-- [ ] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
-- [ ] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
-- [ ] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
-- [ ] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
-- [ ] 无快照当判定依据。
-- [ ] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill 安装失败）。
-- [ ] `signoff.md` Assertion 部分已更新。
+- [x] 每个 REQ-ID 都有对应测试或 feel-signoff 映射。
+- [x] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`。
+- [x] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致。
+- [x] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
+- [x] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
+- [x] 无快照当判定依据。
+- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill 安装失败）。
+- [x] `signoff.md` Assertion 部分已更新。
 
 ### REQ 覆盖
 
