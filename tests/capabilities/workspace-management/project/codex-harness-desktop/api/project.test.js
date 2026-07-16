@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, codex-harness-desktop/REQ-WORKSPACE-004, codex-harness-desktop/REQ-WORKSPACE-005, codex-harness-desktop/REQ-WORKSPACE-006, codex-harness-desktop/REQ-WORKSPACE-008
-// REQ-VERSION: v1-hash:4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035
+// REQ-VERSION: v1-hash:762b9b7ff4d4891a26d57bdd0dd7ead507d8e0b23271665ae1ff317e3cfa9493
 // CAPABILITY-TRACE: workspace-management
 // ENTITY-TRACE: project
 // TEST-AUTHOR: agent
@@ -197,6 +197,107 @@ describe("Projects", () => {
     const skillIds = detail.skills.map(s => s.id);
     assert.ok(skillIds.includes("valid-skill"), "valid skill should be listed");
     assert.ok(!skillIds.includes("orphan-skill"), "orphan skill without repo should be excluded");
+  });
+
+  it("REQ-WORKSPACE-006: linking a skill creates project symlinks and cascades dependencies", async () => {
+    const projectLocalPath = path.join(tempDir, "link-test-project");
+    fs.mkdirSync(projectLocalPath, { recursive: true });
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Link Test", localPath: projectLocalPath })
+    })).json();
+
+    const repoPath = path.join(tempDir, "skills-repo");
+    const skillDir = path.join(repoPath, "skills", "main");
+    const depDir = path.join(repoPath, "skills", "helper");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.mkdirSync(depDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: main\ndependencies:\n  - helper\n---\n");
+    fs.writeFileSync(path.join(depDir, "SKILL.md"), "---\nname: helper\n---\n");
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO skill_repos (id, name, repoPath, installSource, createdAt)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("repo-link", "mattpocock/skills", repoPath, "npm", new Date().toISOString());
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("skill-dep", "repo-link", "helper", "dep skill", "skills/helper", null, "[]", null, null, "[]", "[]", "[]", null);
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("skill-main", "repo-link", "main", "main skill", "skills/main", null, '["helper"]', null, null, "[]", "[]", "[]", null);
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillId: "skill-main", linked: true })
+    });
+    assert.equal(res.status, 200);
+    const detail = await res.json();
+
+    const linkedIds = detail.skills.filter(s => s.linked).map(s => s.id);
+    assert.ok(linkedIds.includes("skill-main"), "main skill should be linked");
+    assert.ok(linkedIds.includes("skill-dep"), "dependency skill should be auto-linked");
+
+    const mainLink = path.join(projectLocalPath, ".opc", "skills", "mattpocock_skills", "main");
+    const depLink = path.join(projectLocalPath, ".opc", "skills", "mattpocock_skills", "helper");
+    assert.ok(fs.lstatSync(mainLink).isSymbolicLink(), "main skill symlink should exist");
+    assert.ok(fs.lstatSync(depLink).isSymbolicLink(), "dependency skill symlink should exist");
+  });
+
+  it("REQ-WORKSPACE-006: unlinking a skill removes its symlink but keeps dependencies", async () => {
+    const projectLocalPath = path.join(tempDir, "unlink-test-project");
+    fs.mkdirSync(projectLocalPath, { recursive: true });
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Unlink Test", localPath: projectLocalPath })
+    })).json();
+
+    const repoPath = path.join(tempDir, "unlink-skills-repo");
+    const skillDir = path.join(repoPath, "skills", "main");
+    const depDir = path.join(repoPath, "skills", "helper");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.mkdirSync(depDir, { recursive: true });
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO skill_repos (id, name, repoPath, installSource, createdAt)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("repo-unlink", "mattpocock/skills", repoPath, "npm", new Date().toISOString());
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("skill-dep-2", "repo-unlink", "helper", "dep skill", "skills/helper", null, "[]", null, null, "[]", "[]", "[]", null);
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("skill-main-2", "repo-unlink", "main", "main skill", "skills/main", null, '["helper"]', null, null, "[]", "[]", "[]", null);
+
+    await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillId: "skill-main-2", linked: true })
+    });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillId: "skill-main-2", linked: false })
+    });
+    assert.equal(res.status, 200);
+    const detail = await res.json();
+
+    assert.ok(!detail.skills.find(s => s.id === "skill-main-2")?.linked, "main skill should be unlinked");
+    assert.ok(detail.skills.find(s => s.id === "skill-dep-2")?.linked, "dependency skill should stay linked");
+
+    const mainLink = path.join(projectLocalPath, ".opc", "skills", "mattpocock_skills", "main");
+    const depLink = path.join(projectLocalPath, ".opc", "skills", "mattpocock_skills", "helper");
+    assert.ok(!fs.existsSync(mainLink), "main skill symlink should be removed");
+    assert.ok(fs.lstatSync(depLink).isSymbolicLink(), "dependency skill symlink should remain");
   });
 
   it("REQ-WORKSPACE-008: deletes a project and cascades related data", async () => {

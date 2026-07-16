@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-SKILL-001, codex-harness-desktop/REQ-SKILL-002, codex-harness-desktop/REQ-SKILL-003, codex-harness-desktop/REQ-SKILL-004
-// REQ-VERSION: v1-hash:670a6a4b8ae51f684c9508a83d4da9c8926197136062216818b2bf4c69e0fc84
+// REQ-VERSION: v1-hash:762b9b7ff4d4891a26d57bdd0dd7ead507d8e0b23271665ae1ff317e3cfa9493
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill-repo, skill
 // TEST-AUTHOR: agent
