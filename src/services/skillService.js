@@ -1,5 +1,7 @@
 import { getDb, resetDb } from "../db.js";
+import * as settingsService from "./settingsService.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export function resetSkills(seed = []) {
@@ -43,6 +45,32 @@ function rowToSkill(row) {
     examples: JSON.parse(row.examples || "[]"),
     readme: row.readme
   };
+}
+
+function resolveTilde(inputPath) {
+  if (!inputPath || typeof inputPath !== "string") return inputPath;
+  if (inputPath === "~") return os.homedir();
+  if (inputPath.startsWith("~" + path.sep)) {
+    return path.join(os.homedir(), inputPath.slice(2));
+  }
+  return inputPath;
+}
+
+function copyDirRecursive(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function sanitizeSkillName(identifier) {
+  return path.basename(identifier).replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function parseSkillMarkdown(filePath) {
@@ -114,31 +142,63 @@ export function getSkillDetail(skillId) {
 
 export function installSkill({ source, identifier }) {
   const db = getDb();
+  const settings = settingsService.loadSettings();
+  const skillRepoPath = resolveTilde(settings.skillRepoPath);
+
+  if (!skillRepoPath) {
+    const err = new Error("Skill repository path is not configured");
+    err.status = 400;
+    throw err;
+  }
+
   let name;
   let repoPath;
-  let id;
-
-  if (source === "local") {
-    repoPath = identifier;
-    name = path.basename(identifier);
-    id = `local-${name}-${Date.now()}`;
-  } else {
-    // npm or plugin
-    name = identifier;
-    repoPath = `~/.opc-workstation/skills/${name}`;
-    id = `${source}-${name}-${Date.now()}`;
-  }
-
   let description = null;
   let readme = null;
-  const skillFilePath = source === "local" ? path.join(identifier, "SKILL.md") : null;
-  if (skillFilePath && fs.existsSync(skillFilePath)) {
-    const parsed = parseSkillMarkdown(skillFilePath);
-    name = parsed.frontmatter.name || name;
-    description = parsed.frontmatter.description || null;
-    readme = parsed.body || null;
+
+  if (source === "local") {
+    const sourceDir = resolveTilde(identifier);
+    if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+      const err = new Error("Local skill path does not exist or is not a directory");
+      err.status = 400;
+      throw err;
+    }
+
+    const skillFilePath = path.join(sourceDir, "SKILL.md");
+    if (fs.existsSync(skillFilePath)) {
+      const parsed = parseSkillMarkdown(skillFilePath);
+      name = parsed.frontmatter.name || path.basename(sourceDir);
+      description = parsed.frontmatter.description || null;
+      readme = parsed.body || null;
+    } else {
+      name = path.basename(sourceDir);
+    }
+
+    repoPath = path.join(skillRepoPath, name);
+    copyDirRecursive(sourceDir, repoPath);
+  } else {
+    // npm or plugin: create a managed directory under skillRepoPath.
+    // TODO: integrate real registry installation (npm pack / plugin marketplace).
+    name = sanitizeSkillName(identifier);
+    repoPath = path.join(skillRepoPath, name);
+    fs.mkdirSync(repoPath, { recursive: true });
+
+    const skillMd = [
+      "---",
+      `name: ${name}`,
+      `description: Installed from ${source}`,
+      `installSource: ${source}`,
+      `originalIdentifier: ${identifier}`,
+      "---",
+      "",
+      `# ${name}`,
+      "",
+      `Installed from ${source} identifier: ${identifier}`
+    ].join("\n");
+    fs.writeFileSync(path.join(repoPath, "SKILL.md"), skillMd);
   }
 
+  const id = `${source}-${name}-${Date.now()}`;
   const insertSkill = db.prepare(`
     INSERT INTO skills (id, name, description, repoPath, version, installSource, readme)
     VALUES (?, ?, ?, ?, ?, ?, ?)

@@ -29,7 +29,9 @@ export function handleSkills(req, res, body, pathParts) {
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(skill));
       } catch (err) {
-        return badRequest(res, err.message);
+        const status = err.status || 500;
+        res.writeHead(status, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: status === 400 ? "VALIDATION_ERROR" : "INTERNAL_ERROR", message: err.message }));
       }
     }
     return notFound(res);
