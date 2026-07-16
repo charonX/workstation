@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-DASH-001
-// REQ-VERSION: v1-hash:4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035
+// REQ-VERSION: v1-hash:762b9b7ff4d4891a26d57bdd0dd7ead507d8e0b23271665ae1ff317e3cfa9493
 // CAPABILITY-TRACE: information-aggregation
 // ENTITY-TRACE: dashboard
 // TEST-AUTHOR: agent
