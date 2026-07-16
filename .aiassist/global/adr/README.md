@@ -12,3 +12,5 @@
 |------|------|------|------|----------|
 | ADR-001 | CLI 与前端通过本地 HTTP API 共享服务层 | 已接受 | 2026-07-08 | REQ-001 ~ REQ-025 |
 | ADR-002 | 前端验收采用 Playwright Electron E2E + feel-signoff | 已接受 | 2026-07-09 | REQ-FLOW-002~005、REQ-SKILL-002、REQ-I18N-001~002、REQ-DASH-001、REQ-WORKSPACE-003~006、REQ-SKILL-003 |
+| ADR-003 | Skill Repo 作为一级实体 | 已接受 | 2026-07-16 | REQ-SKILL-001~004 |
+| ADR-004 | Project 与 Skill 通过文件系统软连接关联 | 已接受 | 2026-07-16 | REQ-WORKSPACE-006、REQ-SKILL-004 |

@@ -1,7 +1,9 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: REFLECT
+completed: true
+completed_at: 2026-07-16
 attempt: 3
 bug_counter: 17
 blockers: []
@@ -10,6 +12,7 @@ gates:
   assertion_signoff: passed
   feel_signoff: pending
 history:
+  - {at: 2026-07-16, from: QA, to: REFLECT, note: "用户最终验收通过：BUG-010~017 已修复，REQ-WORKSPACE-006/REQ-SKILL-004 就地补全，88 单元测试 + 43 E2E 测试全绿；更新 global 文档（business-capabilities、CONTEXT、engineering-lessons、STANDARDS、ADR-003/004、checklists/testing）与 signoff.md feel 部分。story 标记完成。"}
   - {at: 2026-07-16, from: QA, to: QA, note: "用户追问：skill repo 删除/更新后，已关联项目的 skill 软连接如何处理。就地补全 REQ-WORKSPACE-006/REQ-SKILL-004：skill repo 删除前清理所有已关联项目的 skill 软连接；实现 removeSkillSymlinksForSkill 并接入 deleteSkillRepo；新增 API 回归测试。全量 88 单元测试 + 43 E2E 测试通过。"}
   - {at: 2026-07-16, from: QA, to: QA, note: "用户决策：Project 关联 Skill 应在项目目录创建软连接，并自动级联关联 dependencies；取消关联仅删除当前 skill 软连接。就地补全 REQ-WORKSPACE-006、signoff.md、requirements-v1.hash，新增 API 回归测试，全量 87 单元测试 + 43 E2E 测试通过。"}
   - {at: 2026-07-16, from: QA, to: QA, note: "feel-signoff 反馈：Project Detail 的可用技能列表出现 3 个仓库名称（mattpocock/skills、mattpocock-skills x2），实际为 repo 模型迁移前的 orphan skill（repoId 为 NULL）。登记并修复 BUG-017：project detail 只返回属于有效 skill_repo 的 skill；migration 清理遗留 orphan skill。新增 API 回归测试，全量 85 单元测试 + 43 E2E 测试通过。"}

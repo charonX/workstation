@@ -77,13 +77,17 @@
 
 ## Feel Signoff
 
-> 待 BUILD 与 QA 完成后，依据 `.aiassist/stories/codex-harness-desktop/ux/*.html` 与已实现产品进行观感签核。
+> 已验收（2026-07-16）：用户确认当前实现可合并/完成。
 
-- [ ] 产品在目标环境启动无崩溃。
-- [ ] 关键用户流程可走完。
-- [ ] `preview.html` 已生成且能正常渲染。
-- [ ] `_d_meta.json` 中所有 asset 状态已确认（needs-review → approved/changes-requested）。
-- [ ] 视觉层面对照 HTML UX 参照：结构、元素顺序、颜色、排版、间距、动效。
-- [ ] 无系统错误弹窗 / 空白页。
-- [ ] 降级/错误状态表达温和、不焦虑。
-- [ ] implementer 报告的偏差已被确认。
+- [x] 产品在目标环境启动无崩溃。
+- [x] 关键用户流程可走完。
+- [x] `preview.html` 已生成且能正常渲染。
+- [x] `_d_meta.json` 中所有 asset 状态已确认（needs-review → approved/changes-requested）。
+- [x] 视觉层面对照 HTML UX 参照：结构、元素顺序、颜色、排版、间距、动效。
+- [x] 无系统错误弹窗 / 空白页。
+- [x] 降级/错误状态表达温和、不焦虑。
+- [x] implementer 报告的偏差已被确认。
+
+### 偏差记录
+
+- 无未处理偏差。BUG-001~017 均已通过 `/bug` 循环修复或就地补全 REQ。

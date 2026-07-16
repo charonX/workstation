@@ -54,6 +54,13 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - [ ] 失败时自动生成 trace 和 screenshot 并作为产物上传
 - [ ] E2E 数量符合测试金字塔（E2E 占比 ~5%，只覆盖关键路径）
 
+## 桌面应用 / Electron 测试
+
+- [ ] 修改 main 进程代码后，集成测试/E2E 前确认应用已重启，renderer HMR 不代表主进程已更新
+- [ ] 文件系统副作用（symlink、目录、文件写入）在 API 测试中断言实际路径与状态
+- [ ] 删除实体时同步断言相关文件/链接已被清理
+- [ ] main 进程与 renderer 的边界用 Playwright Electron E2E 或 renderer public API 覆盖
+
 ## 反模式
 
 | 反模式 | 问题 | 修复 |

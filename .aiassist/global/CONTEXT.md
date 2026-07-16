@@ -22,9 +22,10 @@
 | 术语 | 定义 | 相关实体 | 使用场景 |
 |------|------|----------|----------|
 | Workspace | 应用配置的根目录，包含多个项目 | Project | Settings |
-| Skill Repository | 集中式 skill 仓库 | Skill | Settings |
-| Node Palette | 流程编辑器左侧的节点分类面板 | Flow | Flow Editor |
-| Execution Detail | 单次执行的 Logs/Variables/Output 详情 | Execution | Tasks 页面 |
+| Skill Repository | 集中式 skill 仓库，一个 repo 可包含多个 skill | Skill | Settings / Skills 管理 |
+| Skill Symlink | 项目目录下指向 skill 安装目录的符号链接 | Project, Skill | Project Detail 关联 skill |
+| Dependency Cascade | 关联 skill 时自动级联关联其 `dependencies` 声明的 skill | Skill | Project-skill 关联 |
+| Orphan Skill | repo 模型迁移后 `repoId` 为 NULL 的遗留 skill 记录 | Skill | 数据清理 |
 
 ## 状态与生命周期
 
@@ -49,3 +50,4 @@
 |------|------|------------|
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |
 | 2026-07-08 | 更新 CLI 与 HTTP API 术语定义 | codex-harness-desktop attempt-2 tech-design |
+| 2026-07-16 | 新增 skill-repo、skill symlink、dependency cascade、orphan skill 术语 | codex-harness-desktop /reflect |

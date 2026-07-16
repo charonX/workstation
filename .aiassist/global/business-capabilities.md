@@ -79,10 +79,10 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 2 | 19 | 2026-07-09 |
-| flow-orchestration | 2 | 19 | 2026-07-14 |
-| scheduling-execution | 3 | 12 | 2026-07-15 |
-| skill-management | 2 | 10 | 2026-07-16 |
-| information-aggregation | 1 | 5 | 2026-07-09 |
-| internationalization-theme | 2 | 6 | 2026-07-09 |
-| command-interface | 1 | 3 | 2026-07-09 |
+| workspace-management | 2 | 36 | 2026-07-16 |
+| flow-orchestration | 2 | 40 | 2026-07-16 |
+| scheduling-execution | 3 | 16 | 2026-07-16 |
+| skill-management | 2 | 16 | 2026-07-16 |
+| information-aggregation | 1 | 7 | 2026-07-16 |
+| internationalization-theme | 2 | 13 | 2026-07-16 |
+| command-interface | 1 | 3 | 2026-07-16 |
