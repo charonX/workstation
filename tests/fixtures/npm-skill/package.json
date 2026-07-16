@@ -1,0 +1,6 @@
+{
+  "name": "@opc/test-skill",
+  "version": "1.0.0",
+  "description": "Offline npm skill fixture for deterministic tests",
+  "main": "index.js"
+}

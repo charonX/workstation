@@ -1,8 +1,8 @@
-# Codex Harness Design System
+# OPC Workstation Design System
 
 ## Product Identity
 
-- **Product**: Codex Harness Desktop App
+- **Product**: OPC Workstation Desktop App
 - **Users**: Solo developers and content creators who run repetitive information workflows
 - **Mood**: Developer-tool precision, high-density, immersive, technical
 - **Platform**: Desktop application (Tauri + React), primarily dark mode

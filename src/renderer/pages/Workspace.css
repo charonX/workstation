@@ -1,0 +1,31 @@
+.workspace-page {
+  max-width: 1200px;
+}
+
+.workspace-search {
+  margin-bottom: var(--ch-space-4);
+  max-width: 400px;
+}
+
+.workspace-search .form-input {
+  width: 100%;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--ch-space-4);
+}
+
+.workspace-loading,
+.workspace-error,
+.workspace-empty {
+  padding: var(--ch-space-8) 0;
+  text-align: center;
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+}
+
+.workspace-error {
+  color: var(--ch-error);
+}

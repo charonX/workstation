@@ -1,0 +1,283 @@
+<!-- @dsCard group="dashboard" name="Dashboard as Overview (Variant B)" viewport="desktop" -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC Workstation — Overview (Variant B)</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      color: var(--ch-text);
+      background: var(--ch-bg);
+      line-height: var(--ch-leading-normal);
+    }
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--ch-sidebar-width) 1fr;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
+      height: 100vh;
+    }
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface);
+      border-bottom: 1px solid var(--ch-border);
+      gap: var(--ch-space-4);
+    }
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); }
+    .logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); color: var(--ch-text); letter-spacing: -0.02em; }
+    .search-box {
+      width: 280px; padding: 6px 12px;
+      background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text);
+      font-size: var(--ch-text-sm);
+      outline: none;
+    }
+    .search-box:focus { border-color: var(--ch-accent); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); }
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      background: transparent;
+      color: var(--ch-text-secondary);
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .sidebar {
+      background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border);
+      padding: var(--ch-space-4) 0;
+      display: flex; flex-direction: column;
+    }
+    .nav-group { padding: 0 var(--ch-space-3); margin-bottom: var(--ch-space-6); }
+    .nav-label {
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 var(--ch-space-3);
+      margin-bottom: var(--ch-space-2);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: 8px var(--ch-space-3);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text-secondary);
+      text-decoration: none;
+      font-size: var(--ch-text-md);
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .nav-item.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .nav-icon { width: 18px; text-align: center; }
+    .main { overflow: auto; padding: var(--ch-space-6); }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--ch-space-6);
+    }
+    .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px;
+      border-radius: var(--ch-radius-md);
+      font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--ch-space-4);
+      margin-bottom: var(--ch-space-6);
+    }
+    .stat-card {
+      background: var(--ch-surface);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      padding: var(--ch-space-4);
+    }
+    .stat-card:hover { border-color: var(--ch-border-strong); }
+    .stat-label { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); margin-bottom: var(--ch-space-2); }
+    .stat-value { font-size: var(--ch-text-2xl); font-weight: var(--ch-weight-bold); color: var(--ch-text); }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: var(--ch-space-4);
+    }
+    .panel {
+      background: var(--ch-surface);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--ch-space-3) var(--ch-space-4);
+      border-bottom: 1px solid var(--ch-border);
+    }
+    .panel-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .panel-body { padding: var(--ch-space-2) 0; }
+    .list-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--ch-space-3) var(--ch-space-4);
+      border-bottom: 1px solid var(--ch-border);
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-item:hover { background: var(--ch-surface-high); }
+    .list-main { display: flex; flex-direction: column; gap: 2px; }
+    .list-title { font-weight: var(--ch-weight-medium); color: var(--ch-text); }
+    .list-meta { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); font-family: var(--ch-font-mono); }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 2px 8px;
+      border-radius: var(--ch-radius-full);
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-success { background: var(--ch-success-soft); color: var(--ch-success); }
+    .status-success .status-dot { background: var(--ch-success); }
+    .status-running { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .status-running .status-dot { background: var(--ch-accent); animation: pulse 1.5s infinite; }
+    .status-error { background: var(--ch-error-soft); color: var(--ch-error); }
+    .status-error .status-dot { background: var(--ch-error); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo">OPC Workstation</div>
+        <input type="text" class="search-box" data-i18n="searchPlaceholder" data-i18n-target="placeholder" placeholder="Search projects, flows, tasks...">
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" data-lang-toggle>中</button>
+        <button class="icon-btn" data-theme-toggle>◐</button>
+        <button class="icon-btn">🔔</button>
+        <button class="icon-btn">⚙</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="workspace">Workspace</div>
+        <a href="workspace-home.html" class="nav-item"><span class="nav-icon">◧</span> <span data-i18n="projects">Projects</span></a>
+        <a href="dashboard-overview.html" class="nav-item active"><span class="nav-icon">▤</span> <span data-i18n="dashboard">Overview</span></a>
+        <a href="flows.html" class="nav-item"><span class="nav-icon">⟳</span> <span data-i18n="flows">Flows</span></a>
+        <a href="executions.html" class="nav-item"><span class="nav-icon">▶</span> <span data-i18n="executions">Executions</span></a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label" data-i18n="system">System</div>
+        <a href="skills.html" class="nav-item"><span class="nav-icon">◈</span> <span data-i18n="skills">Skills</span></a>
+        <a href="settings.html" class="nav-item"><span class="nav-icon">⚙</span> <span data-i18n="settings">Settings</span></a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="page-header">
+        <h1 class="page-title" data-i18n="dashboard">Overview</h1>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="projectsCount">Projects</div>
+          <div class="stat-value">12</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="schedulesCount">Active Schedules</div>
+          <div class="stat-value">8</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="recentRuns">Recent Runs</div>
+          <div class="stat-value">47</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="successRate">Success Rate</div>
+          <div class="stat-value">94%</div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="recentExecutions">Recent Executions</h2>
+          </div>
+          <div class="panel-body">
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">Hot News Fetch · Daily Run</span>
+                <span class="list-meta">content-ops · #1042 · 2m ago</span>
+              </div>
+              <span class="status status-success"><span class="status-dot"></span> Success</span>
+            </div>
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">TikTok Influencer Filter</span>
+                <span class="list-meta">growth · #1041 · running</span>
+              </div>
+              <span class="status status-running"><span class="status-dot"></span> Running</span>
+            </div>
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">Website Content Sync</span>
+                <span class="list-meta">content-ops · #1040 · 3h ago</span>
+              </div>
+              <span class="status status-success"><span class="status-dot"></span> Success</span>
+            </div>
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">Anomaly Detection</span>
+                <span class="list-meta">analytics · #1039 · 5h ago</span>
+              </div>
+              <span class="status status-error"><span class="status-dot"></span> Failed</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="quickProjects">Quick Projects</h2>
+          </div>
+          <div class="panel-body">
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">content-ops</span>
+                <span class="list-meta">4 flows · last run 2m ago</span>
+              </div>
+            </div>
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">growth</span>
+                <span class="list-meta">3 flows · last run 1h ago</span>
+              </div>
+            </div>
+            <div class="list-item">
+              <div class="list-main">
+                <span class="list-title">analytics</span>
+                <span class="list-meta">2 flows · last run 3h ago</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

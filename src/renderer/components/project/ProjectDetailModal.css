@@ -1,0 +1,116 @@
+.tabs {
+  display: flex;
+  gap: var(--ch-space-1);
+  border-bottom: 1px solid var(--ch-border);
+  margin-bottom: var(--ch-space-4);
+}
+
+.tab {
+  padding: var(--ch-space-2) var(--ch-space-4);
+  border-bottom: 2px solid transparent;
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-sm);
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab.active {
+  color: var(--ch-accent);
+  border-bottom-color: var(--ch-accent);
+}
+
+.tab-panel {
+  min-height: 120px;
+}
+
+.meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-3);
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--ch-space-2) 0;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.meta-row:last-child {
+  border-bottom: none;
+}
+
+.meta-label {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+  font-weight: var(--ch-weight-medium);
+}
+
+.meta-value {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text);
+  font-family: var(--ch-font-mono);
+}
+
+.skills-section-title {
+  font-size: var(--ch-text-sm);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+  margin: 0 0 var(--ch-space-3) 0;
+}
+
+.skill-option {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-3);
+  padding: var(--ch-space-2) 0;
+  font-size: var(--ch-text-sm);
+  cursor: pointer;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.skill-option:last-child {
+  border-bottom: none;
+}
+
+.skill-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ch-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.skill-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-option-title {
+  color: var(--ch-text);
+  font-weight: var(--ch-weight-medium);
+}
+
+.skill-option-meta {
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-xs);
+}
+
+.tab-loading,
+.tab-error,
+.tab-empty {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+  padding: var(--ch-space-4) 0;
+  text-align: center;
+}
+
+.tab-error {
+  color: var(--ch-error);
+}

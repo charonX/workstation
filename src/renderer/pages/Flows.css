@@ -1,0 +1,81 @@
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ch-space-6);
+}
+
+.page-title {
+  font-size: var(--ch-text-xl);
+  font-weight: var(--ch-weight-semibold);
+  margin: 0;
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--ch-space-4);
+}
+
+.flow-card {
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-lg);
+  padding: var(--ch-space-4);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.flow-card:hover {
+  border-color: var(--ch-border-strong);
+}
+
+.flow-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--ch-space-3);
+}
+
+.flow-name {
+  font-size: var(--ch-text-md);
+  font-weight: var(--ch-weight-semibold);
+  margin: 0 0 2px;
+}
+
+.flow-project {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono);
+}
+
+.flow-meta {
+  display: flex;
+  gap: var(--ch-space-4);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  margin-bottom: var(--ch-space-4);
+}
+
+.flow-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--ch-space-3);
+  border-top: 1px solid var(--ch-border);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--ch-space-12) 0;
+  color: var(--ch-text-tertiary);
+}
+
+.form-error {
+  color: var(--ch-error);
+  font-size: var(--ch-text-sm);
+  margin-bottom: var(--ch-space-3);
+}

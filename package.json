@@ -1,0 +1,43 @@
+{
+  "name": "opc-workstation",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "npm run rebuild:node && node --test $(find tests/capabilities -type f \\( -path '*/api/*.test.js' -o -path '*/cli/*.test.js' \\))",
+    "test:e2e": "npm run rebuild:electron && playwright test",
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m node_modules/better-sqlite3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "electron-squirrel-startup": "^1.0.1",
+    "i18next": "^26.3.5",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "node-cron": "^4.5.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-i18next": "^17.0.8",
+    "react-router-dom": "^7.18.1",
+    "reactflow": "^11.11.4",
+    "simple-git": "^3.36.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.0",
+    "@electron-forge/maker-dmg": "^7.8.0",
+    "@electron-forge/maker-squirrel": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
+    "@electron-forge/plugin-vite": "^7.8.0",
+    "@electron/rebuild": "^4.2.0",
+    "@playwright/test": "^1.51.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^43.0.0",
+    "vite": "^8.1.3"
+  }
+}

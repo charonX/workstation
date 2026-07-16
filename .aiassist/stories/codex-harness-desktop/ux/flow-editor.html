@@ -1,360 +1,358 @@
-<!--
-  UX-REF-FOR: REQ-DESIGN-001, REQ-DESIGN-002, REQ-DESIGN-003
-  STORY-ID: codex-harness-desktop
-  VERSION: v1
-  DATE: 2026-06-29
--->
+<!-- @dsCard group="editor" name="Flow Editor" viewport="desktop" -->
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flow Editor — Codex Harness</title>
+  <title>OPC Workstation — Flow Editor</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <link rel="stylesheet" href="shared.css">
   <style>
-    :root {
-      --bg: #0f1115;
-      --panel: #181b21;
-      --panel-hover: #1f232a;
-      --border: #2a2f38;
-      --text: #e6e6e6;
-      --text-secondary: #8b929d;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --node-codex: #8b5cf6;
-      --node-skill: #06b6d4;
-      --node-trigger: #f59e0b;
-      --node-output: #22c55e;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      overflow: hidden;
+      margin: 0;
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      color: var(--ch-text);
+      background: var(--ch-bg);
+      line-height: var(--ch-leading-normal);
     }
-    .app {
+    .app-shell {
       display: grid;
-      grid-template-columns: 260px 1fr 320px;
-      grid-template-rows: 48px 1fr;
+      grid-template-columns: 240px 1fr 300px;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
       height: 100vh;
     }
     .topbar {
       grid-column: 1 / -1;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface);
+      border-bottom: 1px solid var(--ch-border);
+      gap: var(--ch-space-4);
     }
-    .topbar-left { display: flex; align-items: center; gap: 16px; }
-    .logo { font-weight: 700; font-size: 15px; letter-spacing: -0.3px; }
-    .breadcrumb { color: var(--text-secondary); font-size: 13px; }
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
-    .btn {
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 13px;
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); }
+    .logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); color: var(--ch-text); letter-spacing: -0.02em; }
+    .breadcrumb { display: flex; align-items: center; gap: var(--ch-space-2); color: var(--ch-text-secondary); font-size: var(--ch-text-sm); }
+    .breadcrumb a { color: var(--ch-text-secondary); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--ch-accent); }
+    .flow-name-input {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--ch-text);
+      font-size: var(--ch-text-md);
+      font-weight: var(--ch-weight-semibold);
+      padding: 2px 8px;
+      border-radius: var(--ch-radius-md);
+      font-family: var(--ch-font-mono);
+    }
+    .flow-name-input:hover { border-color: var(--ch-border); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); }
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      background: transparent;
+      color: var(--ch-text-secondary);
       cursor: pointer;
     }
-    .btn-secondary {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px;
+      border-radius: var(--ch-radius-md);
+      font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm);
+      cursor: pointer;
+      border: 1px solid transparent;
     }
-    .sidebar {
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      padding: 16px;
-      overflow-y: auto;
+    .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+    .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
+    .palette {
+      background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border);
+      padding: var(--ch-space-4);
+      overflow: auto;
     }
-    .section-title {
-      font-size: 11px;
+    .palette-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0 0 var(--ch-space-4); }
+    .palette-group { margin-bottom: var(--ch-space-5); }
+    .palette-label {
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-tertiary);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin-bottom: 10px;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--ch-space-2);
     }
-    .node-palette { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
     .palette-item {
-      background: var(--panel-hover);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: var(--ch-space-2) var(--ch-space-3);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      margin-bottom: var(--ch-space-2);
       cursor: grab;
-      font-size: 13px;
+      background: var(--ch-surface-high);
     }
-    .palette-item:hover { border-color: var(--accent); }
-    .dot { width: 10px; height: 10px; border-radius: 50%; }
-    .dot-codex { background: var(--node-codex); }
-    .dot-skill { background: var(--node-skill); }
-    .dot-trigger { background: var(--node-trigger); }
-    .dot-output { background: var(--node-output); }
-    .main {
-      background: #0b0d10;
+    .palette-item:hover { border-color: var(--ch-border-strong); }
+    .palette-icon { width: 16px; text-align: center; }
+    .palette-text { font-size: var(--ch-text-sm); }
+    .canvas {
+      background: var(--ch-bg);
       position: relative;
       overflow: hidden;
       background-image:
-        radial-gradient(circle at 20% 30%, rgba(59,130,246,0.08) 0%, transparent 40%),
-        radial-gradient(circle at 80% 70%, rgba(139,92,246,0.06) 0%, transparent 40%);
-    }
-    .grid-bg {
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+        radial-gradient(circle, var(--ch-border) 1px, transparent 1px);
       background-size: 24px 24px;
-      pointer-events: none;
-    }
-    .flow-canvas {
-      position: relative;
-      width: 100%;
-      height: 100%;
     }
     .node {
       position: absolute;
-      width: 200px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
+      width: 180px;
+      background: var(--ch-surface);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
       overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      box-shadow: var(--ch-shadow-sm);
     }
+    .node.selected { box-shadow: 0 0 0 2px var(--ch-accent); }
     .node-header {
-      padding: 10px 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: var(--ch-space-2);
+      padding: var(--ch-space-2) var(--ch-space-3);
+      border-bottom: 1px solid var(--ch-border);
+      font-size: var(--ch-text-sm);
+      font-weight: var(--ch-weight-semibold);
     }
-    .node-codex .node-header { background: rgba(139,92,246,0.12); }
-    .node-trigger .node-header { background: rgba(245,158,11,0.12); }
-    .node-skill .node-header { background: rgba(6,182,212,0.12); }
-    .node-output .node-header { background: rgba(34,197,94,0.12); }
-    .node-body {
-      padding: 12px;
-      font-size: 12px;
-      color: var(--text-secondary);
+    .node-accent { width: 4px; align-self: stretch; }
+    .node-accent-trigger { background: var(--ch-trigger); }
+    .node-accent-codex { background: var(--ch-codex); }
+    .node-accent-skill { background: var(--ch-skill); }
+    .node-accent-logic { background: var(--ch-text-tertiary); }
+    .node-accent-output { background: var(--ch-output); }
+    .node-body { padding: var(--ch-space-3); font-size: var(--ch-text-xs); color: var(--ch-text-secondary); }
+    .node-config {
+      font-family: var(--ch-font-mono);
+      background: var(--ch-surface-highest);
+      padding: 4px 6px;
+      border-radius: var(--ch-radius-sm);
+      margin-top: var(--ch-space-2);
+      word-break: break-all;
     }
-    .node-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
-    .node-row:last-child { margin-bottom: 0; }
     .port {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--text-secondary);
       position: absolute;
+      width: 10px; height: 10px;
+      background: var(--ch-surface-highest);
+      border: 2px solid var(--ch-border-strong);
+      border-radius: 50%;
       top: 50%;
       transform: translateY(-50%);
     }
-    .port-in { left: -5px; background: var(--success); }
-    .port-out { right: -5px; background: var(--text); }
-    .node.trigger { top: 100px; left: 80px; }
-    .node.skill { top: 100px; left: 360px; }
-    .node.codex { top: 260px; left: 360px; }
-    .node.output { top: 180px; left: 640px; }
+    .port-in { left: -6px; }
+    .port-out { right: -6px; }
+    .properties {
+      background: var(--ch-surface);
+      border-left: 1px solid var(--ch-border);
+      padding: var(--ch-space-4);
+      overflow: auto;
+    }
+    .properties-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0 0 var(--ch-space-4); }
+    .form-group { margin-bottom: var(--ch-space-4); }
+    .form-label {
+      display: block;
+      font-size: var(--ch-text-xs);
+      font-weight: var(--ch-weight-medium);
+      color: var(--ch-text-secondary);
+      margin-bottom: var(--ch-space-2);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .form-input, .form-textarea {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md);
+      color: var(--ch-text);
+      font-size: var(--ch-text-sm);
+      outline: none;
+      font-family: var(--ch-font-mono);
+    }
+    .form-textarea { min-height: 120px; resize: vertical; }
+    .form-input:focus, .form-textarea:focus { border-color: var(--ch-accent); }
     .connection {
       position: absolute;
-      stroke: var(--border);
-      stroke-width: 2;
-      fill: none;
-      pointer-events: none;
+      height: 2px;
+      background: var(--ch-border-strong);
+      transform-origin: left center;
+      z-index: 0;
     }
-    .properties {
-      background: var(--panel);
-      border-left: 1px solid var(--border);
-      padding: 16px;
-      overflow-y: auto;
-    }
-    .prop-group { margin-bottom: 20px; }
-    .prop-label {
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
-    .prop-input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 8px 10px;
-      color: var(--text);
-      font-size: 13px;
-    }
-    .prop-hint {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-top: 6px;
-      line-height: 1.5;
-    }
-    .tag {
-      display: inline-block;
-      background: var(--panel-hover);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2px 8px;
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-right: 6px;
+    .toolbar-floating {
+      position: absolute;
+      bottom: var(--ch-space-4);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: var(--ch-space-2);
+      background: var(--ch-surface);
+      border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-lg);
+      padding: var(--ch-space-2);
+      box-shadow: var(--ch-shadow-md);
     }
   </style>
 </head>
 <body>
-  <div class="app">
+  <div class="app-shell">
     <header class="topbar">
       <div class="topbar-left">
-        <span class="logo">⚡ Codex Harness</span>
-        <span class="breadcrumb">Workspace > DailyOps > Hot News Scraper</span>
+        <div class="logo">OPC Workstation</div>
+        <div class="breadcrumb">
+          <a href="workspace.html">content-ops</a>
+          <span>/</span>
+          <a href="flows.html">Flows</a>
+          <span>/</span>
+          <input type="text" class="flow-name-input" value="hot-news-fetch">
+        </div>
       </div>
       <div class="topbar-right">
-        <button class="btn btn-secondary">⏱ Schedule</button>
-        <button class="btn btn-secondary">▶ Run Once</button>
-        <button class="btn">💾 Save Flow</button>
+        <button class="btn btn-secondary">Schedule</button>
+        <button class="btn btn-secondary">Save</button>
+        <button class="btn btn-primary">▶ Run</button>
       </div>
     </header>
 
-    <aside class="sidebar">
-      <div class="section-title">Nodes</div>
-      <div class="node-palette">
-        <div class="palette-item">
-          <span class="dot dot-trigger"></span>
-          <span>Trigger</span>
-        </div>
-        <div class="palette-item">
-          <span class="dot dot-codex"></span>
-          <span>Codex Agent</span>
-        </div>
-        <div class="palette-item">
-          <span class="dot dot-skill"></span>
-          <span>Claude Skill</span>
-        </div>
-        <div class="palette-item">
-          <span class="dot dot-output"></span>
-          <span>Output</span>
-        </div>
-        <div class="palette-item">
-          <span class="dot" style="background:#64748b"></span>
-          <span>HTTP Request</span>
-        </div>
-        <div class="palette-item">
-          <span class="dot" style="background:#64748b"></span>
-          <span>Condition</span>
-        </div>
+    <aside class="palette">
+      <h2 class="palette-title">Nodes</h2>
+      <div class="palette-group">
+        <div class="palette-label">Control</div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-trigger)">⏱</span><span class="palette-text">Trigger</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-text-secondary)">◈</span><span class="palette-text">Condition</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-text-secondary)">↻</span><span class="palette-text">ForEach</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-text-secondary)">⟳</span><span class="palette-text">While</span></div>
       </div>
-
-      <div class="section-title">Projects</div>
-      <div style="font-size:13px;color:var(--text-secondary);line-height:1.8">
-        <div>📁 DailyOps</div>
-        <div>📁 TikTok Pilot</div>
-        <div>📁 Trend Hunter</div>
+      <div class="palette-group">
+        <div class="palette-label">Execution</div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-codex)">◆</span><span class="palette-text">Codex</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-skill)">◈</span><span class="palette-text">Skill</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-info)">⚡</span><span class="palette-text">HTTP</span></div>
+      </div>
+      <div class="palette-group">
+        <div class="palette-label">Data</div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-text-secondary)">{}]</span><span class="palette-text">Data</span></div>
+        <div class="palette-item"><span class="palette-icon" style="color:var(--ch-output)">▢</span><span class="palette-text">Output</span></div>
       </div>
     </aside>
 
-    <main class="main">
-      <div class="grid-bg"></div>
-      <div class="flow-canvas">
-        <svg style="position:absolute;inset:0;width:100%;height:100%">
-          <path class="connection" d="M 280 145 C 320 145, 320 130, 360 130" />
-          <path class="connection" d="M 280 145 C 320 145, 320 290, 360 290" />
-          <path class="connection" d="M 560 130 C 600 130, 600 190, 640 190" />
-          <path class="connection" d="M 560 290 C 600 290, 600 230, 640 230" />
-        </svg>
+    <section class="canvas">
+      <!-- Mock connections -->
+      <div class="connection" style="width:120px; top:160px; left:200px; transform:rotate(0deg);"></div>
+      <div class="connection" style="width:140px; top:160px; left:420px; transform:rotate(35deg);"></div>
+      <div class="connection" style="width:140px; top:160px; left:420px; transform:rotate(-35deg);"></div>
+      <div class="connection" style="width:120px; top:280px; left:520px; transform:rotate(0deg);"></div>
 
-        <div class="node trigger" style="top:100px;left:80px">
-          <div class="port port-out"></div>
-          <div class="node-header">
-            <span class="dot dot-trigger"></span>
-            <span>Schedule Trigger</span>
-          </div>
-          <div class="node-body">
-            <div class="node-row"><span>Type</span><span>Cron</span></div>
-            <div class="node-row"><span>When</span><span>0 9 * * *</span></div>
-          </div>
+      <!-- Trigger Node -->
+      <div class="node" style="top:120px; left:40px;">
+        <div class="node-accent node-accent-trigger"></div>
+        <div class="node-header">
+          <span>⏱</span>
+          <span>Trigger</span>
         </div>
-
-        <div class="node skill" style="top:100px;left:360px">
-          <div class="port port-in"></div>
+        <div class="node-body">
+          Cron: 0 9 * * *
           <div class="port port-out"></div>
-          <div class="node-header">
-            <span class="dot dot-skill"></span>
-            <span>Fetch News Skill</span>
-          </div>
-          <div class="node-body">
-            <div class="node-row"><span>Skill</span><span>hot-news</span></div>
-            <div class="node-row"><span>Source</span><span>hackernews,rsshub</span></div>
-          </div>
-        </div>
-
-        <div class="node codex" style="top:260px;left:360px">
-          <div class="port port-in"></div>
-          <div class="port port-out"></div>
-          <div class="node-header">
-            <span class="dot dot-codex"></span>
-            <span>Codex Judge</span>
-          </div>
-          <div class="node-body">
-            <div class="node-row"><span>Model</span><span>codex</span></div>
-            <div class="node-row"><span>Prompt</span><span>Pick valuable tech news</span></div>
-          </div>
-        </div>
-
-        <div class="node output" style="top:180px;left:640px">
-          <div class="port port-in"></div>
-          <div class="node-header">
-            <span class="dot dot-output"></span>
-            <span>Save to File</span>
-          </div>
-          <div class="node-body">
-            <div class="node-row"><span>Format</span><span>markdown</span></div>
-            <div class="node-row"><span>Path</span><span>./out/today.md</span></div>
-          </div>
         </div>
       </div>
-    </main>
+
+      <!-- Codex Node -->
+      <div class="node selected" style="top:120px; left:260px;">
+        <div class="node-accent node-accent-codex"></div>
+        <div class="node-header">
+          <span>◆</span>
+          <span>Fetch Headlines</span>
+        </div>
+        <div class="node-body">
+          Agent: Codex
+          <div class="node-config">Summarize top tech news from HN...</div>
+          <div class="port port-in"></div>
+          <div class="port port-out"></div>
+        </div>
+      </div>
+
+      <!-- Condition Node -->
+      <div class="node" style="top:80px; left:480px;">
+        <div class="node-accent node-accent-logic"></div>
+        <div class="node-header">
+          <span>◈</span>
+          <span>Has News?</span>
+        </div>
+        <div class="node-body">
+          Condition
+          <div class="node-config">headlines.length > 0</div>
+          <div class="port port-in"></div>
+          <div class="port port-out" style="right:-6px; top:30%;"></div>
+          <div class="port port-out" style="right:-6px; top:70%;"></div>
+        </div>
+      </div>
+
+      <!-- Skill Node -->
+      <div class="node" style="top:240px; left:480px;">
+        <div class="node-accent node-accent-skill"></div>
+        <div class="node-header">
+          <span>◈</span>
+          <span>Write Draft</span>
+        </div>
+        <div class="node-body">
+          Skill: content-writer
+          <div class="node-config">output: draft.md</div>
+          <div class="port port-in"></div>
+          <div class="port port-out"></div>
+        </div>
+      </div>
+
+      <!-- Output Node -->
+      <div class="node" style="top:160px; left:700px;">
+        <div class="node-accent node-accent-output"></div>
+        <div class="node-header">
+          <span>▢</span>
+          <span>Save Output</span>
+        </div>
+        <div class="node-body">
+          Output
+          <div class="node-config">./output/daily-news.md</div>
+          <div class="port port-in"></div>
+        </div>
+      </div>
+
+      <div class="toolbar-floating">
+        <button class="icon-btn">+</button>
+        <button class="icon-btn">−</button>
+        <button class="icon-btn">⊘</button>
+      </div>
+    </section>
 
     <aside class="properties">
-      <div class="section-title">Node Properties</div>
-      <div class="prop-group">
-        <div class="prop-label">Node Name</div>
-        <input class="prop-input" value="Codex Judge" />
+      <h2 class="properties-title">Node Properties</h2>
+      <div class="form-group">
+        <label class="form-label">Node Name</label>
+        <input type="text" class="form-input" value="Fetch Headlines">
       </div>
-      <div class="prop-group">
-        <div class="prop-label">Agent</div>
-        <select class="prop-input">
-          <option>codex</option>
-          <option>claude-code</option>
+      <div class="form-group">
+        <label class="form-label">Agent Type</label>
+        <select class="form-input">
+          <option>Codex</option>
+          <option>Claude Code</option>
         </select>
       </div>
-      <div class="prop-group">
-        <div class="prop-label">Instruction</div>
-        <textarea class="prop-input" rows="6">Review the fetched news list and pick 3-5 most valuable tech/news items for a founder audience. Return title, url, one-line reason.</textarea>
+      <div class="form-group">
+        <label class="form-label">System Prompt</label>
+        <textarea class="form-textarea">Summarize top tech news from Hacker News. Return a JSON array of {title, url, summary}.</textarea>
       </div>
-      <div class="prop-group">
-        <div class="prop-label">Output Schema</div>
-        <input class="prop-input" value="{ title, url, reason }[]" />
-        <div class="prop-hint">Define the structured output so downstream nodes can consume it.</div>
-      </div>
-      <div class="prop-group">
-        <div class="prop-label">Tags</div>
-        <div>
-          <span class="tag">agent</span>
-          <span class="tag">decision</span>
-        </div>
+      <div class="form-group">
+        <label class="form-label">Output Variable</label>
+        <input type="text" class="form-input" value="headlines">
       </div>
     </aside>
   </div>
+  <script src="app.js"></script>
 </body>
 </html>

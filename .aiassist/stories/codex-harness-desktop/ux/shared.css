@@ -1,0 +1,177 @@
+/* Shared component styles for OPC Workstation UX prototypes */
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.40);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-xl);
+  width: 480px;
+  box-shadow: var(--ch-shadow-lg);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: var(--ch-text-lg);
+  font-weight: var(--ch-weight-semibold);
+  margin: 0;
+}
+
+.modal-body {
+  padding: var(--ch-space-4);
+}
+
+.modal-footer {
+  padding: var(--ch-space-4);
+  border-top: 1px solid var(--ch-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ch-space-3);
+}
+
+/* ── Form ── */
+.form-group {
+  margin-bottom: var(--ch-space-4);
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+  color: var(--ch-text-secondary);
+  margin-bottom: var(--ch-space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--ch-surface-highest);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  color: var(--ch-text);
+  font-size: var(--ch-text-sm);
+  outline: none;
+  font-family: var(--ch-font-mono);
+}
+
+.form-input:focus {
+  border-color: var(--ch-accent);
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--ch-surface-highest);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  color: var(--ch-text);
+  font-size: var(--ch-text-sm);
+  outline: none;
+  font-family: var(--ch-font-mono);
+  min-height: 80px;
+  resize: vertical;
+}
+
+.form-textarea:focus {
+  border-color: var(--ch-accent);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ch-space-3);
+}
+
+/* ── Radio Group ── */
+.radio-group {
+  display: flex;
+  gap: var(--ch-space-3);
+}
+
+.radio-option {
+  flex: 1;
+  padding: var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  cursor: pointer;
+  text-align: center;
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+}
+
+.radio-option.active {
+  border-color: var(--ch-accent);
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent);
+}
+
+/* ── Checkbox ── */
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ch-border-strong);
+  border-radius: var(--ch-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ch-surface-highest);
+}
+
+.checkbox.checked {
+  background: var(--ch-accent);
+  border-color: var(--ch-accent);
+  color: var(--ch-accent-text);
+}
+
+/* ── Toggle ── */
+.toggle {
+  width: 32px;
+  height: 18px;
+  background: var(--ch-accent);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  right: 2px;
+}
+
+.toggle.off {
+  background: var(--ch-border-strong);
+}
+
+.toggle.off::after {
+  right: auto;
+  left: 2px;
+}

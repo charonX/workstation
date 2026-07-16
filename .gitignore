@@ -25,6 +25,8 @@ venv/
 # Build
 build/
 dist/
+out/
+.vite/
 *.tmp
 
 # Claude Code skills (symlinked from workflow project)
@@ -35,3 +37,10 @@ dist/
 .stitch/
 *.artifact.json
 .gstack/
+.gstack/
+.codegraph/
+
+# Test / coverage artifacts
+test-results/
+playwright-report/
+coverage/
