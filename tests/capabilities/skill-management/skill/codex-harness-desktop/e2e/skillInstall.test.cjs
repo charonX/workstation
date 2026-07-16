@@ -1,7 +1,7 @@
-// REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, codex-harness-desktop/REQ-SKILL-003, codex-harness-desktop/REQ-SKILL-004
-// REQ-VERSION: v1-hash:4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035
+// REQ-TRACE: codex-harness-desktop/REQ-SKILL-001, codex-harness-desktop/REQ-SKILL-002, codex-harness-desktop/REQ-SKILL-003, codex-harness-desktop/REQ-SKILL-004
+// REQ-VERSION: v1-hash:670a6a4b8ae51f684c9508a83d4da9c8926197136062216818b2bf4c69e0fc84
 // CAPABILITY-TRACE: skill-management
-// ENTITY-TRACE: skill
+// ENTITY-TRACE: skill-repo, skill
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
@@ -44,48 +44,7 @@ test.describe("Skill Install", () => {
     await stopElectronApp(electronApp, userDataDir);
   });
 
-  test("user can install a skill from a local file and see command logs", async () => {
-    // Create a minimal local skill fixture outside the configured repo.
-    const skillRepoPath = path.join(userDataDir, "skill-repo");
-    const sourceDir = path.join(userDataDir, "skill-source", "local-demo-skill");
-    await fs.mkdir(sourceDir, { recursive: true });
-    await fs.writeFile(
-      path.join(sourceDir, "SKILL.md"),
-      ["---", "name: local-demo-skill", "description: A local demo skill for E2E tests", "---", "", "# Local Demo Skill"].join("\n")
-    );
-
-    await firstWindow.click(locators.SKILLS_LINK);
-    await expect(firstWindow.locator(locators.SKILL_TABLE)).toBeVisible();
-
-    await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
-    await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).toBeVisible();
-
-    await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "local");
-    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, sourceDir);
-    await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
-
-    // Expected: a scrollable log panel appears and receives command output.
-    const logPanel = firstWindow.locator(locators.INSTALL_SKILL_LOG_PANEL);
-    await expect(logPanel).toBeVisible();
-    await expect.poll(async () => (await logPanel.textContent())?.trim().length || 0).toBeGreaterThan(0);
-
-    // Expected: modal closes and the new skill appears in the table
-    await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
-    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "local-demo-skill" })).toBeVisible();
-
-    // Expected: source directory was copied into skillRepoPath and contains SKILL.md
-    const installedSkillMd = path.join(skillRepoPath, "local-demo-skill", "SKILL.md");
-    await expect.poll(async () => {
-      try {
-        await fs.access(installedSkillMd);
-        return true;
-      } catch {
-        return false;
-      }
-    }).toBe(true);
-  });
-
-  test("user can install a skill from npm and see live install logs", async () => {
+  test("user can install a skill repo from npm and see live install logs", async () => {
     const skillRepoPath = path.join(userDataDir, "skill-repo");
 
     await firstWindow.click(locators.SKILLS_LINK);
@@ -103,9 +62,14 @@ test.describe("Skill Install", () => {
     await expect.poll(async () => (await logPanel.textContent())?.trim().length || 0).toBeGreaterThan(0);
 
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
-    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "npm-fixture-skill" })).toBeVisible();
 
-    const installedSkillMd = path.join(skillRepoPath, "npm-fixture-skill", "SKILL.md");
+    // Expected: repo group appears with the installed skills listed under it.
+    const repoRow = firstWindow.locator(locators.REPO_ROW);
+    await expect(repoRow).toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "npm-fixture-skill" })).toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "helper-skill" })).toBeVisible();
+
+    const installedSkillMd = path.join(skillRepoPath, "test-skill", "skills", "npm-fixture-skill", "SKILL.md");
     await expect.poll(async () => {
       try {
         await fs.access(installedSkillMd);
@@ -117,17 +81,10 @@ test.describe("Skill Install", () => {
   });
 
   test("Skill Detail shows Overview / Parameters / Examples / README tabs", async () => {
-    // Seed a local skill via API so the detail view has data.
-    const skillDir = path.join(userDataDir, "skills", "detail-demo-skill");
-    await fs.mkdir(skillDir, { recursive: true });
-    await fs.writeFile(
-      path.join(skillDir, "SKILL.md"),
-      ["---", "name: detail-demo-skill", "description: A detail demo skill for E2E tests", "---", "", "# Detail Demo Skill\n\nThis is the README."].join("\n")
-    );
-    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
+    await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
 
     await firstWindow.click(locators.SKILLS_LINK);
-    await firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "detail-demo-skill" }).click();
+    await firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "npm-fixture-skill" }).click();
 
     await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toBeVisible();
     await expect(firstWindow.locator(locators.SKILL_TAB_OVERVIEW)).toBeVisible();
@@ -136,25 +93,19 @@ test.describe("Skill Install", () => {
     await expect(firstWindow.locator(locators.SKILL_TAB_README)).toBeVisible();
 
     await firstWindow.click(locators.SKILL_TAB_README);
-    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("This is the README.");
+    await expect(firstWindow.locator(locators.SKILL_DETAIL_MODAL)).toContainText("This skill is only used to verify");
   });
 
-  test("user can delete a skill with confirmation", async () => {
-    const skillDir = path.join(userDataDir, "skills", "delete-demo-skill");
-    await fs.mkdir(skillDir, { recursive: true });
-    await fs.writeFile(
-      path.join(skillDir, "SKILL.md"),
-      ["---", "name: delete-demo-skill", "description: A skill to delete in E2E tests", "---", "", "# Delete Demo Skill"].join("\n")
-    );
-    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
+  test("user can delete a skill repo with confirmation", async () => {
+    const { repo } = await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
 
     await firstWindow.click(locators.SKILLS_LINK);
-    const skillRow = firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "delete-demo-skill" });
-    await skillRow.locator(locators.SKILL_DELETE_BUTTON).click();
+    const repoRow = firstWindow.locator(locators.REPO_ROW).filter({ hasText: repo.name });
+    await repoRow.locator(locators.REPO_DELETE_BUTTON).click();
 
     await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).toBeVisible();
     await firstWindow.click(locators.CONFIRM_OK_BUTTON);
     await expect(firstWindow.locator(locators.CONFIRM_DIALOG)).not.toBeVisible();
-    await expect(skillRow).not.toBeVisible();
+    await expect(repoRow).not.toBeVisible();
   });
 });

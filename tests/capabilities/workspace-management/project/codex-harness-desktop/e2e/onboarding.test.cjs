@@ -13,6 +13,8 @@ const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtur
 const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
+const NPM_SKILL_FIXTURE = path.resolve("tests/fixtures/npm-skill");
+
 async function createLocalGitRepo(baseDir, repoName) {
   const repoPath = path.join(baseDir, repoName);
   await fs.mkdir(repoPath, { recursive: true });
@@ -38,14 +40,8 @@ test.describe("Onboarding", () => {
     apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
 
-    // Seed a local skill fixture so Configure Skills has something to link.
-    const skillDir = path.join(userDataDir, "skills", "demo-skill");
-    await fs.mkdir(skillDir, { recursive: true });
-    await fs.writeFile(
-      path.join(skillDir, "SKILL.md"),
-      ["---", "name: demo-skill", "description: A demo skill for E2E tests", "---", "", "# Demo Skill"].join("\n")
-    );
-    await installSkill(apiBaseUrl, { source: "local", identifier: skillDir });
+    // Seed the offline npm skill fixture so Configure Skills has something to link.
+    await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
   });
 
   test.afterEach(async () => {
@@ -152,7 +148,7 @@ test.describe("Onboarding", () => {
     await projectCard.locator(locators.CONFIGURE_SKILLS_BUTTON).click();
     await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();
 
-    const skillCheckbox = firstWindow.locator(locators.SKILL_LINK_CHECKBOX).filter({ hasText: "demo-skill" });
+    const skillCheckbox = firstWindow.locator(locators.SKILL_LINK_CHECKBOX).filter({ hasText: "npm-fixture-skill" });
     await skillCheckbox.check();
     await expect(skillCheckbox).toBeChecked();
     await skillCheckbox.uncheck();

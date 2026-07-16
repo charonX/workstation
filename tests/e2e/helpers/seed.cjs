@@ -86,7 +86,7 @@ async function installSkill(apiBaseUrl, body) {
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       const event = JSON.parse(line.slice(6));
-      if (event.type === "success") return event.skill;
+      if (event.type === "success") return { repo: event.repo, skills: event.skills };
       if (event.type === "error") throw new Error(event.message || "installSkill failed");
     }
   }
