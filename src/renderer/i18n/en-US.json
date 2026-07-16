@@ -57,6 +57,8 @@
     "identifierPlaceholder": "e.g. @anthropic/skill-content-writer",
     "identifierHelp": "For npm packages, the app will install it into the Skill Repository.",
     "installError": "Failed to install skill. Please check the identifier and try again.",
+    "installLogTitle": "Install Log",
+    "installLogPlaceholder": "Waiting for command output...",
     "overview": "Overview",
     "parameters": "Parameters",
     "examples": "Examples",

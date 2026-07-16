@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getSkills, getSkill, installSkill as apiInstallSkill } from "../api/skills.js";
+import { getSkills, getSkill, startInstallJob, subscribeInstallJob } from "../api/skills.js";
 
 export function useSkills() {
   const [skills, setSkills] = useState([]);
@@ -23,14 +23,22 @@ export function useSkills() {
     fetchSkills();
   }, [fetchSkills]);
 
-  const install = useCallback(async (source, identifier) => {
-    try {
-      const newSkill = await apiInstallSkill({ source, identifier });
-      setSkills((prev) => [...prev, newSkill]);
-      return newSkill;
-    } catch (err) {
-      throw new Error(err.message || "Failed to install skill");
-    }
+  const install = useCallback(async (source, identifier, { onLog } = {}) => {
+    const jobId = await startInstallJob({ source, identifier });
+    return new Promise((resolve, reject) => {
+      const unsubscribe = subscribeInstallJob(jobId, {
+        onLog,
+        onSuccess: (skill) => {
+          unsubscribe();
+          setSkills((prev) => [...prev, skill]);
+          resolve(skill);
+        },
+        onError: (err) => {
+          unsubscribe();
+          reject(err);
+        }
+      });
+    });
   }, []);
 
   return { skills, loading, error, refetch: fetchSkills, install };

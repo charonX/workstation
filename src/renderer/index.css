@@ -288,6 +288,30 @@ body {
   margin-bottom: 0;
 }
 
+.install-log-panel {
+  background: var(--ch-bg);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  padding: var(--ch-space-3);
+  min-height: 120px;
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(--ch-font-mono);
+  font-size: var(--ch-text-xs);
+}
+
+.install-log-panel pre {
+  margin: 0 0 var(--ch-space-1) 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ch-text-secondary);
+}
+
+.install-log-placeholder {
+  color: var(--ch-text-tertiary);
+  font-style: italic;
+}
+
 .form-static {
   padding: 8px 12px;
   background: var(--ch-surface-high);

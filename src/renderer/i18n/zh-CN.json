@@ -57,6 +57,8 @@
     "identifierPlaceholder": "例如 @anthropic/skill-content-writer",
     "identifierHelp": "对于 npm 包，应用将安装到技能仓库中。",
     "installError": "安装技能失败。请检查标识符并重试。",
+    "installLogTitle": "安装日志",
+    "installLogPlaceholder": "等待命令输出...",
     "overview": "概览",
     "parameters": "参数",
     "examples": "示例",

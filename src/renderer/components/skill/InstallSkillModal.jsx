@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import Modal from "../shared/Modal.jsx";
 
@@ -14,16 +14,31 @@ export default function InstallSkillModal({ onClose, onInstall }) {
   const [identifier, setIdentifier] = useState("");
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [completed, setCompleted] = useState(false);
+  const logPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (logPanelRef.current) {
+      logPanelRef.current.scrollTop = logPanelRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!identifier.trim()) return;
 
     setInstalling(true);
+    setCompleted(false);
     setError(null);
+    setLogs([]);
     try {
-      await onInstall(source, identifier.trim());
-      onClose();
+      await onInstall(source, identifier.trim(), {
+        onLog: (line) => setLogs((prev) => [...prev, line]),
+      });
+      setCompleted(true);
+      // Keep the modal open briefly so the user can see the final log lines.
+      setTimeout(() => onClose(), 400);
     } catch (err) {
       setError(err.message || t("skills.installError"));
     } finally {
@@ -56,6 +71,7 @@ export default function InstallSkillModal({ onClose, onInstall }) {
               data-testid="skill-source-select"
               value={source}
               onChange={(e) => setSource(e.target.value)}
+              disabled={installing || completed}
             >
               {SOURCE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -78,20 +94,39 @@ export default function InstallSkillModal({ onClose, onInstall }) {
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder={t("skills.identifierPlaceholder")}
               required
+              disabled={installing || completed}
             />
             <p className="help-text">{t("skills.identifierHelp")}</p>
           </div>
+
+          {(installing || logs.length > 0) && (
+            <div className="form-group">
+              <label className="form-label">{t("skills.installLogTitle")}</label>
+              <div
+                ref={logPanelRef}
+                className="install-log-panel"
+                data-testid="install-skill-log-panel"
+              >
+                {logs.length === 0 && (
+                  <div className="install-log-placeholder">{t("skills.installLogPlaceholder")}</div>
+                )}
+                {logs.map((line, i) => (
+                  <pre key={i}>{line}</pre>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={installing}>
             {t("common.cancel")}
           </button>
           <button
             type="submit"
             className="btn btn-primary"
             data-testid="submit-install-skill-button"
-            disabled={installing || !identifier.trim()}
+            disabled={installing || completed || !identifier.trim()}
           >
             {installing ? t("skills.installing") : t("skills.installSkill")}
           </button>
