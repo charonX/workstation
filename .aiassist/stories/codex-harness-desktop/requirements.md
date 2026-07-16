@@ -751,11 +751,17 @@
   - `POST /api/skills/install` → body `{source: "npm" | "plugin" | "local", identifier: string}`
   - CLI: `opc-workstation skill install --source <source> --identifier <id>`
 - **测试类型**: CLI + HTTP API + E2E
-- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
 - [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
 - [ ] 安装后 skill 出现在列表中，并记录 `installSource`。
+- [ ] `npm`/`npx` 来源：将包内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
+- [ ] `plugin` 来源：将插件内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
+- [ ] `local` 来源：将 `identifier` 指向的本地目录复制到 `skillRepoPath/<name>`；`repoPath` 指向该目录。
+- [ ] 安装目录根节点存在 `SKILL.md`；解析其 frontmatter（`name`、`description` 等）和正文（`readme`）作为 skill 元数据。
+- [ ] 若 `skillRepoPath` 未配置或安装过程失败，返回 `400`/`500` 错误且不创建 skill 记录。
+- [ ] `GET /api/skills/:id` 返回的 `repoPath` 位于当前 `skillRepoPath` 之下。
 
 ---
 
@@ -774,7 +780,7 @@
   - Skill 仍被 project 关联时返回 `400 CONFLICT`
   - Skill 不存在返回 `404`
 - **测试类型**: CLI + HTTP API + E2E
-- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
 - [ ] 删除后 skill 从 `GET /api/skills` 列表中消失。

@@ -1,16 +1,17 @@
 story_id: codex-harness-desktop
 story_name: Codex Harness Desktop App
 intention: 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
-current_phase: QA
+current_phase: ASSERTION-SIGNOFF
 attempt: 3
 bug_counter: 15
 blockers:
-  - 无
+  - REQ-SKILL-003 已修订，要求真实安装到 skillRepoPath；需重新完成 assertion-signoff 后才能进入 BUILD。
 slices: []
 gates:
-  assertion_signoff: passed
+  assertion_signoff: pending
   feel_signoff: pending
 history:
+  - {at: 2026-07-16, from: QA, to: ASSERTION-SIGNOFF, note: "就地补全 REQ-SKILL-003：skill 必须真实安装到 skillRepoPath，解析 SKILL.md，repoPath 位于 skillRepoPath 下，安装失败返回 400/500。更新 requirements.md、requirements-v1.hash、test-plan.md、signoff.md、business-capabilities.md 及 skill 相关测试。等待 assertion-signoff 重新签核。"}
   - {at: 2026-07-15, from: BUILD, to: QA, note: "BUILD 完成：移除 Tasks 创建 UI，保留 Executions 历史页；/tasks → /executions；Sidebar、i18n、UX 原型同步；84 单元测试 + 42 E2E 测试全绿。"}
   - {at: 2026-07-15, from: ASSERTION-SIGNOFF, to: BUILD, note: "task/execution UI 契约调整 assertion-signoff 通过：删除 REQ-SCHEDULE-005，保留 Executions 历史页。解锁 BUILD。"}
   - {at: 2026-07-15, from: QA, to: ASSERTION-SIGNOFF, note: "用户确认简化 task/execution 模型：删除 REQ-SCHEDULE-005，移除 Tasks 创建 UI，保留 Executions 历史页。已更新 requirements.md、requirements-v1.hash、test-plan.md、signoff.md、business-capabilities.md 及相关测试。等待 assertion-signoff。"}

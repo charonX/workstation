@@ -38,7 +38,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/` | REQ-SKILL-001~003 | `skill.test.js`, `skillInstall.spec.js` (E2E) |
+| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001~004 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
 
 ### information-aggregation
 > Dashboard 展示关键指标与最近活动。
@@ -81,7 +81,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 | workspace-management | 2 | 19 | 2026-07-09 |
 | flow-orchestration | 2 | 19 | 2026-07-14 |
 | scheduling-execution | 3 | 12 | 2026-07-15 |
-| skill-management | 1 | 8 | 2026-07-09 |
+| skill-management | 1 | 10 | 2026-07-16 |
 | information-aggregation | 1 | 5 | 2026-07-09 |
 | internationalization-theme | 2 | 6 | 2026-07-09 |
 | command-interface | 1 | 3 | 2026-07-09 |
