@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035`
+> requirements-v1.hash: `670a6a4b8ae51f684c9508a83d4da9c8926197136062216818b2bf4c69e0fc84`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL-003 npm 安装日志流式展示重新签核通过**（2026-07-16：新增 npm 命令执行与弹层日志）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL skill repo 信息架构调整签核通过**（2026-07-16：用户明确要求 repo 下嵌套 skills、按 repo 分组、取消 local、删除 repo 级联；已就地补全 REQ/tech-design/test-plan/business-capabilities，更新测试与实现，全量测试通过）
 
 ### 检查清单
 
@@ -19,7 +19,7 @@
 - [x] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
 - [x] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
 - [x] 无快照当判定依据。
-- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill 安装失败与日志）。
+- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill repo 删除级联、嵌套 skills 扫描）。
 - [x] `signoff.md` Assertion 部分已更新。
 
 ### REQ 覆盖
@@ -48,9 +48,10 @@
 | REQ-SCHEDULE-001 | scheduling-execution / task | `task.test.js`, `flowRun.test.js` (E2E) | 手动触发执行、Flow Editor Run 按钮、完成状态 |
 | REQ-SCHEDULE-002 | scheduling-execution / schedule | `schedule.test.js` | Schedule 创建/启用停用/cron 描述/必填校验 |
 | REQ-SCHEDULE-003 | scheduling-execution / execution | `task.test.js`, `flowRun.test.js` (E2E) | 执行历史倒序、Logs/Variables/Output、分支路径/迭代 |
-| REQ-SKILL-001 | skill-management / skill | `skill.test.js` | Skill 列表无 Linked Projects、含 category |
-| REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.js` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、无项目链接 |
-| REQ-SKILL-003 | skill-management / skill | `skill.test.js`, `skillInstall.test.cjs` (E2E) | `npm`/`npx` 执行真实 `npm install`；弹层实时展示命令日志；失败保留日志且不创建记录；`repoPath` 位于 `skillRepoPath` 下 |
+| REQ-SKILL-001 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | Skill repo 分组列表、保留嵌套路径、无 Linked Projects |
+| REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.cjs` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、返回 repoId、无项目链接 |
+| REQ-SKILL-003 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | npm 真实安装到 `skillRepoPath`；弹层实时展示命令日志；失败保留日志且不创建记录；递归扫描 `skills/` 下 SKILL.md；不再支持 local |
+| REQ-SKILL-004 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | 删除 repo 物理目录、级联 skills/project_skills、404、无单 skill 删除 |
 | REQ-DASH-001 | information-aggregation / dashboard | `dashboard.test.js`, `dashboard.test.js` (E2E) + feel-signoff | 指标卡片、最近执行、快捷项目入口 |
 | REQ-I18N-001 | internationalization-theme / theme | `theme.test.js`, `themeLanguage.test.js` (E2E) + feel-signoff | dark/light 切换与持久化 |
 | REQ-I18N-002 | internationalization-theme / language | `language.test.js`, `themeLanguage.test.js` (E2E) | 语言偏好持久化（zh-CN / en-US），默认 en-US |
@@ -63,16 +64,14 @@
 | workspace-management | settings, project | 19 |
 | flow-orchestration | flow, flow-engine | 19 |
 | scheduling-execution | task, schedule, execution | 12 |
-| skill-management | skill | 8 |
+| skill-management | skill-repo, skill | 10 |
 | information-aggregation | dashboard | 5 |
 | internationalization-theme | language, theme | 6 |
 | command-interface | cli | 3 |
 
 ### 当前测试运行状态
 
-- 现有 API/CLI 单元测试：待根据更新后的 REQ-SKILL-003 补充 npm 安装日志流式断言后重新统计。
-- 新增 E2E 测试：5 个 spec 文件，待补充 npm 安装日志面板断言。
-- **当前状态**：REQ-SKILL-003 BUILD 完成，86 个单元测试 + 43 个 E2E 测试全绿；等待 feel-signoff 最终验收。
+- **当前状态**：skill repo 信息架构已就地补全并实现；84 个 API/CLI 单元测试 + 42 个 E2E 测试全绿；等待 feel-signoff。
 
 ---
 
