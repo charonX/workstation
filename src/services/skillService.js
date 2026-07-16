@@ -526,6 +526,22 @@ function removeSkillSymlink(skill, project) {
   }
 }
 
+function removeSkillSymlinksForSkill(skillId) {
+  const db = getDb();
+  const skill = getSkillDetail(skillId);
+  const projectIds = db
+    .prepare("SELECT projectId FROM project_skills WHERE skillId = ?")
+    .all(skillId)
+    .map((row) => row.projectId);
+  for (const projectId of projectIds) {
+    const project = projectService.getProjectDetail(projectId);
+    if (skill && project) {
+      removeSkillSymlink(skill, project);
+    }
+  }
+  db.prepare("DELETE FROM project_skills WHERE skillId = ?").run(skillId);
+}
+
 function resolveDependencySkill(raw, allSkills) {
   const byId = allSkills.find((s) => s.id === raw);
   if (byId) return byId;
@@ -593,11 +609,10 @@ export function deleteSkillRepo(repoId) {
     fs.rmSync(repo.repoPath, { recursive: true, force: true });
   }
 
-  const idList = skillIds.map(() => "?").join(",");
-  if (skillIds.length > 0) {
-    db.prepare(`DELETE FROM project_skills WHERE skillId IN (${idList})`).run(...skillIds);
-    db.prepare(`DELETE FROM skills WHERE repoId = ?`).run(repoId);
+  for (const skillId of skillIds) {
+    removeSkillSymlinksForSkill(skillId);
   }
+  db.prepare("DELETE FROM skills WHERE repoId = ?").run(repoId);
   db.prepare("DELETE FROM skill_repos WHERE id = ?").run(repoId);
 
   return { deleted: true };
