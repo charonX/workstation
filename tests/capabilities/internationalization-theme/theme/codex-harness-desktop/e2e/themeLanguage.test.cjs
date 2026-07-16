@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-I18N-001, REQ-I18N-002
-// REQ-VERSION: v1-hash:d430fc9129f2087e72c0880464a7bd5430c420753cace446dc54475760bc46c1
+// REQ-VERSION: v1-hash:53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569
 // CAPABILITY-TRACE: internationalization-theme
 // ENTITY-TRACE: theme, language
 // TEST-AUTHOR: agent

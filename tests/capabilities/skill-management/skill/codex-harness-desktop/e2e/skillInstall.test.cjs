@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, REQ-SKILL-003, REQ-SKILL-004
-// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
+// REQ-VERSION: v1-hash:53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -24,6 +24,18 @@ test.describe("Skill Install", () => {
     firstWindow = ctx.firstWindow;
     apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
+
+    // Configure a per-test skill repository so installs are isolated and assertable.
+    const skillRepoPath = path.join(userDataDir, "skill-repo");
+    await fs.mkdir(skillRepoPath, { recursive: true });
+    const res = await fetch(`${apiBaseUrl}/api/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillRepoPath })
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to set skillRepoPath: ${res.status}`);
+    }
   });
 
   test.afterEach(async () => {
@@ -31,11 +43,12 @@ test.describe("Skill Install", () => {
   });
 
   test("user can install a skill from a local file", async () => {
-    // Create a minimal local skill fixture.
-    const skillDir = path.join(userDataDir, "skills", "local-demo-skill");
-    await fs.mkdir(skillDir, { recursive: true });
+    // Create a minimal local skill fixture outside the configured repo.
+    const skillRepoPath = path.join(userDataDir, "skill-repo");
+    const sourceDir = path.join(userDataDir, "skill-source", "local-demo-skill");
+    await fs.mkdir(sourceDir, { recursive: true });
     await fs.writeFile(
-      path.join(skillDir, "SKILL.md"),
+      path.join(sourceDir, "SKILL.md"),
       ["---", "name: local-demo-skill", "description: A local demo skill for E2E tests", "---", "", "# Local Demo Skill"].join("\n")
     );
 
@@ -46,12 +59,23 @@ test.describe("Skill Install", () => {
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).toBeVisible();
 
     await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "local");
-    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, skillDir);
+    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, sourceDir);
     await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
 
     // Expected: modal closes and the new skill appears in the table
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
     await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "local-demo-skill" })).toBeVisible();
+
+    // Expected: source directory was copied into skillRepoPath and contains SKILL.md
+    const installedSkillMd = path.join(skillRepoPath, "local-demo-skill", "SKILL.md");
+    await expect.poll(async () => {
+      try {
+        await fs.access(installedSkillMd);
+        return true;
+      } catch {
+        return false;
+      }
+    }).toBe(true);
   });
 
   test("Skill Detail shows Overview / Parameters / Examples / README tabs", async () => {

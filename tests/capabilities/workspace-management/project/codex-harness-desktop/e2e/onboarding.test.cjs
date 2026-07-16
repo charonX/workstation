@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-WORKSPACE-008, REQ-I18N-001, REQ-I18N-002
-// REQ-VERSION: v1-hash:9ef9310da8e2e2737ea32e521ee7f83fcee2c5d30f8d7d435ae367124e240b22
+// REQ-VERSION: v1-hash:53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569
 // CAPABILITY-TRACE: workspace-management, internationalization-theme
 // ENTITY-TRACE: project, settings, theme, language
 // TEST-AUTHOR: agent
