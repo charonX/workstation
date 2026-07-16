@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `762b9b7ff4d4891a26d57bdd0dd7ead507d8e0b23271665ae1ff317e3cfa9493`
+> requirements-v1.hash: `5d0bdb3d2786189d093861e7afc37e0431ca15d5e7ae871afd42b421bf45f108`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL skill repo 信息架构调整签核通过**（2026-07-16），**REQ-WORKSPACE-006 增量签核通过**（2026-07-16：用户确认关联 skill 时在项目目录创建软连接，并自动级联关联 dependencies；取消关联时仅删除当前 skill 的软连接）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL skill repo 信息架构调整签核通过**（2026-07-16），**REQ-WORKSPACE-006 增量签核通过**（2026-07-16：用户确认关联 skill 时在项目目录创建软连接，并自动级联关联 dependencies；取消关联时仅删除当前 skill 的软连接；skill repo 删除时清理 dangling symlink）
 
 ### 检查清单
 
@@ -51,7 +51,7 @@
 | REQ-SKILL-001 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | Skill repo 分组列表、保留嵌套路径、无 Linked Projects |
 | REQ-SKILL-002 | skill-management / skill | `skill.test.js`, `skillInstall.test.cjs` (E2E) + feel-signoff | Skill Detail Overview/Parameters/Examples/README、返回 repoId、无项目链接 |
 | REQ-SKILL-003 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | npm 真实安装到 `skillRepoPath`；弹层实时展示命令日志；失败保留日志且不创建记录；递归扫描 `skills/` 下 SKILL.md；不再支持 local |
-| REQ-SKILL-004 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | 删除 repo 物理目录、级联 skills/project_skills、404、无单 skill 删除 |
+| REQ-SKILL-004 | skill-management / skill-repo | `skill.test.js`, `skillInstall.test.cjs` (E2E) | 删除 repo 物理目录、级联 skills/project_skills、删除前清理项目软连接、404、无单 skill 删除 |
 | REQ-DASH-001 | information-aggregation / dashboard | `dashboard.test.js`, `dashboard.test.js` (E2E) + feel-signoff | 指标卡片、最近执行、快捷项目入口 |
 | REQ-I18N-001 | internationalization-theme / theme | `theme.test.js`, `themeLanguage.test.js` (E2E) + feel-signoff | dark/light 切换与持久化 |
 | REQ-I18N-002 | internationalization-theme / language | `language.test.js`, `themeLanguage.test.js` (E2E) | 语言偏好持久化（zh-CN / en-US），默认 en-US |
@@ -71,7 +71,7 @@
 
 ### 当前测试运行状态
 
-- **当前状态**：skill repo 信息架构已就地补全并实现；84 个 API/CLI 单元测试 + 42 个 E2E 测试全绿；等待 feel-signoff。
+- **当前状态**：BUG-016/017 已修复，skill repo 删除时项目软连接清理已实现；88 个 API/CLI 单元测试 + 43 个 E2E 测试全绿；等待 feel-signoff。
 
 ---
 
