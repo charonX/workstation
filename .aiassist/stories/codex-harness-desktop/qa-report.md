@@ -1,5 +1,23 @@
 # QA 报告 — codex-harness-desktop
 
+## BUG-016 修复验证
+
+- 症状：Skill Detail Overview 中 version / author / category / tags 全部显示为“—”。
+- 根因：
+  1. `parseSkillMarkdown` 只按首行 `key: value` 解析，无法解析多行 YAML 列表（如 `tags:`），导致 tags 丢失。
+  2. `SkillDetailModal` 无条件渲染所有 meta 行，空值用“—”兜底。
+- 修复：
+  - `src/services/skillService.js`：新增 `parseFrontmatter` / `parseList` / `parseScalar`，支持多行 frontmatter 与 YAML 列表；`scanRepoSkills` 提取 `tags`。
+  - `src/renderer/components/skill/SkillDetailModal.jsx`：Overview tab 只渲染有值的 meta 行，并添加 `data-testid`。
+- 回归测试：
+  - API 测试断言 detail 返回 version/author/category/tags。
+  - E2E 测试断言 npm-fixture-skill（有元数据）展示对应行，helper-skill（无元数据）隐藏对应行。
+- 验证结果：
+  - `npm run test:unit`：84 通过，0 失败
+  - `npm run test:e2e`：43 通过，0 失败
+
+---
+
 生成时间：2026-07-10（BUG-004 目录选择器实现与 BUG-005 竞态修复后重新回归）
 
 ---
