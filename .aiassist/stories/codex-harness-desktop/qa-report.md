@@ -1,5 +1,24 @@
 # QA 报告 — codex-harness-desktop
 
+## REQ-WORKSPACE-006 增量验证（skill 软连接 + 依赖级联）
+
+- 变更：用户要求 Project 关联 Skill 时产生实际文件系统效果，并处理 skill 依赖。
+- 实现：
+  - `src/services/skillService.js`：
+    - 关联 skill 时在 `project.localPath/.opc/skills/<repoName>/<skillName>` 创建指向 skill 安装目录的软连接。
+    - 取消关联时仅删除当前 skill 的软连接。
+    - 关联时按 `dependencies`（支持 skill id 或 name）自动级联关联依赖 skill。
+    - `scanRepoSkills` 现在解析 `SKILL.md` 中的 `dependencies` 列表。
+  - `src/http/routes/projects.js` 继续通过 `skillService.linkSkill/unlinkSkill` 调用，无需额外改动。
+- 回归测试：
+  - API 测试断言关联 main skill 后同时链接依赖 skill，并在项目目录生成两个软连接。
+  - API 测试断言取消 main skill 后仅删除 main 的软连接，依赖 skill 仍保持链接和软连接。
+- 验证结果：
+  - `npm run test:unit`：87 通过，0 失败
+  - `npm run test:e2e`：43 通过，0 失败
+
+---
+
 ## BUG-017 修复验证
 
 - 症状：Project Detail → 技能 tab 的“可用技能”里出现 `mattpocock/skills`、`mattpocock-skills` 等 3 个仓库名称，且它们本身是可以勾选的 skill 项。
