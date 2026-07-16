@@ -267,6 +267,18 @@ export function listSkills() {
   return db.prepare("SELECT * FROM skills").all().map(rowToSkill);
 }
 
+export function listLinkableSkills() {
+  const db = getDb();
+  const validRepoIds = new Set(
+    db.prepare("SELECT id FROM skill_repos").all().map((row) => row.id)
+  );
+  return db
+    .prepare("SELECT * FROM skills")
+    .all()
+    .map(rowToSkill)
+    .filter((skill) => validRepoIds.has(skill.repoId));
+}
+
 export function listSkillRepos() {
   const db = getDb();
   const repos = db.prepare("SELECT * FROM skill_repos ORDER BY createdAt DESC").all().map(rowToRepo);

@@ -196,4 +196,10 @@ function migrateSchema(database) {
   if (!hasColumn(database, "skills", "repoId")) {
     database.exec(`ALTER TABLE skills ADD COLUMN repoId TEXT`);
   }
+  // Clean up orphan skills left over from before the skill-repo information architecture.
+  // Skills must belong to a valid skill_repo; those without a repoId are no longer reachable.
+  database.exec(`
+    DELETE FROM project_skills WHERE skillId IN (SELECT id FROM skills WHERE repoId IS NULL);
+    DELETE FROM skills WHERE repoId IS NULL;
+  `);
 }

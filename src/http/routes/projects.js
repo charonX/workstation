@@ -80,7 +80,7 @@ function buildProjectDetail(projectId) {
   const project = projectService.getProjectDetail(projectId);
   if (!project) return null;
   const linkedSkillIds = skillService.getLinkedSkills(projectId);
-  const allSkills = skillService.listSkills();
+  const allSkills = skillService.listLinkableSkills();
   const skillMap = new Map(allSkills.map(s => [s.id, s]));
   const skills = [];
   for (const skill of allSkills) {
