@@ -146,6 +146,7 @@
 - [ ] 关联 skill 时，在项目目录创建指向 skill 安装目录的软连接（如 `.opc/skills/<repoName>/<skillName>`）。
 - [ ] 取消关联 skill 时，删除对应的软连接。
 - [ ] 关联 skill 时自动级联关联其 `dependencies` 声明的 skill；取消关联时不级联取消。
+- [ ] Skill 仓库被删除时，已关联项目的 skill 软连接应被同步清理，避免 dangling symlink。
 - [ ] 关联/取消关联 skill 幂等。
 - [ ] 重复关联同一 skill 不重复记录。
 
@@ -792,6 +793,7 @@
 **验收标准**：
 - [ ] 删除仓库时，物理删除 `skillRepoPath` 下对应的安装目录。
 - [ ] 级联删除该仓库下的所有 skill 记录及 `project_skills` 关联。
+- [ ] 删除仓库前，移除所有已关联项目中的 skill 软连接，避免 dangling symlink。
 - [ ] 删除后 `GET /api/skill-repos` 不再包含该仓库及其 skill。
 - [ ] 删除不存在的仓库返回 `404`。
 - [ ] 不提供删除单个 skill 的 API 或 UI 入口。

@@ -14,7 +14,21 @@
   - API 测试断言关联 main skill 后同时链接依赖 skill，并在项目目录生成两个软连接。
   - API 测试断言取消 main skill 后仅删除 main 的软连接，依赖 skill 仍保持链接和软连接。
 - 验证结果：
-  - `npm run test:unit`：87 通过，0 失败
+  - `npm run test:unit`：88 通过，0 失败
+  - `npm run test:e2e`：43 通过，0 失败
+
+---
+
+## REQ-SKILL-004 增量验证（删除 skill repo 时清理项目软连接）
+
+- 变更：用户追问 skill repo 更新/删除后，已创建的项目软连接不应残留。
+- 实现：
+  - `src/services/skillService.js`：新增 `removeSkillSymlinksForSkill(skillId)`，遍历 `project_skills` 找到所有关联项目，调用 `removeSkillSymlink` 删除 `.opc/skills/<repoName>/<skillName>` 符号链接后再删除关联记录。
+  - `deleteSkillRepo` 在物理删除安装目录与 DB 记录前，对每个 skill 调用 `removeSkillSymlinksForSkill`。
+- 回归测试：
+  - API 测试安装 npm fixture、关联项目、验证 symlink 存在后删除 repo，断言 symlink 已被移除。
+- 验证结果：
+  - `npm run test:unit`：88 通过，0 失败
   - `npm run test:e2e`：43 通过，0 失败
 
 ---
