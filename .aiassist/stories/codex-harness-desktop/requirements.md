@@ -143,6 +143,9 @@
 
 **验收标准**：
 - [ ] Project 详情返回 Overview 元数据和可用 skill 列表及关联状态。
+- [ ] 关联 skill 时，在项目目录创建指向 skill 安装目录的软连接（如 `.opc/skills/<repoName>/<skillName>`）。
+- [ ] 取消关联 skill 时，删除对应的软连接。
+- [ ] 关联 skill 时自动级联关联其 `dependencies` 声明的 skill；取消关联时不级联取消。
 - [ ] 关联/取消关联 skill 幂等。
 - [ ] 重复关联同一 skill 不重复记录。
 

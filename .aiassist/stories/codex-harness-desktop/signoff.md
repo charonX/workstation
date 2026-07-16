@@ -3,13 +3,13 @@
 > story: `codex-harness-desktop`
 > workflow: `loop-workflow`
 > attempt: 3
-> requirements-v1.hash: `670a6a4b8ae51f684c9508a83d4da9c8926197136062216818b2bf4c69e0fc84`
+> requirements-v1.hash: `762b9b7ff4d4891a26d57bdd0dd7ead507d8e0b23271665ae1ff317e3cfa9493`
 
 ---
 
 ## Assertion Signoff
 
-> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL skill repo 信息架构调整签核通过**（2026-07-16：用户明确要求 repo 下嵌套 skills、按 repo 分组、取消 local、删除 repo 级联；已就地补全 REQ/tech-design/test-plan/business-capabilities，更新测试与实现，全量测试通过）
+> 状态：**已通过**（2026-07-09），**BUG-011 增量签核通过**（2026-07-14），**REQ-FLOW-016/017 增量签核通过**（2026-07-14），**task/execution UI 契约调整签核通过**（2026-07-15），**REQ-SKILL-003 修订后重新签核通过**（2026-07-16：真实安装到 `skillRepoPath`），**REQ-SKILL skill repo 信息架构调整签核通过**（2026-07-16），**REQ-WORKSPACE-006 增量签核通过**（2026-07-16：用户确认关联 skill 时在项目目录创建软连接，并自动级联关联 dependencies；取消关联时仅删除当前 skill 的软连接）
 
 ### 检查清单
 
@@ -19,7 +19,7 @@
 - [x] 无 `// TODO: HUMAN ASSERTION` 占位（或已确认预期值）。
 - [x] 预期值来源清晰（来自 PRD/REQ / 本次 assertion 访谈确认，非代码输出）。
 - [x] 无快照当判定依据。
-- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill repo 删除级联、嵌套 skills 扫描）。
+- [x] 边界/错误 case 已覆盖（空值、必填校验、非法表达式、循环保护、关联幂等、skill repo 删除级联、嵌套 skills 扫描、project skill 软连接与依赖级联）。
 - [x] `signoff.md` Assertion 部分已更新。
 
 ### REQ 覆盖
