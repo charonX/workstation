@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
+import { getDb } from "../../../../../../src/db.js";
 
 const CLI = "node src/cli/opc-workstation.js";
 
@@ -169,6 +170,33 @@ describe("Projects", () => {
     });
     const detail = await (await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`)).json();
     assert.equal(detail.skills.filter(s => s.id === "s1" && s.linked).length, 1);
+  });
+
+  it("REQ-WORKSPACE-006: project detail excludes orphan skills without a repo", async () => {
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Hot News", localPath: "~/opc-workspace/hot-news" })
+    })).json();
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO skill_repos (id, name, repoPath, installSource, createdAt)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("repo-1", "valid-repo", "/tmp/valid-repo", "npm", new Date().toISOString());
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("valid-skill", "repo-1", "Valid Skill", "A valid skill", "skills/valid", null, "[]", null, null, "[]", "[]", "[]", null);
+    db.prepare(`
+      INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("orphan-skill", "", "mattpocock/skills", "Orphan repo-like skill", "skills/orphan", null, "[]", null, null, "[]", "[]", "[]", null);
+
+    const detail = await (await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`)).json();
+    const skillIds = detail.skills.map(s => s.id);
+    assert.ok(skillIds.includes("valid-skill"), "valid skill should be listed");
+    assert.ok(!skillIds.includes("orphan-skill"), "orphan skill without repo should be excluded");
   });
 
   it("REQ-WORKSPACE-008: deletes a project and cascades related data", async () => {
