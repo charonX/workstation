@@ -53,7 +53,7 @@
 3. `onboarding.test.js` — 本地文件路径、项目名、关联 skill 名称。
 4. `flowRun.test.js` — project id 回填、节点添加方式、zoom 可测量断言。
 5. `flowEditor.test.cjs` — 节点删除触发方式（按钮/Delete 键）、各节点类型字段标签、Condition handle 的 data-handleid 值、持久化后的字段回显值。
-6. `skillInstall.test.cjs` — npm/local skill 标识符、本地 npm fixture、README 内容断言、安装后 `repoPath` 位于 `skillRepoPath` 下且存在 `SKILL.md`、npm 安装日志面板断言。
+6. `skillInstall.test.cjs` — 使用 `tests/fixtures/npm-skill` 作为 npm fixture；断言 local/npm 安装均展示 `INSTALL_SKILL_LOG_PANEL` 且内容非空；安装后 `repoPath` 位于 `skillRepoPath` 下且存在 `SKILL.md`。`seed.cjs` 中 `installSkill` 改为消费 job SSE 流。
 6. `themeLanguage.test.js` — 中英文 UI 文案断言。
 7. `dashboard.test.js` — 指标数值、快捷链接跳转目标。
 

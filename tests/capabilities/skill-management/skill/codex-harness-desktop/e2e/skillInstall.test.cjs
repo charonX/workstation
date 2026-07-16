@@ -1,5 +1,5 @@
-// REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, REQ-SKILL-003, REQ-SKILL-004
-// REQ-VERSION: v1-hash:53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569
+// REQ-TRACE: codex-harness-desktop/REQ-SKILL-002, codex-harness-desktop/REQ-SKILL-003, codex-harness-desktop/REQ-SKILL-004
+// REQ-VERSION: v1-hash:4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -11,6 +11,8 @@ const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
+
+const NPM_SKILL_FIXTURE = path.resolve("tests/fixtures/npm-skill");
 
 test.describe("Skill Install", () => {
   let electronApp;
@@ -42,7 +44,7 @@ test.describe("Skill Install", () => {
     await stopElectronApp(electronApp, userDataDir);
   });
 
-  test("user can install a skill from a local file", async () => {
+  test("user can install a skill from a local file and see command logs", async () => {
     // Create a minimal local skill fixture outside the configured repo.
     const skillRepoPath = path.join(userDataDir, "skill-repo");
     const sourceDir = path.join(userDataDir, "skill-source", "local-demo-skill");
@@ -62,12 +64,48 @@ test.describe("Skill Install", () => {
     await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, sourceDir);
     await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
 
+    // Expected: a scrollable log panel appears and receives command output.
+    const logPanel = firstWindow.locator(locators.INSTALL_SKILL_LOG_PANEL);
+    await expect(logPanel).toBeVisible();
+    await expect.poll(async () => (await logPanel.textContent())?.trim().length || 0).toBeGreaterThan(0);
+
     // Expected: modal closes and the new skill appears in the table
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
     await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "local-demo-skill" })).toBeVisible();
 
     // Expected: source directory was copied into skillRepoPath and contains SKILL.md
     const installedSkillMd = path.join(skillRepoPath, "local-demo-skill", "SKILL.md");
+    await expect.poll(async () => {
+      try {
+        await fs.access(installedSkillMd);
+        return true;
+      } catch {
+        return false;
+      }
+    }).toBe(true);
+  });
+
+  test("user can install a skill from npm and see live install logs", async () => {
+    const skillRepoPath = path.join(userDataDir, "skill-repo");
+
+    await firstWindow.click(locators.SKILLS_LINK);
+    await expect(firstWindow.locator(locators.SKILL_TABLE)).toBeVisible();
+
+    await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
+    await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).toBeVisible();
+
+    await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "npm");
+    await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, NPM_SKILL_FIXTURE);
+    await firstWindow.click(locators.SUBMIT_INSTALL_SKILL_BUTTON);
+
+    const logPanel = firstWindow.locator(locators.INSTALL_SKILL_LOG_PANEL);
+    await expect(logPanel).toBeVisible();
+    await expect.poll(async () => (await logPanel.textContent())?.trim().length || 0).toBeGreaterThan(0);
+
+    await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).not.toBeVisible();
+    await expect(firstWindow.locator(locators.SKILL_ROW).filter({ hasText: "npm-fixture-skill" })).toBeVisible();
+
+    const installedSkillMd = path.join(skillRepoPath, "npm-fixture-skill", "SKILL.md");
     await expect.poll(async () => {
       try {
         await fs.access(installedSkillMd);

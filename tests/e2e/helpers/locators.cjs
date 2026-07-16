@@ -1,5 +1,5 @@
 // REQ-TRACE: codex-harness-desktop/REQ-FLOW-003, codex-harness-desktop/REQ-FLOW-016, codex-harness-desktop/REQ-FLOW-017, codex-harness-desktop/REQ-SCHEDULE-001, codex-harness-desktop/REQ-SCHEDULE-003
-// REQ-VERSION: v1-hash:53fcb918ad26820e6760c66ac610791ceca2a11a981737c76234a70ea8f36569
+// REQ-VERSION: v1-hash:4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -104,6 +104,7 @@ module.exports = {
   SKILL_SOURCE_SELECT: "[data-testid='skill-source-select']",
   SKILL_IDENTIFIER_INPUT: "[data-testid='skill-identifier-input']",
   SUBMIT_INSTALL_SKILL_BUTTON: "[data-testid='submit-install-skill-button']",
+  INSTALL_SKILL_LOG_PANEL: "[data-testid='install-skill-log-panel']",
   SKILL_TABLE: "[data-testid='skill-table']",
   SKILL_ROW: "[data-testid='skill-row']",
   SKILL_DELETE_BUTTON: "[data-testid='skill-delete-button']",
