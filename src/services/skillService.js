@@ -1,5 +1,6 @@
 import { getDb, resetDb } from "../db.js";
 import * as settingsService from "./settingsService.js";
+import * as projectService from "./projectService.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -199,6 +200,7 @@ function scanRepoSkills(repoRoot) {
       version: parsed.frontmatter.version || null,
       repoPath: relativePath,
       tags: parseList(parsed.frontmatter.tags || ""),
+      dependencies: parseList(parsed.frontmatter.dependencies || ""),
       readme: parsed.body || null
     };
   });
@@ -475,7 +477,65 @@ export function subscribeInstallJob(jobId, listener) {
   return () => job.listeners.delete(listener);
 }
 
-export function linkSkill(skillId, projectId) {
+function expandHome(filePath) {
+  if (typeof filePath !== "string") return filePath;
+  if (filePath === "~" || filePath.startsWith("~/")) {
+    return path.join(os.homedir(), filePath.slice(1));
+  }
+  return filePath;
+}
+
+function skillRepoSkillDir(skill) {
+  const repo = getSkillRepo(skill.repoId);
+  if (!repo) return null;
+  return path.join(repo.repoPath, skill.repoPath);
+}
+
+function skillSymlinkPaths(skill, project) {
+  if (!project?.localPath) return null;
+  const repo = getSkillRepo(skill.repoId);
+  if (!repo) return null;
+  const targetDir = path.join(repo.repoPath, skill.repoPath);
+  const linkDir = path.join(
+    expandHome(project.localPath),
+    ".opc",
+    "skills",
+    repo.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+  );
+  const linkPath = path.join(linkDir, skill.name.replace(/[^a-zA-Z0-9_-]/g, "_"));
+  return { targetDir, linkDir, linkPath };
+}
+
+function createSkillSymlink(skill, project) {
+  const paths = skillSymlinkPaths(skill, project);
+  if (!paths) return;
+  fs.mkdirSync(paths.linkDir, { recursive: true });
+  const existing = fs.lstatSync(paths.linkPath, { throwIfNoEntry: false });
+  if (existing) {
+    fs.rmSync(paths.linkPath, { recursive: true, force: true });
+  }
+  fs.symlinkSync(paths.targetDir, paths.linkPath, process.platform === "win32" ? "junction" : "dir");
+}
+
+function removeSkillSymlink(skill, project) {
+  const paths = skillSymlinkPaths(skill, project);
+  if (!paths) return;
+  const existing = fs.lstatSync(paths.linkPath, { throwIfNoEntry: false });
+  if (existing) {
+    fs.rmSync(paths.linkPath, { recursive: true, force: true });
+  }
+}
+
+function resolveDependencySkill(raw, allSkills) {
+  const byId = allSkills.find((s) => s.id === raw);
+  if (byId) return byId;
+  return allSkills.find((s) => s.name === raw);
+}
+
+export function linkSkill(skillId, projectId, visited = new Set()) {
+  if (visited.has(skillId)) return;
+  visited.add(skillId);
+
   const db = getDb();
   const exists = db.prepare(`
     SELECT 1 FROM project_skills WHERE projectId = ? AND skillId = ?
@@ -485,10 +545,31 @@ export function linkSkill(skillId, projectId) {
       INSERT INTO project_skills (projectId, skillId) VALUES (?, ?)
     `).run(projectId, skillId);
   }
+
+  const skill = getSkillDetail(skillId);
+  const project = projectService.getProjectDetail(projectId);
+  if (skill && project) {
+    createSkillSymlink(skill, project);
+  }
+
+  if (skill?.dependencies?.length > 0) {
+    const allSkills = listLinkableSkills();
+    for (const dep of skill.dependencies) {
+      const depSkill = resolveDependencySkill(dep, allSkills);
+      if (depSkill) {
+        linkSkill(depSkill.id, projectId, visited);
+      }
+    }
+  }
 }
 
 export function unlinkSkill(skillId, projectId) {
   const db = getDb();
+  const skill = getSkillDetail(skillId);
+  const project = projectService.getProjectDetail(projectId);
+  if (skill && project) {
+    removeSkillSymlink(skill, project);
+  }
   db.prepare(`
     DELETE FROM project_skills WHERE projectId = ? AND skillId = ?
   `).run(projectId, skillId);
