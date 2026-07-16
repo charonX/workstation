@@ -242,6 +242,41 @@ describe("Skills", () => {
     assert.equal(groups.length, 0);
   });
 
+  it("REQ-SKILL-004: deleting a skill repo removes project symlinks", async () => {
+    const skillRepoPath = makeTempSkillRepoPath();
+    fs.mkdirSync(skillRepoPath, { recursive: true });
+    await setSkillRepoPath(serverCtx.baseUrl, skillRepoPath);
+
+    const { final } = await installAndAssert(serverCtx.baseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
+    const repoId = final.repo.id;
+    const skill = final.skills.find((s) => s.name === "npm-fixture-skill");
+
+    const projectLocalPath = path.join(os.tmpdir(), `opc-symlink-project-${Date.now()}`);
+    fs.mkdirSync(projectLocalPath, { recursive: true });
+    const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Symlink Project", localPath: projectLocalPath })
+    })).json();
+
+    const linkRes = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillId: skill.id, linked: true })
+    });
+    assert.equal(linkRes.status, 200);
+
+    const repoDirName = final.repo.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const skillDirName = skill.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const symlinkPath = path.join(projectLocalPath, ".opc", "skills", repoDirName, skillDirName);
+    assert.ok(fs.lstatSync(symlinkPath).isSymbolicLink(), "project skill symlink should exist before repo delete");
+
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/skill-repos/${repoId}`, { method: "DELETE" });
+    assert.equal(delRes.status, 204);
+
+    assert.ok(!fs.existsSync(symlinkPath), "project skill symlink should be removed after repo delete");
+  });
+
   it("REQ-SKILL-004: returns 404 when deleting non-existent repo", async () => {
     const res = await fetch(`${serverCtx.baseUrl}/api/skill-repos/non-existent`, { method: "DELETE" });
     assert.equal(res.status, 404);
