@@ -70,9 +70,9 @@
 
 ### 当前测试运行状态
 
-- 现有 API/CLI 单元测试：61 个（attempt-2 保留）+ 4 个新增 API 测试（REQ-FLOW-016/017）+ 2 个回归测试（BUG-014/015）
-- 新增 E2E 测试：5 个 spec 文件（已删除 `taskCreation.test.cjs`），约 18 个 test case
-- **当前状态**：REQ-SKILL-003 契约已修订（真实安装到 `skillRepoPath`），等待 assertion-signoff 重新签核；签核通过前禁止 BUILD。
+- 现有 API/CLI 单元测试：85 个（含 REQ-SKILL-003 新增 4 个断言）
+- 新增 E2E 测试：5 个 spec 文件（已删除 `taskCreation.test.cjs`），42 个 test case 全绿
+- assertion-signoff 已于 2026-07-16 重新签核通过，BUILD 已完成并进入 QA。
 
 ---
 
