@@ -34,11 +34,12 @@
 | execution | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `task.test.js`, `flowRun.test.js` (E2E) |
 
 ### skill-management
-> 集中式 skill 仓库、多源安装、项目关联。
+> 集中式 skill repo 管理、多源安装、项目关联。skill repo 作为一级实体，一个 repo 可包含多个 skill。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001~004 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
+| skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
+| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-002 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
 
 ### information-aggregation
 > Dashboard 展示关键指标与最近活动。
@@ -81,7 +82,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 | workspace-management | 2 | 19 | 2026-07-09 |
 | flow-orchestration | 2 | 19 | 2026-07-14 |
 | scheduling-execution | 3 | 12 | 2026-07-15 |
-| skill-management | 1 | 10 | 2026-07-16 |
+| skill-management | 2 | 10 | 2026-07-16 |
 | information-aggregation | 1 | 5 | 2026-07-09 |
 | internationalization-theme | 2 | 6 | 2026-07-09 |
 | command-interface | 1 | 3 | 2026-07-09 |

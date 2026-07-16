@@ -95,33 +95,49 @@
 
 ---
 
-# QA 报告 — codex-harness-desktop（REQ-SKILL-003 npm 安装日志流式展示 BUILD 后）
+# QA 报告 — codex-harness-desktop（skill repo 信息架构 BUILD 后）
 
 生成时间：2026-07-16  
-requirements-v1.hash: `4b1313dc9c3b59ccfee20bf82bc8fb49d36a5b86a2006abff3f9c33d56cc3035`
+requirements-v1.hash: `670a6a4b8ae51f684c9508a83d4da9c8926197136062216818b2bf4c69e0fc84`
 
 ## 变更摘要
 
-本次 BUILD 针对 `REQ-SKILL-003` 新增：
+本次 BUILD 针对用户反馈的 skill 信息架构问题，将 skill 管理从“单个 skill”调整为“skill repo → 嵌套 skills”：
 
-- npm 源执行真实 `npm install` 命令。
-- `POST /api/skills/install` 返回 `jobId`，`GET /api/skills/install/:jobId/stream` 通过 SSE 实时推送命令日志。
-- Install Skill 弹层展示可滚动日志面板。
-- CLI 安装时打印日志并返回 `{ skill, logs }`。
-- 失败时保留日志且不创建 skill 记录。
+- 新增 `skill_repos` 数据表，`skills` 表新增 `repoId` 外键并移除 `installSource`。
+- 安装时递归扫描 repo 根目录下 `skills/` 目录，命中 `SKILL.md` 的目录创建一个 skill；支持任意层级嵌套。
+- 安装仅保留 `npm`/`npx` 与 `plugin` 来源，移除 `local` 来源。
+- 列表接口改为 `GET /api/skill-repos`，返回按 repo 分组的结构。
+- 删除改为 repo 级别：`DELETE /api/skill-repos/:repoId` 物理删除安装目录并级联删除 skills 与 `project_skills`。
+- 前端 Skills 页面按 repo 分组展示，支持 repo 级删除；Install Skill 弹层移除 local 选项。
+- CLI 支持 `opc-workstation skill repo-delete --id <repoId>`；`skill list` 输出按 repo 分组。
 
 ## 测试结果
 
 | 测试层 | 命令 | 结果 |
 |---|---|---|
-| 单元 / API / CLI | `npm run test:unit` | ✅ 86 通过，0 失败 |
-| E2E (Playwright + Electron) | `npm run test:e2e` | ✅ 43 通过，0 失败 |
+| 单元 / API / CLI | `npm run test:unit` | ✅ 84 通过，0 失败 |
+| E2E (Playwright + Electron) | `npm run test:e2e` | ✅ 42 通过，0 失败 |
 
 ## 关键验证点
 
-- API 使用本地 fixture `tests/fixtures/npm-skill` 验证 npm 安装、日志流、失败不创建记录。
-- E2E 验证 local/npm 安装均展示日志面板且内容非空。
-- CLI 验证返回 skill 与 logs。
+- API 使用重构后的 `tests/fixtures/npm-skill`（含 `skills/npm-fixture-skill` 与 `skills/utils/helper`）验证递归扫描与分组列表。
+- API 验证 npm/plugin 安装、local 来源拒绝、skillRepoPath 缺失校验、安装失败不创建记录、repo 删除级联。
+- E2E 验证 npm 安装展示日志面板、列表按 repo 分组、Skill Detail 标签页、repo 删除确认。
+- onboarding E2E 改用 npm fixture 预置 skill，验证 Project Detail 配置 skills。
+
+## 已知问题 / 待 feel-signoff 项
+
+- repo 分组视觉细节（repo header 样式、删除按钮位置）进入 feel-signoff 范围。
+
+## 结论
+
+- [x] 可进入 `/signoff --stage=feel`
+- [ ] 需回 BUILD
+- [ ] 需回 REQ
+
+全量自动化测试通过，无 open bug，建议推进到 **feel-signoff** 进行观感验收。
+
 
 ## 已知问题 / 待 feel-signoff 项
 

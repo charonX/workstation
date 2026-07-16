@@ -695,24 +695,26 @@
 
 ---
 
-## REQ-SKILL-001: Skills 列表
+## REQ-SKILL-001: Skill 仓库分组列表
 
 - **来源**：PRD §4.15 Skill 管理 UI
 - **优先级**：P0
 - **必须性**：必须
 - **capability**: `skill-management`
-- **entity**: `skill`
+- **entity**: `skill-repo`
 - **scope**: cross-module
-- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
+- **modules**: `skillService`, `src/http/routes/skillRepos.js`, `src/cli/commands/skill.js`, renderer SkillTable
 - **interface_contract**:
-  - `GET /api/skills`
+  - `GET /api/skill-repos` → `[{ repo: {id, name, repoPath, installSource}, skills: [...] }]`
   - CLI: `opc-workstation skill list`
-- **测试类型**: CLI + HTTP API
-- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`
+- **测试类型**: CLI + HTTP API + E2E
+- **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
-- [ ] 列表字段包含 `name`、`repoPath`、`version`、`category`，无 `linkedProjects`。
-- [ ] 每行包含 skill `id` 作为详情入口。
+- [ ] 返回按 skill repo 分组的列表。
+- [ ] 每个 repo 显示 `name`、`repoPath`、`installSource` 及包含的 skill 列表。
+- [ ] skill 列表保留仓库内 `skills/` 下的嵌套目录结构（相对路径）。
+- [ ] 无 `linkedProjects` 字段。
 
 ---
 
@@ -726,70 +728,71 @@
 - **scope**: cross-module
 - **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
 - **interface_contract**:
-  - `GET /api/skills/:id` → `{name, description, author, tags, parameters, examples, readme, tabs}`
+  - `GET /api/skills/:id` → `{name, description, author, tags, parameters, examples, readme, repoId, tabs}`
   - CLI: `opc-workstation skill get --id <id>`
 - **测试类型**: CLI + HTTP API + E2E + feel-signoff
 - **UX 参照**: `.aiassist/stories/codex-harness-desktop/ux/skills.html`
-- **E2E 路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.spec.js`
+- **E2E 路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
 - [ ] 详情返回 `tabs: ["Overview", "Parameters", "Examples", "README"]`。
+- [ ] 返回所属 `repoId`。
 - [ ] 不包含项目链接/取消链接控制字段。
 
 ---
 
-## REQ-SKILL-003: 多源安装 Skill
+## REQ-SKILL-003: 安装 Skill 仓库
 
 - **来源**：PRD §4.4 Skill 管理、User Story 18
 - **优先级**: P0
 - **必须性**: 必须
 - **capability**: `skill-management`
-- **entity**: `skill`
+- **entity**: `skill-repo`
 - **scope**: cross-module
 - **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`
 - **interface_contract**:
-  - `POST /api/skills/install` → body `{source: "npm" | "plugin" | "local", identifier: string}`
+  - `POST /api/skills/install` → body `{source: "npm" | "plugin", identifier: string}`，返回 `202 {jobId}`
+  - `GET /api/skills/install/:jobId/stream` → SSE 事件 `log` / `success` / `error`
   - CLI: `opc-workstation skill install --source <source> --identifier <id>`
 - **测试类型**: CLI + HTTP API + E2E
 - **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
-- [ ] 支持 `npm`/`npx`、`plugin`、`local` 三种来源安装。
-- [ ] 安装后 skill 出现在列表中，并记录 `installSource`。
-- [ ] `npm`/`npx` 来源：执行真实 `npm install` 命令，将包内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
-- [ ] `npm`/`npx` 来源：安装过程产生命令日志，并通过 `GET /api/skills/install/:jobId/stream` 实时流式返回；UI 安装弹层展示该日志。
-- [ ] `plugin` 来源：将插件内容安装到 `skillRepoPath/<name>` 目录下；`repoPath` 指向该目录。
-- [ ] `local` 来源：将 `identifier` 指向的本地目录复制到 `skillRepoPath/<name>`；`repoPath` 指向该目录。
-- [ ] 安装目录根节点存在 `SKILL.md`；解析其 frontmatter（`name`、`description` 等）和正文（`readme`）作为 skill 元数据。
-- [ ] 若 `skillRepoPath` 未配置或安装过程失败，返回 `400`/`500` 错误且不创建 skill 记录；失败时 UI 保留日志供用户查看。
+- [ ] 支持 `npm`/`npx`、`plugin` 两种来源安装；不再支持 `local` 来源。
+- [ ] `npm` 来源：执行真实 `npm install` 命令，将包内容安装到 `skillRepoPath/<repoName>` 目录下；`repoPath` 指向该目录。
+- [ ] `plugin` 来源：在 `skillRepoPath/<repoName>` 下创建托管目录。
+- [ ] 安装过程产生命令日志，并通过 SSE 实时流式返回；UI 安装弹层展示该日志。
+- [ ] 安装的仓库根节点下必须存在 `skills/` 目录；递归扫描 `skills/` 下所有包含 `SKILL.md` 的目录，每个目录创建一个 skill 记录。
+- [ ] 解析每个 `SKILL.md` 的 frontmatter（`name`、`description` 等）和正文（`readme`）作为 skill 元数据；skill 的目录相对路径作为其在仓库内的路径。
+- [ ] 安装成功后 `GET /api/skill-repos` 能看到新仓库及其下所有 skill。
+- [ ] 若 `skillRepoPath` 未配置、仓库缺少 `skills/` 目录、或安装过程失败，返回 `400`/`500` 错误且不创建仓库/skill 记录；失败时 UI 保留日志供用户查看。
 - [ ] `GET /api/skills/:id` 返回的 `repoPath` 位于当前 `skillRepoPath` 之下。
 - [ ] CLI `opc-workstation skill install` 在安装过程中将日志输出到终端，失败时展示完整日志。
 
 ---
 
-## REQ-SKILL-004: 删除 Skill
+## REQ-SKILL-004: 删除 Skill 仓库
 
 - **来源**：PRD §4.15 Skill 管理 UI
 - **优先级**：P0
 - **必须性**：必须
 - **capability**: `skill-management`
-- **entity**: `skill`
+- **entity**: `skill-repo`
 - **scope**: cross-module
-- **modules**: `skillService`, `src/http/routes/skills.js`, `src/cli/commands/skill.js`, renderer SkillTable/SkillDetailModal
+- **modules**: `skillService`, `src/http/routes/skillRepos.js`, `src/cli/commands/skill.js`, renderer SkillTable
 - **interface_contract**:
-  - `DELETE /api/skills/:id`
-  - CLI: `opc-workstation skill delete --id <id>`
-  - Skill 仍被 project 关联时返回 `400 CONFLICT`
-  - Skill 不存在返回 `404`
+  - `DELETE /api/skill-repos/:repoId`
+  - CLI: `opc-workstation skill repo-delete --id <repoId>`
 - **测试类型**: CLI + HTTP API + E2E
 - **测试路径**: `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/skillInstall.test.cjs`
 
 **验收标准**：
-- [ ] 删除后 skill 从 `GET /api/skills` 列表中消失。
-- [ ] 物理删除数据库记录。
-- [ ] 若 skill 仍被任何 project 关联，删除失败并返回 `400`，提示先解除关联。
-- [ ] UI 删除操作需要二次确认。
-- [ ] 删除不存在的 skill 返回 `404`。
+- [ ] 删除仓库时，物理删除 `skillRepoPath` 下对应的安装目录。
+- [ ] 级联删除该仓库下的所有 skill 记录及 `project_skills` 关联。
+- [ ] 删除后 `GET /api/skill-repos` 不再包含该仓库及其 skill。
+- [ ] 删除不存在的仓库返回 `404`。
+- [ ] 不提供删除单个 skill 的 API 或 UI 入口。
+- [ ] `npm` 与 `plugin` 来源均按删除安装目录处理。
 
 ---
 

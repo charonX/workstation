@@ -100,6 +100,7 @@ src/
 │       ├── schedules.js
 │       ├── executions.js
 │       ├── skills.js
+│       ├── skillRepos.js
 │       ├── settings.js
 │       └── dashboard.js
 ├── main/
@@ -169,6 +170,23 @@ src/
 ## 5. HTTP API 契约
 
 与 attempt-2 保持一致，详见 §5。前端通过同一 `/api/*` 端点访问。
+
+### 5.1 Skill Repository 契约
+
+Skill 管理引入 **skill repo（仓库）** 作为一级实体：安装、删除、列表均围绕 repo 进行。
+
+- **数据模型**：
+  - `skill_repos` 表：`id`、`name`、`repoPath`、`installSource`、`originalIdentifier`、`createdAt`。
+  - `skills` 表新增 `repoId` 外键；不再直接记录 `installSource`，由 repo 持有来源。
+  - skill 的 `repoPath` 指该 skill 在 repo 内的目录路径；repo 的 `repoPath` 指整个仓库根目录。
+- **目录结构**：每个 repo 根目录下必须存在 `skills/` 目录，`skills/` 下可嵌套任意层级子目录；安装时递归查找包含 `SKILL.md` 的目录，每个命中目录创建一个 skill。
+- **安装流程**：
+  - `POST /api/skills/install` → 返回 `202 {jobId}`，后台异步执行真实安装（npm 运行 `npm install`，plugin 创建托管目录）。
+  - `GET /api/skills/install/:jobId/stream` → SSE 返回 `log` / `success` / `error` 事件。
+  - 成功后创建 `skill_repos` 记录及一个或多个 `skills` 记录。
+  - 失败时仅保留内存日志，不创建任何 repo/skill 记录。
+- **列表**：`GET /api/skill-repos` 返回 `[{ repo, skills }]` 分组结构，保留 skill 的相对路径层级。
+- **删除**：`DELETE /api/skill-repos/:repoId` 物理删除安装目录、级联删除 `skills` 与 `project_skills`；不存在单 skill 删除入口。
 
 ## 6. CLI 设计
 
@@ -255,7 +273,7 @@ window.opc = {
 - **Flows**：流程卡片列表、New Flow 弹层。
 - **Flow Editor**：左侧 Node Palette、中间 React Flow 画布、右侧 Properties 面板、顶部 Run/Schedule/Zoom 工具栏。
 - **Tasks**：左侧 Tasks/Executions Tab、右侧 Execution Detail（Logs/Variables/Output）。
-- **Skills**：表格列表、Install Skill 弹层、Skill Detail Modal（Overview/Parameters/Examples/README）。
+- **Skills**：按 repo 分组的 skill 列表、Install Skill 弹层、Skill Detail Modal（Overview/Parameters/Examples/README）、repo 级删除。
 - **Settings**：Workspace Root、Skill Repo Path、Theme、Language、Density 表单。
 
 ### 9.5 与 UX 原型的偏差记录
@@ -299,7 +317,7 @@ src/e2e/
 |---|---|---|---|
 | **Onboarding** | REQ-WORKSPACE-003、006、007；REQ-I18N-001、002 | 无（从零开始） | Settings 保存 workspaceRoot / skillRepoPath；Add Project 弹层创建项目；Project Detail 配置 skills；密度切换生效 |
 | **Flow Run** | REQ-FLOW-002~005；REQ-SCHEDULE-001、003 | 创建 project | New Flow 弹层创建 flow；Flow Editor 渲染节点面板与画布；Run 创建 execution；Executions Tab 显示执行历史与详情 |
-| **Skill Install** | REQ-SKILL-002、003 | 无 | Install Skill 弹层安装 skill；Skills 列表出现新 skill；Skill Detail 展示 Overview / Parameters / Examples / README |
+| **Skill Install** | REQ-SKILL-001~004 | 无 | Install Skill 弹层安装 skill repo；Skills 列表按 repo 分组展示；Skill Detail 展示 Overview / Parameters / Examples / README；可删除整个 repo |
 | **Theme & Language** | REQ-I18N-001、002 | 无 | 切换 theme 后 `document.documentElement.dataset.theme` 变化；切换 language 后 `<html lang>` 与文案变化 |
 | **Dashboard** | REQ-DASH-001 | seed project、flow、execution | Dashboard 显示 projectCount、activeScheduleCount、recentRunCount、successRate；最近执行列表可见 |
 
@@ -345,7 +363,7 @@ src/e2e/
 | REQ-FLOW-001~006 | `opc-workstation flow` / `/api/flows` | CLI + HTTP API + E2E | E2E 覆盖 Flows 列表、New Flow 弹层、Flow Editor 节点与运行 |
 | REQ-SCHEDULE-001, REQ-SCHEDULE-003 | `opc-workstation task run` / `POST /api/executions` | CLI + HTTP API + E2E | E2E 覆盖 Run 按钮触发与 Executions 详情 |
 | REQ-SCHEDULE-002 | `opc-workstation schedule` / `/api/schedules` | CLI + HTTP API | cron、启用停用由 API/CLI 覆盖 |
-| REQ-SKILL-001~003 | `opc-workstation skill` / `/api/skills` | CLI + HTTP API + E2E | E2E 覆盖 Install Skill 弹层与 Skill Detail |
+| REQ-SKILL-001~004 | `opc-workstation skill` / `/api/skills` `/api/skill-repos` | CLI + HTTP API + E2E | E2E 覆盖 Install Skill 弹层、按 repo 分组的列表与删除 |
 | REQ-I18N-001 | Theme 切换 | E2E + feel-signoff | E2E 验证 DOM `data-theme` 变化；feel-signoff 验证视觉 |
 | REQ-I18N-002 | Language 切换 | CLI + HTTP API + E2E | E2E 验证 `<html lang>` 与文案切换 |
 | REQ-FLOW-007~010 | `flowEngine.run` | 服务单元测试 | 纯函数执行逻辑 |

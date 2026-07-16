@@ -24,7 +24,7 @@
 | `workspace-management/project/e2e/onboarding.test.js` | REQ-WORKSPACE-003~006, REQ-WORKSPACE-007, REQ-I18N-001~002 | Settings → Add Project → Configure Skills；Theme/Language/Density 切换 | 从零开始（除 density 外） | 设置表单排版、主题暗色/亮色视觉气质 |
 | `flow-orchestration/flow/e2e/flowRun.test.js` | REQ-FLOW-002~005, REQ-SCHEDULE-001, REQ-SCHEDULE-003 | Create Flow → Edit Nodes → Run → View Execution | `beforeEach` API seed 一个 project | React Flow 节点样式、动效、画布缩放动画 |
 | `flow-orchestration/flow/e2e/flowEditor.test.cjs` | REQ-FLOW-013~017 | Flow Editor 节点删除、节点专属配置持久化、Condition true/false 双输出、Publish/Draft 状态、Debug 弹层 | `beforeEach` API seed 一个 project | 删除按钮样式、Condition handle 视觉位置、Properties 面板排版、Publish/Debug 按钮视觉 |
-| `skill-management/skill/e2e/skillInstall.test.cjs` | REQ-SKILL-002, REQ-SKILL-003 | Install Skill → View Detail；验证 local 安装后源目录被复制到 `skillRepoPath/<name>`；验证 npm 安装执行真实命令并在弹层展示日志 | 从零开始 | 弹层动效、Skill README 排版 |
+| `skill-management/skill/e2e/skillInstall.test.cjs` | REQ-SKILL-001, REQ-SKILL-002, REQ-SKILL-003, REQ-SKILL-004 | Install Skill → View Detail；验证 npm 安装执行真实命令并在弹层展示日志；验证 fixture repo 根下 `skills/` 嵌套目录生成多个 skill；Skills 列表按 repo 分组；删除 repo 级联移除 skill 与本地目录 | 从零开始 | 弹层动效、Skill README 排版、repo 分组视觉 |
 | `internationalization-theme/theme/e2e/themeLanguage.test.js` | REQ-I18N-001, REQ-I18N-002 | Theme / Language 切换 DOM 效果 | 从零开始 | 颜色 token 的视觉表达、字体 |
 | `information-aggregation/dashboard/e2e/dashboard.test.js` | REQ-DASH-001 | Dashboard 指标渲染 | `beforeEach` API seed project/flow/execution | 卡片布局、间距、动效 |
 
@@ -53,7 +53,7 @@
 3. `onboarding.test.js` — 本地文件路径、项目名、关联 skill 名称。
 4. `flowRun.test.js` — project id 回填、节点添加方式、zoom 可测量断言。
 5. `flowEditor.test.cjs` — 节点删除触发方式（按钮/Delete 键）、各节点类型字段标签、Condition handle 的 data-handleid 值、持久化后的字段回显值。
-6. `skillInstall.test.cjs` — 使用 `tests/fixtures/npm-skill` 作为 npm fixture；断言 local/npm 安装均展示 `INSTALL_SKILL_LOG_PANEL` 且内容非空；安装后 `repoPath` 位于 `skillRepoPath` 下且存在 `SKILL.md`。`seed.cjs` 中 `installSkill` 改为消费 job SSE 流。
+6. `skillInstall.test.cjs` — 使用 `tests/fixtures/npm-skill` 作为 npm fixture；断言 npm 安装展示 `INSTALL_SKILL_LOG_PANEL` 且内容非空；安装成功后 `GET /api/skill-repos` 按 repo 分组列出多个 skill；skill 保留 `skills/` 下的相对路径；删除 repo 时 `GET /api/skill-repos` 不再包含该 repo 且本地目录被移除。`seed.cjs` 中 `installSkill` 改为消费 job SSE 流。
 6. `themeLanguage.test.js` — 中英文 UI 文案断言。
 7. `dashboard.test.js` — 指标数值、快捷链接跳转目标。
 
