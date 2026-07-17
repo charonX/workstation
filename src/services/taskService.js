@@ -61,8 +61,8 @@ const PROMPT_LOG_MAX_LENGTH = 4000;
 // execution_nodes（同一 db 连接，单事务）。record.agent 存在时展开 agent 调用详情。
 // status 语义：record.error 非空 → "error"（含 onError=ignore 降级路径，错误信息记入
 // error 列），否则 → "success"。
-// output 列：仅 agent 节点（record.agent 存在）填充，取 outputVariables 首个值
-// （agent 节点的 outputVariable 输出）；无 outputVariable 时为 NULL。
+// output 列：仅 agent 节点（record.agent 存在）填充，优先取 agent.output（adapter 返回文本，
+// REQ-FLOW-028 v1.2，不经 outputVariable 声明），回落 outputVariables 首个值；两者皆无时为 NULL。
 function insertExecutionNodes(executionId, nodeRecords) {
   if (!Array.isArray(nodeRecords) || nodeRecords.length === 0) return;
   const db = getDb();
@@ -84,7 +84,7 @@ function insertExecutionNodes(executionId, nodeRecords) {
         record.error ?? null,
         record.attemptCount ?? 1,
         agent?.prompt != null ? String(agent.prompt).slice(0, PROMPT_LOG_MAX_LENGTH) : null,
-        agent ? firstOutputVariableValue(record) : null,
+        agent ? (agent.output ?? firstOutputVariableValue(record)) : null,
         agent?.model ?? null,
         agent?.provider ?? null,
         record.error ? "error" : "success",

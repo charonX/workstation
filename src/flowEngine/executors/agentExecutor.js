@@ -29,10 +29,13 @@ export async function agentExecutor({ node, context, projectPath }) {
       ...toNodeResult(result),
       // agent 调用详情（tech-design §5.6）：引擎抄入 nodeRecord。
       // prompt 为引擎完成变量替换后的文本；内置 mock 分支不带此字段。
+      // REQ-FLOW-028 v1.2：output 总是携带 adapter 返回的文本（success 时有值；
+      // error 时按 adapter 返回原样，可为 undefined），供 output 列不经 outputVariable 声明捕获。
       agent: {
         prompt,
         model,
         provider,
+        output: result.output,
         durationMs: result.durationMs
       }
     };

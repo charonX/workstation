@@ -73,12 +73,12 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   while (currentNodeId) {
     iterationCount++;
     if (iterationCount > maxIterations) {
-      throw new Error(`maxIterations exceeded (${maxIterations})`);
+      abortRun(nodeRecords, `maxIterations exceeded (${maxIterations})`);
     }
 
     const node = nodesById.get(currentNodeId);
     if (!node) {
-      throw new Error(`Node ${currentNodeId} not found`);
+      abortRun(nodeRecords, `Node ${currentNodeId} not found`);
     }
 
     const visitIndex = nodeVisitCount.get(currentNodeId) ?? 0;
@@ -87,7 +87,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     const nodeType = node.type?.toLowerCase();
     const executor = executors?.[nodeType];
     if (!executor) {
-      throw new Error(`No executor registered for node type "${node.type}"`);
+      abortRun(nodeRecords, `No executor registered for node type "${node.type}"`);
     }
 
     // nodeRecord（tech-design §4.1 2e）：进入节点时的扁平 context 快照。
@@ -164,7 +164,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     if (next.loopBack) {
       depth++;
       if (depth >= maxDepth) {
-        throw new Error(`maxDepth exceeded (${maxDepth})`);
+        abortRun(nodeRecords, `maxDepth exceeded (${maxDepth})`);
       }
       loopBodyCount++;
       if (nodeType === "while") {
@@ -177,7 +177,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     if (next.edge) {
       depth++;
       if (depth >= maxDepth) {
-        throw new Error(`maxDepth exceeded (${maxDepth})`);
+        abortRun(nodeRecords, `maxDepth exceeded (${maxDepth})`);
       }
       currentNodeId = next.edge.targetNodeId;
     } else {
@@ -235,6 +235,14 @@ function failRun(nodeRecords, record, result, message) {
   copyAgentDetail(record, result);
   nodeRecords.push(record);
   const error = new Error(`fatal: ${message}`);
+  error.nodeRecords = nodeRecords;
+  throw error;
+}
+
+// 引擎安全中止（maxIterations / 节点缺失 / 无 executor / maxDepth）：与 failRun 同模式，
+// 已累积的 nodeRecords 挂到错误对象上，供 taskService 在 catch 路径持久化（REQ-FLOW-028 v1.2）。
+function abortRun(nodeRecords, message) {
+  const error = new Error(message);
   error.nodeRecords = nodeRecords;
   throw error;
 }
