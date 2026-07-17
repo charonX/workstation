@@ -1,5 +1,5 @@
 // REQ-TRACE: REQ-FLOW-018
-// REQ-VERSION: v1-hash:faea1df8
+// REQ-VERSION: v1-hash:036e30e2
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -57,6 +57,22 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
     assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，方便前端定位
     // 例如：{ path: "nodeList[0].config.outputVariables[0].name", message: "Variable name is required" }
+  });
+
+  it("拒绝纯空白变量名并返回 400", () => {
+    const flow = createFlow({ name: "demo", projectId: "p1" });
+    const nodeList = [
+      {
+        id: "n1",
+        type: "trigger",
+        config: {
+          outputVariables: [{ name: " ", type: "string" }],
+        },
+      },
+    ];
+
+    // v1.1（2026-07-17 用户签核）：变量名 trim 后为空同样拒绝
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
   });
 
   it("拒绝非法变量类型并返回 400", () => {

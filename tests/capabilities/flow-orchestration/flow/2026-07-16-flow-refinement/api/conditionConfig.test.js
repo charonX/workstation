@@ -1,5 +1,5 @@
 // REQ-TRACE: REQ-FLOW-019
-// REQ-VERSION: v1-hash:faea1df8
+// REQ-VERSION: v1-hash:036e30e2
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -50,6 +50,34 @@ describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识
     assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，例如：
     // { path: "nodeList[0].config.expression", message: "Expression is required" }
+  });
+
+  it("拒绝纯空白表达式并返回 400", () => {
+    const flow = createFlow({ name: "demo", projectId: "p1" });
+    const nodeList = [
+      {
+        id: "n1",
+        type: "condition",
+        config: { expression: "   " },
+      },
+    ];
+
+    // v1.1（2026-07-17 用户签核）：表达式 trim 后为空同样拒绝
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
+  });
+
+  it("拒绝缺失 expression 字段并返回 400", () => {
+    const flow = createFlow({ name: "demo", projectId: "p1" });
+    const nodeList = [
+      {
+        id: "n1",
+        type: "condition",
+        config: {},
+      },
+    ];
+
+    // v1.1（2026-07-17 用户签核）：expression 改为必填，缺失即拒绝
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
   });
 
   it("表达式支持变量选择器插入 fullName 格式", () => {

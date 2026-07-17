@@ -47,9 +47,19 @@
 
 ### 遗留问题
 
-- 节点配置 schema 最终版在 tech-design 阶段确定。
-- Claude Agent adapter 具体 provider/SDK 在 tech-design 阶段确定。
-- 执行日志清理逻辑实现方式在 tech-design 阶段确定。
+- 节点配置 schema 最终版在 tech-design 阶段确定。→ **已解决**（2026-07-17 tech-design §5.4）
+- Claude Agent adapter 具体 provider/SDK 在 tech-design 阶段确定。→ **已解决**（ADR-005）
+- 执行日志清理逻辑实现方式在 tech-design 阶段确定。→ **已解决**（启动 + 每日 cron）
+
+### 补充签核（2026-07-17，BUILD 阶段 S3 对齐检查）
+
+S3 PRD 对齐子代理报告 3 项 UNCERTAIN，用户当面裁决并签核：
+
+1. **REQ-FLOW-018 AC2 v1.1**：变量名 trim 后非空，纯空白（`" "`）拒绝。新增断言：triggerConfig「拒绝纯空白变量名并返回 400」。✅
+2. **REQ-FLOW-019 AC4 v1.1**：`expression` 改为必填，缺失或 trim 后为空均拒绝。新增断言：conditionConfig「拒绝纯空白表达式」「拒绝缺失 expression 字段」。✅
+3. **provider/options allowlist 拒绝路径**：接受 tech-design §5.4 层承诺，不补签核业务测试，REFLECT 时记录。✅
+
+requirements-v1.hash 已重新生成（`036e30e2`），两个受影响测试文件的 REQ-VERSION 头已同步。
 
 ## Feel Signoff
 
