@@ -7,6 +7,8 @@ function timestamp() {
 // --- Node config validation (tech-design §5.4 final schema) ---
 // Only fields that are present are validated: nodes without config, or configs
 // missing a field, pass through untouched (legacy flow compatibility).
+// Sole exception (v1.1): condition.expression is required — a condition node
+// whose expression is missing, empty, or whitespace-only is rejected.
 const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
@@ -42,7 +44,7 @@ function validateTriggerConfig(config, base, details) {
   const seen = new Set();
   variables.forEach((variable, index) => {
     const item = isPlainObject(variable) ? variable : {};
-    if (typeof item.name !== "string" || item.name.length === 0) {
+    if (typeof item.name !== "string" || item.name.trim().length === 0) {
       details.push({ path: `${path}[${index}].name`, message: "Variable name is required" });
     } else if (seen.has(item.name)) {
       details.push({ path: `${path}[${index}].name`, message: `Duplicate variable name: ${item.name}` });
@@ -56,9 +58,10 @@ function validateTriggerConfig(config, base, details) {
 }
 
 function validateConditionConfig(config, base, details) {
-  if (!("expression" in config) || config.expression === undefined) return;
+  // Expression is required (v1.1 exception to the "only present fields" rule):
+  // missing, empty, or whitespace-only (after trim) are all rejected.
   // Non-empty check only; no syntax validation (REQ-FLOW-019).
-  if (typeof config.expression !== "string" || config.expression.length === 0) {
+  if (typeof config.expression !== "string" || config.expression.trim().length === 0) {
     details.push({ path: `${base}.expression`, message: "Expression is required" });
   }
 }
@@ -90,8 +93,15 @@ export function validateNodeList(nodeList) {
     if (!isPlainObject(node)) return;
     const type = typeof node.type === "string" ? node.type.toLowerCase() : "";
     if (!VALIDATED_NODE_TYPES.includes(type)) return;
-    if (!isPlainObject(node.config)) return;
     const base = `nodeList[${index}].config`;
+    if (!isPlainObject(node.config)) {
+      // v1.1 exception: condition.expression is required, so a condition node
+      // without a config object is missing its expression and must be rejected.
+      if (type === "condition") {
+        details.push({ path: `${base}.expression`, message: "Expression is required" });
+      }
+      return;
+    }
     validateCommonConfig(node.config, base, details);
     if (type === "trigger") validateTriggerConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
