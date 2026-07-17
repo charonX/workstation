@@ -15,7 +15,7 @@ export async function handleFlows(req, res, body, pathParts) {
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(toListView(flow)));
       } catch (err) {
-        return badRequest(res, err.message);
+        return badRequest(res, err.message, err.details);
       }
     }
 
@@ -44,7 +44,7 @@ export async function handleFlows(req, res, body, pathParts) {
         if (!flow) return notFound(res, "Flow not found");
         return ok(res, flow);
       } catch (err) {
-        return badRequest(res, err.message);
+        return badRequest(res, err.message, err.details);
       }
     }
 
@@ -92,7 +92,7 @@ export function handleFlowImport(req, res, body) {
     res.writeHead(201, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(toListView(flow)));
   } catch (err) {
-    return badRequest(res, err.message);
+    return badRequest(res, err.message, err.details);
   }
 }
 
@@ -123,9 +123,11 @@ function noContent(res) {
   res.end();
 }
 
-function badRequest(res, message) {
+function badRequest(res, message, details) {
   res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
+  const body = { error: "VALIDATION_ERROR", message };
+  if (Array.isArray(details)) body.details = details;
+  res.end(JSON.stringify(body));
 }
 
 function notFound(res, message = "Not found") {
