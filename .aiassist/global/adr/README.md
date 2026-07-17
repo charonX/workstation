@@ -14,3 +14,4 @@
 | ADR-002 | 前端验收采用 Playwright Electron E2E + feel-signoff | 已接受 | 2026-07-09 | REQ-FLOW-002~005、REQ-SKILL-002、REQ-I18N-001~002、REQ-DASH-001、REQ-WORKSPACE-003~006、REQ-SKILL-003 |
 | ADR-003 | Skill Repo 作为一级实体 | 已接受 | 2026-07-16 | REQ-SKILL-001~004 |
 | ADR-004 | Project 与 Skill 通过文件系统软连接关联 | 已接受 | 2026-07-16 | REQ-WORKSPACE-006、REQ-SKILL-004 |
+| ADR-005 | Claude Agent 节点采用 Claude Agent SDK 并复用本机凭证 | 已接受 | 2026-07-17 | REQ-FLOW-020、REQ-FLOW-026、REQ-FLOW-028 |

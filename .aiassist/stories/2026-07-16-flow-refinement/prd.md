@@ -50,14 +50,14 @@
 
 ## 5. 移动块
 
-以下部分还需要在 PRD 审查或 tech-design 阶段进一步决策，暂不结晶为硬性 REQ：
+以下部分已在 tech-design 阶段决策（2026-07-17，详见 `tech-design.md`）：
 
-1. **Claude Agent provider/SDK 选择**：使用 Anthropic Messages API / Claude SDK、OpenAI Responses API，还是抽象一个 provider 模型同时支持多个？
-2. **API key / 凭证存储方式**：写入 settings JSON、通过环境变量读取、还是使用系统 keychain？
-3. **变量选择器 UI 细节**：是否显示变量类型图标/标签？是否支持搜索/筛选？
-4. **Condition 表达式编辑体验**：是否提供语法高亮、简单校验、或错误提示？
-5. **Claude Agent 可配置参数**：除模型外，是否暴露 temperature、maxTokens、systemPrompt 等参数？
-6. **执行日志保留策略**：7 天是按自然日、执行次数，还是大小限制？清理任务是在应用启动时执行，还是后台定时执行？
+1. ~~**Claude Agent provider/SDK 选择**~~ → **已决策**：使用 `@anthropic-ai/claude-agent-sdk`（ADR-005）；provider 抽象由 adapter 接口承担，初始仅 `anthropic`。
+2. ~~**API key / 凭证存储方式**~~ → **已决策**：应用不存储凭证，复用用户本机 claude code 登录态；adapter 的 `apiKey` 入参保留为可选透传缝。
+3. ~~**变量选择器 UI 细节**~~ → **已决策**：REQ-022 锁定行为（按节点分组、类型标签、插入 fullName、实时刷新）；图标/搜索等观感在 REFLECT 人工验收。
+4. ~~**Condition 表达式编辑体验**~~ → **已决策**：REQ-019 锁定不做静态校验，本 story 不承诺"表达式错误提前发现"。
+5. ~~**Claude Agent 可配置参数**~~ → **已决策**：节点 config 增加可选 `options` 透传对象，allowlist 仅 `systemPrompt` / `maxTurns`；不支持 `temperature` / `maxTokens`；面板只暴露已签核六字段。
+6. ~~**执行日志保留策略**~~ → **已决策**：滚动 7×24 小时时间窗；清理由"server 启动时 + node-cron 每日"双触发；保留期暂不开放配置。
 
 ## 6. 实现决策
 
@@ -200,10 +200,12 @@ interface ClaudeAgentAdapter {
 6. **执行调试面板**：变量可视化、逐步调试、断点等后续再做。
 7. **节点分组 / 注释 / 子流程**：保持现状。
 8. **ForEach / While 节点的配置体验细化**：保持现状，不扩展。
+9. **webhook 触发**：后续 story 独立设计（新端点 + 鉴权/信任边界）。本 story 的 Trigger 节点只声明入口变量契约；触发来源建模在节点外（手动 = debug endpoint，定时 = schedules 实体）。
+10. **手动触发的变量填写表单**：按 Trigger 声明渲染表单不在本 story 范围；debug endpoint 已支持 API 级 `variables` 传入。
 
 ## 9. 其他说明
 
 - 本 story 继承 `codex-harness-desktop` 已沉淀的 FlowEngine、Flow Editor、发布/草稿快照机制。
-- Claude Agent adapter 的具体 provider/SDK 选择是移动块，将在 tech-design 阶段结合已有依赖（项目是否已引入 Anthropic / OpenAI SDK）、API key 存储方案、以及长期扩展性综合决策。
+- Claude Agent adapter 的 provider/SDK 已在 tech-design 决策为 `@anthropic-ai/claude-agent-sdk`（ADR-005）；凭证复用本机 claude code，应用不存储。
 - 变量命名空间机制对现有 flow 数据保持向后兼容：旧 flow 中没有 `outputVariable` 的节点仍然按现有方式执行（输出不写入变量注册表）。
-- 执行日志继续沿用现有 SQLite 存储方案；新增清理逻辑需要在 tech-design 中明确是启动时清理、后台定时清理，还是每次执行后触发。
+- 执行日志继续沿用现有 SQLite 存储方案；清理机制已在 tech-design 明确：`purgeExpiredExecutions()` 单函数，滚动 7×24h，server 启动时 + node-cron 每日双触发。
