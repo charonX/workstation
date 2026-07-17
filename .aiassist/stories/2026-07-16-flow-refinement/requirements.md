@@ -277,8 +277,8 @@
 
 ### 验收标准
 
-1. flow 每次执行生成执行记录，包含每个节点的 `nodeId`、`nodeName`、`inputVariables`、`outputVariables`、`branchTaken`、`error`、`attemptCount`。
-2. Claude Agent 节点的调用详情最小字段清单为：`prompt`（脱敏/截断，前 4000 字符）、`output`、`model`、`provider`、`status`、`error`、`durationMs`、`attemptCount`。
+1. flow 每次执行生成执行记录，包含每个节点的 `nodeId`、`nodeName`、`inputVariables`、`outputVariables`、`branchTaken`、`error`、`attemptCount`。"每次执行"涵盖失败与**引擎安全中止**（maxIterations/maxDepth/节点或 executor 缺失）的执行（2026-07-17 用户决策）。
+2. Claude Agent 节点的调用详情最小字段清单为：`prompt`（脱敏/截断，前 4000 字符）、`output`、`model`、`provider`、`status`、`error`、`durationMs`、`attemptCount`。`output` **总是捕获** agent 文本输出（无论是否声明 `outputVariable`），由 agent 调用详情携带（2026-07-17 用户决策）。
 3. 日志写入 SQLite `executions` 表（或关联表），与现有执行历史兼容。
 4. 日志默认保留 7 天，到期自动清理。
 5. 清理逻辑在 tech-design 中明确实现方式（启动时清理 / 后台定时清理 / 每次执行后触发）。
@@ -305,3 +305,4 @@
 |---|---|---|
 | v1 | 2026-07-17 | 初始结晶，基于 PRD 稳定块生成 REQ-FLOW-018~028 |
 | v1.1 | 2026-07-17 | BUILD 阶段 S3 对齐检查用户决策：REQ-FLOW-018 AC2 变量名 trim 后非空；REQ-FLOW-019 AC4 表达式改为必填（缺失或 trim 后为空均拒绝）；provider/options 拒绝路径接受 tech-design 层承诺不补签核测试 |
+| v1.2 | 2026-07-17 | BUILD 阶段 S4 对齐检查用户决策：REQ-FLOW-028 AC1 明确覆盖引擎安全中止的执行；AC2 明确 output 总是捕获（不经 outputVariable 声明）；成功路径节点记录写入失败改判 error 接受为 fail-visible（记 REFLECT） |
