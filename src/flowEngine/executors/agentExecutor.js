@@ -18,19 +18,20 @@ export async function agentExecutor({ node, context, projectPath }) {
   // 无 provider（旧 flow）→ 内置 mock 路径，保持 REQ-FLOW-017 等旧签核契约离线可过；
   // "anthropic" → claudeAgentAdapter 真实调用。
   if (provider === "anthropic") {
+    const { prompt, model, options } = node.config ?? {};
     const result = await claudeAgentExecute({
-      prompt: node.config?.prompt,
-      model: node.config?.model,
+      prompt,
+      model,
       projectPath,
-      options: node.config?.options
+      options
     });
     return {
       ...toNodeResult(result),
       // agent 调用详情（tech-design §5.6）：引擎抄入 nodeRecord。
       // prompt 为引擎完成变量替换后的文本；内置 mock 分支不带此字段。
       agent: {
-        prompt: node.config?.prompt,
-        model: node.config?.model,
+        prompt,
+        model,
         provider,
         durationMs: result.durationMs
       }

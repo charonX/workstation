@@ -119,10 +119,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
     if (rawResult.status === "fatal") {
       // fatal：立即终止，不进入重试/onError 流程（REQ-FLOW-025 AC4）。
-      record.error = rawResult.error || `Node "${node.id}" failed fatally`;
-      copyAgentDetail(record, rawResult);
-      nodeRecords.push(record);
-      throw new Error(`fatal: ${record.error}`);
+      failRun(nodeRecords, record, rawResult, rawResult.error || `Node "${node.id}" failed fatally`);
     }
 
     let result = rawResult;
@@ -130,10 +127,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
       const message = rawResult.error || `Node "${node.id}" failed`;
       if (onError !== "ignore") {
         // onError=fail（默认）：终止整个 flow（REQ-FLOW-025 AC2）。
-        record.error = message;
-        copyAgentDetail(record, rawResult);
-        nodeRecords.push(record);
-        throw new Error(`fatal: ${message}`);
+        failRun(nodeRecords, record, rawResult, message);
       }
       // onError=ignore：视为成功，输出变量写空字符串，flow 继续（REQ-FLOW-025 AC3）。
       record.error = message;
@@ -231,6 +225,15 @@ function substitutePromptVariables(node, context) {
 function normalizeRetries(value) {
   if (Number.isInteger(value) && value >= 0) return value;
   return 1;
+}
+
+// 终止整个 flow：补齐 nodeRecord（error + agent 详情）后以 fatal: 前缀抛出。
+// 用于 fatal 直终（AC4）与重试耗尽后 onError=fail（AC2）两条路径。
+function failRun(nodeRecords, record, result, message) {
+  record.error = message;
+  copyAgentDetail(record, result);
+  nodeRecords.push(record);
+  throw new Error(`fatal: ${message}`);
 }
 
 function copyAgentDetail(record, result) {
