@@ -196,6 +196,11 @@ test.describe("Flow Editor Node Design", () => {
     await falseHandle.dragTo(falseTarget.locator(".react-flow__handle-left"));
     await expect(firstWindow.locator(".react-flow__edge")).toHaveCount(2);
 
+    // BUG-001（2026-07-17 用户确认 test-gap）：REQ-FLOW-019 v1.1 契约要求 condition
+    // 必须有合法 expression 才能保存；本测试聚焦 handles 语义，补齐 setup 数据。
+    await conditionNode.click();
+    await firstWindow.fill(locators.CONDITION_EXPRESSION_INPUT, "1 > 0");
+
     // Save and reload; edges remain connected to the correct handles.
     await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
     await firstWindow.reload();
