@@ -15,6 +15,7 @@
     "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m node_modules/better-sqlite3"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.212",
     "better-sqlite3": "^12.11.1",
     "electron-squirrel-startup": "^1.0.1",
     "i18next": "^26.3.5",
