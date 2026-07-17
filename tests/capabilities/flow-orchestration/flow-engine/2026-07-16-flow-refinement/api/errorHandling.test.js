@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 
 describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
@@ -39,8 +40,8 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
-    expect(callCount).toBe(3); // 初始 1 次 + 重试 2 次
+    assert.equal(result.status, "success");
+    assert.equal(callCount, 3); // 初始 1 次 + 重试 2 次
   });
 
   it("重试耗尽后 onError=fail 终止整个 flow", async () => {
@@ -67,7 +68,7 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
       return { status: "error", error: "persistent failure" };
     };
 
-    await expect(run(flow, { executors: { agent: mockAgentExecutor } })).rejects.toThrow();
+    await assert.rejects(run(flow, { executors: { agent: mockAgentExecutor } }));
   });
 
   it("重试耗尽后 onError=ignore 继续执行下游，输出变量为空字符串", async () => {
@@ -100,9 +101,9 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
+    assert.equal(result.status, "success");
     // onError=ignore 时 n1.out 应为空字符串，Condition 走 true 分支
-    expect(result.branch).toBe("true");
+    assert.equal(result.branch, "true");
   });
 
   it("节点返回 fatal 时直接终止，不进入重试逻辑", async () => {
@@ -131,9 +132,9 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
       return { status: "fatal", error: "fatal error" };
     };
 
-    await expect(run(flow, { executors: { agent: mockAgentExecutor } })).rejects.toThrow();
+    await assert.rejects(run(flow, { executors: { agent: mockAgentExecutor } }));
     // fatal 不应重试
-    expect(callCount).toBe(1);
+    assert.equal(callCount, 1);
   });
 
   it("错误处理对 Trigger/Condition/Claude Agent 三个节点均生效", async () => {
@@ -153,7 +154,7 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
       edges: [],
     };
     const triggerResult = await run(triggerFlow);
-    expect(triggerResult.status).toBe("success");
+    assert.equal(triggerResult.status, "success");
 
     // Condition
     const conditionFlow = {
@@ -167,6 +168,6 @@ describe("REQ-FLOW-025: FlowEngine 节点错误处理执行", () => {
       edges: [],
     };
     const conditionResult = await run(conditionFlow);
-    expect(conditionResult.status).toBe("success");
+    assert.equal(conditionResult.status, "success");
   });
 });

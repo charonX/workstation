@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 
 describe("REQ-FLOW-023: FlowEngine 变量注册表", () => {
@@ -28,7 +29,7 @@ describe("REQ-FLOW-023: FlowEngine 变量注册表", () => {
 
     const result = await run(flow);
     // Trigger 变量作为初始 context，可通过 result 或下游节点间接验证
-    expect(result.status).toBe("success");
+    assert.equal(result.status, "success");
   });
 
   it("节点执行成功后按 nodeId.variableName 写入注册表", async () => {
@@ -61,9 +62,9 @@ describe("REQ-FLOW-023: FlowEngine 变量注册表", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
+    assert.equal(result.status, "success");
     // 验证 n1.x 已写入 context
-    expect(capturedContext["n1.x"]).toBe("hello");
+    assert.equal(capturedContext["n1.x"], "hello");
   });
 
   it("不同节点可声明同名变量，通过 nodeId 区分", async () => {
@@ -96,10 +97,10 @@ describe("REQ-FLOW-023: FlowEngine 变量注册表", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
+    assert.equal(result.status, "success");
     // n1.x 和 n2.x 应同时存在，互不覆盖
-    expect(capturedContext["n1.x"]).toBe("from-n1");
-    expect(capturedContext["n2.x"]).toBe("from-n2");
+    assert.equal(capturedContext["n1.x"], "from-n1");
+    assert.equal(capturedContext["n2.x"], "from-n2");
   });
 
   it("变量注册表不持久化到数据库，仅存在于单次执行内存中", async () => {
@@ -118,7 +119,7 @@ describe("REQ-FLOW-023: FlowEngine 变量注册表", () => {
     const result2 = await run(flow);
 
     // 两次执行应使用独立的注册表，互不干扰
-    expect(result1.status).toBe("success");
-    expect(result2.status).toBe("success");
+    assert.equal(result1.status, "success");
+    assert.equal(result2.status, "success");
   });
 });

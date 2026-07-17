@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import { createFlow, updateFlow, getFlow, resetFlows } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-020: Claude Agent 节点统一 adapter 调用与输出变量", () => {
@@ -33,12 +34,12 @@ describe("REQ-FLOW-020: Claude Agent 节点统一 adapter 调用与输出变量"
 
     const updated = updateFlow(flow.id, { nodeList });
     const config = updated.nodeList[0].config;
-    expect(config.provider).toBe("anthropic");
-    expect(config.model).toBe("claude-sonnet-5");
-    expect(config.outputVariable).toBe("summary");
-    expect(config.prompt).toBe("Summarize {{n1.result}}");
-    expect(config.retries).toBe(2);
-    expect(config.onError).toBe("ignore");
+    assert.equal(config.provider, "anthropic");
+    assert.equal(config.model, "claude-sonnet-5");
+    assert.equal(config.outputVariable, "summary");
+    assert.equal(config.prompt, "Summarize {{n1.result}}");
+    assert.equal(config.retries, 2);
+    assert.equal(config.onError, "ignore");
   });
 
   it("prompt 支持变量选择器插入 {{fullName}} 格式", () => {
@@ -62,7 +63,7 @@ describe("REQ-FLOW-020: Claude Agent 节点统一 adapter 调用与输出变量"
     ];
 
     const updated = updateFlow(flow.id, { nodeList });
-    expect(updated.nodeList[1].config.prompt).toContain("{{n1.input}}");
+    assert.ok(updated.nodeList[1].config.prompt.includes("{{n1.input}}"));
   });
 
   it("adapter 不感知变量注册表，只接收已替换变量后的最终 prompt", () => {
@@ -75,7 +76,7 @@ describe("REQ-FLOW-020: Claude Agent 节点统一 adapter 调用与输出变量"
       options: {},
       apiKey: "test-key",
     };
-    expect(adapterInput.prompt).not.toContain("{{");
-    expect(adapterInput.prompt).not.toContain("}}");
+    assert.ok(!adapterInput.prompt.includes("{{"));
+    assert.ok(!adapterInput.prompt.includes("}}"));
   });
 });

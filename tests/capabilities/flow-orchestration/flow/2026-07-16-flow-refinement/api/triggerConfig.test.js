@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import { createFlow, updateFlow, getFlow, resetFlows } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
@@ -30,15 +31,15 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
     ];
 
     const updated = updateFlow(flow.id, { nodeList });
-    expect(updated.nodeList[0].config.outputVariables).toHaveLength(2);
-    expect(updated.nodeList[0].config.outputVariables[0]).toEqual({
+    assert.equal(updated.nodeList[0].config.outputVariables.length, 2);
+    assert.deepEqual(updated.nodeList[0].config.outputVariables[0], {
       name: "repoPath",
       type: "string",
       defaultValue: "",
     });
 
     const fetched = getFlow(flow.id);
-    expect(fetched.nodeList[0].config.outputVariables).toHaveLength(2);
+    assert.equal(fetched.nodeList[0].config.outputVariables.length, 2);
   });
 
   it("拒绝空变量名并返回 400", () => {
@@ -53,7 +54,7 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
       },
     ];
 
-    expect(() => updateFlow(flow.id, { nodeList })).toThrow("Validation failed");
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，方便前端定位
     // 例如：{ path: "nodeList[0].config.outputVariables[0].name", message: "Variable name is required" }
   });
@@ -70,7 +71,7 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
       },
     ];
 
-    expect(() => updateFlow(flow.id, { nodeList })).toThrow("Validation failed");
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，例如：
     // { path: "nodeList[0].config.outputVariables[0].type", message: "Invalid type: boolean. Must be one of: string, number, array, object" }
   });
@@ -90,7 +91,7 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
       },
     ];
 
-    expect(() => updateFlow(flow.id, { nodeList })).toThrow("Validation failed");
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，例如：
     // { path: "nodeList[0].config.outputVariables[1].name", message: "Duplicate variable name: x" }
   });
@@ -121,6 +122,6 @@ describe("REQ-FLOW-018: Trigger 节点输出变量声明", () => {
     const updated = updateFlow(flow.id, { nodeList: updatedNodeList });
 
     // 下游变量选择器基于上游 outputVariables 计算；删除后列表应为空
-    expect(updated.nodeList[0].config.outputVariables).toHaveLength(0);
+    assert.equal(updated.nodeList[0].config.outputVariables.length, 0);
   });
 });

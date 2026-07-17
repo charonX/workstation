@@ -5,14 +5,15 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 
 describe("REQ-FLOW-026: Claude Agent 悬空引用执行行为", () => {
   it("上游删除/重命名变量后，下游保存时不做强制阻断", async () => {
     // 保存时不阻断：这是 flowService 的职责，已在 REQ-FLOW-018/019 中覆盖
     // 本测试关注执行时行为
-    expect(true).toBe(true);
+    assert.equal(true, true);
   });
 
   it("执行时 {{fullName}} 不存在替换为空字符串", async () => {
@@ -40,8 +41,8 @@ describe("REQ-FLOW-026: Claude Agent 悬空引用执行行为", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
-    expect(capturedPrompt).toBe("Value: ");
+    assert.equal(result.status, "success");
+    assert.equal(capturedPrompt, "Value: ");
   });
 
   it("Condition 表达式中的 fullName 不存在时按 JS 语义处理为 undefined", async () => {
@@ -58,7 +59,7 @@ describe("REQ-FLOW-026: Claude Agent 悬空引用执行行为", () => {
 
     // typeof n999.missing 应为 'undefined'，表达式为 true
     const result = await run(flow);
-    expect(result.status).toBe("success");
-    expect(result.branch).toBe("true");
+    assert.equal(result.status, "success");
+    assert.equal(result.branch, "true");
   });
 });

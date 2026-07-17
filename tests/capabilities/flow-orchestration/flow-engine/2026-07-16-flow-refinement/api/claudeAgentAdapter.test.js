@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 
 describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
   it("adapter 接收统一输入并返回标准格式", async () => {
@@ -21,10 +22,10 @@ describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
     // 预期 adapter 返回标准格式
     const expectedShape = {
       status: "success",
-      output: expect.any(String),
-      logs: expect.any(Array),
+      output: "<any string>",
+      logs: [],
     };
-    expect(expectedShape.status).toBe("success");
+    assert.equal(expectedShape.status, "success");
   });
 
   it("adapter 把统一输入映射到 Claude Agent SDK", async () => {
@@ -39,9 +40,9 @@ describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
     };
 
     // 预期映射后的 SDK 参数包含 prompt、model、cwd、options
-    expect(input.prompt).toBe("Hello world");
-    expect(input.model).toBe("claude-sonnet-5");
-    expect(input.projectPath).toBe("/tmp/project");
+    assert.equal(input.prompt, "Hello world");
+    assert.equal(input.model, "claude-sonnet-5");
+    assert.equal(input.projectPath, "/tmp/project");
   });
 
   it("adapter 返回的文本内容写入声明的 outputVariable", async () => {
@@ -49,7 +50,7 @@ describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
     const mockSdkResponse = "This is the agent response";
     const adapterOutput = { status: "success", output: mockSdkResponse };
 
-    expect(adapterOutput.output).toBe(mockSdkResponse);
+    assert.equal(adapterOutput.output, mockSdkResponse);
   });
 
   it("adapter 不感知变量注册表，只接收已替换变量后的最终 prompt", async () => {
@@ -60,7 +61,7 @@ describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
     };
 
     // adapter 不处理 {{...}} 语法，只接收最终文本
-    expect(input.prompt).not.toContain("{{");
-    expect(input.prompt).not.toContain("}}");
+    assert.ok(!input.prompt.includes("{{"));
+    assert.ok(!input.prompt.includes("}}"));
   });
 });

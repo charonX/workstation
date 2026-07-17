@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 
 describe("REQ-FLOW-027: Claude Agent 工作目录注入", () => {
@@ -35,8 +36,8 @@ describe("REQ-FLOW-027: Claude Agent 工作目录注入", () => {
     };
 
     const result = await run(flow, { executors: { agent: mockAgentExecutor } });
-    expect(result.status).toBe("success");
-    expect(capturedProjectPath).toBe("/tmp/test-project");
+    assert.equal(result.status, "success");
+    assert.equal(capturedProjectPath, "/tmp/test-project");
   });
 
   it("adapter 使用 projectPath 作为 Claude Agent SDK 调用时的工作目录", async () => {
@@ -48,7 +49,7 @@ describe("REQ-FLOW-027: Claude Agent 工作目录注入", () => {
       options: {},
       apiKey: "test-key",
     };
-    expect(adapterInput.projectPath).toBe("/tmp/test-project");
+    assert.equal(adapterInput.projectPath, "/tmp/test-project");
   });
 
   it("项目路径不存在或不可读时 adapter 返回 status=error", async () => {
@@ -78,6 +79,6 @@ describe("REQ-FLOW-027: Claude Agent 工作目录注入", () => {
     };
 
     // onError 默认为 fail，路径不存在时应终止
-    await expect(run(flow, { executors: { agent: mockAgentExecutor } })).rejects.toThrow();
+    await assert.rejects(run(flow, { executors: { agent: mockAgentExecutor } }));
   });
 });

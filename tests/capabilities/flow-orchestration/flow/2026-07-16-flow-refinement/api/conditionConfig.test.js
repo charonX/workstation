@@ -5,7 +5,8 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import { createFlow, updateFlow, getFlow, resetFlows } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识", () => {
@@ -30,10 +31,10 @@ describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识
     ];
 
     const updated = updateFlow(flow.id, { nodeList });
-    expect(updated.nodeList[1].config.expression).toBe("n1.count > 3");
+    assert.equal(updated.nodeList[1].config.expression, "n1.count > 3");
 
     const fetched = getFlow(flow.id);
-    expect(fetched.nodeList[1].config.expression).toBe("n1.count > 3");
+    assert.equal(fetched.nodeList[1].config.expression, "n1.count > 3");
   });
 
   it("拒绝空表达式并返回 400", () => {
@@ -46,7 +47,7 @@ describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识
       },
     ];
 
-    expect(() => updateFlow(flow.id, { nodeList })).toThrow("Validation failed");
+    assert.throws(() => updateFlow(flow.id, { nodeList }), /Validation failed/);
     // 预期错误详情包含 path 和 message，例如：
     // { path: "nodeList[0].config.expression", message: "Expression is required" }
   });
@@ -68,7 +69,7 @@ describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识
 
     const updated = updateFlow(flow.id, { nodeList });
     // Condition 表达式中的变量引用直接使用 fullName（如 n1.result）
-    expect(updated.nodeList[1].config.expression).toContain("n1.result");
+    assert.ok(updated.nodeList[1].config.expression.includes("n1.result"));
   });
 
   it("本 story 不承诺运行时前的表达式语法校验", () => {
@@ -83,6 +84,6 @@ describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识
 
     // 保存时不做语法校验，只校验非空
     const updated = updateFlow(flow.id, { nodeList });
-    expect(updated.nodeList[0].config.expression).toBe("invalid syntax here");
+    assert.equal(updated.nodeList[0].config.expression, "invalid syntax here");
   });
 });
