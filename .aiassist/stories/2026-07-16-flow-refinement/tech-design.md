@@ -138,6 +138,7 @@ execute({ prompt, model, projectPath, options?, apiKey? }) →
   { status: "success" | "error" | "fatal", output?, error?, logs?, durationMs }
 ```
 
+- **agentExecutor 按 `config.provider` 分派**：无 `provider`（旧 flow，如 `config: { model: "mock" }`）→ 内置 mock 响应（保持 REQ-FLOW-017 等旧签核契约离线可过）；`provider: "anthropic"` → claudeAgentAdapter 真实调用。
 - 先校验 `projectPath` 存在且可读，失败返回 `status: "error"`（走节点重试/onError 流程）。
 - 映射到 SDK：`query({ prompt, options: { cwd: projectPath, model, systemPrompt?, maxTurns?, permissionMode: "bypassPermissions" } })`。
 - `apiKey` 为可选透传：提供时注入子进程 env（`ANTHROPIC_API_KEY`）；不提供时由 SDK/CLI 本机凭证解析（§6.3）。
