@@ -52,6 +52,7 @@ export function closeDb() {
 export function resetDb() {
   const database = getDb();
   database.exec(`
+    DROP TABLE IF EXISTS execution_nodes;
     DROP TABLE IF EXISTS logs;
     DROP TABLE IF EXISTS executions;
     DROP TABLE IF EXISTS schedules;
@@ -157,6 +158,26 @@ function initSchema(database) {
       status TEXT,
       message TEXT
     );
+
+    -- REQ-FLOW-028 / tech-design §5.6：节点级执行记录，经 executionId 关联 executions。
+    CREATE TABLE IF NOT EXISTS execution_nodes (
+      id TEXT PRIMARY KEY,
+      executionId TEXT NOT NULL,
+      nodeId TEXT NOT NULL,
+      nodeName TEXT,
+      inputVariables TEXT,
+      outputVariables TEXT,
+      branchTaken TEXT,
+      error TEXT,
+      attemptCount INTEGER NOT NULL DEFAULT 1,
+      prompt TEXT,
+      output TEXT,
+      model TEXT,
+      provider TEXT,
+      status TEXT,
+      durationMs INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
   `);
 }
 
@@ -196,6 +217,27 @@ function migrateSchema(database) {
   if (!hasColumn(database, "skills", "repoId")) {
     database.exec(`ALTER TABLE skills ADD COLUMN repoId TEXT`);
   }
+  // REQ-FLOW-028: execution_nodes 表（旧库补建，与 initSchema 同 DDL，幂等）。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS execution_nodes (
+      id TEXT PRIMARY KEY,
+      executionId TEXT NOT NULL,
+      nodeId TEXT NOT NULL,
+      nodeName TEXT,
+      inputVariables TEXT,
+      outputVariables TEXT,
+      branchTaken TEXT,
+      error TEXT,
+      attemptCount INTEGER NOT NULL DEFAULT 1,
+      prompt TEXT,
+      output TEXT,
+      model TEXT,
+      provider TEXT,
+      status TEXT,
+      durationMs INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
+  `);
   // Clean up orphan skills left over from before the skill-repo information architecture.
   // Skills must belong to a valid skill_repo; those without a repoId are no longer reachable.
   database.exec(`

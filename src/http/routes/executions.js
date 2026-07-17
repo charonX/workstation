@@ -27,7 +27,9 @@ export function handleExecutions(req, res, body, pathParts) {
     if (req.method === "GET") {
       const execution = taskService.getExecution(executionId);
       if (!execution) return notFound(res, "Execution not found");
-      return ok(res, execution);
+      // REQ-FLOW-028 AC6：既有字段不变，新增节点级执行记录（关联 execution_nodes）。
+      const nodes = taskService.listExecutionNodes(executionId);
+      return ok(res, { ...execution, nodes });
     }
     return notFound(res);
   }

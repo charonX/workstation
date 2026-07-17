@@ -229,11 +229,14 @@ function normalizeRetries(value) {
 
 // 终止整个 flow：补齐 nodeRecord（error + agent 详情）后以 fatal: 前缀抛出。
 // 用于 fatal 直终（AC4）与重试耗尽后 onError=fail（AC2）两条路径。
+// 已累积的 nodeRecords 挂到错误对象上，供 taskService 在终止路径持久化（REQ-FLOW-028）。
 function failRun(nodeRecords, record, result, message) {
   record.error = message;
   copyAgentDetail(record, result);
   nodeRecords.push(record);
-  throw new Error(`fatal: ${message}`);
+  const error = new Error(`fatal: ${message}`);
+  error.nodeRecords = nodeRecords;
+  throw error;
 }
 
 function copyAgentDetail(record, result) {
