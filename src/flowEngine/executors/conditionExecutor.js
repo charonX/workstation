@@ -9,8 +9,10 @@ export function conditionExecutor({ node, context }) {
       output: result ? "true" : "false"
     };
   } catch (err) {
+    // tech-design §5.3：表达式语法/求值异常 → status "error"（非 fatal），
+    // 进入引擎统一重试/onError 流程；默认 onError=fail 时引擎仍终止，与旧行为一致。
     return {
-      status: "fatal",
+      status: "error",
       error: err.message
     };
   }

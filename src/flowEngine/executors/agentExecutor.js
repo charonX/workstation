@@ -24,7 +24,17 @@ export async function agentExecutor({ node, context, projectPath }) {
       projectPath,
       options: node.config?.options
     });
-    return toNodeResult(result);
+    return {
+      ...toNodeResult(result),
+      // agent 调用详情（tech-design §5.6）：引擎抄入 nodeRecord。
+      // prompt 为引擎完成变量替换后的文本；内置 mock 分支不带此字段。
+      agent: {
+        prompt: node.config?.prompt,
+        model: node.config?.model,
+        provider,
+        durationMs: result.durationMs
+      }
+    };
   }
 
   if (provider !== undefined && provider !== null && provider !== "") {
