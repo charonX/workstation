@@ -17,9 +17,12 @@ const activeServers = new Set();
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
 const purgeTasks = new Map();
 
+// 每日清理 cron 表达式：03:17（避开整点整刻的调度尖峰）。
+const PURGE_CRON_SCHEDULE = "17 3 * * *";
+
 // REQ-FLOW-028 AC4/AC5 / tech-design §7：执行日志 7 天滚动清理。
 // 触发点 A：startServer 启动时执行一次（Electron main 与 headless CLI 均经过 startServer）。
-// 触发点 B：node-cron 每日 03:17（避开整点）定时任务，覆盖常驻实例。
+// 触发点 B：node-cron 每日定时任务（PURGE_CRON_SCHEDULE），覆盖常驻实例。
 // 清理失败不得影响 server 启动/运行（safe default），仅记录日志。
 function runExecutionLogPurge() {
   try {
@@ -61,7 +64,7 @@ export function startServer(options = {}) {
       // 触发点 A：启动即清理一次。
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
-      purgeTasks.set(server, cron.schedule("17 3 * * *", runExecutionLogPurge));
+      purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
       resolve({ server, baseUrl: `http://127.0.0.1:${port}` });
     });
   });

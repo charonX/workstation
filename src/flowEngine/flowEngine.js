@@ -162,10 +162,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     const next = chooseNextNode(node, result.output, outgoing);
 
     if (next.loopBack) {
-      depth++;
-      if (depth >= maxDepth) {
-        abortRun(nodeRecords, `maxDepth exceeded (${maxDepth})`);
-      }
+      depth = incrementDepthOrAbort(nodeRecords, depth, maxDepth);
       loopBodyCount++;
       if (nodeType === "while") {
         incrementFirstNumericContext(context);
@@ -175,10 +172,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     }
 
     if (next.edge) {
-      depth++;
-      if (depth >= maxDepth) {
-        abortRun(nodeRecords, `maxDepth exceeded (${maxDepth})`);
-      }
+      depth = incrementDepthOrAbort(nodeRecords, depth, maxDepth);
       currentNodeId = next.edge.targetNodeId;
     } else {
       currentNodeId = null;
@@ -227,24 +221,31 @@ function normalizeRetries(value) {
   return 1;
 }
 
-// 终止整个 flow：补齐 nodeRecord（error + agent 详情）后以 fatal: 前缀抛出。
+// 终止整个 flow：补齐 nodeRecord（error + agent 详情）后以 fatal: 前缀中止。
 // 用于 fatal 直终（AC4）与重试耗尽后 onError=fail（AC2）两条路径。
 // 已累积的 nodeRecords 挂到错误对象上，供 taskService 在终止路径持久化（REQ-FLOW-028）。
 function failRun(nodeRecords, record, result, message) {
   record.error = message;
   copyAgentDetail(record, result);
   nodeRecords.push(record);
-  const error = new Error(`fatal: ${message}`);
-  error.nodeRecords = nodeRecords;
-  throw error;
+  abortRun(nodeRecords, `fatal: ${message}`);
 }
 
-// 引擎安全中止（maxIterations / 节点缺失 / 无 executor / maxDepth）：与 failRun 同模式，
-// 已累积的 nodeRecords 挂到错误对象上，供 taskService 在 catch 路径持久化（REQ-FLOW-028 v1.2）。
+// 引擎安全中止（maxIterations / 节点缺失 / 无 executor / maxDepth）：把已累积的
+// nodeRecords 挂到错误对象上抛出，供 taskService 在 catch 路径持久化（REQ-FLOW-028 v1.2）。
 function abortRun(nodeRecords, message) {
   const error = new Error(message);
   error.nodeRecords = nodeRecords;
   throw error;
+}
+
+// depth 递增并检查上限；超限即安全中止。loopBack 与 edge 两条推进路径共用。
+function incrementDepthOrAbort(nodeRecords, depth, maxDepth) {
+  const nextDepth = depth + 1;
+  if (nextDepth >= maxDepth) {
+    abortRun(nodeRecords, `maxDepth exceeded (${maxDepth})`);
+  }
+  return nextDepth;
 }
 
 function copyAgentDetail(record, result) {

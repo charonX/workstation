@@ -58,11 +58,7 @@ function nextExecutionId() {
 const PROMPT_LOG_MAX_LENGTH = 4000;
 
 // REQ-FLOW-028 / tech-design §5.6：把引擎 run() 返回的 nodeRecords 逐行写入
-// execution_nodes（同一 db 连接，单事务）。record.agent 存在时展开 agent 调用详情。
-// status 语义：record.error 非空 → "error"（含 onError=ignore 降级路径，错误信息记入
-// error 列），否则 → "success"。
-// output 列：仅 agent 节点（record.agent 存在）填充，优先取 agent.output（adapter 返回文本，
-// REQ-FLOW-028 v1.2，不经 outputVariable 声明），回落 outputVariables 首个值；两者皆无时为 NULL。
+// execution_nodes（同一 db 连接，单事务）。
 function insertExecutionNodes(executionId, nodeRecords) {
   if (!Array.isArray(nodeRecords) || nodeRecords.length === 0) return;
   const db = getDb();
@@ -72,27 +68,37 @@ function insertExecutionNodes(executionId, nodeRecords) {
   `);
   const writeAll = db.transaction((records) => {
     records.forEach((record, index) => {
-      const agent = record.agent ?? null;
-      insert.run(
-        `${executionId}:${index}`,
-        executionId,
-        record.nodeId,
-        record.nodeName ?? null,
-        JSON.stringify(record.inputVariables ?? {}),
-        JSON.stringify(record.outputVariables ?? {}),
-        record.branchTaken ?? null,
-        record.error ?? null,
-        record.attemptCount ?? 1,
-        agent?.prompt != null ? String(agent.prompt).slice(0, PROMPT_LOG_MAX_LENGTH) : null,
-        agent ? (agent.output ?? firstOutputVariableValue(record)) : null,
-        agent?.model ?? null,
-        agent?.provider ?? null,
-        record.error ? "error" : "success",
-        agent?.durationMs ?? null
-      );
+      insert.run(...executionNodeInsertParams(executionId, record, index));
     });
   });
   writeAll(nodeRecords);
+}
+
+// nodeRecord → execution_nodes 行参数（列序与 §5.6 DDL 一致）。record.agent 存在时展开
+// agent 调用详情。
+// status 语义：record.error 非空 → "error"（含 onError=ignore 降级路径，错误信息记入
+// error 列），否则 → "success"。
+// output 列：仅 agent 节点（record.agent 存在）填充，优先取 agent.output（adapter 返回文本，
+// REQ-FLOW-028 v1.2，不经 outputVariable 声明），回落 outputVariables 首个值；两者皆无时为 NULL。
+function executionNodeInsertParams(executionId, record, index) {
+  const agent = record.agent ?? null;
+  return [
+    `${executionId}:${index}`,
+    executionId,
+    record.nodeId,
+    record.nodeName ?? null,
+    JSON.stringify(record.inputVariables ?? {}),
+    JSON.stringify(record.outputVariables ?? {}),
+    record.branchTaken ?? null,
+    record.error ?? null,
+    record.attemptCount ?? 1,
+    agent?.prompt != null ? String(agent.prompt).slice(0, PROMPT_LOG_MAX_LENGTH) : null,
+    agent ? (agent.output ?? firstOutputVariableValue(record)) : null,
+    agent?.model ?? null,
+    agent?.provider ?? null,
+    record.error ? "error" : "success",
+    agent?.durationMs ?? null
+  ];
 }
 
 function firstOutputVariableValue(record) {
@@ -125,13 +131,16 @@ export function listExecutionNodes(executionId) {
   return db.prepare("SELECT * FROM execution_nodes WHERE executionId = ? ORDER BY rowid ASC").all(executionId).map(rowToExecutionNode);
 }
 
+// 过期执行的 id 子查询（cutoff 严格 <）：execution_nodes 与 logs 两条级联 DELETE 共用。
+const EXPIRED_EXECUTION_IDS_SUBQUERY = "SELECT id FROM executions WHERE startedAt < ?";
+
 // REQ-FLOW-028 AC4 / tech-design §7：滚动时间窗清理过期执行日志。
 // cutoff = now - retentionDays×24h（ISO 字符串比较，startedAt 均为 toISOString 格式）。
 // 单事务内按序删 execution_nodes → logs → executions（前两者按 executionId 子查询）。
 export function purgeExpiredExecutions(db, { retentionDays = 7, now = new Date() } = {}) {
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
-  const deleteNodes = db.prepare("DELETE FROM execution_nodes WHERE executionId IN (SELECT id FROM executions WHERE startedAt < ?)");
-  const deleteLogs = db.prepare("DELETE FROM logs WHERE executionId IN (SELECT id FROM executions WHERE startedAt < ?)");
+  const deleteNodes = db.prepare(`DELETE FROM execution_nodes WHERE executionId IN (${EXPIRED_EXECUTION_IDS_SUBQUERY})`);
+  const deleteLogs = db.prepare(`DELETE FROM logs WHERE executionId IN (${EXPIRED_EXECUTION_IDS_SUBQUERY})`);
   const deleteExecutions = db.prepare("DELETE FROM executions WHERE startedAt < ?");
   const purge = db.transaction(() => {
     const executionNodes = deleteNodes.run(cutoff).changes;

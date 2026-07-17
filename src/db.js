@@ -65,6 +65,29 @@ export function resetDb() {
   initSchema(database);
 }
 
+// REQ-FLOW-028 / tech-design §5.6：节点级执行记录，经 executionId 关联 executions。
+// initSchema 与 migrateSchema 共用同一 DDL（CREATE IF NOT EXISTS 幂等，旧库补建安全）。
+const EXECUTION_NODES_DDL = `
+  CREATE TABLE IF NOT EXISTS execution_nodes (
+    id TEXT PRIMARY KEY,
+    executionId TEXT NOT NULL,
+    nodeId TEXT NOT NULL,
+    nodeName TEXT,
+    inputVariables TEXT,
+    outputVariables TEXT,
+    branchTaken TEXT,
+    error TEXT,
+    attemptCount INTEGER NOT NULL DEFAULT 1,
+    prompt TEXT,
+    output TEXT,
+    model TEXT,
+    provider TEXT,
+    status TEXT,
+    durationMs INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
+`;
+
 function initSchema(database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -159,25 +182,7 @@ function initSchema(database) {
       message TEXT
     );
 
-    -- REQ-FLOW-028 / tech-design §5.6：节点级执行记录，经 executionId 关联 executions。
-    CREATE TABLE IF NOT EXISTS execution_nodes (
-      id TEXT PRIMARY KEY,
-      executionId TEXT NOT NULL,
-      nodeId TEXT NOT NULL,
-      nodeName TEXT,
-      inputVariables TEXT,
-      outputVariables TEXT,
-      branchTaken TEXT,
-      error TEXT,
-      attemptCount INTEGER NOT NULL DEFAULT 1,
-      prompt TEXT,
-      output TEXT,
-      model TEXT,
-      provider TEXT,
-      status TEXT,
-      durationMs INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
+    ${EXECUTION_NODES_DDL}
   `);
 }
 
@@ -218,26 +223,7 @@ function migrateSchema(database) {
     database.exec(`ALTER TABLE skills ADD COLUMN repoId TEXT`);
   }
   // REQ-FLOW-028: execution_nodes 表（旧库补建，与 initSchema 同 DDL，幂等）。
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS execution_nodes (
-      id TEXT PRIMARY KEY,
-      executionId TEXT NOT NULL,
-      nodeId TEXT NOT NULL,
-      nodeName TEXT,
-      inputVariables TEXT,
-      outputVariables TEXT,
-      branchTaken TEXT,
-      error TEXT,
-      attemptCount INTEGER NOT NULL DEFAULT 1,
-      prompt TEXT,
-      output TEXT,
-      model TEXT,
-      provider TEXT,
-      status TEXT,
-      durationMs INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
-  `);
+  database.exec(EXECUTION_NODES_DDL);
   // Clean up orphan skills left over from before the skill-repo information architecture.
   // Skills must belong to a valid skill_repo; those without a repoId are no longer reachable.
   database.exec(`
