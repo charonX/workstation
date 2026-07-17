@@ -55,6 +55,17 @@ export async function execute({ prompt, model, projectPath, options, apiKey } = 
   const assistantErrors = [];
   let authFailure = false;
 
+  // 三条失败路径共用：记录日志并返回标准 error 结果（鉴权类失败追加本机登录指引）。
+  const fail = (raw) => {
+    log(`claude agent execute failed: ${raw}`);
+    return {
+      status: "error",
+      error: withAuthGuidance(raw, authFailure),
+      logs,
+      durationMs: Date.now() - startedAt,
+    };
+  };
+
   try {
     for await (const message of queryFn({ prompt, options: sdkOptions })) {
       if (message.type === "assistant") {
@@ -80,37 +91,18 @@ export async function execute({ prompt, model, projectPath, options, apiKey } = 
     }
   } catch (err) {
     const raw = err?.message || String(err);
-    log(`claude agent execute failed: ${raw}`);
-    return {
-      status: "error",
-      error: withAuthGuidance(raw, authFailure),
-      logs,
-      durationMs: Date.now() - startedAt,
-    };
+    return fail(raw);
   }
 
   if (resultMessage && resultMessage.subtype !== "success") {
     const raw =
       (resultMessage.errors ?? []).filter(Boolean).join("; ") ||
       `agent execution failed (${resultMessage.subtype})`;
-    log(`claude agent execute failed: ${raw}`);
-    return {
-      status: "error",
-      error: withAuthGuidance(raw, authFailure),
-      logs,
-      durationMs: Date.now() - startedAt,
-    };
+    return fail(raw);
   }
 
   if (!resultMessage && assistantErrors.length > 0) {
-    const raw = assistantErrors.join("; ");
-    log(`claude agent execute failed: ${raw}`);
-    return {
-      status: "error",
-      error: withAuthGuidance(raw, authFailure),
-      logs,
-      durationMs: Date.now() - startedAt,
-    };
+    return fail(assistantErrors.join("; "));
   }
 
   const output = resultMessage?.result ?? assistantText;

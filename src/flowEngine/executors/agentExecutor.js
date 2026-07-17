@@ -1,6 +1,16 @@
 import { execute as mockAgentExecute } from "../agentAdapter.js";
 import { execute as claudeAgentExecute } from "../claudeAgentAdapter.js";
 
+// adapter 结果 → 节点执行结果：统一四字段形状（无值字段为 undefined，两条分派路径一致）。
+function toNodeResult(result) {
+  return {
+    status: result.status,
+    output: result.output,
+    logs: result.logs,
+    error: result.error
+  };
+}
+
 export async function agentExecutor({ node, context, projectPath }) {
   const provider = node.config?.provider;
 
@@ -14,19 +24,15 @@ export async function agentExecutor({ node, context, projectPath }) {
       projectPath,
       options: node.config?.options
     });
-    return {
-      status: result.status,
-      output: result.output,
-      logs: result.logs,
-      error: result.error
-    };
+    return toNodeResult(result);
   }
 
   if (provider !== undefined && provider !== null && provider !== "") {
+    const message = `Unknown agent provider: ${provider}`;
     return {
       status: "error",
-      error: `Unknown agent provider: ${provider}`,
-      logs: [{ at: new Date().toISOString(), message: `Unknown agent provider: ${provider}` }]
+      error: message,
+      logs: [{ at: new Date().toISOString(), message }]
     };
   }
 
@@ -36,10 +42,5 @@ export async function agentExecutor({ node, context, projectPath }) {
     model: node.config?.model,
     inputVariables: context
   });
-  return {
-    status: result.status,
-    output: result.output,
-    logs: result.logs,
-    error: result.error
-  };
+  return toNodeResult(result);
 }
