@@ -61,6 +61,16 @@ S3 PRD 对齐子代理报告 3 项 UNCERTAIN，用户当面裁决并签核：
 
 requirements-v1.hash 已重新生成（`036e30e2`），两个受影响测试文件的 REQ-VERSION 头已同步。
 
+### 补充签核 v1.2（2026-07-17，BUILD 阶段 S4 对齐检查）
+
+S4 PRD 对齐子代理报告 1 项缺口 + 1 项 UNCERTAIN + 1 观察项，用户当面裁决并签核：
+
+1. **REQ-FLOW-028 AC1 v1.2**："每次执行"明确涵盖引擎安全中止（maxIterations/maxDepth/节点或 executor 缺失）的执行。新增断言：executionLog「引擎安全中止的执行也写入已执行节点的记录」。✅
+2. **REQ-FLOW-028 AC2 v1.2**：`output` 总是捕获 agent 文本输出（不经 outputVariable 声明）。新增断言：executionLog「agent 未声明 outputVariable 时 output 列仍捕获文本输出」。✅
+3. **G2 观察项**：成功路径 insertExecutionNodes 写入失败会把成功执行改判 error——接受为 fail-visible 行为，记 REFLECT。✅
+
+requirements-v1.hash 已重新生成（`2585f81f`），executionLog.test.js 的 REQ-VERSION 头已同步。
+
 ## Feel Signoff
 
 （待 BUILD 和 QA 完成后填写）
