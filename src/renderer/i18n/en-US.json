@@ -113,7 +113,19 @@
     "output": "Output",
     "noLogs": "No logs available.",
     "noVariables": "No variables available.",
-    "noOutput": "No output available."
+    "noOutput": "No output available.",
+    "nodes": "Nodes",
+    "noNodes": "No node records available.",
+    "nodeInput": "Input variables",
+    "nodeOutput": "Output variables",
+    "nodeBranch": "Branch",
+    "nodeError": "Error",
+    "nodeAttempts": "Attempts",
+    "agentCall": "Agent call",
+    "agentPrompt": "Prompt",
+    "agentOutput": "Output",
+    "agentModel": "Model",
+    "agentProvider": "Provider"
   },
   "workspace": {
     "title": "Projects",

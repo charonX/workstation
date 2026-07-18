@@ -113,7 +113,19 @@
     "output": "输出",
     "noLogs": "暂无日志。",
     "noVariables": "暂无变量。",
-    "noOutput": "暂无输出。"
+    "noOutput": "暂无输出。",
+    "nodes": "节点",
+    "noNodes": "暂无节点记录。",
+    "nodeInput": "输入变量",
+    "nodeOutput": "输出变量",
+    "nodeBranch": "分支",
+    "nodeError": "错误",
+    "nodeAttempts": "尝试次数",
+    "agentCall": "Agent 调用",
+    "agentPrompt": "提示词",
+    "agentOutput": "输出",
+    "agentModel": "模型",
+    "agentProvider": "提供商"
   },
   "workspace": {
     "title": "项目",

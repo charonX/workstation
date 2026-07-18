@@ -724,6 +724,72 @@ body {
   overflow: auto;
 }
 
+/* Execution node records (REQ-FLOW-028) */
+.execution-node-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-3);
+}
+
+.execution-node {
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  background: var(--ch-surface-high);
+  padding: var(--ch-space-3);
+}
+
+.execution-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ch-space-2);
+}
+
+.execution-node-name {
+  font-size: var(--ch-text-sm);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+  margin-right: var(--ch-space-2);
+}
+
+.execution-node-id {
+  font-family: var(--ch-font-mono);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+}
+
+.execution-node-fields {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--ch-space-1) var(--ch-space-3);
+  font-size: var(--ch-text-xs);
+}
+
+.execution-node-field-label {
+  color: var(--ch-text-secondary);
+  font-weight: var(--ch-weight-medium);
+}
+
+.execution-node-field-value {
+  font-family: var(--ch-font-mono);
+  color: var(--ch-text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.execution-node-agent {
+  margin-top: var(--ch-space-2);
+  border-top: 1px solid var(--ch-border);
+  padding-top: var(--ch-space-2);
+}
+
+.execution-node-agent-title {
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text-secondary);
+  margin-bottom: var(--ch-space-2);
+}
+
 /* Skills page */
 .skill-count {
   color: var(--ch-text-secondary);
