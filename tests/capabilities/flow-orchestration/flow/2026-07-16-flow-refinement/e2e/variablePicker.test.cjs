@@ -5,61 +5,143 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { test, expect } from "@playwright/test";
+const { test, expect } = require("@playwright/test");
+const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { createProject } = require("../../../../../e2e/helpers/seed.cjs");
+const {
+  REMOVE_VARIABLE_BUTTON,
+  openFlowInEditor,
+  nodeById,
+  openVariablePicker,
+} = require("../../../../../e2e/helpers/flowEditor.cjs");
 
-test("变量选择器下拉列表按上游节点分组显示", async ({ page }) => {
-  // 行为：变量选择器按上游节点分组展示可用变量
-  await page.goto("/flows/demo");
+function seedNodes(variables) {
+  return [
+    {
+      id: "n1",
+      type: "trigger",
+      name: "Start",
+      position: { x: 80, y: 120 },
+      config: { outputVariables: variables },
+    },
+    {
+      id: "n2",
+      type: "condition",
+      name: "Check",
+      position: { x: 460, y: 120 },
+      config: { expression: "1 > 0" },
+    },
+  ];
+}
 
-  // 前置：创建上游 Trigger 节点并声明变量
-  // 创建 Condition 节点，打开变量选择器
+const SEED_EDGES = [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }];
 
-  await page.getByRole("button", { name: /add node/i }).click();
-  await page.getByText("Condition").click();
-  await page.getByTestId("node-n2").click();
-  await page.getByRole("button", { name: /insert variable/i }).click();
+test.describe("REQ-FLOW-022 变量选择器按节点分组展示", () => {
+  let electronApp;
+  let firstWindow;
+  let apiBaseUrl;
+  let userDataDir;
+  let project;
 
-  // 分组标题和变量名应可见，具体展示形式由实现决定
-  await expect(page.getByText("Start")).toBeVisible();
-  await expect(page.getByText("count")).toBeVisible();
-});
+  test.beforeAll(async () => {
+    const ctx = await startElectronApp();
+    electronApp = ctx.electronApp;
+    firstWindow = ctx.firstWindow;
+    apiBaseUrl = ctx.apiBaseUrl;
+    userDataDir = ctx.userDataDir;
+    project = await createProject(apiBaseUrl, {
+      name: "Variable Picker Project",
+      localPath: `${userDataDir}/workspace/variable-picker-project`,
+    });
+  });
 
-test("变量条目显示友好名称和类型标签", async ({ page }) => {
-  // 行为：变量选择器中的每个条目显示变量名和类型
-  await page.goto("/flows/demo");
+  test.afterAll(async () => {
+    await stopElectronApp(electronApp, userDataDir);
+  });
 
-  // 前置：创建上游 Trigger 节点并声明变量
-  // 打开变量选择器
+  test("变量选择器下拉列表按上游节点分组显示", async () => {
+    // 行为：变量选择器按上游节点分组展示可用变量
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Picker Groups Flow",
+      nodes: seedNodes([
+        { name: "count", type: "number", defaultValue: 3 },
+        { name: "input", type: "string", defaultValue: "hi" },
+      ]),
+      edges: SEED_EDGES,
+    });
 
-  await page.getByRole("button", { name: /insert variable/i }).click();
+    await nodeById(firstWindow, "n2").click();
+    const dropdown = await openVariablePicker(firstWindow);
 
-  await expect(page.getByText("string")).toBeVisible();
-  await expect(page.getByText("number")).toBeVisible();
-});
+    // 分组标题和变量名应可见
+    await expect(dropdown.getByText("Start")).toBeVisible();
+    await expect(dropdown.getByText("count")).toBeVisible();
+  });
 
-test("选中变量后输入框自动插入 fullName", async ({ page }) => {
-  // 行为：选择变量后自动插入 fullName 到当前输入框
-  await page.goto("/flows/demo");
+  test("变量条目显示友好名称和类型标签", async () => {
+    // 行为：变量选择器中的每个条目显示变量名和类型
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Picker Type Labels Flow",
+      nodes: seedNodes([
+        { name: "count", type: "number", defaultValue: 3 },
+        { name: "input", type: "string", defaultValue: "hi" },
+      ]),
+      edges: SEED_EDGES,
+    });
 
-  // 前置：创建上游 Trigger 节点并声明变量
-  // 打开变量选择器，选择变量
+    await nodeById(firstWindow, "n2").click();
+    const dropdown = await openVariablePicker(firstWindow);
 
-  await page.getByRole("button", { name: /insert variable/i }).click();
-  await page.getByText("count").click();
+    await expect(dropdown.getByText("string")).toBeVisible();
+    await expect(dropdown.getByText("number")).toBeVisible();
+  });
 
-  await expect(page.getByLabel("Expression")).toHaveValue(/n1\.count/);
-});
+  test("选中变量后输入框自动插入 fullName", async () => {
+    // 行为：选择变量后自动插入 fullName 到当前输入框
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Picker Insert Flow",
+      nodes: seedNodes([
+        { name: "count", type: "number", defaultValue: 3 },
+        { name: "input", type: "string", defaultValue: "hi" },
+      ]),
+      edges: SEED_EDGES,
+    });
 
-test("上游删除或重命名变量后变量选择器列表实时刷新", async ({ page }) => {
-  // 行为：上游变量变更后，变量选择器列表实时更新
-  await page.goto("/flows/demo");
+    await nodeById(firstWindow, "n2").click();
+    await firstWindow.getByLabel("Expression").fill("");
+    const dropdown = await openVariablePicker(firstWindow);
+    await dropdown.getByText("count").click();
 
-  // 前置：创建上游 Trigger 节点并声明变量
-  // 删除变量
-  // 打开变量选择器
+    await expect(firstWindow.getByLabel("Expression")).toHaveValue(/n1\.count/);
+  });
 
-  await page.getByRole("button", { name: /insert variable/i }).click();
+  test("上游删除或重命名变量后变量选择器列表实时刷新", async () => {
+    // 行为：上游变量变更后，变量选择器列表实时更新
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Picker Refresh Flow",
+      nodes: seedNodes([{ name: "deletedVar", type: "string", defaultValue: "" }]),
+      edges: SEED_EDGES,
+    });
 
-  // 已删除变量不应再出现
-  await expect(page.getByText("deletedVar")).not.toBeVisible();
+    // 前置确认：变量选择器能看到该变量
+    await nodeById(firstWindow, "n2").click();
+    let dropdown = await openVariablePicker(firstWindow);
+    await expect(dropdown.getByText("deletedVar")).toBeVisible();
+    await firstWindow.getByRole("button", { name: /insert variable/i }).click();
+
+    // 删除变量
+    await nodeById(firstWindow, "n1").click();
+    await firstWindow.locator(REMOVE_VARIABLE_BUTTON).click();
+
+    // 打开变量选择器
+    await nodeById(firstWindow, "n2").click();
+    dropdown = await openVariablePicker(firstWindow);
+
+    // 已删除变量不应再出现
+    await expect(firstWindow.getByText("deletedVar")).not.toBeVisible();
+  });
 });
