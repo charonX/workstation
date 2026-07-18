@@ -7,6 +7,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { run } from "../../../../../../src/flowEngine/flowEngine.js";
+import { setQueryFn, resetQueryFn } from "../../../../../../src/flowEngine/claudeAgentAdapter.js";
 
 describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
   it("adapter 接收统一输入并返回标准格式", async () => {
@@ -63,5 +65,76 @@ describe("REQ-FLOW-020: Claude Agent adapter 集成测试", () => {
     // adapter 不处理 {{...}} 语法，只接收最终文本
     assert.ok(!input.prompt.includes("{{"));
     assert.ok(!input.prompt.includes("}}"));
+  });
+
+  // BUG-002（2026-07-18 用户确认 code-defect）：面板 System Prompt（顶层 config.systemPrompt，
+  // 旧签核契约 REQ-FLOW-014 要求存在并持久化）在 anthropic 路径必须生效，否则静默无效。
+  it("BUG-002: anthropic 路径把顶层 config.systemPrompt 映射进 SDK 调用", async () => {
+    let captured;
+    setQueryFn(({ options }) => {
+      captured = options;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: "ok" };
+      })();
+    });
+    try {
+      const flow = {
+        project: { id: "p1", localPath: "/tmp" },
+        nodeList: [
+          {
+            id: "n1",
+            type: "agent",
+            config: {
+              provider: "anthropic",
+              model: "claude-sonnet-5",
+              prompt: "hi",
+              systemPrompt: "be terse",
+            },
+          },
+        ],
+        edges: [],
+      };
+
+      const result = await run(flow);
+      assert.equal(result.status, "success");
+      assert.equal(captured.systemPrompt, "be terse");
+    } finally {
+      resetQueryFn();
+    }
+  });
+
+  it("BUG-002: options.systemPrompt 优先于顶层 config.systemPrompt", async () => {
+    let captured;
+    setQueryFn(({ options }) => {
+      captured = options;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: "ok" };
+      })();
+    });
+    try {
+      const flow = {
+        project: { id: "p1", localPath: "/tmp" },
+        nodeList: [
+          {
+            id: "n1",
+            type: "agent",
+            config: {
+              provider: "anthropic",
+              model: "claude-sonnet-5",
+              prompt: "hi",
+              systemPrompt: "legacy value",
+              options: { systemPrompt: "from options" },
+            },
+          },
+        ],
+        edges: [],
+      };
+
+      const result = await run(flow);
+      assert.equal(result.status, "success");
+      assert.equal(captured.systemPrompt, "from options");
+    } finally {
+      resetQueryFn();
+    }
   });
 });
