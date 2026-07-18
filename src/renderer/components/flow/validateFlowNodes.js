@@ -5,7 +5,9 @@
  *
  * Returns an array of human-readable "path: message" strings (empty = valid).
  */
-const VARIABLE_TYPES = ["string", "number", "array", "object"];
+// Variable type allowlist (tech-design §5.4); also drives the trigger
+// variables editor dropdown in NodeConfigPanel.
+export const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent"];
 
 export function validateFlowNodes(nodeList, t) {

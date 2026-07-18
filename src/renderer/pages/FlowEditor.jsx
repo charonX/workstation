@@ -55,7 +55,8 @@ export default function FlowEditor() {
 
   const handleAddNode = useCallback((type, name) => {
     if (canvasRef.current?.addNode) {
-      const newNode = canvasRef.current.addNode(type, name, getIconForType(type));
+      // Icon defaults inside FlowCanvas.addNode (single icon map lives there).
+      const newNode = canvasRef.current.addNode(type, name);
       setSelectedNode(newNode);
       setHasUnsavedChanges(true);
     }
@@ -417,18 +418,4 @@ export default function FlowEditor() {
       )}
     </div>
   );
-}
-
-function getIconForType(type) {
-  const icons = {
-    trigger: "⏱",
-    condition: "◈",
-    forEach: "↻",
-    while: "⟳",
-    agent: "◆",
-    skill: "◈",
-    data: "{}",
-    output: "▢",
-  };
-  return icons[type] || "◆";
 }

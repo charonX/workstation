@@ -1,8 +1,11 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import VariablePicker from "./VariablePicker.jsx";
+import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 
-const VARIABLE_TYPES = ["string", "number", "array", "object"];
+// Node types refined by this story (REQ-FLOW-018~021): these render the
+// per-type config fields plus the shared retries/onError section.
+const REFINED_NODE_TYPES = ["trigger", "condition", "agent"];
 
 // Legacy mock-adapter models plus the Claude Agent SDK model (tech-design §5.4).
 const MODEL_OPTIONS = [
@@ -39,7 +42,7 @@ export default function NodeConfigPanel({
 
   const type = node.data?.type;
   const config = node.data?.config || {};
-  const isRefinedType = ["trigger", "condition", "agent"].includes(type);
+  const isRefinedType = REFINED_NODE_TYPES.includes(type);
 
   return (
     <>
@@ -206,16 +209,30 @@ function TriggerFields({ config, onChange, t }) {
   );
 }
 
-function ConditionFields({ config, onChange, nodes, edges, nodeId, t }) {
+// Caret-tracked variable insertion shared by the Condition and Agent
+// fields: records the last caret position in the target input, then
+// splices the picked variable (formatted by the caller) in at that spot.
+function useCaretInsertion(config, field, onChange, formatInsertion) {
   const caretRef = useRef(null);
   const recordCaret = (e) => {
     caretRef.current = e.target.selectionStart;
   };
   const insertVariable = (fullName) => {
-    const current = config.expression || "";
+    const current = config[field] || "";
     const caret = caretRef.current ?? current.length;
-    onChange("expression", current.slice(0, caret) + fullName + current.slice(caret));
+    onChange(field, current.slice(0, caret) + formatInsertion(fullName) + current.slice(caret));
   };
+  return { recordCaret, insertVariable };
+}
+
+function ConditionFields({ config, onChange, nodes, edges, nodeId, t }) {
+  // Condition expressions reference variables as bare fullName (signoff decision 3).
+  const { recordCaret, insertVariable } = useCaretInsertion(
+    config,
+    "expression",
+    onChange,
+    (fullName) => fullName
+  );
 
   return (
     <div className="form-group">
@@ -239,15 +256,13 @@ function ConditionFields({ config, onChange, nodes, edges, nodeId, t }) {
 }
 
 function AgentFields({ config, onChange, nodes, edges, nodeId, t }) {
-  const caretRef = useRef(null);
-  const recordCaret = (e) => {
-    caretRef.current = e.target.selectionStart;
-  };
-  const insertVariable = (fullName) => {
-    const current = config.prompt || "";
-    const caret = caretRef.current ?? current.length;
-    onChange("prompt", current.slice(0, caret) + `{{${fullName}}}` + current.slice(caret));
-  };
+  // Agent prompts interpolate variables as {{fullName}} (signoff decision 3).
+  const { recordCaret, insertVariable } = useCaretInsertion(
+    config,
+    "prompt",
+    onChange,
+    (fullName) => `{{${fullName}}}`
+  );
 
   return (
     <>
