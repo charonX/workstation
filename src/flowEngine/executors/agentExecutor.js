@@ -18,12 +18,19 @@ export async function agentExecutor({ node, context, projectPath }) {
   // 无 provider（旧 flow）→ 内置 mock 路径，保持 REQ-FLOW-017 等旧签核契约离线可过；
   // "anthropic" → claudeAgentAdapter 真实调用。
   if (provider === "anthropic") {
-    const { prompt, model, options } = node.config ?? {};
+    const { prompt, model, options, systemPrompt } = node.config ?? {};
+    // BUG-002 修复：面板顶层 config.systemPrompt（REQ-FLOW-014 持久化契约）在
+    // anthropic 路径作为 options.systemPrompt 的回落；options.systemPrompt 存在时优先。
+    // 两者皆 undefined 时原样透传 options（不设置该键），adapter 的 undefined 判断不变。
+    const adapterOptions =
+      options?.systemPrompt === undefined && systemPrompt !== undefined
+        ? { ...options, systemPrompt }
+        : options;
     const result = await claudeAgentExecute({
       prompt,
       model,
       projectPath,
-      options
+      options: adapterOptions
     });
     return {
       ...toNodeResult(result),
