@@ -16,14 +16,18 @@ import { useTranslation } from "react-i18next";
 
 const EMPTY_VALUE = "—";
 
+// null/undefined/空字符串统一视为无值：空值占位与 agent 字段启发式共用此判定。
+function hasValue(value) {
+  return value !== null && value !== undefined && value !== "";
+}
+
 function formatVariables(vars) {
   if (!vars || Object.keys(vars).length === 0) return EMPTY_VALUE;
   return JSON.stringify(vars);
 }
 
 function formatText(value) {
-  if (value === null || value === undefined || value === "") return EMPTY_VALUE;
-  return String(value);
+  return hasValue(value) ? String(value) : EMPTY_VALUE;
 }
 
 function formatDurationMs(durationMs) {
@@ -35,9 +39,7 @@ function formatDurationMs(durationMs) {
 // NULL），因此优先用 flow 节点类型判定；flow 已删除等场景回落到记录字段启发式。
 function isAgentNode(node, nodeType) {
   if (typeof nodeType === "string" && nodeType.toLowerCase().includes("agent")) return true;
-  return [node.prompt, node.output, node.model, node.provider, node.durationMs].some(
-    (value) => value !== null && value !== undefined && value !== ""
-  );
+  return [node.prompt, node.output, node.model, node.provider, node.durationMs].some(hasValue);
 }
 
 function NodeField({ label, value }) {
@@ -49,8 +51,36 @@ function NodeField({ label, value }) {
   );
 }
 
+function NodeFieldsGrid({ fields }) {
+  return (
+    <div className="execution-node-fields">
+      {fields.map((field) => (
+        <NodeField key={field.label} label={field.label} value={field.value} />
+      ))}
+    </div>
+  );
+}
+
 function ExecutionNodeCard({ node, nodeType }) {
   const { t } = useTranslation();
+
+  const baseFields = [
+    { label: t("execution.nodeInput"), value: formatVariables(node.inputVariables) },
+    { label: t("execution.nodeOutput"), value: formatVariables(node.outputVariables) },
+    { label: t("execution.nodeBranch"), value: formatText(node.branchTaken) },
+    { label: t("execution.nodeError"), value: formatText(node.error) },
+    { label: t("execution.nodeAttempts"), value: formatText(node.attemptCount) },
+  ];
+
+  const agentFields = [
+    { label: t("execution.agentPrompt"), value: formatText(node.prompt) },
+    { label: t("execution.agentOutput"), value: formatText(node.output) },
+    { label: t("execution.agentModel"), value: formatText(node.model) },
+    { label: t("execution.agentProvider"), value: formatText(node.provider) },
+    { label: t("execution.status"), value: formatText(node.status) },
+    { label: t("execution.duration"), value: formatDurationMs(node.durationMs) },
+  ];
+
   return (
     <div className="execution-node" data-testid="execution-node">
       <div className="execution-node-header">
@@ -66,25 +96,12 @@ function ExecutionNodeCard({ node, nodeType }) {
         )}
       </div>
 
-      <div className="execution-node-fields">
-        <NodeField label={t("execution.nodeInput")} value={formatVariables(node.inputVariables)} />
-        <NodeField label={t("execution.nodeOutput")} value={formatVariables(node.outputVariables)} />
-        <NodeField label={t("execution.nodeBranch")} value={formatText(node.branchTaken)} />
-        <NodeField label={t("execution.nodeError")} value={formatText(node.error)} />
-        <NodeField label={t("execution.nodeAttempts")} value={formatText(node.attemptCount)} />
-      </div>
+      <NodeFieldsGrid fields={baseFields} />
 
       {isAgentNode(node, nodeType) && (
         <div className="execution-node-agent" data-testid="execution-node-agent">
           <div className="execution-node-agent-title">{t("execution.agentCall")}</div>
-          <div className="execution-node-fields">
-            <NodeField label={t("execution.agentPrompt")} value={formatText(node.prompt)} />
-            <NodeField label={t("execution.agentOutput")} value={formatText(node.output)} />
-            <NodeField label={t("execution.agentModel")} value={formatText(node.model)} />
-            <NodeField label={t("execution.agentProvider")} value={formatText(node.provider)} />
-            <NodeField label={t("execution.status")} value={formatText(node.status)} />
-            <NodeField label={t("execution.duration")} value={formatDurationMs(node.durationMs)} />
-          </div>
+          <NodeFieldsGrid fields={agentFields} />
         </div>
       )}
     </div>

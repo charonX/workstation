@@ -9,6 +9,16 @@ import ExecutionNodeList from "./ExecutionNodeList.jsx";
  *   - execution: object — the selected execution with logs, variables, output;
  *     when loaded via the detail API it also carries `nodes` (REQ-FLOW-028).
  */
+
+// flow.nodeList -> { [nodeId]: nodeType }，供 ExecutionNodeList 识别 agent 节点。
+function buildNodeTypeMap(flow) {
+  const map = {};
+  for (const node of flow?.nodeList ?? []) {
+    if (node?.id) map[node.id] = node.type;
+  }
+  return map;
+}
+
 export default function ExecutionDetail({ execution }) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("nodes");
@@ -24,11 +34,7 @@ export default function ExecutionDetail({ execution }) {
     getFlow(flowId)
       .then((flow) => {
         if (cancelled) return;
-        const map = {};
-        for (const node of flow?.nodeList ?? []) {
-          if (node?.id) map[node.id] = node.type;
-        }
-        setNodeTypes(map);
+        setNodeTypes(buildNodeTypeMap(flow));
       })
       .catch(() => {});
     return () => {
