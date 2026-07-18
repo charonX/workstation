@@ -5,6 +5,8 @@ import { getFlow, updateFlow, debugFlow } from "../api/flows.js";
 import { createExecution } from "../api/executions.js";
 import NodePalette from "../components/flow/NodePalette.jsx";
 import FlowCanvas from "../components/flow/FlowCanvas.jsx";
+import NodeConfigPanel from "../components/flow/NodeConfigPanel.jsx";
+import { validateFlowNodes } from "../components/flow/validateFlowNodes.js";
 import { ReactFlowProvider } from "reactflow";
 import "./FlowEditor.css";
 
@@ -26,6 +28,8 @@ export default function FlowEditor() {
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [canvasNodes, setCanvasNodes] = useState([]);
+  const [canvasEdges, setCanvasEdges] = useState([]);
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -69,6 +73,11 @@ export default function FlowEditor() {
     }
   }, [flow]);
 
+  const handleFlowStateChange = useCallback((nodes, edges) => {
+    setCanvasNodes(nodes);
+    setCanvasEdges(edges);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!flow || !canvasRef.current?.getFlowState || saving) return;
     setSaving(true);
@@ -76,6 +85,13 @@ export default function FlowEditor() {
     setSaveSuccess(false);
     try {
       const { nodeList, edges } = canvasRef.current.getFlowState();
+      // Client-side validation mirrors flowService (tech-design §5.4):
+      // invalid configs are blocked before any request is sent.
+      const validationErrors = validateFlowNodes(nodeList, t);
+      if (validationErrors.length > 0) {
+        setSaveError(validationErrors.join("; "));
+        return;
+      }
       const updated = await updateFlow(flow.id, { nodeList, edges });
       setFlow(updated);
       setHasUnsavedChanges(false);
@@ -176,12 +192,23 @@ export default function FlowEditor() {
     setHasUnsavedChanges(true);
   }, [selectedNode]);
 
-  // Keyboard Delete to remove selected node
+  // Keyboard Delete to remove selected node. Guard against editable
+  // targets: pressing Delete inside a form field must not delete the
+  // node (BUG-class defect exposed by S5a E2E fill).
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === "Delete" && selectedNode) {
-        handleDeleteNode();
+      if (event.key !== "Delete" || !selectedNode) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
       }
+      handleDeleteNode();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -301,63 +328,20 @@ export default function FlowEditor() {
             initialEdges={flow?.edges || []}
             onNodeSelect={setSelectedNode}
             selectedNode={selectedNode}
+            onFlowStateChange={handleFlowStateChange}
           />
         </ReactFlowProvider>
 
         {/* Properties Panel */}
         <aside className="properties-panel" data-testid="properties-panel">
-          <h2 className="properties-title">Node Properties</h2>
-          {selectedNode ? (
-            <div className="properties-form">
-              <div className="form-group">
-                <label className="form-label">Node Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  data-testid="node-name-input"
-                  value={selectedNode.data?.label || ""}
-                  onChange={(e) => handleUpdateNodeData("label", e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Type</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={selectedNode.data?.type || ""}
-                  readOnly
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Output Variable</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  data-testid="node-output-variable-input"
-                  value={selectedNode.data?.outputVariable || ""}
-                  onChange={(e) =>
-                    handleUpdateNodeData("outputVariable", e.target.value)
-                  }
-                />
-              </div>
-              <NodeTypeFields
-                type={selectedNode.data?.type}
-                config={selectedNode.data?.config || {}}
-                onChange={handleUpdateConfig}
-              />
-              <button
-                className="btn btn-danger"
-                data-testid="node-delete-button"
-                onClick={handleDeleteNode}
-              >
-                Delete Node
-              </button>
-            </div>
-          ) : (
-            <div className="properties-placeholder">
-              {t("flowEditor.selectNode")}
-            </div>
-          )}
+          <NodeConfigPanel
+            node={selectedNode}
+            nodes={canvasNodes}
+            edges={canvasEdges}
+            onUpdateData={handleUpdateNodeData}
+            onUpdateConfig={handleUpdateConfig}
+            onDelete={handleDeleteNode}
+          />
         </aside>
       </div>
 
@@ -433,92 +417,6 @@ export default function FlowEditor() {
       )}
     </div>
   );
-}
-
-function NodeTypeFields({ type, config, onChange }) {
-  switch (type) {
-    case "agent":
-      return (
-        <>
-          <div className="form-group">
-            <label className="form-label">Model</label>
-            <select
-              className="form-input"
-              data-testid="agent-model-select"
-              value={config.model || "codex"}
-              onChange={(e) => onChange("model", e.target.value)}
-            >
-              <option value="codex">Codex</option>
-              <option value="claude-code">Claude Code</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">System Prompt</label>
-            <textarea
-              className="form-textarea"
-              data-testid="agent-system-prompt-textarea"
-              value={config.systemPrompt || ""}
-              onChange={(e) => onChange("systemPrompt", e.target.value)}
-              rows={4}
-            />
-          </div>
-        </>
-      );
-    case "condition":
-      return (
-        <div className="form-group">
-          <label className="form-label">Expression</label>
-          <input
-            type="text"
-            className="form-input"
-            data-testid="condition-expression-input"
-            value={config.expression || ""}
-            onChange={(e) => onChange("expression", e.target.value)}
-          />
-        </div>
-      );
-    case "forEach":
-      return (
-        <div className="form-group">
-          <label className="form-label">Array</label>
-          <input
-            type="text"
-            className="form-input"
-            data-testid="foreach-array-input"
-            value={config.array || ""}
-            onChange={(e) => onChange("array", e.target.value)}
-          />
-        </div>
-      );
-    case "while":
-      return (
-        <div className="form-group">
-          <label className="form-label">Expression</label>
-          <input
-            type="text"
-            className="form-input"
-            data-testid="while-expression-input"
-            value={config.expression || ""}
-            onChange={(e) => onChange("expression", e.target.value)}
-          />
-        </div>
-      );
-    case "output":
-      return (
-        <div className="form-group">
-          <label className="form-label">Output Path</label>
-          <input
-            type="text"
-            className="form-input"
-            data-testid="output-path-input"
-            value={config.path || ""}
-            onChange={(e) => onChange("path", e.target.value)}
-          />
-        </div>
-      );
-    default:
-      return null;
-  }
 }
 
 function getIconForType(type) {

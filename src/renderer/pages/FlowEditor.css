@@ -161,6 +161,10 @@
 }
 
 /* Custom Node */
+/* NOTE: keep this element static (no position) — React Flow handles are
+   absolutely positioned against the .react-flow__node wrapper and stick out
+   at negative offsets; a positioned + overflow:hidden ancestor would clip
+   them and break edge drags (REQ-FLOW-012/013/015). */
 .flow-node-custom {
   width: 180px;
   background: var(--ch-surface);
@@ -197,6 +201,132 @@
   padding: var(--ch-space-3);
   font-size: var(--ch-text-xs);
   color: var(--ch-text-secondary);
+}
+
+/* Declared output variables shown as chips on the node body */
+.flow-node-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ch-space-1);
+  margin-top: var(--ch-space-2);
+}
+
+.flow-node-var {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--ch-space-2);
+  border-radius: var(--ch-radius-full);
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent);
+  font-size: var(--ch-text-xs);
+  line-height: 1.6;
+}
+
+/* Condition node true/false branch labels (REQ-FLOW-019) */
+.flow-node-port-label {
+  position: absolute;
+  right: var(--ch-space-3);
+  transform: translateY(-50%);
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+  color: var(--ch-text-tertiary);
+  pointer-events: none;
+}
+
+.flow-node-port-label-true {
+  top: 30%;
+}
+
+.flow-node-port-label-false {
+  top: 70%;
+}
+
+/* Variable picker (REQ-FLOW-022) */
+.variable-picker {
+  position: relative;
+  margin-top: var(--ch-space-2);
+}
+
+.variable-picker-dropdown {
+  position: absolute;
+  top: calc(100% + var(--ch-space-1));
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  box-shadow: var(--ch-shadow-md);
+  z-index: 20;
+}
+
+.variable-picker-empty {
+  padding: var(--ch-space-3);
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-xs);
+  text-align: center;
+}
+
+.variable-picker-group + .variable-picker-group {
+  border-top: 1px solid var(--ch-border);
+}
+
+.variable-picker-group-title {
+  padding: var(--ch-space-2) var(--ch-space-3) var(--ch-space-1);
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.variable-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ch-space-2);
+  width: 100%;
+  padding: var(--ch-space-2) var(--ch-space-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text);
+  text-align: left;
+}
+
+.variable-picker-item:hover {
+  background: var(--ch-surface-high);
+}
+
+.variable-picker-type {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-full);
+  padding: 0 var(--ch-space-2);
+  line-height: 1.6;
+}
+
+/* Trigger output variables editor (REQ-FLOW-018) */
+.variables-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-2);
+}
+
+.variable-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-1);
+  padding: var(--ch-space-2);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+}
+
+.variable-remove-button {
+  align-self: flex-end;
 }
 
 /* Properties Panel */

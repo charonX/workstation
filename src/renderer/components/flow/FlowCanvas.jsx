@@ -1,5 +1,6 @@
 import React, {
   useCallback,
+  useEffect,
   forwardRef,
   useImperativeHandle,
   useRef,
@@ -70,12 +71,14 @@ function NodeConfigSummary({ type, config }) {
 }
 
 // Custom node component with data-testid for E2E
-function CustomNode({ data, selected }) {
+function CustomNode({ id, data, selected }) {
   const isCondition = data.type === "condition";
+  const outputVariables = getNodeOutputVariables(data);
   return (
     <div
       className={`flow-node-custom${selected ? " selected" : ""}`}
       data-testid="flow-node"
+      data-node-id={id}
     >
       <Handle type="target" position={Position.Left} />
       <div className="flow-node-header">
@@ -84,9 +87,30 @@ function CustomNode({ data, selected }) {
       </div>
       <div className="flow-node-body">
         <NodeConfigSummary type={data.type} config={data.config} />
+        {outputVariables.length > 0 && (
+          <div className="flow-node-vars">
+            {outputVariables.map((name, index) => (
+              <span className="flow-node-var" key={`${name}-${index}`}>
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       {isCondition ? (
         <>
+          <span
+            className="flow-node-port-label flow-node-port-label-true"
+            data-testid={`node-${id}-output-true`}
+          >
+            true
+          </span>
+          <span
+            className="flow-node-port-label flow-node-port-label-false"
+            data-testid={`node-${id}-output-false`}
+          >
+            false
+          </span>
           <Handle
             type="source"
             position={Position.Right}
@@ -105,6 +129,24 @@ function CustomNode({ data, selected }) {
       )}
     </div>
   );
+}
+
+// Declared output variables shown as chips on the node body (REQ-FLOW-018/020):
+// trigger contributes its outputVariables list, other types their single
+// declared output variable (config first, legacy top-level fallback).
+function getNodeOutputVariables(data) {
+  if (data.type === "trigger") {
+    const declared = Array.isArray(data.config?.outputVariables)
+      ? data.config.outputVariables
+      : [];
+    return declared
+      .map((variable) =>
+        typeof variable?.name === "string" ? variable.name.trim() : ""
+      )
+      .filter(Boolean);
+  }
+  const single = data.config?.outputVariable || data.outputVariable;
+  return single ? [single] : [];
 }
 
 const nodeTypes = {
@@ -173,6 +215,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
     initialEdges = [],
     onNodeSelect,
     selectedNode,
+    onFlowStateChange,
   },
   ref
 ) {
@@ -268,6 +311,13 @@ const FlowCanvas = forwardRef(function FlowCanvas(
       edges: edges.map(toStoredEdge),
     };
   }, [nodes, edges]);
+
+  // Notify the parent (properties panel / variable picker) whenever the
+  // live canvas state changes, so upstream variable edits propagate
+  // immediately (REQ-FLOW-022 AC4).
+  useEffect(() => {
+    onFlowStateChange?.(nodes, edges);
+  }, [nodes, edges, onFlowStateChange]);
 
   // Expose methods to parent via ref
   useImperativeHandle(
