@@ -8,9 +8,6 @@ attempt: 3
 bug_counter: 17
 blockers: []
 slices: []
-gates:
-  assertion_signoff: passed
-  feel_signoff: pending
 history:
   - {at: 2026-07-16, from: QA, to: REFLECT, note: "用户最终验收通过：BUG-010~017 已修复，REQ-WORKSPACE-006/REQ-SKILL-004 就地补全，88 单元测试 + 43 E2E 测试全绿；更新 global 文档（business-capabilities、CONTEXT、engineering-lessons、STANDARDS、ADR-003/004、checklists/testing）与 signoff.md feel 部分。story 标记完成。"}
   - {at: 2026-07-16, from: QA, to: QA, note: "用户追问：skill repo 删除/更新后，已关联项目的 skill 软连接如何处理。就地补全 REQ-WORKSPACE-006/REQ-SKILL-004：skill repo 删除前清理所有已关联项目的 skill 软连接；实现 removeSkillSymlinksForSkill 并接入 deleteSkillRepo；新增 API 回归测试。全量 88 单元测试 + 43 E2E 测试通过。"}
