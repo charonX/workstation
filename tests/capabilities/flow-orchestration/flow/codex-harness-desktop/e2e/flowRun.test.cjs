@@ -60,10 +60,11 @@ test.describe("Flow Run", () => {
     await expect(firstWindow.locator(locators.NODE_PALETTE)).toBeVisible();
     await expect(firstWindow.locator(locators.FLOW_CANVAS)).toBeVisible();
 
-    // Node palette categories for MVP: Trigger, logic, loop
-    await expect(firstWindow.getByText("Trigger")).toBeVisible();
-    await expect(firstWindow.getByText("logic")).toBeVisible();
-    await expect(firstWindow.getByText("loop")).toBeVisible();
+    // Node palette categories for MVP: Trigger, logic, Execution
+    const palette = firstWindow.locator(locators.NODE_PALETTE);
+    await expect(palette.getByText("Trigger")).toBeVisible();
+    await expect(palette.getByText("logic")).toBeVisible();
+    await expect(palette.getByText("Execution")).toBeVisible();
   });
 
   test("selecting a node shows properties panel", async () => {
