@@ -74,7 +74,7 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
           type: "agent",
           name: "Agent",
           position: { x: 460, y: 120 },
-          config: { model: "codex", systemPrompt: "", prompt: "", retries: 1, onError: "fail" },
+          config: { systemPrompt: "", prompt: "", retries: 1, onError: "fail" },
         },
       ],
       edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
@@ -88,8 +88,8 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
     await expect(firstWindow.getByLabel("Prompt", { exact: true })).toHaveValue(/\{\{n1\.input\}\}/);
   });
 
-  test("Claude Agent 节点可配置 provider/model/outputVariable/retries/onError", async () => {
-    // 行为：Agent 节点支持配置 provider/model/outputVariable/retries/onError 并保存
+  test("Claude Agent 节点可配置 provider/outputVariable/retries/onError", async () => {
+    // 行为：Agent 节点支持配置 provider/outputVariable/retries/onError 并保存
     await openFlowInEditor(firstWindow, apiBaseUrl, {
       projectId: project.id,
       name: "Agent Fields Flow",
@@ -99,7 +99,6 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
     await nodeByIndex(firstWindow, 0).click();
 
     await firstWindow.getByLabel("Provider").selectOption("anthropic");
-    await firstWindow.getByLabel("Model").selectOption("claude-sonnet-5");
     await firstWindow.getByLabel(/output variable/i).fill("summary");
     await firstWindow.getByLabel("Retries").fill("2");
     await firstWindow.getByLabel(/on error/i).selectOption("ignore");
@@ -107,5 +106,19 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
     await saveFlow(firstWindow);
 
     await expect(firstWindow.getByText("summary")).toBeVisible();
+  });
+
+  test("Claude Agent 节点配置面板不显示 Model 下拉框", async () => {
+    // 行为：model 由 adapter/SDK 默认处理，面板不暴露 Model 选择
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Agent No Model Flow",
+    });
+
+    await addNodeFromPalette(firstWindow, "Agent");
+    await nodeByIndex(firstWindow, 0).click();
+
+    await expect(firstWindow.getByLabel("Model")).not.toBeVisible();
+    await expect(firstWindow.getByTestId("agent-model-select")).not.toBeVisible();
   });
 });

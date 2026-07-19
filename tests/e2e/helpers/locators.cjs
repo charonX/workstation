@@ -74,7 +74,6 @@ module.exports = {
   PROPERTIES_PANEL: "[data-testid='properties-panel']",
   NODE_NAME_INPUT: "[data-testid='node-name-input']",
   NODE_OUTPUT_VARIABLE_INPUT: "[data-testid='node-output-variable-input']",
-  AGENT_MODEL_SELECT: "[data-testid='agent-model-select']",
   AGENT_SYSTEM_PROMPT_TEXTAREA: "[data-testid='agent-system-prompt-textarea']",
   CONDITION_EXPRESSION_INPUT: "[data-testid='condition-expression-input']",
   FOREACH_ARRAY_INPUT: "[data-testid='foreach-array-input']",

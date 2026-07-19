@@ -88,7 +88,6 @@ test.describe("Flow Editor Node Design", () => {
 
     // Edit node-specific fields in the Properties panel.
     await firstWindow.fill(locators.NODE_NAME_INPUT, "Fetch Headlines");
-    await firstWindow.selectOption(locators.AGENT_MODEL_SELECT, { label: "Codex" });
     await firstWindow.fill(locators.AGENT_SYSTEM_PROMPT_TEXTAREA, "Summarize top tech news.");
     await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "headlines");
 
@@ -97,7 +96,6 @@ test.describe("Flow Editor Node Design", () => {
 
     await firstWindow.locator(locators.FLOW_NODE).first().click();
     await expect(firstWindow.locator(locators.NODE_NAME_INPUT)).toHaveValue("Fetch Headlines");
-    await expect(firstWindow.locator(locators.AGENT_MODEL_SELECT)).toHaveValue("codex");
     await expect(firstWindow.locator(locators.AGENT_SYSTEM_PROMPT_TEXTAREA)).toHaveValue("Summarize top tech news.");
     await expect(firstWindow.locator(locators.NODE_OUTPUT_VARIABLE_INPUT)).toHaveValue("headlines");
   });
