@@ -12,24 +12,9 @@ const NODE_CATEGORIES = [
     ],
   },
   {
-    label: "loop",
-    items: [
-      { type: "forEach", name: "ForEach", icon: "↻" },
-      { type: "while", name: "While", icon: "⟳" },
-    ],
-  },
-  {
     label: "Execution",
     items: [
       { type: "agent", name: "Agent", icon: "◆" },
-      { type: "skill", name: "Skill", icon: "◈" },
-    ],
-  },
-  {
-    label: "Data",
-    items: [
-      { type: "data", name: "Data", icon: "{}" },
-      { type: "output", name: "Output", icon: "▢" },
     ],
   },
 ];
