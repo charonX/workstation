@@ -55,6 +55,26 @@ test.describe("REQ-FLOW-019 Condition 节点表达式与 true/false 分支", () 
     await expect(firstWindow.getByRole("button", { name: /insert variable/i })).toBeVisible();
   });
 
+  test("Condition 表达式输入框显示占位提示和说明文字", async () => {
+    // 行为：表达式输入框提供占位提示与说明，提示 JS 表达式及变量引用格式
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Condition Hint Flow",
+    });
+
+    await addNodeFromPalette(firstWindow, "Condition");
+    await nodeByIndex(firstWindow, 0).click();
+
+    const expressionInput = firstWindow.getByLabel("Expression");
+    await expect(expressionInput).toHaveAttribute("placeholder", "e.g. n1.count > 3");
+    await expect(firstWindow.getByTestId("condition-expression-help")).toContainText(
+      /JavaScript expression/i
+    );
+    await expect(firstWindow.getByTestId("condition-expression-help")).toContainText(
+      /nodeId\.variableName/i
+    );
+  });
+
   test("Condition 节点画布上显示 true/false 两个输出端口", async () => {
     // 行为：画布上 Condition 节点有两个明确标识的输出端口
     await openFlowInEditor(firstWindow, apiBaseUrl, {
