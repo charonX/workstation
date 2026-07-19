@@ -150,8 +150,7 @@ export default function FlowEditor() {
     setDebugResult(null);
     setDebugError(null);
     setDebugVariables("{}");
-    runDebug("{}");
-  }, [runDebug]);
+  }, []);
 
   const handleDebugClose = useCallback(() => {
     setDebugOpen(false);

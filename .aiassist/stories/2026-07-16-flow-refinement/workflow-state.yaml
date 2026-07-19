@@ -4,7 +4,7 @@ intention: 当前 flow 框架只支持最基础的节点与执行路径，面对
 current_phase: BUG
 completed: false
 attempt: 1
-bug_counter: 6
+bug_counter: 7
 blockers: []
 slices:
   - {id: S1, name: adapter-sdk, status: complete, commits: [b2f0f5c, 41fab06]}
@@ -28,6 +28,7 @@ history:
   - {at: 2026-07-18, from: BUG, to: BUG, note: "用户报告 Agent 节点不应选择模型，因为应用无法枚举可用模型。分类为 req-gap：就地补全 REQ-FLOW-020 v1.4，移除 model 面板配置要求，由 adapter/SDK 默认处理；NodeConfigPanel AgentFields 删除 Model 下拉框，更新 i18n/测试/旧回归测试。BUG-004。"}
   - {at: 2026-07-18, from: BUG, to: BUG, note: "用户要求清理节点面板中未实现/无 executor 的节点。分类为 code-defect：NodePalette 展示了 output/data/skill/forEach/while 等当前无法执行的节点；删除这些节点，面板只保留 Manual/Condition/Agent，同步删除旧 E2E 测试与未使用 locators，补回归测试。BUG-005。"}
   - {at: 2026-07-19, from: BUG, to: BUG, note: "用户反馈调试弹窗没有过程日志。分类为 code-defect：后端 debugFlow 返回 logs 但前端 FlowEditor 结果面板只渲染 output。修复后展示 Output + Execution logs，补 E2E 回归测试。BUG-006。"}
+  - {at: 2026-07-19, from: BUG, to: BUG, note: "用户反馈调试弹层打开后直接自动运行，未允许输入变量。分类为 code-defect：handleDebugOpen 中直接调用 runDebug('{}')。修复后打开弹窗仅清空状态，等待用户点击运行调试；补 E2E 回归测试覆盖不自动运行与手动运行后展示日志。BUG-007。"}
 archive: []
 notes: |
   继承自 codex-harness-desktop 已沉淀的 FlowEngine 基础：
