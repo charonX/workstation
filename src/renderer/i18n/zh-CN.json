@@ -188,7 +188,6 @@
     "provider": "服务商",
     "providerNone": "无（mock）",
     "providerAnthropic": "Anthropic",
-    "model": "模型",
     "systemPrompt": "系统提示词",
     "prompt": "提示词",
     "retries": "重试次数",

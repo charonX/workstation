@@ -188,7 +188,6 @@
     "provider": "Provider",
     "providerNone": "None (mock)",
     "providerAnthropic": "Anthropic",
-    "model": "Model",
     "systemPrompt": "System Prompt",
     "prompt": "Prompt",
     "retries": "Retries",

@@ -73,7 +73,7 @@
 **必须性**：必须  
 **scope**：cross-module  
 **modules**：flowService、claudeAgentAdapter、前端 Flow Editor  
-**interface_contract**：节点 `config` 包含 `provider`、`model`、`outputVariable`、`prompt`、`retries`、`onError`；prompt 支持 `{{fullName}}` 变量插入；adapter 返回 `{ status, output, error, logs }`。  
+**interface_contract**：节点 `config` 包含 `provider`、`outputVariable`、`prompt`、`retries`、`onError`；`model` 暂不在面板暴露，由 adapter/SDK 使用默认模型（后续支持系统 agent 扫描后再开放）；prompt 支持 `{{fullName}}` 变量插入；adapter 返回 `{ status, output, error, logs }`。  
 **capability**：flow-orchestration  
 **entity**：flow  
 **UX 参照**：Flow Editor 节点属性面板
@@ -82,7 +82,7 @@
 
 1. Claude Agent 节点配置面板提供统一 prompt 文本框，支持多行文本输入。
 2. prompt 文本框支持变量选择器，可从上游节点已声明的变量中选择并插入 `{{fullName}}`。
-3. 节点可配置 `provider`（初始支持 `anthropic`）、`model`、`outputVariable`、`retries`、`onError`。
+3. 节点可配置 `provider`（初始支持 `anthropic`）、`outputVariable`、`retries`、`onError`；`model` 由 adapter/SDK 默认处理，不在面板暴露。
 4. 执行时 adapter 把统一输入映射到 Claude Agent SDK，返回的文本内容写入声明的 `outputVariable`。
 5. adapter 不感知变量注册表，只接收已替换变量后的最终 prompt 文本。
 6. 默认工作目录为 flow 所属项目的本地路径，由调用方传入 adapter。
@@ -308,3 +308,4 @@
 | v1.1 | 2026-07-17 | BUILD 阶段 S3 对齐检查用户决策：REQ-FLOW-018 AC2 变量名 trim 后非空；REQ-FLOW-019 AC4 表达式改为必填（缺失或 trim 后为空均拒绝）；provider/options 拒绝路径接受 tech-design 层承诺不补签核测试 |
 | v1.2 | 2026-07-17 | BUILD 阶段 S4 对齐检查用户决策：REQ-FLOW-028 AC1 明确覆盖引擎安全中止的执行；AC2 明确 output 总是捕获（不经 outputVariable 声明）；成功路径节点记录写入失败改判 error 接受为 fail-visible（记 REFLECT） |
 | v1.3 | 2026-07-18 | QA 阶段 BUG-002 req-gap 就地补全：REQ-FLOW-019 新增 AC2，要求 Condition 表达式输入框提供占位提示/说明文字，提示 JS 表达式及 `节点ID.变量名` 变量引用格式 |
+| v1.4 | 2026-07-18 | QA 阶段 BUG-004 req-gap 就地补全：REQ-FLOW-020 interface_contract 与 AC3 移除 `model` 面板配置要求，由 adapter/SDK 默认处理；后续支持系统 agent 扫描后再开放 |

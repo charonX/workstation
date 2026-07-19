@@ -7,12 +7,7 @@ import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 // per-type config fields plus the shared retries/onError section.
 const REFINED_NODE_TYPES = ["trigger", "condition", "agent"];
 
-// Legacy mock-adapter models plus the Claude Agent SDK model (tech-design §5.4).
-const MODEL_OPTIONS = [
-  { value: "codex", label: "Codex" },
-  { value: "claude-code", label: "Claude Code" },
-  { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
-];
+
 
 /**
  * Node properties panel for the Flow Editor.
@@ -283,24 +278,6 @@ function AgentFields({ config, onChange, nodes, edges, nodeId, t }) {
         >
           <option value="">{t("flowEditor.providerNone")}</option>
           <option value="anthropic">{t("flowEditor.providerAnthropic")}</option>
-        </select>
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="agent-model-select">
-          {t("flowEditor.model")}
-        </label>
-        <select
-          id="agent-model-select"
-          className="form-input"
-          data-testid="agent-model-select"
-          value={config.model || "codex"}
-          onChange={(e) => onChange("model", e.target.value)}
-        >
-          {MODEL_OPTIONS.map((model) => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
         </select>
       </div>
       <div className="form-group">
