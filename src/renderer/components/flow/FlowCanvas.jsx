@@ -242,7 +242,7 @@ const FlowCanvas = forwardRef(function FlowCanvas(
 
   const addNode = useCallback(
     (type, name, icon = getIconForType(type)) => {
-      const id = `node-${Date.now()}`;
+      const id = `node_${Date.now()}`;
       setNodes((prev) => {
         const count = prev.length;
         const newNode = {
