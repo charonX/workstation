@@ -21,7 +21,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/api/` | REQ-FLOW-001~006, REQ-FLOW-011~022 | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs`, `triggerConfig.test.cjs`, `conditionConfig.test.cjs`, `agentConfig.test.cjs`, `nodeErrorHandling.test.cjs`, `variablePicker.test.cjs`, `triggerConfig.test.js`, `conditionConfig.test.js`, `agentConfig.test.js` |
+| flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/api/` | REQ-FLOW-001~006, REQ-FLOW-011~022, REQ-FLOW-028（调试弹窗） | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs`, `triggerConfig.test.cjs`, `conditionConfig.test.cjs`, `agentConfig.test.cjs`, `nodeErrorHandling.test.cjs`, `variablePicker.test.cjs`, `debugModal.test.cjs`, `triggerConfig.test.js`, `conditionConfig.test.js`, `agentConfig.test.js` |
 | flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-16-flow-refinement/api/` | REQ-FLOW-007~010, REQ-FLOW-023~027 | `flowEngine.test.js`, `variableRegistry.test.js`, `variableSubstitution.test.js`, `errorHandling.test.js`, `danglingReference.test.js`, `projectPathInjection.test.js`, `claudeAgentAdapter.test.js` |
 | execution | `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/`, `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/e2e/` | REQ-FLOW-028 | `executionLog.test.js`, `executionLog.test.cjs` |
 
@@ -81,7 +81,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
 | workspace-management | 2 | 36 | 2026-07-16 |
-| flow-orchestration | 3 | 52 | 2026-07-17 |
+| flow-orchestration | 3 | 53 | 2026-07-19 |
 | scheduling-execution | 3 | 16 | 2026-07-16 |
 | skill-management | 2 | 16 | 2026-07-16 |
 | information-aggregation | 1 | 7 | 2026-07-16 |

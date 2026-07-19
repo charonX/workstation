@@ -41,12 +41,14 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - [ ] 交互状态变化（loading/empty/error/success/disabled）有测试
 - [ ] 导航/路由跳转有测试
 - [ ] 数据绑定正确渲染有测试
+- [ ] 删除/重命名 UI 元素时，同步检查并更新引用它的 E2E 测试与 locators
 - [ ] 纯视觉审美判断才留给 REFLECT 人工验收
 
 ## Playwright E2E
 
 - [ ] `playwright.config.ts` 已配置 `baseURL`、`retries`、`workers`、`trace`、`screenshot`
 - [ ] 测试使用 locator（`getByRole`、`getByTestId`、`getByLabel`）而非裸 CSS selector
+- [ ] 文案定位必须限定在目标容器内，避免跨组件匹配（如 `palette.getByText("Execution")`）
 - [ ] 每个 E2E 测试只验证一个用户流程/概念
 - [ ] 测试数据已隔离（独立用户/fixture/数据库重置）
 - [ ] API 调用已用 `page.route` 或真实后端隔离
