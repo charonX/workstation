@@ -120,56 +120,6 @@ test.describe("Flow Editor Node Design", () => {
     await expect(firstWindow.locator(locators.NODE_OUTPUT_VARIABLE_INPUT)).toHaveValue("hasNews");
   });
 
-  test("REQ-FLOW-014: ForEach and While node configs persist", async () => {
-    await openNewFlow("Loop Config Flow");
-
-    // ForEach
-    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "ForEach" }).click();
-    await firstWindow.locator(locators.FLOW_NODE).first().click();
-    await firstWindow.fill(locators.NODE_NAME_INPUT, "Iterate Headlines");
-    await firstWindow.fill(locators.FOREACH_ARRAY_INPUT, "headlines");
-    await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "headline");
-
-    // While
-    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "While" }).click();
-    const nodes = firstWindow.locator(locators.FLOW_NODE);
-    await nodes.nth(1).locator(".flow-node-header").click();
-    await firstWindow.fill(locators.NODE_NAME_INPUT, "Keep Running");
-    await firstWindow.fill(locators.WHILE_EXPRESSION_INPUT, "context.iteration < 3");
-    await firstWindow.fill(locators.NODE_OUTPUT_VARIABLE_INPUT, "iterationResult");
-
-    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
-    await firstWindow.reload();
-
-    // Verify ForEach persisted.
-    await nodes.first().click();
-    await expect(firstWindow.locator(locators.NODE_NAME_INPUT)).toHaveValue("Iterate Headlines");
-    await expect(firstWindow.locator(locators.FOREACH_ARRAY_INPUT)).toHaveValue("headlines");
-    await expect(firstWindow.locator(locators.NODE_OUTPUT_VARIABLE_INPUT)).toHaveValue("headline");
-
-    // Verify While persisted.
-    await nodes.nth(1).click();
-    await expect(firstWindow.locator(locators.NODE_NAME_INPUT)).toHaveValue("Keep Running");
-    await expect(firstWindow.locator(locators.WHILE_EXPRESSION_INPUT)).toHaveValue("context.iteration < 3");
-    await expect(firstWindow.locator(locators.NODE_OUTPUT_VARIABLE_INPUT)).toHaveValue("iterationResult");
-  });
-
-  test("REQ-FLOW-014: Output node path persists", async () => {
-    await openNewFlow("Output Config Flow");
-
-    await firstWindow.locator(locators.NODE_PALETTE).getByRole("button", { name: "Output" }).click();
-    await firstWindow.locator(locators.FLOW_NODE).first().click();
-    await firstWindow.fill(locators.NODE_NAME_INPUT, "Save Output");
-    await firstWindow.fill(locators.OUTPUT_PATH_INPUT, "./output/daily-news.md");
-
-    await firstWindow.getByRole("button", { name: "Save", exact: true }).click();
-    await firstWindow.reload();
-
-    await firstWindow.locator(locators.FLOW_NODE).first().click();
-    await expect(firstWindow.locator(locators.NODE_NAME_INPUT)).toHaveValue("Save Output");
-    await expect(firstWindow.locator(locators.OUTPUT_PATH_INPUT)).toHaveValue("./output/daily-news.md");
-  });
-
   test("REQ-FLOW-015: Condition node has true and false source handles", async () => {
     await openNewFlow("Condition Branch Flow");
 

@@ -121,4 +121,23 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
     await expect(firstWindow.getByLabel("Model")).not.toBeVisible();
     await expect(firstWindow.getByTestId("agent-model-select")).not.toBeVisible();
   });
+
+  test("BUG-005: 节点面板只保留已实现的 Manual/Condition/Agent", async () => {
+    // 行为：未实现或无 executor 的节点（ForEach/While/Output/Data/Skill）不显示在面板
+    await openFlowInEditor(firstWindow, apiBaseUrl, {
+      projectId: project.id,
+      name: "Palette Cleanup Flow",
+    });
+
+    const palette = firstWindow.getByTestId("node-palette");
+    await expect(palette.getByRole("button", { name: "Manual" })).toBeVisible();
+    await expect(palette.getByRole("button", { name: "Condition" })).toBeVisible();
+    await expect(palette.getByRole("button", { name: "Agent" })).toBeVisible();
+
+    await expect(palette.getByRole("button", { name: "ForEach" })).not.toBeVisible();
+    await expect(palette.getByRole("button", { name: "While" })).not.toBeVisible();
+    await expect(palette.getByRole("button", { name: "Output" })).not.toBeVisible();
+    await expect(palette.getByRole("button", { name: "Data" })).not.toBeVisible();
+    await expect(palette.getByRole("button", { name: "Skill" })).not.toBeVisible();
+  });
 });
