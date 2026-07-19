@@ -181,6 +181,8 @@
     "addVariable": "Add variable",
     "removeVariable": "Remove",
     "expression": "Expression",
+    "expressionPlaceholder": "e.g. n1.count > 3",
+    "expressionHelp": "JavaScript expression. Use nodeId.variableName to reference upstream variables.",
     "insertVariable": "Insert variable",
     "noUpstreamVariables": "No upstream variables available",
     "provider": "Provider",

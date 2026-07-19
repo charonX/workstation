@@ -181,6 +181,8 @@
     "addVariable": "添加变量",
     "removeVariable": "移除",
     "expression": "表达式",
+    "expressionPlaceholder": "例如 n1.count > 3",
+    "expressionHelp": "JavaScript 表达式。使用 节点ID.变量名 引用上游变量。",
     "insertVariable": "插入变量",
     "noUpstreamVariables": "没有可用的上游变量",
     "provider": "服务商",

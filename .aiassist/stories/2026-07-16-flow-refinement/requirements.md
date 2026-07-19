@@ -54,10 +54,11 @@
 ### 验收标准
 
 1. Condition 节点配置面板提供表达式输入框，支持输入 JavaScript 表达式。
-2. 表达式输入框支持变量选择器，可从上游节点已声明的变量中选择并插入 `fullName`（如 `n1.count`）。
-3. 画布上 Condition 节点显示两个输出端口，分别明确标识为 `true` 和 `false`。
-4. `expression` 为必填：保存时前端校验表达式 trim 后非空；后端 API 对缺失或 trim 后为空的表达式拒绝并返回 400（2026-07-17 用户决策，取代原"仅拒绝空字符串"）。
-5. 本 story 不承诺运行时前的表达式语法校验；表达式写错仍在运行时按 error/fatal 处理。
+2. 表达式输入框应提供占位提示或说明文字，明确告知用户需填写 JavaScript 表达式，并用 `节点ID.变量名`（如 `n1.count > 3`）引用上游变量。
+3. 表达式输入框支持变量选择器，可从上游节点已声明的变量中选择并插入 `fullName`（如 `n1.count`）。
+4. 画布上 Condition 节点显示两个输出端口，分别明确标识为 `true` 和 `false`。
+5. `expression` 为必填：保存时前端校验表达式 trim 后非空；后端 API 对缺失或 trim 后为空的表达式拒绝并返回 400（2026-07-17 用户决策，取代原"仅拒绝空字符串"）。
+6. 本 story 不承诺运行时前的表达式语法校验；表达式写错仍在运行时按 error/fatal 处理。
 
 ### 测试要求
 
@@ -306,3 +307,4 @@
 | v1 | 2026-07-17 | 初始结晶，基于 PRD 稳定块生成 REQ-FLOW-018~028 |
 | v1.1 | 2026-07-17 | BUILD 阶段 S3 对齐检查用户决策：REQ-FLOW-018 AC2 变量名 trim 后非空；REQ-FLOW-019 AC4 表达式改为必填（缺失或 trim 后为空均拒绝）；provider/options 拒绝路径接受 tech-design 层承诺不补签核测试 |
 | v1.2 | 2026-07-17 | BUILD 阶段 S4 对齐检查用户决策：REQ-FLOW-028 AC1 明确覆盖引擎安全中止的执行；AC2 明确 output 总是捕获（不经 outputVariable 声明）；成功路径节点记录写入失败改判 error 接受为 fail-visible（记 REFLECT） |
+| v1.3 | 2026-07-18 | QA 阶段 BUG-002 req-gap 就地补全：REQ-FLOW-019 新增 AC2，要求 Condition 表达式输入框提供占位提示/说明文字，提示 JS 表达式及 `节点ID.变量名` 变量引用格式 |

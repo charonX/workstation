@@ -1,10 +1,10 @@
 story_id: 2026-07-16-flow-refinement
 story_name: Flow 细化
 intention: 当前 flow 框架只支持最基础的节点与执行路径，面对真实自动化场景（错误处理、重试、变量作用域、可视化编排体验等）能力不足，需要系统性地细化 flow 的节点类型、执行语义和编辑器体验。
-current_phase: QA
+current_phase: BUG
 completed: false
 attempt: 1
-bug_counter: 1
+bug_counter: 2
 blockers: []
 slices:
   - {id: S1, name: adapter-sdk, status: complete, commits: [b2f0f5c, 41fab06]}
@@ -23,6 +23,7 @@ history:
   - {at: 2026-07-17, from: TEST, to: ASSERTION-SIGNOFF, note: "用户签核全部 59 处断言，assertion-signoff 通过，解锁 BUILD"}
   - {at: 2026-07-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "补档 TECH-DESIGN 完成（本 story PRD→CRYSTALLIZE 时跳过，signoff 遗留 3 项 + 移动块 6 项在本阶段决策）：Agent SDK 选定 @anthropic-ai/claude-agent-sdk（ADR-005）；凭证不存储、复用本机 claude code；config.options 透传 allowlist（systemPrompt/maxTurns），面板不扩展；日志清理 purgeExpiredExecutions 滚动 7×24h，server 启动 + 每日 cron 双触发；触发方式维持节点外模型，webhook 与手动变量表单划入范围外（tech-design §4.3）。修复 10 个测试文件 vitest→node:test 框架错配（[test] 560faca，41 测试可运行：19 绿/22 红色契约）。tech-design.md 经用户审查定稿，解锁 BUILD。"}
   - {at: 2026-07-18, from: BUILD, to: QA, note: "BUILD 全部 6 切片完成（S1 adapter/S2 引擎/S3 校验/S4 日志/S5a 编辑器/S5b 执行日志 UI），每个切片经实现→父代理验证→PRD 对齐→refactor 四道。过程产出：req-gap v1.1（trim/必填）与 v1.2（中止记录/output 总是捕获）就地补全并签核；BUG-001（test-gap，旧 E2E setup 适配新校验）、BUG-002（code-defect，systemPrompt anthropic 映射）按 /bug 流程闭环。最终 unit 136/136、E2E 66/66 全绿，旧契约零回归。build-progress.md 含全部切片 PRD→代码可追溯性表。进入 QA。"}
+  - {at: 2026-07-18, from: QA, to: BUG, note: "用户报告 Condition 节点表达式字段缺少填写说明导致报错。分类为 req-gap：就地补全 REQ-FLOW-019 v1.3（新增 AC2 说明/placeholder 要求）、NodeConfigPanel ConditionFields 加 placeholder+help text、补 i18n 文案与 E2E 回归测试。BUG-002。"}
 archive: []
 notes: |
   继承自 codex-harness-desktop 已沉淀的 FlowEngine 基础：

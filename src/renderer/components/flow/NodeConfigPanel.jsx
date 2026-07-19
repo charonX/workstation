@@ -244,12 +244,16 @@ function ConditionFields({ config, onChange, nodes, edges, nodeId, t }) {
         type="text"
         className="form-input"
         data-testid="condition-expression-input"
+        placeholder={t("flowEditor.expressionPlaceholder")}
         value={config.expression || ""}
         onChange={(e) => onChange("expression", e.target.value)}
         onSelect={recordCaret}
         onClick={recordCaret}
         onKeyUp={recordCaret}
       />
+      <div className="help-text" data-testid="condition-expression-help">
+        {t("flowEditor.expressionHelp")}
+      </div>
       <VariablePicker nodes={nodes} edges={edges} currentNodeId={nodeId} onSelect={insertVariable} />
     </div>
   );
