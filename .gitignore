@@ -33,6 +33,7 @@ out/
 .claude/skills/
 
 # Generated/local artifacts
+.kimi-code/
 .od-skills/
 .stitch/
 *.artifact.json
