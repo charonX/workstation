@@ -297,7 +297,6 @@ export default function FlowEditor() {
           >
             {t("flowEditor.debug")}
           </button>
-          <button className="btn btn-secondary">{t("flowEditor.schedule")}</button>
           <button
             className="btn btn-secondary"
             onClick={handleSave}
