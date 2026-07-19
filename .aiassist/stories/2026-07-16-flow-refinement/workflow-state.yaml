@@ -4,7 +4,7 @@ intention: 当前 flow 框架只支持最基础的节点与执行路径，面对
 current_phase: BUG
 completed: false
 attempt: 1
-bug_counter: 5
+bug_counter: 6
 blockers: []
 slices:
   - {id: S1, name: adapter-sdk, status: complete, commits: [b2f0f5c, 41fab06]}
@@ -27,6 +27,7 @@ history:
   - {at: 2026-07-18, from: BUG, to: BUG, note: "用户再次报告含连字符节点 ID 的 Condition 表达式执行报 Invalid or unexpected token。分类为 code-defect：FlowCanvas 节点 ID 生成使用 node-\${Date.now()} 导致 fullName 不是合法 JS 标识符；修复为 node_\${Date.now()}，并补 API 回归测试。BUG-003。"}
   - {at: 2026-07-18, from: BUG, to: BUG, note: "用户报告 Agent 节点不应选择模型，因为应用无法枚举可用模型。分类为 req-gap：就地补全 REQ-FLOW-020 v1.4，移除 model 面板配置要求，由 adapter/SDK 默认处理；NodeConfigPanel AgentFields 删除 Model 下拉框，更新 i18n/测试/旧回归测试。BUG-004。"}
   - {at: 2026-07-18, from: BUG, to: BUG, note: "用户要求清理节点面板中未实现/无 executor 的节点。分类为 code-defect：NodePalette 展示了 output/data/skill/forEach/while 等当前无法执行的节点；删除这些节点，面板只保留 Manual/Condition/Agent，同步删除旧 E2E 测试与未使用 locators，补回归测试。BUG-005。"}
+  - {at: 2026-07-19, from: BUG, to: BUG, note: "用户反馈调试弹窗没有过程日志。分类为 code-defect：后端 debugFlow 返回 logs 但前端 FlowEditor 结果面板只渲染 output。修复后展示 Output + Execution logs，补 E2E 回归测试。BUG-006。"}
 archive: []
 notes: |
   继承自 codex-harness-desktop 已沉淀的 FlowEngine 基础：

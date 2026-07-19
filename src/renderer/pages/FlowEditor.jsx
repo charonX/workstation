@@ -402,7 +402,26 @@ export default function FlowEditor() {
                   {debugError ? (
                     <div className="debug-error">{debugError}</div>
                   ) : (
-                    <pre>{JSON.stringify(debugResult.output ?? t("flowEditor.debugNoOutput"), null, 2)}</pre>
+                    <>
+                      <div className="debug-output-section">
+                        <h4>{t("flowEditor.debugOutput")}</h4>
+                        <pre>{JSON.stringify(debugResult.output ?? t("flowEditor.debugNoOutput"), null, 2)}</pre>
+                      </div>
+                      {Array.isArray(debugResult.logs) && debugResult.logs.length > 0 && (
+                        <div className="debug-output-section">
+                          <h4>{t("flowEditor.debugLogs")}</h4>
+                          <ul className="debug-log-list">
+                            {debugResult.logs.map((log, index) => (
+                              <li key={index} className="debug-log-item">
+                                <span className="debug-log-at">{log.at ? new Date(log.at).toLocaleTimeString() : ""}</span>
+                                {log.node && <span className="debug-log-node">{log.node}</span>}
+                                <span className="debug-log-message">{log.message}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

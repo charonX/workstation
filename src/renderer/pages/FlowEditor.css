@@ -460,6 +460,57 @@
   font-size: var(--ch-text-sm);
 }
 
+.debug-output-section + .debug-output-section {
+  margin-top: var(--ch-space-4);
+  padding-top: var(--ch-space-4);
+  border-top: 1px solid var(--ch-border);
+}
+
+.debug-output-section h4 {
+  margin: 0 0 var(--ch-space-2);
+  font-size: var(--ch-text-sm);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text-secondary);
+}
+
+.debug-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-2);
+}
+
+.debug-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ch-space-2);
+  font-size: var(--ch-text-sm);
+  line-height: 1.5;
+}
+
+.debug-log-at {
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-xs);
+  flex-shrink: 0;
+  min-width: 64px;
+}
+
+.debug-log-node {
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent);
+  font-size: var(--ch-text-xs);
+  padding: 0 var(--ch-space-1);
+  border-radius: var(--ch-radius-sm);
+  flex-shrink: 0;
+}
+
+.debug-log-message {
+  color: var(--ch-text);
+  word-break: break-word;
+}
+
 /* Zoom Controls Overlay */
 .zoom-controls-overlay {
   position: absolute;

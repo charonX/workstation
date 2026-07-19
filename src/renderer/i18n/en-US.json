@@ -167,6 +167,7 @@
     "debugRunning": "Debugging...",
     "debugClose": "Close",
     "debugOutput": "Output",
+    "debugLogs": "Execution logs",
     "debugNoOutput": "(no output)",
     "debugFailed": "Debug failed",
     "nodeProperties": "Node Properties",

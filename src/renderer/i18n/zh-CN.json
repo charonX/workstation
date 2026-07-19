@@ -167,6 +167,7 @@
     "debugRunning": "调试中...",
     "debugClose": "关闭",
     "debugOutput": "输出",
+    "debugLogs": "执行日志",
     "debugNoOutput": "（无输出）",
     "debugFailed": "调试失败",
     "nodeProperties": "节点属性",
