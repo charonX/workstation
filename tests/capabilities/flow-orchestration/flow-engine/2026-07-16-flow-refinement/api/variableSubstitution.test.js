@@ -114,6 +114,28 @@ describe("REQ-FLOW-024: FlowEngine 变量替换机制", () => {
     assert.equal(result.branch, "false");
   });
 
+  it("BUG-003: 含下划线的节点 ID 作为 fullName 可在 Condition 表达式中求值", async () => {
+    const flow = {
+      nodeList: [
+        {
+          id: "node_1234567890",
+          type: "trigger",
+          config: { outputVariables: [{ name: "name", type: "string", defaultValue: "abc" }] },
+        },
+        {
+          id: "node_9876543210",
+          type: "condition",
+          config: { expression: "node_1234567890.name == 'abc'" },
+        },
+      ],
+      edges: [{ sourceNodeId: "node_1234567890", targetNodeId: "node_9876543210" }],
+    };
+
+    const result = await run(flow);
+    assert.equal(result.status, "success");
+    assert.equal(result.branch, "true");
+  });
+
   it("替换后的 prompt 文本传递给 claudeAgentAdapter", async () => {
     const flow = {
       nodeList: [
