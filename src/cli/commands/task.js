@@ -22,6 +22,9 @@ export async function getExecution(flags) {
   return handleResponse(res);
 }
 
+// Alias for CLI `opc-workstation task get --id <id>`.
+export { getExecution as get };
+
 async function handleResponse(res, expectedStatus) {
   const data = await res.json();
   if (!res.ok || (expectedStatus && res.status !== expectedStatus)) {

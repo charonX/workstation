@@ -1,8 +1,13 @@
 import http from "node:http";
 import cron from "node-cron";
+import os from "node:os";
+import path from "node:path";
 import { resetDb, getDb } from "../db.js";
 import * as settingsService from "../services/settingsService.js";
 import * as taskService from "../services/taskService.js";
+import * as schedulerService from "../services/schedulerService.js";
+import { recoverInterruptedExecutions } from "../services/executionQueue.js";
+import * as eventBus from "../services/eventBus.js";
 import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
 import { handleProjects } from "./routes/projects.js";
 import { handleFlows, handleFlowImport } from "./routes/flows.js";
@@ -37,8 +42,19 @@ function runExecutionLogPurge() {
 
 export function startServer(options = {}) {
   const shouldReset = options.reset !== false;
+  let dbPath;
   if (shouldReset) {
-    resetDb();
+    // Use an isolated per-process temp DB by default so concurrent test
+    // subprocesses do not share state. The path is propagated via DB_PATH so
+    // CLI/headless fallbacks spawned from the same process share the same DB.
+    // Production callers pass reset:false (or an explicit dbPath) and keep the
+    // persistent file DB at DB_PATH / defaultDbPath().
+    dbPath = options.dbPath || process.env.DB_PATH;
+    if (!dbPath) {
+      dbPath = path.join(os.tmpdir(), `opc-workstation-test-${process.pid}-${Date.now()}.db`);
+      process.env.DB_PATH = dbPath;
+    }
+    resetDb(dbPath);
     settingsService.resetSettings();
   }
 
@@ -56,6 +72,7 @@ export function startServer(options = {}) {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
       activeServers.add(server);
+      if (dbPath) server._opcDbPath = dbPath;
       const owner = String(options.owner ?? process.pid);
       server._opcOwner = owner;
       try {
@@ -67,14 +84,42 @@ export function startServer(options = {}) {
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
       purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
+      // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
+      try {
+        recoverInterruptedExecutions(getDb());
+      } catch (err) {
+        console.error("Failed to recover interrupted executions:", err.message);
+      }
+      try {
+        schedulerService.loadAll();
+      } catch (err) {
+        console.error("Failed to load schedules:", err.message);
+      }
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
 }
 
 export function stopServer({ server }) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     activeServers.delete(server);
+    // Clear pending executions and schedules so server shutdown doesn't leak
+    // async work into the next test's lifecycle.
+    try {
+      schedulerService.removeAll();
+    } catch {
+      // ignore
+    }
+    try {
+      eventBus.clearSubscribers();
+    } catch {
+      // ignore
+    }
+    try {
+      await taskService.clearExecutionQueue();
+    } catch {
+      // ignore
+    }
     const purgeTask = purgeTasks.get(server);
     if (purgeTask) {
       purgeTasks.delete(server);
@@ -92,6 +137,7 @@ export function stopServer({ server }) {
     } catch {
       // Ignore registry failures.
     }
+
     server.close(resolve);
   });
 }
@@ -154,7 +200,7 @@ function handleServer(req, res, server, subPath) {
   }
   if (req.method === "GET" && action === "status") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ schedulerRegistered: false }));
+    res.end(JSON.stringify({ schedulerRegistered: true }));
     return;
   }
   return notFound(res);

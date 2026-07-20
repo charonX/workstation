@@ -32,19 +32,18 @@ blocks: {}
 
 # BUILD 切片计划（由 /implementer 创建）。
 slices:
-  - {id: S1, name: workspace-server-db, status: pending, reqs: [REQ-WORKSPACE-008, REQ-WORKSPACE-009, REQ-WORKSPACE-010]}
-  - {id: S2, name: scheduler-trigger-variables, status: pending, reqs: [REQ-SCHEDULE-005, REQ-SCHEDULE-006, REQ-FLOW-029]}
-  - {id: S3, name: execution-queue-artifacts-delivery, status: pending, reqs: [REQ-SCHEDULE-007, REQ-SCHEDULE-008, REQ-SCHEDULE-009]}
-  - {id: S4, name: notification-service, status: pending, reqs: [REQ-NOTIFY-001]}
-  - {id: S5, name: content-source-service, status: pending, reqs: [REQ-SRC-001, REQ-SRC-002]}
-  - {id: S6, name: feishu-channel-adapter, status: pending, reqs: [REQ-CHANNEL-001, REQ-CHANNEL-002, REQ-CHANNEL-003, REQ-CHANNEL-004, REQ-CHANNEL-005]}
-  - {id: S7, name: execution-artifacts-ui, status: pending, reqs: [REQ-FLOW-030]}
-  - {id: S8, name: sources-ui, status: pending, reqs: [REQ-SRC-003]}
-  - {id: S9, name: notification-ui, status: pending, reqs: [REQ-NOTIFY-002]}
-  - {id: S10, name: collection-skills, status: pending, reqs: [REQ-COLL-003]}
-  - {id: S11, name: template-instantiation, status: pending, reqs: [REQ-TPL-001]}
-  - {id: S12, name: daily-digest-e2e, status: pending, reqs: [REQ-COLL-001]}
-  - {id: S13, name: link-capture-e2e, status: pending, reqs: [REQ-COLL-002]}
+  - {id: S1, name: workspace-server-db, status: complete, commits: [a03182ac, 0b6f3254, 65aa1c7f], reqs: [REQ-WORKSPACE-008, REQ-WORKSPACE-009, REQ-WORKSPACE-010]}
+  - {id: S2, name: scheduler-queue-artifacts-delivery, status: complete, commits: [6bd8f5c], reqs: [REQ-SCHEDULE-005, REQ-SCHEDULE-006, REQ-SCHEDULE-007, REQ-SCHEDULE-008, REQ-SCHEDULE-009, REQ-FLOW-029]}
+  - {id: S3, name: notification-service, status: pending, reqs: [REQ-NOTIFY-001]}
+  - {id: S4, name: content-source-service, status: pending, reqs: [REQ-SRC-001, REQ-SRC-002]}
+  - {id: S5, name: feishu-channel-adapter, status: pending, reqs: [REQ-CHANNEL-001, REQ-CHANNEL-002, REQ-CHANNEL-003, REQ-CHANNEL-004, REQ-CHANNEL-005]}
+  - {id: S6, name: execution-artifacts-ui, status: pending, reqs: [REQ-FLOW-030]}
+  - {id: S7, name: sources-ui, status: pending, reqs: [REQ-SRC-003]}
+  - {id: S8, name: notification-ui, status: pending, reqs: [REQ-NOTIFY-002]}
+  - {id: S9, name: collection-skills, status: pending, reqs: [REQ-COLL-003]}
+  - {id: S10, name: template-instantiation, status: pending, reqs: [REQ-TPL-001]}
+  - {id: S11, name: daily-digest-e2e, status: pending, reqs: [REQ-COLL-001]}
+  - {id: S12, name: link-capture-e2e, status: pending, reqs: [REQ-COLL-002]}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:

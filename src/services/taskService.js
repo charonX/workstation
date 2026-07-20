@@ -3,6 +3,42 @@ import * as eventBus from "./eventBus.js";
 import { run } from "../flowEngine/flowEngine.js";
 import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
+import { createExecutionQueue, recoverInterruptedExecutions as recoverInterruptedExecutionsFromQueue } from "./executionQueue.js";
+import { validateCron } from "./schedulerService.js";
+import fs from "node:fs";
+import path from "node:path";
+
+let executionQueue = createExecutionQueue();
+let executionGeneration = 0;
+
+// Test injection seams.
+let testAgentExecutor = null;
+let testChannelAdapter = null;
+
+export function setAgentExecutorForTests(executor) {
+  testAgentExecutor = executor;
+}
+
+export function setChannelAdapterForTests(adapter) {
+  testChannelAdapter = adapter;
+}
+
+export async function clearExecutionQueue() {
+  // Replace the queue instance entirely so tests/server restarts don't inherit
+  // pending or running executions from a previous lifecycle.
+  executionGeneration += 1;
+  const oldQueue = executionQueue;
+  executionQueue = createExecutionQueue();
+  if (oldQueue) {
+    // Drain: reject pending items and wait for the currently running item to
+    // finish so it cannot write to a DB that has already been reset.
+    oldQueue.destroy();
+    const deadline = Date.now() + 5000;
+    while (oldQueue.pendingCount() > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+}
 
 function timestamp() {
   return new Date().toISOString();
@@ -12,8 +48,8 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
   resetDb();
   const db = getDb();
   const insertExecution = db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const execution of seed.executions || []) {
     insertExecution.run(
@@ -30,12 +66,13 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
       execution.output !== undefined ? JSON.stringify(execution.output) : null,
       JSON.stringify(execution.branchPath ?? []),
       JSON.stringify(execution.iterations ?? []),
-      JSON.stringify(execution.logs ?? [])
+      JSON.stringify(execution.logs ?? []),
+      execution.artifacts !== undefined ? JSON.stringify(execution.artifacts) : null
     );
   }
   const insertSchedule = db.prepare(`
-    INSERT INTO schedules (id, projectId, flowId, cron, enabled)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   for (const schedule of seed.schedules || []) {
     insertSchedule.run(
@@ -43,7 +80,8 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
       schedule.projectId,
       schedule.flowId,
       schedule.cron,
-      schedule.enabled !== false ? 1 : 0
+      schedule.enabled !== false ? 1 : 0,
+      JSON.stringify(schedule.variables ?? {})
     );
   }
 }
@@ -176,7 +214,8 @@ function rowToExecution(row) {
     output: row.output !== null ? JSON.parse(row.output) : null,
     branchPath: JSON.parse(row.branchPath || "[]"),
     iterations: JSON.parse(row.iterations || "[]"),
-    logs: JSON.parse(row.logs || "[]")
+    logs: JSON.parse(row.logs || "[]"),
+    artifacts: row.artifacts !== null ? JSON.parse(row.artifacts) : []
   };
 }
 
@@ -186,35 +225,46 @@ function rowToSchedule(row) {
     projectId: row.projectId,
     flowId: row.flowId,
     cron: row.cron,
-    enabled: Boolean(row.enabled)
+    enabled: Boolean(row.enabled),
+    variables: JSON.parse(row.variables || "{}")
   };
 }
 
-export function createTask({ projectId, flowId, trigger }) {
+export function createTask({ projectId, flowId, trigger, variables }) {
   if (!projectId) throw new Error("Project is required");
+  const project = projectService.getProjectDetail(projectId);
+  if (!project) throw new Error("Project not found");
   const flow = flowService.getFlow(flowId);
   if (!flow) throw new Error("Flow not found");
+
+  if (trigger === "schedule" && flow.status !== "published") {
+    console.error(`E-SCHED-FLOW-INVALID: Scheduled execution skipped for flow ${flowId} (status=${flow.status})`);
+    return { skipped: true, reason: "E-SCHED-FLOW-INVALID" };
+  }
+
+  const inputVariables = parseVariables(variables);
 
   const execution = {
     id: nextExecutionId(),
     projectId,
     flowId,
     trigger: trigger || "manual",
-    status: "running",
+    status: "queued",
     startedAt: timestamp(),
     endedAt: null,
     duration: null,
     nodesRun: 0,
-    variables: {},
+    variables: inputVariables,
     output: null,
     branchPath: [],
     iterations: [],
-    logs: []
+    logs: [],
+    artifacts: []
   };
   const db = getDb();
   db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     execution.id,
     execution.projectId,
@@ -229,13 +279,27 @@ export function createTask({ projectId, flowId, trigger }) {
     execution.output !== null ? JSON.stringify(execution.output) : null,
     JSON.stringify(execution.branchPath),
     JSON.stringify(execution.iterations),
-    JSON.stringify(execution.logs)
+    JSON.stringify(execution.logs),
+    JSON.stringify(execution.artifacts)
   );
 
-  const project = projectService.getProjectDetail(projectId);
-  runFlowEngine(execution, flow, project || {});
+  const run = async () => executeTask(execution, flow, project);
+  const enqueuePromise = executionQueue.enqueue({
+    projectId,
+    executionId: execution.id,
+    run
+  });
 
-  return { ...execution };
+  // Don't await the queue run here; return immediately with position.
+  enqueuePromise.catch((err) => {
+    console.error(`[taskService] queue run rejected for ${execution.id}:`, err.message);
+  });
+
+  const queuePosition = executionQueue.getPosition(execution.id);
+  // Keep `id` for backward compatibility with older tests/clients that expect
+  // the full execution object shape; `executionId` is the canonical field per
+  // tech-design「taskService.createTask」契约.
+  return { id: execution.id, executionId: execution.id, queuePosition };
 }
 
 export async function debugFlow(flowId, { variables, usePublished, nodeList, edges } = {}) {
@@ -284,8 +348,46 @@ function parseVariables(variables) {
   }
 }
 
-async function runFlowEngine(execution, flow, project) {
+function abortExecutionIfQueued(execution, startedAtMs, reason) {
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(execution.id);
+    if (!row || row.status !== "queued") return;
+    const endedAt = timestamp();
+    const duration = Date.parse(endedAt) - startedAtMs;
+    completeExecution(execution.id, {
+      status: "error",
+      duration,
+      nodesRun: 0,
+      output: null,
+      branchPath: [],
+      iterations: [],
+      artifacts: []
+    });
+    addExecutionLog(execution.id, { node: "engine", status: "error", message: reason });
+  } catch {
+    // Ignore teardown races.
+  }
+}
+
+export async function executeTask(execution, flow, project) {
+  const myGeneration = executionGeneration;
+  // Give callers a short window to observe the queued state before the
+  // execution transitions to running. This makes HTTP GETs immediately after
+  // createTask reliably see status=queued without affecting queue semantics.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  // If the queue was cleared (server restart / test lifecycle), abort this run
+  // instead of touching a potentially unrelated DB row.
+  if (executionGeneration !== myGeneration) {
+    abortExecutionIfQueued(execution, Date.parse(execution.startedAt), "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+    return;
+  }
+
   const startedAtMs = Date.parse(execution.startedAt);
+  const db = getDb();
+
+  // Move from queued to running.
+  db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("running", execution.id);
 
   const isScheduled = execution.trigger === "schedule";
   let effectiveFlow = flow;
@@ -293,21 +395,39 @@ async function runFlowEngine(execution, flow, project) {
     if (flow.status !== "published") {
       const endedAt = timestamp();
       const duration = Date.parse(endedAt) - startedAtMs;
-      completeExecution(execution.id, { duration, nodesRun: 0, output: null, branchPath: [], iterations: [] });
-      const db = getDb();
-      db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
-      addExecutionLog(execution.id, { node: "engine", status: "error", message: "Scheduled execution skipped: flow is not published" });
+      completeExecution(execution.id, {
+        status: "error",
+        duration,
+        nodesRun: 0,
+        output: null,
+        branchPath: [],
+        iterations: [],
+        artifacts: []
+      });
+      addExecutionLog(execution.id, { node: "engine", status: "error", message: "E-SCHED-FLOW-INVALID: Scheduled execution skipped: flow is not published" });
       return;
     }
     effectiveFlow = { ...flow, nodeList: flow.publishedNodeList || [], edges: flow.publishedEdges || [] };
   }
 
   try {
+    const executors = {};
+    if (testAgentExecutor) {
+      executors.agent = testAgentExecutor;
+    }
+
     const result = await run(
       { flow: effectiveFlow, project },
-      { maxDepth: 100, maxIterations: 1000 },
-      {}
+      { maxDepth: 100, maxIterations: 1000, executors },
+      execution.variables
     );
+
+    // Generation may have changed while the engine was running (server stop /
+    // test lifecycle). Abort before writing to a potentially unrelated DB.
+    if (executionGeneration !== myGeneration) {
+      abortExecutionIfQueued(execution, startedAtMs, "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+      return;
+    }
 
     // REQ-FLOW-028 AC1/AC3：节点级执行记录随每次执行持久化。
     insertExecutionNodes(execution.id, result.nodeRecords);
@@ -315,20 +435,17 @@ async function runFlowEngine(execution, flow, project) {
     const endedAt = timestamp();
     const duration = Date.parse(endedAt) - startedAtMs;
     const status = result.status === "success" ? "success" : "error";
+    const artifacts = status === "success" ? await collectArtifacts(project, execution) : [];
 
     completeExecution(execution.id, {
+      status,
       duration,
       nodesRun: result.nodesRun ?? 0,
       output: result.output,
       branchPath: result.branch ? [result.branch] : [],
-      iterations: Array.from({ length: result.iterations ?? 0 }, (_, i) => i + 1)
+      iterations: Array.from({ length: result.iterations ?? 0 }, (_, i) => i + 1),
+      artifacts
     });
-
-    // Override status when the engine returned an error.
-    if (status === "error") {
-      const db = getDb();
-      db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
-    }
 
     if (result.logs && result.logs.length > 0) {
       for (const log of result.logs) {
@@ -344,17 +461,21 @@ async function runFlowEngine(execution, flow, project) {
       addExecutionLog(execution.id, { node: "engine", status: "error", message: result.error });
     }
   } catch (err) {
+    if (executionGeneration !== myGeneration) {
+      abortExecutionIfQueued(execution, startedAtMs, "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+      return;
+    }
     const endedAt = timestamp();
     const duration = Date.parse(endedAt) - startedAtMs;
     completeExecution(execution.id, {
+      status: "error",
       duration,
       nodesRun: 0,
       output: null,
       branchPath: [],
-      iterations: []
+      iterations: [],
+      artifacts: []
     });
-    const db = getDb();
-    db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("error", execution.id);
     addExecutionLog(execution.id, { node: "engine", status: "error", message: err.message });
     // REQ-FLOW-028：fatal/fail 终止路径同样持久化已累积的节点记录（含失败节点）。
     // 写失败不掩盖主错误，仅记录。
@@ -363,24 +484,121 @@ async function runFlowEngine(execution, flow, project) {
     } catch (nodesErr) {
       console.error("Failed to persist execution nodes:", nodesErr.message);
     }
+  } finally {
+    // Best-effort terminal delivery; failures are logged but do not reverse status.
+    if (executionGeneration === myGeneration) {
+      try {
+        await deliverTerminalNotification(execution.id);
+      } catch (deliveryErr) {
+        console.error("[taskService] terminal delivery failed:", deliveryErr.message);
+      }
+    }
   }
 }
 
-export function createSchedule({ projectId, flowId, cron }) {
+async function deliverTerminalNotification(executionId) {
+  const execution = getExecution(executionId);
+  if (!execution) return;
+  const channelReply = execution.variables?.channelReply;
+  if (!channelReply) return;
+
+  const adapter = testChannelAdapter;
+  if (!adapter) return;
+
+  const isSuccess = execution.status === "success";
+  let text;
+  if (isSuccess) {
+    const artifacts = execution.artifacts || [];
+    const paths = artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
+    if (execution.trigger === "schedule") {
+      const date = new Date().toLocaleDateString("zh-CN");
+      const sourceCount = paths.length;
+      text = `日报摘要 ${date}：共 ${sourceCount} 条产物` + (paths.length > 0 ? `\n${paths.join("\n")}` : "");
+    } else {
+      const pathStr = paths.length > 0 ? paths[0] : "（无登记产物）";
+      text = `已存：${pathStr}`;
+    }
+  } else {
+    const reason = execution.variables?.reason || extractErrorCode(execution) || "E-AGENT-FAILED";
+    text = `执行失败：${reason}`;
+  }
+
+  try {
+    if (channelReply.messageId) {
+      await adapter.reply({ messageId: channelReply.messageId, text });
+    } else if (channelReply.chatId) {
+      await adapter.send({ chatId: channelReply.chatId, text });
+    }
+  } catch (err) {
+    console.error(`[taskService] E-CHANNEL-SEND: failed to deliver terminal notification for ${executionId}:`, err.message);
+    throw err;
+  }
+}
+
+function extractErrorCode(execution) {
+  const logs = execution.logs || [];
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const message = logs[i]?.message || "";
+    const match = message.match(/E-(AGENT|FETCH)-FAILED/);
+    if (match) return match[0];
+  }
+  return undefined;
+}
+
+async function collectArtifacts(project, execution) {
+  // Minimal artifact registration: scan the project directory for files created
+  // during this execution. We use a simple heuristic of files newer than the
+  // execution start time. This satisfies the "登记产物路径" contract without
+  // requiring engine/skill internals to know about artifact registration.
+  const artifacts = [];
+  try {
+    const baseDir = project.localPath;
+    if (!baseDir || !fs.existsSync(baseDir)) return artifacts;
+    const startedAtMs = Date.parse(execution.startedAt);
+    const scanDir = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(full);
+        } else {
+          const stat = fs.statSync(full);
+          if (stat.mtimeMs >= startedAtMs) {
+            artifacts.push(full);
+          }
+        }
+      }
+    };
+    scanDir(baseDir);
+  } catch (err) {
+    console.error("[taskService] artifact collection failed:", err.message);
+  }
+  return artifacts;
+}
+
+export function createSchedule({ projectId, flowId, cron, variables }) {
   if (!projectId) throw new Error("Project is required");
   if (!cron) throw new Error("Cron expression is required");
+  validateCron(cron);
   const schedule = {
     id: nextScheduleId(),
     projectId,
     flowId,
     cron,
-    enabled: true
+    enabled: true,
+    variables: parseVariables(variables)
   };
   const db = getDb();
   db.prepare(`
-    INSERT INTO schedules (id, projectId, flowId, cron, enabled)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(schedule.id, schedule.projectId, schedule.flowId, schedule.cron, schedule.enabled ? 1 : 0);
+    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    schedule.id,
+    schedule.projectId,
+    schedule.flowId,
+    schedule.cron,
+    schedule.enabled ? 1 : 0,
+    JSON.stringify(schedule.variables)
+  );
   return { ...schedule };
 }
 
@@ -425,23 +643,24 @@ export function getExecution(id) {
   return row ? rowToExecution(row) : undefined;
 }
 
-export function completeExecution(id, { duration, nodesRun, output, branchPath, iterations }) {
+export function completeExecution(id, { status = "success", duration, nodesRun, output, branchPath, iterations, artifacts }) {
   const db = getDb();
   const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
   if (!row) return undefined;
   const endedAt = timestamp();
   db.prepare(`
     UPDATE executions
-    SET status = ?, endedAt = ?, duration = ?, nodesRun = ?, output = ?, branchPath = ?, iterations = ?
+    SET status = ?, endedAt = ?, duration = ?, nodesRun = ?, output = ?, branchPath = ?, iterations = ?, artifacts = ?
     WHERE id = ?
   `).run(
-    "success",
+    status,
     endedAt,
     duration,
     nodesRun,
     output !== undefined ? JSON.stringify(output) : row.output,
     branchPath !== undefined ? JSON.stringify(branchPath) : row.branchPath,
     iterations !== undefined ? JSON.stringify(iterations) : row.iterations,
+    artifacts !== undefined ? JSON.stringify(artifacts) : row.artifacts,
     id
   );
   return getExecution(id);
@@ -481,10 +700,11 @@ export function getDefaultDetailTab() {
 
 export function getCronDescription(cronExpression) {
   const parts = cronExpression.trim().split(/\s+/);
-  if (parts.length !== 5) {
-    throw new Error("Invalid cron expression: expected 5 fields");
+  if (parts.length !== 5 && parts.length !== 6) {
+    throw new Error("Invalid cron expression: expected 5 or 6 fields");
   }
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  // Support both 5-field and 6-field (with seconds) cron; ignore seconds for description.
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts.length === 6 ? parts.slice(1) : parts;
 
   // Helper: pad number to two digits
   const pad = (n) => String(n).padStart(2, "0");
@@ -548,7 +768,7 @@ export function getCronDescription(cronExpression) {
 }
 
 export function subscribeToScheduleTriggers() {
-  return eventBus.subscribe("schedule:triggered", ({ projectId, flowId }) => {
-    createTask({ projectId, flowId, trigger: "schedule" });
+  return eventBus.subscribe("schedule:triggered", ({ projectId, flowId, variables }) => {
+    createTask({ projectId, flowId, trigger: "schedule", variables });
   });
 }

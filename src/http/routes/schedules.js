@@ -1,4 +1,5 @@
 import * as taskService from "../../services/taskService.js";
+import * as schedulerService from "../../services/schedulerService.js";
 
 export function handleSchedules(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -10,9 +11,18 @@ export function handleSchedules(req, res, body, pathParts) {
     if (req.method === "POST") {
       try {
         const schedule = taskService.createSchedule(body);
+        try {
+          schedulerService.upsert(schedule);
+        } catch (upsertErr) {
+          // Log and continue: schedule is persisted; cron registration failure is non-blocking.
+          console.error("[scheduler] upsert failed after create:", upsertErr.message);
+        }
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(toListView(schedule)));
       } catch (err) {
+        if (err.code === "E-SCHED-CRON") {
+          return badRequest(res, err.message, "E-SCHED-CRON");
+        }
         return badRequest(res, err.message);
       }
     }
@@ -31,12 +41,18 @@ export function handleSchedules(req, res, body, pathParts) {
         updated = taskService.toggleSchedule(scheduleId);
       }
       if (!updated) return notFound(res, "Schedule not found");
+      if (updated.enabled) {
+        schedulerService.upsert(updated);
+      } else {
+        schedulerService.remove(updated.id);
+      }
       return ok(res, toListView(updated));
     }
 
     if (req.method === "DELETE") {
       const deleted = taskService.deleteSchedule(scheduleId);
       if (!deleted) return notFound(res, "Schedule not found");
+      schedulerService.remove(scheduleId);
       return noContent(res);
     }
 
@@ -53,6 +69,7 @@ function toListView(schedule) {
     flowId: schedule.flowId,
     cron: schedule.cron,
     enabled: schedule.enabled,
+    variables: schedule.variables,
     cronDescription: taskService.getCronDescription(schedule.cron)
   };
 }
@@ -67,9 +84,9 @@ function noContent(res) {
   res.end();
 }
 
-function badRequest(res, message) {
+function badRequest(res, message, code = "VALIDATION_ERROR") {
   res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
+  res.end(JSON.stringify({ error: code, message }));
 }
 
 function notFound(res, message = "Not found") {

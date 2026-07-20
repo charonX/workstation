@@ -201,7 +201,8 @@ function initSchema(database) {
       projectId TEXT NOT NULL,
       flowId TEXT NOT NULL,
       cron TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1
+      enabled INTEGER NOT NULL DEFAULT 1,
+      variables TEXT NOT NULL DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS executions (
@@ -218,7 +219,8 @@ function initSchema(database) {
       output TEXT,
       branchPath TEXT,
       iterations TEXT,
-      logs TEXT
+      logs TEXT,
+      artifacts TEXT
     );
 
     CREATE TABLE IF NOT EXISTS logs (
@@ -255,6 +257,12 @@ function migrateSchema(database) {
   }
   if (!hasColumn(database, "flows", "publishedAt")) {
     database.exec(`ALTER TABLE flows ADD COLUMN publishedAt TEXT`);
+  }
+  if (!hasColumn(database, "schedules", "variables")) {
+    database.exec(`ALTER TABLE schedules ADD COLUMN variables TEXT NOT NULL DEFAULT '{}'`);
+  }
+  if (!hasColumn(database, "executions", "artifacts")) {
+    database.exec(`ALTER TABLE executions ADD COLUMN artifacts TEXT`);
   }
   // Skill repo information architecture migration.
   database.exec(`

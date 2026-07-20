@@ -10,10 +10,13 @@ export function handleExecutions(req, res, body, pathParts) {
 
     if (req.method === "POST") {
       try {
-        const execution = taskService.createTask(body);
+        const result = taskService.createTask(body);
         res.writeHead(201, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify(execution));
+        return res.end(JSON.stringify(result));
       } catch (err) {
+        if (err.code === "E-QUEUE-FULL") {
+          return res.writeHead(503, { "Content-Type": "application/json" }) && res.end(JSON.stringify({ error: "E-QUEUE-FULL", message: err.message }));
+        }
         return badRequest(res, err.message);
       }
     }

@@ -177,16 +177,17 @@ function toFlowView(row) {
   };
 }
 
-export function createFlow({ name, projectId, description, nodes, edges }) {
+export function createFlow({ name, projectId, description, nodes, nodeList, edges }) {
   if (!name) throw new Error("Flow name is required");
   if (!projectId) throw new Error("Project is required");
-  validateNodeList(nodes || []);
+  const effectiveNodeList = nodeList || nodes || [];
+  validateNodeList(effectiveNodeList);
   const flow = {
     id: nextFlowId(),
     projectId,
     name,
     description,
-    nodeList: nodes || [],
+    nodeList: effectiveNodeList,
     edges: edges || [],
     scheduleEnabled: false,
     status: "draft",

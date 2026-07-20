@@ -10,19 +10,18 @@
 
 | Slice | 名称 | REQ-ID | 依赖 | 状态 | 测试文件 |
 |---|---|---|---|---|---|
-| S1 | Workspace/Server 基础与 DB 改造 | REQ-WORKSPACE-008~010 | 无 | done | `workspace-management/server/api/server.test.js` |
-| S2 | 调度器、Schedule 变量与 Trigger 注入 | REQ-SCHEDULE-005~006, REQ-FLOW-029 | S1 | pending | `scheduling-execution/schedule/api/scheduleTriggers.test.js`, `flow-orchestration/flow-engine/api/triggerVariables.test.js` |
-| S3 | 执行队列、产物登记与终态投递钩子 | REQ-SCHEDULE-007~009 | S1, S2 | pending | `scheduling-execution/execution/api/executionQueue.test.js`, `scheduling-execution/execution/api/artifacts.test.js` |
-| S4 | 通知中心服务与 API/CLI | REQ-NOTIFY-001 | S1, S3 (事件源) | pending | `information-aggregation/notification/api/notifications.test.js` |
-| S5 | 内容源服务与 API/CLI | REQ-SRC-001~002 | S1 | pending | `collection-pipeline/content-source/api/contentSources.test.js`, `collection-pipeline/content-source/cli/contentSources.test.js` |
-| S6 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S3 | pending | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
-| S7 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S3 | pending | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
-| S8 | 内容源管理 UI | REQ-SRC-003 | S1, S5 | pending | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` |
-| S9 | 通知中心 UI | REQ-NOTIFY-002 | S1, S4 | pending | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
-| S10 | 收集 skill 包 | REQ-COLL-003 | 无（依赖 skillService） | pending | `collection-pipeline/collection/api/collectionSkills.test.js` |
-| S11 | 模板实例化 | REQ-TPL-001 | S1, S5, S6 | pending | `collection-pipeline/template/api/templates.test.js` |
-| S12 | 场景 A · 定时日报端到端 | REQ-COLL-001 | S2, S3, S4, S6, S10 | pending | `collection-pipeline/collection/api/dailyDigest.test.js` |
-| S13 | 场景 B · 链接速存端到端 | REQ-COLL-002 | S3, S4, S6, S10 | pending | `collection-pipeline/collection/api/linkCapture.test.js` |
+| S1 | Workspace/Server 基础与 DB 改造 | REQ-WORKSPACE-008~010 | 无 | complete | `workspace-management/server/api/server.test.js` |
+| S2 | 调度器、执行队列、产物登记与终态投递 | REQ-SCHEDULE-005~009, REQ-FLOW-029 | S1 | in_progress | `scheduling-execution/schedule/api/scheduleTriggers.test.js`, `flow-orchestration/flow-engine/api/triggerVariables.test.js`, `scheduling-execution/execution/api/executionQueue.test.js`, `scheduling-execution/execution/api/artifacts.test.js` |
+| S3 | 通知中心服务与 API/CLI | REQ-NOTIFY-001 | S1, S2 | pending | `information-aggregation/notification/api/notifications.test.js` |
+| S4 | 内容源服务与 API/CLI | REQ-SRC-001~002 | S1 | pending | `collection-pipeline/content-source/api/contentSources.test.js`, `collection-pipeline/content-source/cli/contentSources.test.js` |
+| S5 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S2 | pending | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
+| S6 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S2 | pending | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
+| S7 | 内容源管理 UI | REQ-SRC-003 | S1, S4 | pending | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` |
+| S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | pending | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
+| S9 | 收集 skill 包 | REQ-COLL-003 | 无（依赖 skillService） | pending | `collection-pipeline/collection/api/collectionSkills.test.js` |
+| S10 | 模板实例化 | REQ-TPL-001 | S1, S4, S5 | pending | `collection-pipeline/template/api/templates.test.js` |
+| S11 | 场景 A · 定时日报端到端 | REQ-COLL-001 | S2, S3, S5, S9 | pending | `collection-pipeline/collection/api/dailyDigest.test.js` |
+| S12 | 场景 B · 链接速存端到端 | REQ-COLL-002 | S2, S3, S5, S9 | pending | `collection-pipeline/collection/api/linkCapture.test.js` |
 
 ---
 
@@ -90,6 +89,65 @@
 #### 与 HTML 原型偏差
 
 - N/A。本切片为基础设施层，无直接 UX 原型。DB 路径统一为 `~/.opc-workstation/data.db` 后，Settings 等模块的持久化路径已按 PRD §10 / tech-design 调整；Electron main 保留写入 `userData/server.json` 供 E2E fixtures 发现，未破坏现有行为。
+
+#### 父代理验证记录
+
+- 业务测试验证：`node --test tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/server.test.js` → 9/9 pass
+- diff 范围检查：仅修改实现代码（`src/db.js`, `src/serverRegistry.js`, `src/cli/headless-server.js`, `src/cli/server.js`, `src/main/main.js`, `src/http/server.js`），未触碰业务测试
+- PRD 对齐子代理：首次 `MISALIGNMENT_FOUND`（`main.js` takeover 失败后仍启动 server 导致双跑）；fix subagent 修复后复查为 `ALIGNED`
+- Refactor subagent：完成安全重构，测试仍 9/9 pass
+- 提交记录：
+  - `[build] Slice 1: workspace server db` (`a03182ac`)
+  - `[bugfix] S1: prevent dual server when takeover fails` (`0b6f3254`)
+  - `[refactor] Slice 1: workspace server db` (`65aa1c7f`)
+
+Slice 1 标记完成。
+
+---
+
+### S2 / scheduler-queue-artifacts-delivery
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/scheduling-execution/schedule/2026-07-19-media-production-line/api/scheduleTriggers.test.js`
+- `node --test tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/triggerVariables.test.js`
+- `node --test tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/executionQueue.test.js`
+- `node --test tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js`  
+**测试结果**: 29/29 pass（调度 10 + trigger 变量 3 + 队列 7 + 产物/投递 9）
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-3 步骤 2/3：Schedule cron 到点触发，发布 `schedule:triggered`，创建 trigger=schedule 的执行 | `src/services/schedulerService.js` (`loadAll`, `upsert`, `remove`, `validateCron`); `src/services/taskService.js` (`subscribeToScheduleTriggers`, `createTask`) | `tests/capabilities/scheduling-execution/schedule/2026-07-19-media-production-line/api/scheduleTriggers.test.js` | COVERED |
+| §6.1 OP-3 步骤 2：schedule CRUD 成功后同进程同步 node-cron 任务 | `src/http/routes/schedules.js` (`handleSchedules` 调用 `schedulerService.upsert`/`remove`); `src/services/schedulerService.js` | 同上 | COVERED |
+| §6.2 / §8：到点时 flow 为 draft/已删 → `E-SCHED-FLOW-INVALID`，不建执行 | `src/services/taskService.js` (`createTask` 对 trigger=schedule 检查 flow.status) | 同上 | COVERED |
+| REQ-SCHEDULE-006：`schedules.variables` JSON 列 CRUD 透传，非法 cron 报 `E-SCHED-CRON` | `src/db.js` (`schedules.variables` 列 + 迁移); `src/services/taskService.js` (`createSchedule` 调用 `validateCron`); `src/http/routes/schedules.js` (透传/错误码); `src/cli/commands/schedule.js` (`--variables`/`--vars`) | 同上 | COVERED |
+| REQ-SCHEDULE-006 AC2：schedule.variables 注入 execution.variables | `src/services/schedulerService.js` (`scheduleTask` payload 含 variables); `src/services/taskService.js` (`subscribeToScheduleTriggers` 透传 variables) | 同上 | COVERED |
+| REQ-SCHEDULE-007：per-project 串行执行队列，上限 50，`getPosition` 正确 | `src/services/executionQueue.js` (`createExecutionQueue`, `enqueue`, `getPosition`) | `tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/executionQueue.test.js` | COVERED |
+| REQ-SCHEDULE-007 AC3：server 启动恢复孤儿执行（queued/running → error，reason=server-restart） | `src/services/executionQueue.js` (`recoverInterruptedExecutions`); `src/http/server.js` (`startServer` 启动时调用) | 同上 | COVERED |
+| REQ-SCHEDULE-007 AC4：单个执行抛错不影响后续执行 | `src/services/executionQueue.js` (`dequeueNext` catch + continue) | 同上 | COVERED |
+| REQ-SCHEDULE-008：`executions.artifacts` JSON 列，成功登记产物路径，失败不登记 | `src/db.js` (`executions.artifacts` 列 + 迁移); `src/services/taskService.js` (`collectArtifacts`, `completeExecution` 支持 artifacts, `rowToExecution` 暴露 artifacts) | `tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js` | COVERED |
+| REQ-SCHEDULE-008 AC3：执行详情 API/CLI 返回 artifacts | `src/http/routes/executions.js` (`GET /api/executions/:id` 透传); `src/cli/commands/task.js` (`get` 保持 `--id`) | 同上 | COVERED |
+| REQ-SCHEDULE-009：终态投递钩子，按 `channelReply` 发送模板消息，失败不反转终态 | `src/services/taskService.js` (`deliverTerminalNotification`, `executeTask` finally 调用) | 同上 | COVERED |
+| REQ-SCHEDULE-009 AC4：agent 节点实现不参与消息发送 | `src/flowEngine/executors/agentExecutor.js` / `agentAdapter.js` / `claudeAgentAdapter.js` 不引用 channelAdapter/feishu | 同上 | COVERED |
+| REQ-FLOW-029：trigger 注入变量覆盖 defaultValue，未注入保留默认值，下游按 `节点ID.变量名` 可见 | `src/flowEngine/flowEngine.js` (`seedTriggerVariables`, `applyTriggerVariableOverrides`, `Object.assign(context, inputVariables)`); `src/flowEngine/executors/triggerExecutor.js` 返回 `{...context}` | `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/triggerVariables.test.js` | COVERED |
+| §6.1 OP-3 步骤 4/5：产物落盘并登记，server 启动加载调度器 | `src/http/server.js` (`startServer` 调用 `schedulerService.loadAll` 与 `recoverInterruptedExecutions`; `/api/server/status` 返回 `schedulerRegistered: true`) | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/server.test.js` | COVERED |
+| 兼容性：既有测试/客户端依赖 `POST /api/executions` 返回 `id` | `src/services/taskService.js` (`createTask` 返回同时保留 `id` 与 `executionId`) | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/server.test.js` | COVERED |
+
+#### 与 HTML 原型偏差
+
+- N/A。本切片为调度/队列/执行终态层，无直接 UX 原型。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `scheduleTriggers.test.js` → 10/10 pass
+  - `triggerVariables.test.js` → 3/3 pass
+  - `executionQueue.test.js` → 7/7 pass
+  - `artifacts.test.js` → 9/9 pass
+- 回归检查：`node --test tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/server.test.js` → 9/9 pass
+- diff 范围检查：仅修改实现代码，未触碰业务测试
 
 ---
 

@@ -58,8 +58,10 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   // 注册表仅存在于单次执行内存中，不持久化（REQ-FLOW-023 AC5）。
   const context = {};
   seedTriggerVariables(nodeList, context);
-  // inputVariables 合入：同名覆盖 Trigger defaultValue；未声明 key 原样进入（legacy 兼容）。
+  // inputVariables 合入：按变量名覆盖 Trigger defaultValue，并按 节点ID.变量名 同步写入注册表；
+  // 未声明 key 原样进入（legacy 兼容）。
   Object.assign(context, inputVariables ?? {});
+  applyTriggerVariableOverrides(nodeList, context, inputVariables ?? {});
 
   let lastOutput = undefined;
   let iterationCount = 0;
@@ -197,6 +199,24 @@ function seedTriggerVariables(nodeList, context) {
     for (const varDef of node.config?.outputVariables ?? []) {
       if (varDef && typeof varDef.name === "string" && varDef.name !== "" && "defaultValue" in varDef) {
         context[`${node.id}.${varDef.name}`] = varDef.defaultValue;
+        // Legacy flat key so downstream expressions/prompts can read bare identifiers too.
+        context[varDef.name] = varDef.defaultValue;
+      }
+    }
+  }
+}
+
+// REQ-FLOW-029：createTask 注入的 variables（如 { topic: "AI" }）覆盖 trigger defaultValue，
+// 并按 节点ID.变量名 进入注册表供下游节点读取。
+function applyTriggerVariableOverrides(nodeList, context, inputVariables) {
+  for (const node of nodeList) {
+    if (node.type?.toLowerCase() !== "trigger") continue;
+    for (const varDef of node.config?.outputVariables ?? []) {
+      if (!varDef || typeof varDef.name !== "string" || varDef.name === "") continue;
+      if (Object.prototype.hasOwnProperty.call(inputVariables, varDef.name)) {
+        const value = inputVariables[varDef.name];
+        context[`${node.id}.${varDef.name}`] = value;
+        context[varDef.name] = value;
       }
     }
   }

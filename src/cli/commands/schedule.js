@@ -2,10 +2,21 @@ import { ensureServer } from "../server.js";
 
 export async function create(flags) {
   const server = await ensureServer();
+  const rawVars = flags.variables || flags.vars;
+  let variables;
+  if (rawVars) {
+    try {
+      variables = JSON.parse(rawVars);
+    } catch {
+      const err = new Error("Invalid variables JSON");
+      err.status = 400;
+      throw err;
+    }
+  }
   const res = await fetch(`${server.baseUrl}/api/schedules`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId: flags["project-id"], flowId: flags["flow-id"], cron: flags.cron })
+    body: JSON.stringify({ projectId: flags["project-id"], flowId: flags["flow-id"], cron: flags.cron, variables })
   });
   return handleResponse(res, 201);
 }
