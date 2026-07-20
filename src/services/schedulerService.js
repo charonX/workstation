@@ -67,25 +67,25 @@ export function upsert(schedule) {
   scheduleTask(schedule);
 }
 
+function destroyTask(task) {
+  try {
+    task.destroy();
+  } catch {
+    // ignore teardown errors
+  }
+}
+
 export function remove(scheduleId) {
   const task = tasks.get(scheduleId);
   if (task) {
-    try {
-      task.destroy();
-    } catch {
-      // ignore teardown errors
-    }
+    destroyTask(task);
     tasks.delete(scheduleId);
   }
 }
 
 export function removeAll() {
-  for (const [id, task] of tasks) {
-    try {
-      task.destroy();
-    } catch {
-      // ignore teardown errors
-    }
+  for (const task of tasks.values()) {
+    destroyTask(task);
   }
   tasks.clear();
 }

@@ -8,6 +8,9 @@ import * as schedulerService from "./schedulerService.js";
 import fs from "node:fs";
 import path from "node:path";
 
+const QUEUE_DRAINED_REASON = "E-QUEUE-DRAINED: execution aborted by queue lifecycle change";
+const QUEUED_STATE_OBSERVATION_MS = 250;
+
 let executionQueue = createExecutionQueue();
 let executionGeneration = 0;
 
@@ -366,6 +369,18 @@ function parseVariables(variables) {
   }
 }
 
+function completeExecutionError(executionId, duration) {
+  return completeExecution(executionId, {
+    status: "error",
+    duration,
+    nodesRun: 0,
+    output: null,
+    branchPath: [],
+    iterations: [],
+    artifacts: []
+  });
+}
+
 function abortExecutionIfQueued(execution, startedAtMs, reason) {
   try {
     const db = getDb();
@@ -373,15 +388,7 @@ function abortExecutionIfQueued(execution, startedAtMs, reason) {
     if (!row || row.status !== "queued") return;
     const endedAt = timestamp();
     const duration = Date.parse(endedAt) - startedAtMs;
-    completeExecution(execution.id, {
-      status: "error",
-      duration,
-      nodesRun: 0,
-      output: null,
-      branchPath: [],
-      iterations: [],
-      artifacts: []
-    });
+    completeExecutionError(execution.id, duration);
     addExecutionLog(execution.id, { node: "engine", status: "error", message: reason });
   } catch {
     // Ignore teardown races.
@@ -393,11 +400,11 @@ export async function executeTask(execution, flow, project) {
   // Give callers a short window to observe the queued state before the
   // execution transitions to running. This makes HTTP GETs immediately after
   // createTask reliably see status=queued without affecting queue semantics.
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, QUEUED_STATE_OBSERVATION_MS));
   // If the queue was cleared (server restart / test lifecycle), abort this run
   // instead of touching a potentially unrelated DB row.
   if (executionGeneration !== myGeneration) {
-    abortExecutionIfQueued(execution, Date.parse(execution.startedAt), "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+    abortExecutionIfQueued(execution, Date.parse(execution.startedAt), QUEUE_DRAINED_REASON);
     return;
   }
 
@@ -413,15 +420,7 @@ export async function executeTask(execution, flow, project) {
     if (flow.status !== "published") {
       const endedAt = timestamp();
       const duration = Date.parse(endedAt) - startedAtMs;
-      completeExecution(execution.id, {
-        status: "error",
-        duration,
-        nodesRun: 0,
-        output: null,
-        branchPath: [],
-        iterations: [],
-        artifacts: []
-      });
+      completeExecutionError(execution.id, duration);
       addExecutionLog(execution.id, { node: "engine", status: "error", message: "E-SCHED-FLOW-INVALID: Scheduled execution skipped: flow is not published" });
       return;
     }
@@ -443,7 +442,7 @@ export async function executeTask(execution, flow, project) {
     // Generation may have changed while the engine was running (server stop /
     // test lifecycle). Abort before writing to a potentially unrelated DB.
     if (executionGeneration !== myGeneration) {
-      abortExecutionIfQueued(execution, startedAtMs, "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+      abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
       return;
     }
 
@@ -480,20 +479,12 @@ export async function executeTask(execution, flow, project) {
     }
   } catch (err) {
     if (executionGeneration !== myGeneration) {
-      abortExecutionIfQueued(execution, startedAtMs, "E-QUEUE-DRAINED: execution aborted by queue lifecycle change");
+      abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
       return;
     }
     const endedAt = timestamp();
     const duration = Date.parse(endedAt) - startedAtMs;
-    completeExecution(execution.id, {
-      status: "error",
-      duration,
-      nodesRun: 0,
-      output: null,
-      branchPath: [],
-      iterations: [],
-      artifacts: []
-    });
+    completeExecutionError(execution.id, duration);
     addExecutionLog(execution.id, { node: "engine", status: "error", message: err.message });
     // REQ-FLOW-028：fatal/fail 终止路径同样持久化已累积的节点记录（含失败节点）。
     // 写失败不掩盖主错误，仅记录。
@@ -514,6 +505,27 @@ export async function executeTask(execution, flow, project) {
   }
 }
 
+function extractArtifactPaths(execution) {
+  const artifacts = execution.artifacts || [];
+  return artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
+}
+
+function buildTerminalSuccessText(execution) {
+  const paths = extractArtifactPaths(execution);
+  if (execution.trigger === "schedule") {
+    const date = new Date().toLocaleDateString("zh-CN");
+    const sourceCount = paths.length;
+    return `日报摘要 ${date}：共 ${sourceCount} 条产物` + (paths.length > 0 ? `\n${paths.join("\n")}` : "");
+  }
+  const pathStr = paths.length > 0 ? paths[0] : "（无登记产物）";
+  return `已存：${pathStr}`;
+}
+
+function buildTerminalFailureText(execution) {
+  const reason = execution.variables?.reason || extractErrorCode(execution) || "E-AGENT-FAILED";
+  return `执行失败：${reason}`;
+}
+
 async function deliverTerminalNotification(executionId) {
   const execution = getExecution(executionId);
   if (!execution) return;
@@ -523,23 +535,9 @@ async function deliverTerminalNotification(executionId) {
   const adapter = testChannelAdapter;
   if (!adapter) return;
 
-  const isSuccess = execution.status === "success";
-  let text;
-  if (isSuccess) {
-    const artifacts = execution.artifacts || [];
-    const paths = artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
-    if (execution.trigger === "schedule") {
-      const date = new Date().toLocaleDateString("zh-CN");
-      const sourceCount = paths.length;
-      text = `日报摘要 ${date}：共 ${sourceCount} 条产物` + (paths.length > 0 ? `\n${paths.join("\n")}` : "");
-    } else {
-      const pathStr = paths.length > 0 ? paths[0] : "（无登记产物）";
-      text = `已存：${pathStr}`;
-    }
-  } else {
-    const reason = execution.variables?.reason || extractErrorCode(execution) || "E-AGENT-FAILED";
-    text = `执行失败：${reason}`;
-  }
+  const text = execution.status === "success"
+    ? buildTerminalSuccessText(execution)
+    : buildTerminalFailureText(execution);
 
   try {
     if (channelReply.messageId) {

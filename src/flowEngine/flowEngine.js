@@ -192,34 +192,37 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   };
 }
 
-// REQ-FLOW-023 AC1：Trigger 节点声明的 outputVariables defaultValue 播种为初始注册表。
-function seedTriggerVariables(nodeList, context) {
+function forEachTriggerVariable(nodeList, callback) {
   for (const node of nodeList) {
     if (node.type?.toLowerCase() !== "trigger") continue;
     for (const varDef of node.config?.outputVariables ?? []) {
-      if (varDef && typeof varDef.name === "string" && varDef.name !== "" && "defaultValue" in varDef) {
-        context[`${node.id}.${varDef.name}`] = varDef.defaultValue;
-        // Legacy flat key so downstream expressions/prompts can read bare identifiers too.
-        context[varDef.name] = varDef.defaultValue;
-      }
+      if (!varDef || typeof varDef.name !== "string" || varDef.name === "") continue;
+      callback(node, varDef);
     }
   }
+}
+
+// REQ-FLOW-023 AC1：Trigger 节点声明的 outputVariables defaultValue 播种为初始注册表。
+function seedTriggerVariables(nodeList, context) {
+  forEachTriggerVariable(nodeList, (node, varDef) => {
+    if ("defaultValue" in varDef) {
+      context[`${node.id}.${varDef.name}`] = varDef.defaultValue;
+      // Legacy flat key so downstream expressions/prompts can read bare identifiers too.
+      context[varDef.name] = varDef.defaultValue;
+    }
+  });
 }
 
 // REQ-FLOW-029：createTask 注入的 variables（如 { topic: "AI" }）覆盖 trigger defaultValue，
 // 并按 节点ID.变量名 进入注册表供下游节点读取。
 function applyTriggerVariableOverrides(nodeList, context, inputVariables) {
-  for (const node of nodeList) {
-    if (node.type?.toLowerCase() !== "trigger") continue;
-    for (const varDef of node.config?.outputVariables ?? []) {
-      if (!varDef || typeof varDef.name !== "string" || varDef.name === "") continue;
-      if (Object.prototype.hasOwnProperty.call(inputVariables, varDef.name)) {
-        const value = inputVariables[varDef.name];
-        context[`${node.id}.${varDef.name}`] = value;
-        context[varDef.name] = value;
-      }
+  forEachTriggerVariable(nodeList, (node, varDef) => {
+    if (Object.prototype.hasOwnProperty.call(inputVariables, varDef.name)) {
+      const value = inputVariables[varDef.name];
+      context[`${node.id}.${varDef.name}`] = value;
+      context[varDef.name] = value;
     }
-  }
+  });
 }
 
 // REQ-FLOW-024：prompt 中 {{fullName}} 替换为注册表当前值；缺失 → 空字符串（AC2）。

@@ -84,23 +84,19 @@ export function startServer(options = {}) {
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
       purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
+      function runStartupStep(label, fn) {
+        try {
+          fn();
+        } catch (err) {
+          console.error(label, err.message);
+        }
+      }
+
       // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
-      try {
-        recoverInterruptedExecutions(getDb());
-      } catch (err) {
-        console.error("Failed to recover interrupted executions:", err.message);
-      }
-      try {
-        schedulerService.loadAll();
-      } catch (err) {
-        console.error("Failed to load schedules:", err.message);
-      }
+      runStartupStep("Failed to recover interrupted executions:", () => recoverInterruptedExecutions(getDb()));
+      runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
       // REQ-SCHEDULE-005/006：生产环境必须订阅 schedule:triggered，否则 cron 到点只 publish 事件而不创建执行。
-      try {
-        taskService.subscribeToScheduleTriggers();
-      } catch (err) {
-        console.error("Failed to subscribe to schedule triggers:", err.message);
-      }
+      runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });

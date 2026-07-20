@@ -15,7 +15,8 @@ export function handleExecutions(req, res, body, pathParts) {
         return res.end(JSON.stringify(result));
       } catch (err) {
         if (err.code === "E-QUEUE-FULL") {
-          return res.writeHead(503, { "Content-Type": "application/json" }) && res.end(JSON.stringify({ error: "E-QUEUE-FULL", message: "队列已满，稍后再发" }));
+          res.writeHead(503, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "E-QUEUE-FULL", message: "队列已满，稍后再发" }));
         }
         return badRequest(res, err.message);
       }

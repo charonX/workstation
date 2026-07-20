@@ -5,6 +5,12 @@
 
 const PROJECT_QUEUE_LIMIT = 50;
 
+function queueError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
 export function createExecutionQueue() {
   const queues = new Map();
   let destroyed = false;
@@ -52,9 +58,7 @@ export function createExecutionQueue() {
       }
       const q = getProjectQueue(projectId);
       if (q.length >= PROJECT_QUEUE_LIMIT) {
-        const err = new Error("Project execution queue is full (E-QUEUE-FULL)");
-        err.code = "E-QUEUE-FULL";
-        return Promise.reject(err);
+        return Promise.reject(queueError("E-QUEUE-FULL", "Project execution queue is full (E-QUEUE-FULL)"));
       }
       return new Promise((resolve, reject) => {
         const item = { projectId, executionId, run, resolve, reject };
@@ -102,10 +106,8 @@ export function createExecutionQueue() {
         // Reject every pending item except the one currently running (q[0]).
         for (let i = 1; i < q.length; i++) {
           const item = q[i];
-          const err = new Error("Execution queue was drained (E-QUEUE-DRAINED)");
-          err.code = "E-QUEUE-DRAINED";
           try {
-            item.reject(err);
+            item.reject(queueError("E-QUEUE-DRAINED", "Execution queue was drained (E-QUEUE-DRAINED)"));
           } catch {
             // Ignore reject handler failures.
           }
