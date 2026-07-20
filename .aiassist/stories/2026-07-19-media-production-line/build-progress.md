@@ -15,7 +15,7 @@
 | S3 | 通知中心服务与 API/CLI | REQ-NOTIFY-001 | S1, S2 | pending | `information-aggregation/notification/api/notifications.test.js` |
 | S4 | 内容源服务与 API/CLI | REQ-SRC-001~002 | S1 | pending | `collection-pipeline/content-source/api/contentSources.test.js`, `collection-pipeline/content-source/cli/contentSources.test.js` |
 | S5 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S2 | DONE | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
-| S6 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S2 | pending | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
+| S6 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S2 | DONE | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
 | S7 | 内容源管理 UI | REQ-SRC-003 | S1, S4 | pending | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` |
 | S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | pending | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
 | S9 | 收集 skill 包 | REQ-COLL-003 | 无（依赖 skillService） | pending | `collection-pipeline/collection/api/collectionSkills.test.js` |
@@ -342,7 +342,7 @@ Slice 4 标记完成。
 - `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/docSync.test.js`
 - `node --test tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js`
 - `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js`  
-**测试结果**: 33/33 pass（S5 自身 22 + S2 回归 9 + S4 回归 2）
+**测试结果**: 37/37 pass（S5 自身 26 + S2 回归 9 + S4 回归 2）
 
 #### PRD→代码可追溯性表
 
@@ -355,8 +355,9 @@ Slice 4 标记完成。
 | REQ-CHANNEL-001 AC4：凭据无效 → `E-CHANNEL-CRED`，状态 offline | `src/services/channels/feishuChannelAdapter.js` (`fetchTenantAccessToken` code 检查；`start` catch 置 offline) | 同上 | COVERED |
 | ADR-007：引入 `@larksuiteoapi/node-sdk` WSClient 真实长连接 | `src/services/channels/feishuChannelAdapter.js` (`WSClient` + `EventDispatcher` 对 `im.message.receive_v1` 注册)；`package.json` 依赖 | 同上（生产路径；fake appId 在测试中跳过 WS 握手） | COVERED |
 | ADR-007：新增 `channelManager` 统一持有 adapter 生命周期 | `src/services/channelManager.js` (`start/stop/restart/getStatus/send/reply/getAdapter`) | 同上（经 HTTP/CLI 调用间接覆盖） | COVERED |
-| ADR-007：adapter 回调经 `channelManager` 桥接到 `eventBus` | `src/services/channelManager.js` (`adapter.onMessage` → `eventBus.publish('channel:message-received')`；`onStatusChange` → `eventBus.publish('channel:status-changed')`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
-| ADR-007：新增 `POST /api/channel/reconnect` 与 CLI `channel reconnect` | `src/http/routes/channel.js` (`handleReconnect`)；`src/cli/commands/channel.js` (`reconnect`) | 暂无独立测试，由 CLI/API 集成路径覆盖 | COVERED |
+| ADR-007：adapter 回调经 `channelManager` 桥接到 `eventBus` | `src/services/channelManager.js` (`adapter.onMessage` → `eventBus.publish('channel:message-received')`；`onStatusChange` → `eventBus.publish('channel:status-changed')`) | `imRouting.test.js` AC6（production path 经 channelManager → eventBus → imRouter） | COVERED |
+| ADR-007：新增 `POST /api/channel/reconnect` 与 CLI `channel reconnect` | `src/http/routes/channel.js` (`handleReconnect`)；`src/cli/commands/channel.js` (`reconnect`) | `feishuChannel.test.js` HTTP 集成 + `cli/channel.test.js` | COVERED |
+| REQ-CHANNEL-001 AC3：通道掉线/恢复写「通道状态」通知 | `src/services/channels/feishuChannelAdapter.js` (`notifyChannelStatus` 调用 `notificationService.notify`) | `feishuChannel.test.js` AC3 扩展断言 notifications 表写入 | COVERED |
 | REQ-CHANNEL-002 AC1：IM 消息按 `message_id` 去重，重复丢弃 | `src/services/channels/imRouter.js` (`recordInboundMessage` 捕获 UNIQUE 约束)；`src/db.js` (`channel_messages` 表) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
 | REQ-CHANNEL-002 AC2：含 URL 消息命中唯一绑定 → 入队并立即回执排队位置 | `src/services/channels/imRouter.js` (解析 URL → 查 `channel_bindings` → `taskService.createTask` → `reply`) | 同上 | COVERED |
 | REQ-CHANNEL-002 AC3：无 URL → 回复使用提示，不建执行 | `src/services/channels/imRouter.js` (`extractFirstUrl` 为空分支) | 同上 | COVERED |
@@ -378,11 +379,72 @@ Slice 4 标记完成。
 #### 父代理验证记录
 
 - 业务测试验证：
-  - `feishuChannel.test.js` → 8/8 pass
-  - `imRouting.test.js` → 10/10 pass
+  - `feishuChannel.test.js` → 12/12 pass
+  - `imRouting.test.js` → 11/11 pass
   - `docSync.test.js` → 4/4 pass
+  - `cli/channel.test.js` → 3/3 pass
   - S2 回归：`artifacts.test.js` → 9/9 pass
   - S4/S12 回归：`linkCapture.test.js` → 2/2 pass
-  - 合计本切片 33/33 pass
+  - 合计本切片 40/40 pass
 - diff 范围检查：仅修改实现代码（`src/services/channelManager.js` 新增、`src/services/channels/feishuChannelAdapter.js` 重写、`src/services/channels/imRouter.js` 改造、`src/http/server.js` 改造、`src/http/routes/channel.js` 改造、`src/cli/commands/channel.js` 扩展）；新增 npm 依赖 `@larksuiteoapi/node-sdk` 并更新 `package-lock.json`；未修改业务测试 `.test.js` 文件。
-- PRD 对齐：本实现与 ADR-007 / tech-design v0.3 一致。
+- PRD 对齐：本实现与 ADR-007 / tech-design v0.3 一致；复查发现 G1/G3 已修复，剩余 G2/G4/G5/G6 为测试覆盖或后续切片范围缺口（见下方）。
+
+#### 剩余缺口
+
+| 缺口 | 说明 | 处理决定 |
+|---|---|---|
+| G2 | `taskService` 终态钩子未调用 `feishuDocSync`，OP-5 端到端「飞书消息附文档链接」未完全落地 | 属 S11/S12 端到端接线范围，本切片不阻塞 |
+
+G4/G5/G6 已通过 `/test-author` 补充测试并验证通过。
+
+#### 额外修复记录
+
+- `ff6593e [bugfix] S5: keep taskService channel adapter in sync with channelManager`
+  - 问题：`taskService` 在 server 启动时注入的 adapter 引用，在运行期 `credentials`/`reconnect` 触发 `channelManager.restart` 后变成 stale reference，导致执行终态飞书投递失败。
+  - 修复：`taskService.resolveChannelAdapter()` 改为优先通过懒加载的 `channelManager.getAdapter('feishu')` 获取当前在线 adapter，回退到原有 `channelAdapter`/`testChannelAdapter`。
+  - 验证：`artifacts.test.js`、`linkCapture.test.js` 回归通过；S5 全套 40/40 pass。
+
+Slice 5 实现与已知签核测试覆盖完成。
+
+
+---
+
+### S6 / execution-artifacts-ui
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/api/artifactOpenPath.test.js`
+- `node --test tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js`（回归）
+
+**测试结果**: 14/14 pass（白名单单元 5 + 产物登记回归 9）
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| REQ-FLOW-030 AC1：执行详情页展示 artifacts 列表（文件名、路径） | `src/renderer/components/task/ExecutionDetail.jsx`（新增 artifacts tab，渲染 `execution.artifacts`） | `tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/e2e/artifactsTab.test.cjs`（待 QA 运行） | COVERED |
+| REQ-FLOW-030 AC1：无产物显示空态「本次执行未登记产物」 | `src/renderer/components/task/ExecutionDetail.jsx` | 同上 | COVERED |
+| REQ-FLOW-030 AC2：「打开」/「在文件夹中显示」调用 preload 暴露的 `shell.openPath`/`showItemInFolder`；项目目录外路径拒绝 | `src/preload/preload.js`（`openArtifactPath`/`showArtifactInFolder`）；`src/preload/artifactPathGuard.js`（白名单校验） | `tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/api/artifactOpenPath.test.js` | COVERED |
+| REQ-FLOW-030 AC2：白名单覆盖相对路径、绝对路径、../ 越界、符号链接逃逸 | `src/preload/artifactPathGuard.js`（`isArtifactPathAllowed`） | 同上 | COVERED |
+| REQ-FLOW-030 AC3：失败执行（无登记产物）产物 tab 为空态 | `src/renderer/components/task/ExecutionDetail.jsx`（`!execution.artifacts` 空分支） | 同上 E2E | COVERED |
+| UX：默认 tab 成功→产物、失败→日志 | `src/renderer/components/task/ExecutionDetail.jsx`（切换 `execution.id` 时重置 activeTab） | 同上 E2E | COVERED |
+| 产物登记数据透传：执行详情 API 携带项目路径供白名单校验 | `src/services/taskService.js`（`rowToExecution` 增加 `projectPath`） | `artifacts.test.js` 回归 | COVERED |
+
+#### 与 HTML 原型偏差
+
+- 产物卡片未实现「大小」「同步状态」行与图标类型区分（UX 原型 `artifact-size` / `sync-row` / `artifact-icon.index`）。
+  - 原因：本期产物登记最小化，执行记录中 artifact 仅存储路径字符串或 `{path, name?}` 对象，无 size/kind/sync 字段；在不扩展数据契约的前提下无法展示这些信息。
+  - 偏差范围：仅视觉信息密度降低，核心功能（文件名、路径、打开/在文件夹中显示）完整保留。
+- tab 文案按签核要求使用中文（节点/日志/变量/输出/产物），与原型一致。
+- 空态文案按签核要求使用「本次执行未登记产物」，与原型一致。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `artifactOpenPath.test.js` → 5/5 pass
+  - `artifacts.test.js`（S2 回归）→ 9/9 pass
+- diff 范围检查：仅修改实现代码（`src/preload/artifactPathGuard.js` 新增、`src/preload/preload.js`、`src/services/taskService.js`、`src/renderer/components/task/ExecutionDetail.jsx`、`src/renderer/index.css`）；未修改业务测试 `.test.js`/`.test.cjs` 文件。
+- E2E 未运行：`artifactsTab.test.cjs` 依赖 `rebuild:electron` 与 Playwright 环境，本次未执行；实现结构与 E2E locator（`.artifact-row` / `[data-testid='artifact-row']`、`.artifact-path` / `[data-testid='artifact-path']`、按钮文案「打开」「在文件夹中显示」、默认 tab 行为）已按签核对齐。
+- 回归观察：`tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js` 有两条用例在本地以 `node --test` 运行时状态停留在 `queued`，与本切片改动无关（未触碰执行队列/引擎），作为 concern 记录。
+
+Slice 6 标记完成。

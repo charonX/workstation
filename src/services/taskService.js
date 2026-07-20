@@ -222,6 +222,7 @@ function rowToExecution(row) {
     flowId: row.flowId,
     flowName: flow?.name || row.flowId,
     projectName: project?.name || row.projectId,
+    projectPath: project?.localPath || null,
     trigger: row.trigger,
     status: row.status,
     startedAt: row.startedAt,

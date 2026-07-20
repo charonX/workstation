@@ -19,11 +19,37 @@ function buildNodeTypeMap(flow) {
   return map;
 }
 
+function basename(filePath) {
+  if (!filePath) return "";
+  const parts = String(filePath).split(/[\\/]/);
+  return parts[parts.length - 1] || "";
+}
+
+function normalizeArtifact(artifact) {
+  if (typeof artifact === "string") {
+    return { path: artifact, name: basename(artifact) };
+  }
+  const artifactPath = artifact?.path || "";
+  return {
+    path: artifactPath,
+    name: artifact?.name || basename(artifactPath) || "未知产物",
+  };
+}
+
 export default function ExecutionDetail({ execution }) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("nodes");
   const [nodeTypes, setNodeTypes] = useState({});
   const flowId = execution?.flowId;
+
+  // 切换执行时重置默认 tab：成功执行优先展示产物，失败执行展示日志。
+  useEffect(() => {
+    if (!execution) {
+      setActiveTab("nodes");
+      return undefined;
+    }
+    setActiveTab(execution.status === "success" ? "artifacts" : "logs");
+  }, [execution?.id]);
 
   // flow 的 nodeList 提供节点类型，用于识别 agent 节点（mock 路径的执行记录
   // 不产 agent 调用详情，仅靠记录字段无法识别）。flow 已删除时静默回落。
@@ -53,10 +79,11 @@ export default function ExecutionDetail({ execution }) {
   }
 
   const tabs = [
-    { key: "nodes", label: t("execution.nodes"), testid: "nodes-tab" },
-    { key: "logs", label: t("execution.logs"), testid: "logs-tab" },
-    { key: "variables", label: t("execution.variables"), testid: "variables-tab" },
-    { key: "output", label: t("execution.output"), testid: "output-tab" },
+    { key: "nodes", label: "节点", testid: "nodes-tab" },
+    { key: "logs", label: "日志", testid: "logs-tab" },
+    { key: "variables", label: "变量", testid: "variables-tab" },
+    { key: "output", label: "输出", testid: "output-tab" },
+    { key: "artifacts", label: "产物", testid: "artifacts-tab" },
   ];
 
   function formatDate(isoString) {
@@ -153,6 +180,62 @@ export default function ExecutionDetail({ execution }) {
               </pre>
             ) : (
               <p className="detail-placeholder">{t("execution.noOutput")}</p>
+            )}
+          </div>
+        )}
+
+        {activeTab === "artifacts" && (
+          <div data-testid="artifacts-panel">
+            {!execution.artifacts || execution.artifacts.length === 0 ? (
+              <p className="detail-placeholder">本次执行未登记产物</p>
+            ) : (
+              <div className="artifact-list">
+                {execution.artifacts.map((artifact, index) => {
+                  const { path: artifactPath, name } = normalizeArtifact(artifact);
+                  if (!artifactPath) return null;
+                  return (
+                    <div className="artifact-card" key={index}>
+                      <div className="artifact-row" data-testid="artifact-row">
+                        <span className="artifact-icon">FILE</span>
+                        <div className="artifact-main">
+                          <div className="artifact-name-row">
+                            <span className="artifact-name">{name}</span>
+                          </div>
+                          <div className="artifact-path" data-testid="artifact-path">
+                            {artifactPath}
+                          </div>
+                        </div>
+                        <div className="artifact-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              if (!execution.projectPath) return;
+                              window.opc
+                                .openArtifactPath(execution.projectPath, artifactPath)
+                                .catch((err) => console.error("打开产物失败:", err));
+                            }}
+                          >
+                            打开
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              if (!execution.projectPath) return;
+                              window.opc
+                                .showArtifactInFolder(execution.projectPath, artifactPath)
+                                .catch((err) => console.error("在文件夹中显示失败:", err));
+                            }}
+                          >
+                            在文件夹中显示
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
