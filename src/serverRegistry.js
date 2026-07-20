@@ -116,3 +116,54 @@ export function unregisterServerRecord(owner) {
     releaseRegistryLock(fd);
   }
 }
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isServerReachable(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/settings`, { signal: AbortSignal.timeout(500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function takeoverExistingServer({ port, pid, timeoutMs = 5000 }) {
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const deadline = Date.now() + timeoutMs;
+
+  // Ask the existing server to shut down gracefully.
+  try {
+    await fetch(`${baseUrl}/api/server/shutdown`, {
+      method: "POST",
+      signal: AbortSignal.timeout(Math.max(1000, timeoutMs))
+    });
+  } catch {
+    // Shutdown request may fail if the server is already going away; verify by polling below.
+  }
+
+  while (Date.now() < deadline) {
+    if (pid && !isProcessAlive(pid)) {
+      return;
+    }
+    if (!(await isServerReachable(port))) {
+      return;
+    }
+    await sleep(150);
+  }
+
+  const err = new Error(`E-SERVER-TAKEOVER-TIMEOUT: existing server at ${baseUrl} did not shut down within ${timeoutMs}ms`);
+  err.code = "E-SERVER-TAKEOVER-TIMEOUT";
+  throw err;
+}

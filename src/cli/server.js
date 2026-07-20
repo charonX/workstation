@@ -31,11 +31,12 @@ function isProcessAlive(pid) {
   }
 }
 
-export async function discoverServer() {
+export async function discoverServer({ allowAnyOwner = false } = {}) {
   const owner = getOwner();
   const records = readServerInfoRaw();
   const deadPids = [];
   let match = null;
+  let fallback = null;
   for (const info of records) {
     if (!info.port || !info.pid || !isProcessAlive(info.pid)) {
       if (info.pid) deadPids.push(info.pid);
@@ -47,8 +48,11 @@ export async function discoverServer() {
         deadPids.push(info.pid);
         continue;
       }
-      if (!match && info.owner === owner) {
-        match = { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
+      const candidate = { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
+      if (info.owner === owner) {
+        match = candidate;
+      } else if (allowAnyOwner && !fallback) {
+        fallback = candidate;
       }
     } catch {
       // Server not reachable.
@@ -56,7 +60,7 @@ export async function discoverServer() {
     }
   }
   pruneDeadServerRecords(deadPids);
-  return match;
+  return match || fallback;
 }
 
 export async function startHeadlessServer() {

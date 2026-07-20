@@ -1,13 +1,38 @@
 import { startServer } from "../http/server.js";
-import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
+import { unregisterServerRecord, readServerInfoRaw, takeoverExistingServer } from "../serverRegistry.js";
 
 const owner = process.env.OPC_SERVER_OWNER || process.ppid || process.pid;
 
-const ctx = await startServer({ reset: false });
+function isProcessAlive(pid) {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function maybeTakeoverExistingServer() {
+  const records = readServerInfoRaw();
+  for (const record of records) {
+    if (record.owner !== String(owner)) continue;
+    if (record.pid === process.pid) continue;
+    if (!record.port || !isProcessAlive(record.pid)) continue;
+    await takeoverExistingServer({ port: record.port, pid: record.pid, timeoutMs: 5000 });
+  }
+}
+
+await maybeTakeoverExistingServer();
+const ctx = await startServer({ reset: false, owner });
 const port = ctx.server.address().port;
 const pid = process.pid;
 
-registerServerRecord(port, pid, owner);
+// Once the HTTP server closes for any reason (including a remote shutdown request),
+// clean up the registry and exit the headless process.
+ctx.server.on("close", () => {
+  cleanup();
+  process.exit(0);
+});
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

@@ -6,7 +6,7 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: TEST       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
@@ -21,12 +21,30 @@ history:
   - {at: 2026-07-19, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "CONTEXT.md 登记完成：内容源/通知实体 + 素材库/通道/产物/触发来源/Tag 概念；下一步先 /research 调研飞书 OpenAPI 再 /tech-design"}
   - {at: 2026-07-19, from: TECH-DESIGN, to: CRYSTALLIZE, note: "三轮对抗决策（单server顶替/串行队列/开箱模板）；tech-design v0.1 + ADR-006；review-tech FAIL(3阻塞6警告)→全部修复出 v0.2（通道绑定/全局归属/系统层投递等）"}
   - {at: 2026-07-19, from: CRYSTALLIZE, to: TEST, note: "结晶完成：11 稳定块 → 21 REQ（requirements.md v1 + hash）；新增 channel-integration/collection-pipeline 两个能力域"}
+  - {at: 2026-07-19, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：24 REQ（修正计数）× ≥1 自动化测试，101 api/cli + 14 e2e 用例；签核 4 决策（E-SCHED-FLOW-INVALID/E-SRC-DUP=409/DB直写播种/§5整体批准），50 处 TODO 清零；signoff commit 1c6b09c；发现既有缺陷（schedules 非法cron挂起）留 bug 循环"}
+  - {at: 2026-07-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过，契约交内层实现循环"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
 
 # 块状态(一挡内按块回流时维护)。
 blocks: {}
+
+# BUILD 切片计划（由 /implementer 创建）。
+slices:
+  - {id: S1, name: workspace-server-db, status: pending, reqs: [REQ-WORKSPACE-008, REQ-WORKSPACE-009, REQ-WORKSPACE-010]}
+  - {id: S2, name: scheduler-trigger-variables, status: pending, reqs: [REQ-SCHEDULE-005, REQ-SCHEDULE-006, REQ-FLOW-029]}
+  - {id: S3, name: execution-queue-artifacts-delivery, status: pending, reqs: [REQ-SCHEDULE-007, REQ-SCHEDULE-008, REQ-SCHEDULE-009]}
+  - {id: S4, name: notification-service, status: pending, reqs: [REQ-NOTIFY-001]}
+  - {id: S5, name: content-source-service, status: pending, reqs: [REQ-SRC-001, REQ-SRC-002]}
+  - {id: S6, name: feishu-channel-adapter, status: pending, reqs: [REQ-CHANNEL-001, REQ-CHANNEL-002, REQ-CHANNEL-003, REQ-CHANNEL-004, REQ-CHANNEL-005]}
+  - {id: S7, name: execution-artifacts-ui, status: pending, reqs: [REQ-FLOW-030]}
+  - {id: S8, name: sources-ui, status: pending, reqs: [REQ-SRC-003]}
+  - {id: S9, name: notification-ui, status: pending, reqs: [REQ-NOTIFY-002]}
+  - {id: S10, name: collection-skills, status: pending, reqs: [REQ-COLL-003]}
+  - {id: S11, name: template-instantiation, status: pending, reqs: [REQ-TPL-001]}
+  - {id: S12, name: daily-digest-e2e, status: pending, reqs: [REQ-COLL-001]}
+  - {id: S13, name: link-capture-e2e, status: pending, reqs: [REQ-COLL-002]}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:

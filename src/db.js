@@ -6,11 +6,18 @@ import os from "node:os";
 let db = null;
 let currentPath = null;
 
-function defaultDbPath() {
+export function defaultDbPath() {
   if (process.env.DB_PATH) {
     return process.env.DB_PATH;
   }
-  return ":memory:";
+  return path.join(os.homedir(), ".opc-workstation", "data.db");
+}
+
+function wrapDbUnwritableError(message, cause) {
+  const err = new Error(`${message} (E-DB-UNWRITABLE)`);
+  err.code = "E-DB-UNWRITABLE";
+  err.cause = cause;
+  return err;
 }
 
 export function getDb(dbPath) {
@@ -28,9 +35,24 @@ export function getDb(dbPath) {
   }
   if (target !== ":memory:") {
     const targetDir = path.dirname(target);
-    fs.mkdirSync(targetDir, { recursive: true });
+    try {
+      fs.mkdirSync(targetDir, { recursive: true });
+      // Verify the directory is actually writable by creating a sentinel file.
+      const sentinel = path.join(targetDir, `.write-check-${process.pid}`);
+      fs.writeFileSync(sentinel, "");
+      fs.unlinkSync(sentinel);
+    } catch (err) {
+      throw wrapDbUnwritableError(`database directory is not writable: ${targetDir}`, err);
+    }
   }
-  db = new Database(target);
+  try {
+    db = new Database(target);
+  } catch (err) {
+    if (target !== ":memory:") {
+      throw wrapDbUnwritableError(`cannot open database at ${target}`, err);
+    }
+    throw err;
+  }
   currentPath = target;
   initSchema(db);
   migrateSchema(db);
@@ -49,8 +71,8 @@ export function closeDb() {
   }
 }
 
-export function resetDb() {
-  const database = getDb();
+export function resetDb(dbPath) {
+  const database = getDb(dbPath ?? currentPath ?? ":memory:");
   database.exec(`
     DROP TABLE IF EXISTS execution_nodes;
     DROP TABLE IF EXISTS logs;
@@ -63,6 +85,32 @@ export function resetDb() {
     DROP TABLE IF EXISTS projects;
   `);
   initSchema(database);
+}
+
+export function migrateLegacyDb({ legacyPath, targetPath, logger }) {
+  if (!legacyPath || !targetPath) {
+    return { migrated: false };
+  }
+  if (fs.existsSync(targetPath)) {
+    return { migrated: false };
+  }
+  if (!fs.existsSync(legacyPath)) {
+    return { migrated: false };
+  }
+  const start = Date.now();
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(legacyPath, targetPath);
+  const durationMs = Date.now() - start;
+  const logEntry = {
+    event: "legacy-db-migration",
+    source: legacyPath,
+    target: targetPath,
+    durationMs
+  };
+  if (logger) {
+    logger(logEntry);
+  }
+  return { migrated: true };
 }
 
 // REQ-FLOW-028 / tech-design §5.6：节点级执行记录，经 executionId 关联 executions。

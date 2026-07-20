@@ -44,7 +44,7 @@ export function startServer(options = {}) {
 
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      handleRequest(req, res).catch((err) => {
+      handleRequest(req, res, server).catch((err) => {
         console.error("HTTP handler error:", err);
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
@@ -56,8 +56,10 @@ export function startServer(options = {}) {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
       activeServers.add(server);
+      const owner = options.owner ?? process.pid;
+      server._opcOwner = String(owner);
       try {
-        registerServerRecord(port, process.pid, process.pid);
+        registerServerRecord(port, process.pid, owner);
       } catch {
         // Ignore registry failures in restricted environments.
       }
@@ -65,7 +67,7 @@ export function startServer(options = {}) {
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
       purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
-      resolve({ server, baseUrl: `http://127.0.0.1:${port}` });
+      resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner: server._opcOwner });
     });
   });
 }
@@ -85,7 +87,7 @@ export function stopServer({ server }) {
     try {
       const address = server.address();
       if (address) {
-        unregisterServerRecord(process.pid);
+        unregisterServerRecord(server._opcOwner ?? process.pid);
       }
     } catch {
       // Ignore registry failures.
@@ -94,7 +96,7 @@ export function stopServer({ server }) {
   });
 }
 
-async function handleRequest(req, res) {
+async function handleRequest(req, res, server) {
   // CORS: allow renderer loaded from Vite dev server to call the local API.
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
@@ -134,9 +136,28 @@ async function handleRequest(req, res) {
       return handleSkillRepos(req, res, body, subPath);
     case "dashboard":
       return handleDashboard(req, res);
+    case "server":
+      return handleServer(req, res, server, subPath);
     default:
       return notFound(res);
   }
+}
+
+function handleServer(req, res, server, subPath) {
+  const action = subPath[0];
+  if (req.method === "POST" && action === "shutdown") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    // Graceful shutdown after the response has been flushed.
+    setTimeout(() => stopServer({ server }), 0);
+    return;
+  }
+  if (req.method === "GET" && action === "status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ schedulerRegistered: false }));
+    return;
+  }
+  return notFound(res);
 }
 
 function parseBody(req) {

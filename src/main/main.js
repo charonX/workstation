@@ -3,6 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import { defaultDbPath, migrateLegacyDb } from "../db.js";
+import { discoverServer } from "../cli/server.js";
+import { takeoverExistingServer } from "../serverRegistry.js";
 
 // Handle squirrel startup events (Windows installer)
 if (process.platform === "win32" && (await import("electron-squirrel-startup")).default) {
@@ -16,7 +19,18 @@ const __dirname = path.dirname(__filename);
 // so that settingsService and the SQLite DB use the correct paths.
 const userData = app.getPath("userData");
 process.env.OPC_WORKSTATION_CONFIG_DIR = userData;
-process.env.DB_PATH = path.join(userData, "data.db");
+
+// REQ-WORKSPACE-008/010: use the unified workspace DB path and migrate legacy userData/data.db if present.
+const newDbPath = defaultDbPath();
+process.env.DB_PATH = newDbPath;
+const legacyDbPath = path.join(userData, "data.db");
+if (fsSync.existsSync(legacyDbPath) && !fsSync.existsSync(newDbPath)) {
+  migrateLegacyDb({
+    legacyPath: legacyDbPath,
+    targetPath: newDbPath,
+    logger: (entry) => console.log(JSON.stringify(entry))
+  });
+}
 
 const { startServer, stopServer } = await import("../http/server.js");
 
@@ -55,8 +69,17 @@ async function createWindow() {
     return;
   }
 
-  // Start the HTTP server only if not already running (guard against activate)
+  // Start the HTTP server only if not already running (guard against activate).
+  // REQ-WORKSPACE-009: if a headless server is already running, request shutdown and take over.
   if (!serverCtx) {
+    const existing = await discoverServer({ allowAnyOwner: true });
+    if (existing) {
+      try {
+        await takeoverExistingServer({ port: existing.port, timeoutMs: 5000 });
+      } catch (err) {
+        console.error("Failed to takeover existing server:", err.message);
+      }
+    }
     serverCtx = await startServer({ reset: false });
     const { server, baseUrl } = serverCtx;
     const { port } = server.address();
