@@ -19,8 +19,33 @@ import { handleSkillRepos } from "./routes/skillRepos.js";
 import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
+import { handleChannel, setChannelAdapter as setRouteChannelAdapter } from "./routes/channel.js";
+import { createFeishuChannelAdapter } from "../services/channels/feishuChannelAdapter.js";
+import { createImRouter } from "../services/channels/imRouter.js";
+import * as notificationService from "../services/notificationService.js";
 
 const activeServers = new Set();
+const FEISHU_DEFAULT_DOMAIN = "https://open.feishu.cn";
+
+function startFeishuChannel(baseUrl) {
+  const settings = settingsService.loadSettings();
+  const creds = settings.channelCredentials;
+  if (!creds?.appId || !creds?.appSecret) return;
+
+  const domain = settings.channelDomain || FEISHU_DEFAULT_DOMAIN;
+  const adapter = createFeishuChannelAdapter({
+    domain,
+    credentials: creds,
+    notificationService,
+    logger: console
+  });
+  taskService.setChannelAdapter(adapter);
+  setRouteChannelAdapter(adapter);
+  adapter.start().catch((err) => {
+    console.error("[server] failed to start Feishu channel adapter:", err.message);
+  });
+  createImRouter({ channelAdapter: adapter, baseUrl });
+}
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
 const purgeTasks = new Map();
 
@@ -99,6 +124,8 @@ export function startServer(options = {}) {
       runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
       // REQ-SCHEDULE-005/006：生产环境必须订阅 schedule:triggered，否则 cron 到点只 publish 事件而不创建执行。
       runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
+      // REQ-CHANNEL-001/002：凭据存在时自动启动飞书通道与 IM 路由。
+      runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel(`http://127.0.0.1:${port}`));
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
@@ -190,6 +217,8 @@ async function handleRequest(req, res, server) {
       return handleNotifications(req, res, body, subPath);
     case "content-sources":
       return handleContentSources(req, res, body, subPath);
+    case "channel":
+      return handleChannel(req, res, body, subPath);
     case "server":
       return handleServer(req, res, server, subPath);
     default:

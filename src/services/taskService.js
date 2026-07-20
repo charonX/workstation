@@ -19,8 +19,15 @@ let executionGeneration = 0;
 let testAgentExecutor = null;
 let testChannelAdapter = null;
 
+// Production channel adapter injected by server startup (REQ-CHANNEL-001).
+let channelAdapter = null;
+
 export function setAgentExecutorForTests(executor) {
   testAgentExecutor = executor;
+}
+
+export function setChannelAdapter(adapter) {
+  channelAdapter = adapter;
 }
 
 export function setChannelAdapterForTests(adapter) {
@@ -532,13 +539,20 @@ function buildTerminalFailureText(execution) {
   return `执行失败：${reason}`;
 }
 
+function resolveChannelAdapter() {
+  if (channelAdapter && typeof channelAdapter.getStatus === "function" && channelAdapter.getStatus() === "online") {
+    return channelAdapter;
+  }
+  return testChannelAdapter;
+}
+
 async function deliverTerminalNotification(executionId) {
   const execution = getExecution(executionId);
   if (!execution) return;
   const channelReply = execution.variables?.channelReply;
   if (!channelReply) return;
 
-  const adapter = testChannelAdapter;
+  const adapter = resolveChannelAdapter();
   if (!adapter) return;
 
   const text = execution.status === "success"

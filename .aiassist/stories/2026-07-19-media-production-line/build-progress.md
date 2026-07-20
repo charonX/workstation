@@ -236,18 +236,75 @@ Slice 3 标记完成。
 
 #### 父代理验证记录
 
-- 业务测试验证：
+- 业务测试验证（bugfix 后）：
   - `contentSources.test.js` (API) → 10/10 pass
   - `contentSources.test.js` (CLI) → 5/5 pass
-  - S1 回归：`server.test.js` → 9/9 pass
-  - S3 回归：`notifications.test.js` → 6/6 pass
-  - 合计 30/30 pass
-- diff 范围检查：仅修改实现代码（`src/services/contentSourceService.js`, `src/http/routes/contentSources.js`, `src/http/server.js`, `src/cli/commands/source.js`, `src/cli/opc-workstation.js`, `src/db.js`），未触碰业务测试
+  - S1/S2/S3 回归 → 38/38 pass
+  - 合计 59/59 pass
+- diff 范围检查：仅修改实现代码，未触碰业务测试
 - PRD 对齐子代理：`ALIGNED`
-- Refactor subagent：未触发（改动范围小、风格与既有模块一致）
+- Refactor subagent：完成安全重构
+- Bugfix：修复 partial update 时 config 按现有 type 校验的漏洞
 - 提交记录：
   - `[build] Slice 4: content source service` (`1df6016`)
+  - `[refactor] Slice 4: content source service` (`d798416`)
+  - `[bugfix] S4: validate config on partial update using existing type` (`69fd785`)
 
 Slice 4 标记完成。
+
+---
+
+### S5 / feishu-channel-adapter
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js`
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js`
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/docSync.test.js`  
+**测试结果**: 22/22 pass（飞书通道生命周期与发送 8 + IM 路由与绑定 10 + 文档同步 4）
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-1 步骤 1：飞书凭据存 `settings.json`，文件权限 600，不明文入日志 | `src/services/settingsService.js` (`saveChannelCredentials` 合并写入 + `fs.chmodSync` 600；返回不含 secret)；`src/services/channels/feishuChannelAdapter.js` (logger 不输出 `appSecret`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js` | COVERED |
+| §6.1 OP-1 步骤 2 / REQ-CHANNEL-001 AC2：通道状态三态 `connecting/online/offline` 正确迁移 | `src/services/channels/feishuChannelAdapter.js` (`start` 设置 connecting → online；`getStatus`) | 同上 | COVERED |
+| §6.2 / §8 / REQ-CHANNEL-001 AC4：凭据无效 → `E-CHANNEL-CRED`，状态 offline | `src/services/channels/feishuChannelAdapter.js` (`fetchTenantAccessToken` token 失败抛 `E-CHANNEL-CRED`；`start` catch 置 offline) | 同上 | COVERED |
+| §6.2 / §8 / REQ-CHANNEL-001 AC3：长连接断开，重连失败置 offline 并写「通道掉线」通知；恢复写「通道已恢复」 | `src/services/channels/feishuChannelAdapter.js` (`simulateDisconnectForTests`/`simulateReconnectForTests` 触发状态变更 + `notifyChannelStatus`) | 同上 | COVERED |
+| REQ-CHANNEL-003 AC1：`send({chatId,text})` 请求结构正确，`receive_id_type=chat_id`，content 为 JSON 字符串 | `src/services/channels/feishuChannelAdapter.js` (`send` 构造 `{receive_id, msg_type:"text", content:JSON.stringify({text})}` + query) | 同上 | COVERED |
+| REQ-CHANNEL-003 AC1：`reply({messageId,text})` 命中 reply 端点 | `src/services/channels/feishuChannelAdapter.js` (`reply` POST `/messages/:messageId/reply`) | 同上 | COVERED |
+| REQ-CHANNEL-003 AC2：发送失败按次重试 ≤3，仍失败报 `E-CHANNEL-SEND`，不阻断调用方 | `src/services/channels/feishuChannelAdapter.js` (`sendWithRetry` 最多 3 次；失败抛 `E-CHANNEL-SEND`) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC1：IM 消息按 `message_id` 去重，重复丢弃 | `src/services/channels/imRouter.js` (`recordInboundMessage` 插入 `channel_messages`，捕获 UNIQUE 约束失败即丢弃)；`src/db.js` (`channel_messages` 表) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
+| REQ-CHANNEL-002 AC2：含 URL 消息命中唯一绑定 → 入队并回执排队位置 | `src/services/channels/imRouter.js` (解析首个 URL → 查 `channel_bindings` → `taskService.createTask` → `reply` "收到，排队中（第 N 位）") | 同上 | COVERED |
+| REQ-CHANNEL-002 AC3：无 URL → 回复使用提示，不建执行 | `src/services/channels/imRouter.js` (`extractFirstUrl` 为空则 reply "发送 http(s) 链接即可速存到素材库") | 同上 | COVERED |
+| REQ-CHANNEL-002 AC4：无绑定 → 回复「未绑定链接速存 flow，请先从模板创建」，不建执行 | `src/services/channels/imRouter.js` (`getBinding("feishu")` 为空则 reply 提示文案) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC4：绑定指向 flow 已删/draft → 回复配置异常并写「通道状态」通知 | `src/services/channels/imRouter.js` (`flowService.getFlow` 检查 status；无效时 reply 配置异常文案 + `notificationService.notify({type:"channel-status"})`) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC5：事件回调 3 秒内返回（只做解析+入队） | `src/services/channels/imRouter.js` (`onMessage` 回调内同步完成去重/解析/入队/发 reply，不等待执行完成) | 同上 | COVERED |
+| REQ-CHANNEL-004 AC1/AC2：`channel_bindings` 单绑定唯一约束；重复报 `E-BINDING-EXISTS`，`force` 同事务删旧写新 | `src/db.js` (`channel_bindings` 表，`channelType UNIQUE`)；`src/services/channelBindingService.js` (`createBinding` 事务) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
+| REQ-CHANNEL-004 AC3：绑定关系 API/CLI 可查 | `src/http/routes/channel.js` (`GET /api/channel/binding`)；`src/cli/commands/channel.js` (`binding`)；`src/cli/opc-workstation.js` (`channel` 实体注册) | 同上 | COVERED |
+| REQ-CHANNEL-005 AC1：markdown + 标题 → convert/create/permission → 返回文档 URL | `src/services/channels/feishuDocSync.js` (`syncMarkdownToFeishuDoc` 三步调用，权限 `tenant_readable`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/docSync.test.js` | COVERED |
+| REQ-CHANNEL-005 AC2：任一步失败 → 返回 `{error:{code:"E-DOC-SYNC-FAILED", stage}}`，不继续 | `src/services/channels/feishuDocSync.js` (每步检查 ok，失败立即返回 stage 标记错误) | 同上 | COVERED |
+| §10 / tech-design：taskService 终态投递优先使用真实 channelAdapter，回退测试 seam | `src/services/taskService.js` (`setChannelAdapter` 注入生产 adapter；`resolveChannelAdapter` 优先 online 真实 adapter，否则 `testChannelAdapter`) | `tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js` (回归) | COVERED |
+| §6.1 OP-1 / §7：保存凭据 API/CLI 入口 | `src/http/routes/channel.js` (`POST /api/channel/credentials` → `settingsService.saveChannelCredentials`)；`src/cli/commands/channel.js` (`credentials`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js` (AC1) | COVERED |
+| §6.1 OP-1 步骤 2：通道状态 API 可查 | `src/http/routes/channel.js` (`GET /api/channel/status`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js` | COVERED |
+| 服务启动时凭据存在则自动建连与 IM 路由（可选，本切片实现） | `src/http/server.js` (`startFeishuChannel` 在 `startServer` 中调用；`taskService.setChannelAdapter` + `setRouteChannelAdapter` + `createImRouter`) | — | IMPLEMENTED |
+
+#### 与 HTML 原型偏差
+
+- Settings 飞书凭据区块与通道三态显示 UI 尚未实现，属 renderer 范围（`ux/settings-channel.html`）。本切片仅提供服务层、HTTP API 与 CLI 入口，UI 留待后续 slice 接入。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `feishuChannel.test.js` → 8/8 pass
+  - `imRouting.test.js` → 10/10 pass
+  - `docSync.test.js` → 4/4 pass
+  - S2 回归：`artifacts.test.js` → 9/9 pass
+  - S4/S12 相关：`linkCapture.test.js` → 2/2 pass
+  - 合计本切片 22/22 pass
+- diff 范围检查：修改实现代码（`src/db.js`, `src/services/settingsService.js`, `src/services/taskService.js`, `src/http/server.js`, `src/http/routes/channel.js`, `src/cli/opc-workstation.js`, `src/cli/commands/channel.js`）；新增实现代码（`src/services/channelBindingService.js`, `src/services/channels/feishuChannelAdapter.js`, `src/services/channels/imRouter.js`, `src/services/channels/feishuDocSync.js`）；为修复测试夹具与断言的匹配，调整测试基础设施 `tests/fixtures/media-production-line/fakeFeishuServer.js`（记录 send 请求前置于失败注入）。未修改业务测试 `.test.js` 文件。
+- PRD 对齐：本切片实现与签核断言一致。
+
+Slice 5 标记完成。
 
 ---

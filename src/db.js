@@ -85,6 +85,8 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS projects;
     DROP TABLE IF EXISTS notifications;
     DROP TABLE IF EXISTS content_sources;
+    DROP TABLE IF EXISTS channel_bindings;
+    DROP TABLE IF EXISTS channel_messages;
   `);
   initSchema(database);
 }
@@ -258,6 +260,21 @@ function initSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS idx_content_sources_createdAt ON content_sources(createdAt DESC);
 
+    CREATE TABLE IF NOT EXISTS channel_bindings (
+      id TEXT PRIMARY KEY,
+      channelType TEXT NOT NULL UNIQUE,
+      flowId TEXT NOT NULL,
+      projectId TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_channel_bindings_channelType ON channel_bindings(channelType);
+
+    CREATE TABLE IF NOT EXISTS channel_messages (
+      messageId TEXT PRIMARY KEY,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
+
     ${EXECUTION_NODES_DDL}
   `);
 }
@@ -309,6 +326,22 @@ function migrateSchema(database) {
   }
   // REQ-FLOW-028: execution_nodes 表（旧库补建，与 initSchema 同 DDL，幂等）。
   database.exec(EXECUTION_NODES_DDL);
+  // REQ-CHANNEL-004/002: channel bindings and inbound message deduplication.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS channel_bindings (
+      id TEXT PRIMARY KEY,
+      channelType TEXT NOT NULL UNIQUE,
+      flowId TEXT NOT NULL,
+      projectId TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_channel_bindings_channelType ON channel_bindings(channelType);
+    CREATE TABLE IF NOT EXISTS channel_messages (
+      messageId TEXT PRIMARY KEY,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
+  `);
   // Clean up orphan skills left over from before the skill-repo information architecture.
   // Skills must belong to a valid skill_repo; those without a repoId are no longer reachable.
   database.exec(`

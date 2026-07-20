@@ -10,6 +10,7 @@ import * as skill from "./commands/skill.js";
 import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
 import * as source from "./commands/source.js";
+import * as channel from "./commands/channel.js";
 
 const entities = {
   settings,
@@ -20,7 +21,8 @@ const entities = {
   skill,
   dashboard,
   notify,
-  source
+  source,
+  channel
 };
 
 function parseArgs(args) {

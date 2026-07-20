@@ -75,3 +75,20 @@ export function saveSettings(partial) {
   writeSettings(settings);
   return loadSettings();
 }
+
+export function saveChannelCredentials({ appId, appSecret } = {}) {
+  if (!appId || !appSecret) {
+    throw new Error("E-CHANNEL-CRED: App ID and App Secret are required");
+  }
+  settings = {
+    ...settings,
+    channelCredentials: { appId, appSecret, updatedAt: new Date().toISOString() }
+  };
+  writeSettings(settings);
+  try {
+    fs.chmodSync(settingsFile, 0o600);
+  } catch {
+    // Ignore permission failures in restricted environments (tests, CI).
+  }
+  return { appId, updatedAt: settings.channelCredentials.updatedAt };
+}
