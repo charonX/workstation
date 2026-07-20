@@ -44,6 +44,7 @@ export async function startFakeFeishuServer(options = {}) {
     replies: [],
     docxConverts: [],
     docxCreates: [],
+    docxWrites: [],
     permissionPatches: [],
     injectedMessages: []
   };
@@ -144,6 +145,14 @@ export async function startFakeFeishuServer(options = {}) {
           msg: "ok",
           data: { document: { document_id: `doc_fake_${docSeq}`, title: body.title || "" } }
         }));
+        return;
+      }
+
+      const blockChildrenMatch = pathname.match(/^\/open-apis\/docx\/v1\/documents\/([^/]+)\/blocks\/([^/]+)\/children$/);
+      if (blockChildrenMatch && req.method === "POST") {
+        received.docxWrites.push({ documentId: blockChildrenMatch[1], blockId: blockChildrenMatch[2], body });
+        res.writeHead(200);
+        res.end(JSON.stringify({ code: 0, msg: "ok" }));
         return;
       }
 
