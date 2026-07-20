@@ -80,12 +80,15 @@ test.describe("REQ-FLOW-030 Executions 产物 tab（E2E，UX 原型映射）", (
 
   test("成功执行的产物 tab 展示 artifacts 列表（文件名/路径）与打开动作按钮", async () => {
     // 前置：一次成功执行且登记了产物（产物登记由 REQ-SCHEDULE-008 落地）。
-    // 空 flow 不会自动产出文件，因此在创建执行后立即写一个产物文件，让 collectArtifacts 登记。
+    // 空 flow 不会自动产出文件，因此先创建产物文件、在执行启动后 touch 刷新 mtime，
+    // 使 collectArtifacts 把该文件登记为 artifact。
     const flow = await createFlow(apiBaseUrl, { name: "Artifacts List Flow", projectId: project.id });
-    const execution = await createExecution(apiBaseUrl, { projectId: project.id, flowId: flow.id });
     const artifactFile = path.join(project.localPath, "outputs/daily/2026-07-19-ai-daily.md");
     fs.mkdirSync(path.dirname(artifactFile), { recursive: true });
     fs.writeFileSync(artifactFile, "# daily digest", "utf8");
+    const execution = await createExecution(apiBaseUrl, { projectId: project.id, flowId: flow.id });
+    // 确保文件 mtime 在执行 startedAt 之后，避免空 flow 执行过快导致扫描时文件尚未写入。
+    fs.utimesSync(artifactFile, new Date(), new Date());
     await waitForTerminalStatus(apiBaseUrl, execution.id);
 
     await openExecutionsPage(firstWindow);
