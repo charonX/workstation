@@ -130,7 +130,7 @@ export function update(id, fields = {}) {
   // Type is required when config is being validated against a new value.
   const effectiveType = type !== undefined ? type : existing.type;
   validateFields(
-    { name, type, tags, config: config !== undefined ? config : existing.config },
+    { name, type: effectiveType, tags, config: config !== undefined ? config : existing.config },
     { partial: true }
   );
 
