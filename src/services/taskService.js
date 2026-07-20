@@ -22,6 +22,12 @@ let testChannelAdapter = null;
 // Production channel adapter injected by server startup (REQ-CHANNEL-001).
 let channelAdapter = null;
 
+// Optional lazy reference to channelManager so taskService can always resolve
+// the current live adapter (survives channelManager.restart()). Caches the
+// module after first successful load; missing module or import errors are
+// treated as "channelManager not available" and fall back to the adapters above.
+let channelManagerModule = null;
+
 export function setAgentExecutorForTests(executor) {
   testAgentExecutor = executor;
 }
@@ -539,7 +545,25 @@ function buildTerminalFailureText(execution) {
   return `执行失败：${reason}`;
 }
 
-function resolveChannelAdapter() {
+async function resolveChannelAdapter() {
+  // Prefer the live adapter currently held by channelManager. After
+  // channelManager.restart() the adapter instance is replaced, so the
+  // channelAdapter injected at server startup becomes a stale offline reference.
+  if (!channelManagerModule) {
+    try {
+      channelManagerModule = await import("../services/channelManager.js");
+    } catch {
+      channelManagerModule = null;
+    }
+  }
+  if (channelManagerModule?.getAdapter) {
+    const liveAdapter = channelManagerModule.getAdapter("feishu");
+    if (liveAdapter && typeof liveAdapter.getStatus === "function" && liveAdapter.getStatus() === "online") {
+      return liveAdapter;
+    }
+  }
+
+  // Fallback to the adapter injected at server startup or for tests.
   if (channelAdapter && typeof channelAdapter.getStatus === "function" && channelAdapter.getStatus() === "online") {
     return channelAdapter;
   }
@@ -552,7 +576,7 @@ async function deliverTerminalNotification(executionId) {
   const channelReply = execution.variables?.channelReply;
   if (!channelReply) return;
 
-  const adapter = resolveChannelAdapter();
+  const adapter = await resolveChannelAdapter();
   if (!adapter) return;
 
   const text = execution.status === "success"
