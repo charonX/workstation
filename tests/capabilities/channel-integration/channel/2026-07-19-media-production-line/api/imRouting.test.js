@@ -10,6 +10,30 @@ import assert from "node:assert/strict";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import { createMockChannelAdapter } from "../../../../../fixtures/media-production-line/mockChannelAdapter.js";
 
+/**
+ * 将飞书开放平台域名请求 mock 为快速成功/失败，避免测试依赖真实网络。
+ * 返回恢复函数，必须在 finally 中调用。
+ */
+function mockFeishuOpenPlatform({ tokenValid = true } = {}) {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    const urlStr = String(url);
+    if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
+      if (tokenValid) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: "fake-tenant-token", expire: 7200 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 99991663, msg: "app access token invalid" }), { status: 200 });
+    }
+    if (urlStr.includes("open.feishu.cn/open-apis/im/v1/messages")) {
+      return new Response(JSON.stringify({ code: 0, msg: "success", data: { message_id: "om_fake_1" } }), { status: 200 });
+    }
+    return originalFetch(url, init);
+  };
+  return () => {
+    global.fetch = originalFetch;
+  };
+}
+
 // seam：IM 路由（tech-design「通道绑定与 IM 路由」）。建议落点
 // src/services/channels/imRouter.js，导出 createImRouter({ channelAdapter, ... })，
 // 接线后 adapter.onMessage 进入路由：去重 → 解析 URL → 查绑定 → 回执 + createTask 入队。
@@ -154,6 +178,40 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     adapter.emitMessage({ messageId: "om_fast_1", chatId: "oc_1", senderId: "ou_1", text: "https://example.com/e" });
     const elapsed = Date.now() - start;
     assert.ok(elapsed < 3000, `事件回调应 3 秒内返回，实际: ${elapsed}ms`);
+  });
+
+  it("AC6: production path — channelManager 将 adapter onMessage 桥接到 eventBus，imRouter 订阅后创建执行", async () => {
+    // 本测试走完整生产路径：startServer 已通过 createImRouter({ channelManager }) 订阅
+    // channel:message-received；保存凭据并重启 channelManager 后，adapter 的 onMessage 回调
+    // 由 channelManager 桥接到 eventBus，最终触发 imRouter 创建执行。
+    const restoreFetch = mockFeishuOpenPlatform();
+    try {
+      const settings = await import("../../../../../../src/services/settingsService.js");
+      const channelManager = await import("../../../../../../src/services/channelManager.js");
+      settings.saveChannelCredentials({ appId: "cli_fake_app_id", appSecret: "fake-secret-bridge" });
+      await channelManager.restart("feishu");
+      const productionAdapter = channelManager.getAdapter("feishu");
+      assert.ok(productionAdapter, "保存凭据后 channelManager 应创建 feishu adapter");
+      assert.equal(productionAdapter.getStatus(), "online", "mock 飞书 token 应验证通过并 online");
+
+      const binding = await loadBindingService();
+      const { project, flow } = await createProjectFlow(serverCtx.baseUrl);
+      binding.createBinding({ channelType: "feishu", flowId: flow.id, projectId: project.id });
+
+      productionAdapter.simulateReceiveForTests({
+        messageId: "om_bridge_1",
+        chatId: "oc_bridge_1",
+        senderId: "ou_bridge_1",
+        text: "收藏 https://example.com/bridge"
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const executions = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
+      const created = executions.find((e) => e.flowId === flow.id && e.trigger === "channel");
+      assert.ok(created, "imRouter 应通过 eventBus 桥接收到消息并创建 trigger=channel 的执行");
+    } finally {
+      restoreFetch();
+    }
   });
 });
 

@@ -12,6 +12,30 @@ import path from "node:path";
 import { startFakeFeishuServer } from "../../../../../fixtures/media-production-line/fakeFeishuServer.js";
 import { makeTmpDir } from "../../../../../fixtures/media-production-line/tmpProjectDir.js";
 
+/**
+ * 将飞书开放平台域名请求 mock 为快速成功/失败，避免测试依赖真实网络。
+ * 返回恢复函数，必须在 finally 中调用。
+ */
+function mockFeishuOpenPlatform({ tokenValid = true } = {}) {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    const urlStr = String(url);
+    if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
+      if (tokenValid) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: "fake-tenant-token", expire: 7200 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 99991663, msg: "app access token invalid" }), { status: 200 });
+    }
+    if (urlStr.includes("open.feishu.cn/open-apis/im/v1/messages")) {
+      return new Response(JSON.stringify({ code: 0, msg: "success", data: { message_id: "om_fake_1" } }), { status: 200 });
+    }
+    return originalFetch(url, init);
+  };
+  return () => {
+    global.fetch = originalFetch;
+  };
+}
+
 // seam：飞书通道 adapter（tech-design「channelAdapter 接口」）。
 // 建议落点 src/services/channels/feishuChannelAdapter.js，导出 createFeishuChannelAdapter({
 //   domain, credentials, settings, notificationService, logger })，
@@ -90,21 +114,41 @@ describe("REQ-CHANNEL-001: 飞书通道生命周期", () => {
   });
 
   it("AC3: 断线重连失败置 offline 并写「通道掉线」通知；恢复置 online 并写恢复通知", async () => {
-    const create = await loadAdapterFactory();
-    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
-    await adapter.start();
-    assert.equal(adapter.getStatus(), "online");
+    const { startServer, stopServer } = await import("../../../../../../src/http/server.js");
+    const serverCtx = await startServer();
+    try {
+      const create = await loadAdapterFactory();
+      const notificationService = await import("../../../../../../src/services/notificationService.js");
+      const adapter = create({
+        domain: fake.baseUrl,
+        credentials: { appId: "cli_fake", appSecret: "fake" },
+        notificationService
+      });
+      await adapter.start();
+      assert.equal(adapter.getStatus(), "online");
 
-    // seam：测试侧触发断线（建议 adapter._simulateDisconnectForTests() 或由 fake server 断 WS）。
-    assert.equal(typeof adapter.simulateDisconnectForTests, "function",
-      "seam 未就绪：adapter 需提供断线模拟入口（REQ-CHANNEL-001 AC3）");
-    await adapter.simulateDisconnectForTests({ reconnectWillFail: true });
-    assert.equal(adapter.getStatus(), "offline", "重连失败应置 offline");
+      assert.equal(typeof adapter.simulateDisconnectForTests, "function",
+        "seam 未就绪：adapter 需提供断线模拟入口（REQ-CHANNEL-001 AC3）");
+      await adapter.simulateDisconnectForTests({ reconnectWillFail: true });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(adapter.getStatus(), "offline", "重连失败应置 offline");
 
-    // 通知断言：通道状态变更应写「通道掉线」/「通道已恢复」通知（REQ-NOTIFY-001 三类事件源之一）。
-    // TODO(BUILD)：notificationService seam 就绪后改为服务级断言（当前经 /api/notifications，未实现时 404）。
-    await adapter.simulateReconnectForTests?.();
-    assert.equal(adapter.getStatus(), "online", "恢复后应置 online");
+      const offlineNotifications = notificationService.list().filter((n) =>
+        n.type === "channel-status" && n.title.includes("通道掉线")
+      );
+      assert.ok(offlineNotifications.length > 0, "断线应写入 type='channel-status' 的「通道掉线」通知");
+
+      await adapter.simulateReconnectForTests?.();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(adapter.getStatus(), "online", "恢复后应置 online");
+
+      const onlineNotifications = notificationService.list().filter((n) =>
+        n.type === "channel-status" && n.title.includes("通道已恢复")
+      );
+      assert.ok(onlineNotifications.length > 0, "恢复应写入 type='channel-status' 的「通道已恢复」通知");
+    } finally {
+      await stopServer(serverCtx);
+    }
   });
 
   it("AC4: 凭据无效 → E-CHANNEL-CRED，状态 offline", async () => {
@@ -175,5 +219,71 @@ describe("REQ-CHANNEL-003: 通道发送", () => {
     await assert.rejects(() => adapter.send({ chatId: "oc_chat_3", text: "always-fail" }), /E-CHANNEL-SEND/);
     assert.ok(fake.received.sends.length - before <= 3,
       `重试应有上限（≤3 次），实际新增尝试: ${fake.received.sends.length - before}`);
+  });
+});
+
+describe("REQ-CHANNEL-001 HTTP 集成：credentials / status / reconnect", () => {
+  let fake;
+  let serverCtx;
+  let restoreFetch;
+
+  beforeEach(async () => {
+    fake = await startFakeFeishuServer();
+    restoreFetch = mockFeishuOpenPlatform();
+    const { startServer } = await import("../../../../../../src/http/server.js");
+    serverCtx = await startServer();
+  });
+
+  afterEach(async () => {
+    const { stopServer } = await import("../../../../../../src/http/server.js");
+    await stopServer(serverCtx);
+    restoreFetch();
+    await fake.stop();
+  });
+
+  it("POST /api/channel/credentials 返回 {appId, status, error?}", async () => {
+    const res = await fetch(`${serverCtx.baseUrl}/api/channel/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appId: "cli_fake_http", appSecret: "fake-secret-http" })
+    });
+    assert.equal(res.status, 201, "保存凭据应返回 201");
+    const data = await res.json();
+    assert.equal(data.appId, "cli_fake_http", "响应应回显 appId");
+    assert.ok(["connecting", "online", "offline"].includes(data.status), `status 应为三态之一，实际: ${data.status}`);
+    assert.ok(data.error === undefined || data.error === null || typeof data.error === "string", "error 字段应为字符串、null 或不存在");
+  });
+
+  it("GET /api/channel/status 返回 {channelType, status, error?}", async () => {
+    await fetch(`${serverCtx.baseUrl}/api/channel/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appId: "cli_fake_http", appSecret: "fake-secret-http" })
+    });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/channel/status`);
+    assert.equal(res.status, 200, "查询状态应返回 200");
+    const data = await res.json();
+    assert.equal(data.channelType, "feishu", "响应应标识 channelType=feishu");
+    assert.ok(["connecting", "online", "offline"].includes(data.status), `status 应为三态之一，实际: ${data.status}`);
+    assert.ok(data.error === undefined || data.error === null || typeof data.error === "string", "error 字段应为字符串、null 或不存在");
+  });
+
+  it("POST /api/channel/reconnect 返回 {channelType, status, error?}", async () => {
+    await fetch(`${serverCtx.baseUrl}/api/channel/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appId: "cli_fake_http", appSecret: "fake-secret-http" })
+    });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/channel/reconnect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    assert.equal(res.status, 200, "重新连接应返回 200");
+    const data = await res.json();
+    assert.equal(data.channelType, "feishu", "响应应标识 channelType=feishu");
+    assert.ok(["connecting", "online", "offline"].includes(data.status), `status 应为三态之一，实际: ${data.status}`);
+    assert.ok(data.error === undefined || data.error === null || typeof data.error === "string", "error 字段应为字符串、null 或不存在");
   });
 });
