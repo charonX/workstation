@@ -261,6 +261,21 @@ export function createTask({ projectId, flowId, trigger, variables }) {
     logs: [],
     artifacts: []
   };
+
+  // REQ-SCHEDULE-007：先检查容量，队列已满时同步拒绝，避免残留 queued 记录。
+  if (executionQueue.isFull(projectId)) {
+    const err = new Error("队列已满，稍后再发");
+    err.code = "E-QUEUE-FULL";
+    throw err;
+  }
+
+  const run = async () => executeTask(execution, flow, project);
+  const enqueuePromise = executionQueue.enqueue({
+    projectId,
+    executionId: execution.id,
+    run
+  });
+
   const db = getDb();
   db.prepare(`
     INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts)
@@ -282,13 +297,6 @@ export function createTask({ projectId, flowId, trigger, variables }) {
     JSON.stringify(execution.logs),
     JSON.stringify(execution.artifacts)
   );
-
-  const run = async () => executeTask(execution, flow, project);
-  const enqueuePromise = executionQueue.enqueue({
-    projectId,
-    executionId: execution.id,
-    run
-  });
 
   // Don't await the queue run here; return immediately with position.
   enqueuePromise.catch((err) => {

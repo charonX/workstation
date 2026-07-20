@@ -83,6 +83,11 @@ export function createExecutionQueue() {
       return queues.size;
     },
 
+    isFull(projectId) {
+      const q = queues.get(projectId);
+      return (q?.length ?? 0) >= PROJECT_QUEUE_LIMIT;
+    },
+
     pendingCount() {
       return totalItems();
     },

@@ -88,3 +88,11 @@ export function removeAll() {
   }
   tasks.clear();
 }
+
+export function getTaskCount() {
+  return tasks.size;
+}
+
+export function isLoaded() {
+  return loadedAt > 0;
+}

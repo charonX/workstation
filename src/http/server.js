@@ -95,6 +95,12 @@ export function startServer(options = {}) {
       } catch (err) {
         console.error("Failed to load schedules:", err.message);
       }
+      // REQ-SCHEDULE-005/006：生产环境必须订阅 schedule:triggered，否则 cron 到点只 publish 事件而不创建执行。
+      try {
+        taskService.subscribeToScheduleTriggers();
+      } catch (err) {
+        console.error("Failed to subscribe to schedule triggers:", err.message);
+      }
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
@@ -200,7 +206,7 @@ function handleServer(req, res, server, subPath) {
   }
   if (req.method === "GET" && action === "status") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ schedulerRegistered: true }));
+    res.end(JSON.stringify({ schedulerRegistered: schedulerService.getTaskCount() > 0 }));
     return;
   }
   return notFound(res);
