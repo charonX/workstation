@@ -9,6 +9,7 @@ import * as task from "./commands/task.js";
 import * as skill from "./commands/skill.js";
 import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
+import * as source from "./commands/source.js";
 
 const entities = {
   settings,
@@ -18,7 +19,8 @@ const entities = {
   task,
   skill,
   dashboard,
-  notify
+  notify,
+  source
 };
 
 function parseArgs(args) {

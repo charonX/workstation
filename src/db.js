@@ -84,6 +84,7 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS skill_repos;
     DROP TABLE IF EXISTS projects;
     DROP TABLE IF EXISTS notifications;
+    DROP TABLE IF EXISTS content_sources;
   `);
   initSchema(database);
 }
@@ -245,6 +246,17 @@ function initSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS idx_notifications_createdAt ON notifications(createdAt DESC);
     CREATE INDEX IF NOT EXISTS idx_notifications_readAt ON notifications(readAt);
+
+    CREATE TABLE IF NOT EXISTS content_sources (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '[]',
+      config TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_content_sources_createdAt ON content_sources(createdAt DESC);
 
     ${EXECUTION_NODES_DDL}
   `);

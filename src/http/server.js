@@ -18,6 +18,7 @@ import { handleSettings } from "./routes/settings.js";
 import { handleSkillRepos } from "./routes/skillRepos.js";
 import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
+import { handleContentSources } from "./routes/contentSources.js";
 
 const activeServers = new Set();
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
@@ -187,6 +188,8 @@ async function handleRequest(req, res, server) {
       return handleDashboard(req, res);
     case "notifications":
       return handleNotifications(req, res, body, subPath);
+    case "content-sources":
+      return handleContentSources(req, res, body, subPath);
     case "server":
       return handleServer(req, res, server, subPath);
     default:

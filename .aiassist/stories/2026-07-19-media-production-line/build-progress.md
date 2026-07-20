@@ -189,12 +189,63 @@ Slice 2 标记完成。
 
 #### 父代理验证记录
 
-- 业务测试验证：`node --test tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js` → 6/6 pass
-- S1/S2 回归测试：共 38/38 pass
+- 业务测试验证（refactor 后）：
+  - `notifications.test.js` → 6/6 pass
+  - S1/S2 回归测试 → 38/38 pass
+  - 合计 44/44 pass
 - diff 范围检查：仅修改实现代码，未触碰业务测试
+- PRD 对齐子代理：`ALIGNED`
+- Refactor subagent：完成安全重构，测试仍 44/44 pass
 - 提交记录：
-  - `[build] Slice 3: notification service` (待写入)
+  - `[build] Slice 3: notification service` (`d7f166f`)
+  - `[refactor] Slice 3: notification service` (`e7984e6`)
 
 Slice 3 标记完成。
+
+---
+
+### S4 / content-source-service
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/contentSources.test.js`
+- `node --test tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/cli/contentSources.test.js`  
+**测试结果**: 15/15 pass（API 10 + CLI 5）
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-2 步骤 1：内容源登记为全局实体（名称/类型/tags/配置/启停） | `src/db.js` (`content_sources` 表，无 projectId，name UNIQUE); `src/services/contentSourceService.js` (`create`/`list`/`get`/`update`/`toggle`/`deleteSource`) | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/contentSources.test.js` | COVERED |
+| §7 输入验证：name 1–64 必填，违反报 `E-SRC-NAME` | `src/services/contentSourceService.js` (`validateFields` + `validationError`) | 同上 | COVERED |
+| §7 输入验证：type 枚举 webpage/rss/x/wechat，违反报 `E-SRC-TYPE` | `src/services/contentSourceService.js` (`VALID_TYPES`) | 同上 | COVERED |
+| §7 输入验证：tags ≥1 且单个 ≤16，违反报 `E-SRC-TAG` | `src/services/contentSourceService.js` (`normalizeTags`) | 同上 | COVERED |
+| §7 输入验证：webpage/rss 合法 http(s) URL，x/wechat 非空，违反报 `E-SRC-CONFIG` | `src/services/contentSourceService.js` (`isValidHttpUrl` + 类型分支校验) | 同上 | COVERED |
+| §7.1 业务规则：name 全局唯一，重复报 `E-SRC-DUP` | `src/services/contentSourceService.js` (`create`/`update` 前置查重); `src/http/routes/contentSources.js` (映射 409) | 同上 | COVERED |
+| §10 / tech-design：`contentSourceService` 提供 `listByTag({tag, enabledOnly})` | `src/services/contentSourceService.js` (`listByTag`) | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/cli/contentSources.test.js` | COVERED |
+| REQ-SRC-001 AC2：CRUD 经 `/api/content-sources` | `src/http/routes/contentSources.js`; `src/http/server.js` (case `"content-sources"`) | API 测试 | COVERED |
+| REQ-SRC-001 AC2：CRUD 经 `opc-workstation source` | `src/cli/commands/source.js` (`create`/`list`/`update`/`toggle`/`delete`); `src/cli/opc-workstation.js` (`source` 实体注册) | CLI 测试 | COVERED |
+| REQ-SRC-002 AC1：`source list --tag <t> --enabled` 仅返回启用且含该 tag 的源 | `src/cli/commands/source.js` (`list` 传 `enabled=1`); `src/http/routes/contentSources.js` (tag + enabled 路由); `src/services/contentSourceService.js` (`listByTag`) | CLI 测试 | COVERED |
+| REQ-SRC-002 AC2：无匹配返回空列表，退出码 0 | `src/services/contentSourceService.js` (`listByTag` 返回 `[]`); CLI 正常 JSON 输出 | CLI 测试 | COVERED |
+| 签核：默认 `enabled=true` | `src/services/contentSourceService.js` (`create` 默认 enabled=1) | API 测试 | COVERED |
+| 签核：PATCH 空 body 映射为启停切换（CLI `source toggle` 语义） | `src/http/routes/contentSources.js` (PATCH 空对象时调用 `contentSourceService.toggle`) | CLI 测试 | COVERED |
+
+#### 与 HTML 原型偏差
+
+- 内容源管理 UI（列表/新建/编辑/启停/删除、tag 编辑器、类型联动 config）属 S7 / REQ-SRC-003，本切片仅实现服务层、HTTP API 与 CLI。偏差：N/A（按计划分层）。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `contentSources.test.js` (API) → 10/10 pass
+  - `contentSources.test.js` (CLI) → 5/5 pass
+  - S1 回归：`server.test.js` → 9/9 pass
+  - S3 回归：`notifications.test.js` → 6/6 pass
+  - 合计 30/30 pass
+- diff 范围检查：仅修改实现代码（`src/services/contentSourceService.js`, `src/http/routes/contentSources.js`, `src/http/server.js`, `src/cli/commands/source.js`, `src/cli/opc-workstation.js`, `src/db.js`），未触碰业务测试
+- PRD 对齐子代理：待复查
+- Refactor subagent：待执行
+
+Slice 4 标记完成。
 
 ---
