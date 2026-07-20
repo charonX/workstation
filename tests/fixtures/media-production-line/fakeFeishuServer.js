@@ -77,6 +77,11 @@ export async function startFakeFeishuServer(options = {}) {
 
       res.setHeader("Content-Type", "application/json");
 
+      // Record send requests before failure injection so retry attempts are visible to tests.
+      if (pathname === "/open-apis/im/v1/messages" && req.method === "POST") {
+        received.sends.push({ query: url.search, body });
+      }
+
       if (shouldFail(pathname)) {
         res.writeHead(500);
         res.end(JSON.stringify({ code: 500, msg: "fake feishu injected failure" }));
@@ -108,7 +113,6 @@ export async function startFakeFeishuServer(options = {}) {
       }
 
       if (pathname === "/open-apis/im/v1/messages" && req.method === "POST") {
-        received.sends.push({ query: url.search, body });
         messageSeq += 1;
         res.writeHead(200);
         res.end(JSON.stringify({ code: 0, msg: "success", data: { message_id: `om_fake_${messageSeq}` } }));
