@@ -1,6 +1,7 @@
-import crypto from "node:crypto";
+import { WSClient, EventDispatcher } from "@larksuiteoapi/node-sdk";
 
 const MAX_SEND_ATTEMPTS = 3;
+const FEISHU_APP_ID_RE = /^cli_[0-9a-fA-F]{16}$/;
 
 function createLogger(baseLogger) {
   const sink = baseLogger || console;
@@ -34,14 +35,24 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
 
   const baseUrl = domain.replace(/\/$/, "");
   const log = createLogger(logger);
-  const listeners = new Set();
+  const messageListeners = new Set();
+  const statusListeners = new Set();
 
   let status = "offline";
   let tenantAccessToken = null;
+  let wsClient = null;
   let reconnectTimer = null;
 
-  function setStatus(next) {
+  function setStatus(next, reason) {
+    const previousStatus = status;
     status = next;
+    for (const cb of statusListeners) {
+      try {
+        cb({ status: next, previousStatus, reason });
+      } catch (err) {
+        log.error("[feishuChannelAdapter] status listener error:", err.message);
+      }
+    }
   }
 
   function notifyChannelStatus(title, body) {
@@ -100,23 +111,129 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     throw err;
   }
 
+  function mapInboundMessage(eventData) {
+    const message = eventData?.event?.message;
+    if (!message) return null;
+    let text = "";
+    try {
+      const content = typeof message.content === "string" ? JSON.parse(message.content) : message.content;
+      text = content?.text || "";
+    } catch {
+      text = typeof message.content === "string" ? message.content : "";
+    }
+    return {
+      messageId: message.message_id,
+      chatId: message.chat_id,
+      senderId: eventData?.event?.sender?.sender_id?.user_id || eventData?.event?.sender?.sender_id?.open_id,
+      text
+    };
+  }
+
+  async function startWebSocketClient() {
+    if (!FEISHU_APP_ID_RE.test(credentials.appId)) {
+      // Non-production appId (e.g. test fixtures) cannot pass WSClient validation;
+      // rely on the REST seam and test injection instead.
+      log.info("[feishuChannelAdapter] appId does not match production format; WebSocket client skipped");
+      return;
+    }
+
+    const dispatcher = new EventDispatcher({});
+    dispatcher.register({
+      "im.message.receive_v1": (data) => {
+        const msg = mapInboundMessage(data);
+        if (msg) {
+          for (const cb of messageListeners) {
+            try {
+              cb(msg);
+            } catch (err) {
+              log.error("[feishuChannelAdapter] message listener error:", err.message);
+            }
+          }
+        }
+      }
+    });
+
+    wsClient = new WSClient({
+      appId: credentials.appId,
+      appSecret: credentials.appSecret,
+      domain: baseUrl,
+      logger: logger || console,
+      autoReconnect: true,
+      onReady: () => {
+        setStatus("online", "websocket ready");
+        log.info("[feishuChannelAdapter] WebSocket ready");
+      },
+      onError: (err) => {
+        setStatus("offline", err?.message || "websocket error");
+        notifyChannelStatus("通道掉线", "飞书通道长连接断开且重连失败，请检查凭据与网络");
+        log.error("[feishuChannelAdapter] WebSocket error:", err?.message);
+      },
+      onReconnecting: () => {
+        setStatus("connecting", "reconnecting");
+        log.info("[feishuChannelAdapter] WebSocket reconnecting");
+      },
+      onReconnected: () => {
+        setStatus("online", "reconnected");
+        notifyChannelStatus("通道已恢复", "飞书通道已恢复在线");
+        log.info("[feishuChannelAdapter] WebSocket reconnected");
+      }
+    });
+
+    // Start WSClient in the background; initial handshake failures are surfaced
+    // through onError / status change rather than rejecting start().
+    wsClient.start({ eventDispatcher: dispatcher }).catch((err) => {
+      log.error("[feishuChannelAdapter] failed to start WSClient:", err.message);
+    });
+  }
+
   return {
     getStatus() {
       return status;
     },
 
     async start() {
-      if (status === "online" || status === "connecting") return;
+      if (status === "connecting") {
+        // Already in progress; do not double-start.
+        return;
+      }
       setStatus("connecting");
       try {
         await fetchTenantAccessToken();
-        setStatus("online");
-        log.info("[feishuChannelAdapter] online, app_id:", credentials.appId);
       } catch (err) {
-        setStatus("offline");
+        setStatus("offline", err.message);
         log.error("[feishuChannelAdapter] start failed:", err.message);
         throw err;
       }
+
+      // Mark online as soon as REST credentials are validated; real WS handshake
+      // proceeds asynchronously and may flip status via onStatusChange callbacks.
+      setStatus("online", "token validated");
+      log.info("[feishuChannelAdapter] online, app_id:", credentials.appId);
+
+      // Start WebSocket client (production path). Failures here are logged and
+      // surfaced via status-change events, not thrown.
+      try {
+        await startWebSocketClient();
+      } catch (err) {
+        log.error("[feishuChannelAdapter] WebSocket setup failed:", err.message);
+      }
+    },
+
+    async stop() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (wsClient) {
+        try {
+          wsClient.close({ force: true });
+        } catch (err) {
+          log.error("[feishuChannelAdapter] failed to close WSClient:", err.message);
+        }
+        wsClient = null;
+      }
+      tenantAccessToken = null;
+      setStatus("offline", "stopped");
     },
 
     async send({ chatId, text } = {}) {
@@ -145,17 +262,29 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     },
 
     onMessage(cb) {
-      if (typeof cb === "function") listeners.add(cb);
+      if (typeof cb === "function") messageListeners.add(cb);
     },
 
     offMessage(cb) {
-      listeners.delete(cb);
+      messageListeners.delete(cb);
+    },
+
+    onStatusChange(cb) {
+      if (typeof cb === "function") statusListeners.add(cb);
+    },
+
+    offStatusChange(cb) {
+      statusListeners.delete(cb);
     },
 
     /** Test seam: inject an inbound message into the adapter. */
     simulateReceiveForTests(msg) {
-      for (const cb of listeners) {
-        try { cb(msg); } catch (err) { log.error("[feishuChannelAdapter] message listener error:", err.message); }
+      for (const cb of messageListeners) {
+        try {
+          cb(msg);
+        } catch (err) {
+          log.error("[feishuChannelAdapter] message listener error:", err.message);
+        }
       }
     },
 
@@ -164,18 +293,25 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
-      setStatus("offline");
-      tenantAccessToken = null;
+      if (wsClient) {
+        try {
+          wsClient.close({ force: true });
+        } catch (err) {
+          log.error("[feishuChannelAdapter] failed to close WSClient in simulate disconnect:", err.message);
+        }
+        wsClient = null;
+      }
+      setStatus("offline", reconnectWillFail ? "reconnect failed" : "disconnected");
       log.info("[feishuChannelAdapter] simulated disconnect");
 
       reconnectTimer = setTimeout(() => {
         if (reconnectWillFail) {
-          setStatus("offline");
+          setStatus("offline", "reconnect failed");
           notifyChannelStatus("通道掉线", "飞书通道长连接断开且重连失败，请检查凭据与网络");
           log.error("[feishuChannelAdapter] simulated reconnect failed");
           return;
         }
-        setStatus("online");
+        setStatus("online", "reconnected");
         notifyChannelStatus("通道已恢复", "飞书通道已恢复在线");
         log.info("[feishuChannelAdapter] simulated reconnect succeeded");
       }, 0);
@@ -186,7 +322,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
-      setStatus("online");
+      setStatus("online", "reconnected");
       notifyChannelStatus("通道已恢复", "飞书通道已恢复在线");
       log.info("[feishuChannelAdapter] simulated reconnect succeeded");
     }

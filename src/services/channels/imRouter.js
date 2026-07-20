@@ -1,4 +1,5 @@
 import { getDb } from "../../db.js";
+import * as eventBus from "../eventBus.js";
 import * as defaultTaskService from "../taskService.js";
 import * as defaultBindingService from "../channelBindingService.js";
 import * as defaultFlowService from "../flowService.js";
@@ -32,13 +33,22 @@ function recordInboundMessage(messageId) {
 
 export function createImRouter({
   channelAdapter,
+  channelManager,
   baseUrl,
   taskService = defaultTaskService,
   channelBindingService = defaultBindingService,
   flowService = defaultFlowService,
   notificationService = defaultNotificationService
 } = {}) {
-  if (!channelAdapter) throw new Error("E-CHANNEL-CONFIG: channelAdapter is required");
+  const replyFn = async (payload) => {
+    if (channelManager && typeof channelManager.reply === "function") {
+      return channelManager.reply("feishu", payload);
+    }
+    if (channelAdapter && typeof channelAdapter.reply === "function") {
+      return channelAdapter.reply(payload);
+    }
+    throw new Error("E-CHANNEL-CONFIG: no reply channel available");
+  };
 
   const messageHandler = async (msg) => {
     const { messageId, chatId, senderId, text } = msg || {};
@@ -52,7 +62,7 @@ export function createImRouter({
     const url = extractFirstUrl(text);
     if (!url) {
       try {
-        await channelAdapter.reply({ messageId, text: "发送 http(s) 链接即可速存到素材库" });
+        await replyFn({ messageId, text: "发送 http(s) 链接即可速存到素材库" });
       } catch (err) {
         console.error("[imRouter] failed to reply usage hint:", err.message);
       }
@@ -62,7 +72,7 @@ export function createImRouter({
     const binding = channelBindingService.getBinding("feishu");
     if (!binding) {
       try {
-        await channelAdapter.reply({ messageId, text: "未绑定链接速存 flow，请先从模板创建" });
+        await replyFn({ messageId, text: "未绑定链接速存 flow，请先从模板创建" });
       } catch (err) {
         console.error("[imRouter] failed to reply no-binding hint:", err.message);
       }
@@ -72,7 +82,7 @@ export function createImRouter({
     const flow = flowService.getFlow(binding.flowId);
     if (!flow || flow.status !== "published") {
       try {
-        await channelAdapter.reply({ messageId, text: "链接速存 flow 配置异常（flow 不存在或未发布），请检查模板实例" });
+        await replyFn({ messageId, text: "链接速存 flow 配置异常（flow 不存在或未发布），请检查模板实例" });
       } catch (err) {
         console.error("[imRouter] failed to reply invalid-binding hint:", err.message);
       }
@@ -105,7 +115,7 @@ export function createImRouter({
     } catch (err) {
       console.error("[imRouter] failed to create task:", err.message);
       try {
-        await channelAdapter.reply({ messageId, text: `入队失败：${err.message || "请稍后重试"}` });
+        await replyFn({ messageId, text: `入队失败：${err.message || "请稍后重试"}` });
       } catch (replyErr) {
         console.error("[imRouter] failed to reply enqueue error:", replyErr.message);
       }
@@ -113,19 +123,28 @@ export function createImRouter({
     }
 
     try {
-      await channelAdapter.reply({ messageId, text: `收到，排队中（第 ${queuePosition} 位）` });
+      await replyFn({ messageId, text: `收到，排队中（第 ${queuePosition} 位）` });
     } catch (err) {
       console.error("[imRouter] failed to reply queue position:", err.message);
     }
   };
 
-  channelAdapter.onMessage(messageHandler);
+  let unsubscribe = null;
+  if (channelAdapter) {
+    channelAdapter.onMessage(messageHandler);
+  } else {
+    unsubscribe = eventBus.subscribe("channel:message-received", messageHandler);
+  }
 
   return {
     baseUrl,
     stop() {
-      if (channelAdapter.offMessage) {
+      if (channelAdapter && typeof channelAdapter.offMessage === "function") {
         channelAdapter.offMessage(messageHandler);
+      }
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
       }
     }
   };

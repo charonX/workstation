@@ -19,32 +19,16 @@ import { handleSkillRepos } from "./routes/skillRepos.js";
 import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
-import { handleChannel, setChannelAdapter as setRouteChannelAdapter } from "./routes/channel.js";
-import { createFeishuChannelAdapter } from "../services/channels/feishuChannelAdapter.js";
+import { handleChannel } from "./routes/channel.js";
 import { createImRouter } from "../services/channels/imRouter.js";
-import * as notificationService from "../services/notificationService.js";
+import * as channelManager from "../services/channelManager.js";
 
 const activeServers = new Set();
-const FEISHU_DEFAULT_DOMAIN = "https://open.feishu.cn";
 
-function startFeishuChannel(baseUrl) {
-  const settings = settingsService.loadSettings();
-  const creds = settings.channelCredentials;
-  if (!creds?.appId || !creds?.appSecret) return;
-
-  const domain = settings.channelDomain || FEISHU_DEFAULT_DOMAIN;
-  const adapter = createFeishuChannelAdapter({
-    domain,
-    credentials: creds,
-    notificationService,
-    logger: console
-  });
-  taskService.setChannelAdapter(adapter);
-  setRouteChannelAdapter(adapter);
-  adapter.start().catch((err) => {
-    console.error("[server] failed to start Feishu channel adapter:", err.message);
-  });
-  createImRouter({ channelAdapter: adapter, baseUrl });
+async function startFeishuChannel() {
+  const result = await channelManager.start();
+  taskService.setChannelAdapter(channelManager.getAdapter("feishu"));
+  return result;
 }
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
 const purgeTasks = new Map();
@@ -96,7 +80,7 @@ export function startServer(options = {}) {
       });
     });
 
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, "127.0.0.1", async () => {
       const { port } = server.address();
       activeServers.add(server);
       if (dbPath) server._opcDbPath = dbPath;
@@ -111,21 +95,22 @@ export function startServer(options = {}) {
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
       purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
-      function runStartupStep(label, fn) {
+      async function runStartupStep(label, fn) {
         try {
-          fn();
+          await fn();
         } catch (err) {
           console.error(label, err.message);
         }
       }
 
       // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
-      runStartupStep("Failed to recover interrupted executions:", () => recoverInterruptedExecutions(getDb()));
-      runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
+      await runStartupStep("Failed to recover interrupted executions:", () => recoverInterruptedExecutions(getDb()));
+      await runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
       // REQ-SCHEDULE-005/006：生产环境必须订阅 schedule:triggered，否则 cron 到点只 publish 事件而不创建执行。
-      runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
+      await runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
       // REQ-CHANNEL-001/002：凭据存在时自动启动飞书通道与 IM 路由。
-      runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel(`http://127.0.0.1:${port}`));
+      await runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel());
+      createImRouter({ channelManager, baseUrl: `http://127.0.0.1:${port}` });
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
@@ -148,6 +133,11 @@ export function stopServer({ server }) {
     }
     try {
       await taskService.clearExecutionQueue();
+    } catch {
+      // ignore
+    }
+    try {
+      await channelManager.stop();
     } catch {
       // ignore
     }

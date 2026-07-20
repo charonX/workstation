@@ -33,6 +33,21 @@ export async function credentials(flags = {}) {
   return handleResponse(res, 201);
 }
 
+export async function status(flags = {}) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/channel/status`);
+  return handleResponse(res);
+}
+
+export async function reconnect(flags = {}) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/channel/reconnect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+  return handleResponse(res);
+}
+
 async function handleResponse(res, expectedStatus) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};

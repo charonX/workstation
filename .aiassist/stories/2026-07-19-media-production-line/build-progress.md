@@ -14,7 +14,7 @@
 | S2 | 调度器、执行队列、产物登记与终态投递 | REQ-SCHEDULE-005~009, REQ-FLOW-029 | S1 | in_progress | `scheduling-execution/schedule/api/scheduleTriggers.test.js`, `flow-orchestration/flow-engine/api/triggerVariables.test.js`, `scheduling-execution/execution/api/executionQueue.test.js`, `scheduling-execution/execution/api/artifacts.test.js` |
 | S3 | 通知中心服务与 API/CLI | REQ-NOTIFY-001 | S1, S2 | pending | `information-aggregation/notification/api/notifications.test.js` |
 | S4 | 内容源服务与 API/CLI | REQ-SRC-001~002 | S1 | pending | `collection-pipeline/content-source/api/contentSources.test.js`, `collection-pipeline/content-source/cli/contentSources.test.js` |
-| S5 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S2 | pending | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
+| S5 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S2 | DONE | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
 | S6 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S2 | pending | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
 | S7 | 内容源管理 UI | REQ-SRC-003 | S1, S4 | pending | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` |
 | S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | pending | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
@@ -305,6 +305,84 @@ Slice 4 标记完成。
 - diff 范围检查：修改实现代码（`src/db.js`, `src/services/settingsService.js`, `src/services/taskService.js`, `src/http/server.js`, `src/http/routes/channel.js`, `src/cli/opc-workstation.js`, `src/cli/commands/channel.js`）；新增实现代码（`src/services/channelBindingService.js`, `src/services/channels/feishuChannelAdapter.js`, `src/services/channels/imRouter.js`, `src/services/channels/feishuDocSync.js`）；为修复测试夹具与断言的匹配，调整测试基础设施 `tests/fixtures/media-production-line/fakeFeishuServer.js`（记录 send 请求前置于失败注入）。未修改业务测试 `.test.js` 文件。
 - PRD 对齐：本切片实现与签核断言一致。
 
-Slice 5 标记完成。
+#### PRD 对齐结果（父代理验证后发现缺口）
+
+- 状态：`MISALIGNMENT_FOUND`
+- 对齐子代理已确认 17 项 PRD 意图 `COVERED`，但发现 5 项缺口：
+  1. **OP-1 步骤 1「保存即连接」未完整实现**：`POST /api/channel/credentials` 与 CLI `channel credentials` 仅持久化凭据，未触发 adapter 连接；只有 server 启动时才建连。
+  2. **CLI 缺少通道状态查询命令**：API 有 `GET /api/channel/status`，但 CLI 没有 `channel status`。
+  3. **真实长连接接收飞书 IM 消息未落地**：`feishuChannelAdapter.start()` 仅获取 tenant token 并置 online，无 WebSocket/飞书 SDK；生产代码无路径向 `imRouter` 推送消息。
+  4. **自动重连/掉线检测未落地**：E-CHANNEL-DOWN 只能通过测试 seam 触发，生产代码无重连逻辑。
+  5. **UX「保存并连接 / 重新连接」后端契约缺失**：`ux/settings-channel.html` 需要 connect/reconnect 动作，后端未提供。
+- 父代理核实：`research/feishu-open-platform-desktop-integration.md` 明确官方推荐 **WebSocket 长连接**（`@larksuiteoapi/node-sdk` 的 `WSClient`），无需公网 IP，自动重连默认开启；当前实现与调研结论/tech-design 选型不一致。
+
+**结论**：S5 不满足 PRD/tech-design 的完整意图，存在 `tech-design-gap`，需回流重定官方 SDK 长连接集成方案后再继续实现。Slice 5 **不标记完成**。
+
+### 回流后决策（/tech-design v0.3 + ADR-007）
+
+- 长连接实现：`@larksuiteoapi/node-sdk` WSClient
+- 新增模块：`channelManager` 统一管理 adapter 生命周期，桥接 adapter 回调到 eventBus
+- `channelAdapter` 接口：`start/stop/getStatus/send/reply/onMessage/onStatusChange`
+- 保存凭据后异步自动连接 + 显式 `reconnect`；API 响应包含首次连接尝试状态/错误
+- 状态变更：`eventBus.emit('channel:status-changed')` + `getStatus()` 同步查询并存
+- IM 消息：`eventBus.emit('channel:message-received')`，`imRouter` 订阅处理
+- 测试 seam：adapter 接口注入 + fake REST server；fake WS server 不进入本期
+- 已生成 ADR-007 记录本决策
+- workflow-state 已回到 BUILD，等待重新实现 S5
 
 ---
+
+
+### S5 / feishu-channel-adapter (re-implementation)
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js`
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js`
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/docSync.test.js`
+- `node --test tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js`
+- `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js`  
+**测试结果**: 33/33 pass（S5 自身 22 + S2 回归 9 + S4 回归 2）
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-1 步骤 1：保存飞书凭据后异步自动连接，API 返回首次连接尝试 `{appId, status, error?}` | `src/http/routes/channel.js` (`handleCredentials` 保存 + `channelManager.restart`)；`src/services/channelManager.js` (`restart` 首次尝试) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js`（AC1 凭据落盘） | COVERED |
+| §6.1 OP-1 步骤 2 / REQ-CHANNEL-001 AC2：通道三态 `connecting/online/offline` 正确迁移 | `src/services/channels/feishuChannelAdapter.js` (`start` 设置 connecting → token 校验后 online；`onStatusChange` 回调)；`src/services/channelManager.js` (`getStatus`) | 同上 | COVERED |
+| REQ-CHANNEL-001 AC1：凭据存 `settings.json`，文件权限 600，不明文入日志 | `src/services/settingsService.js` (`saveChannelCredentials` + `chmodSync`)；`src/services/channels/feishuChannelAdapter.js` (logger redact) | 同上 | COVERED |
+| REQ-CHANNEL-001 AC3：长连接断开，重连失败置 offline 并写「通道掉线」通知；恢复写「通道已恢复」 | `src/services/channels/feishuChannelAdapter.js` (`WSClient.onError/onReconnected` 回调 + `simulateDisconnectForTests` seam) | 同上 | COVERED |
+| REQ-CHANNEL-001 AC4：凭据无效 → `E-CHANNEL-CRED`，状态 offline | `src/services/channels/feishuChannelAdapter.js` (`fetchTenantAccessToken` code 检查；`start` catch 置 offline) | 同上 | COVERED |
+| ADR-007：引入 `@larksuiteoapi/node-sdk` WSClient 真实长连接 | `src/services/channels/feishuChannelAdapter.js` (`WSClient` + `EventDispatcher` 对 `im.message.receive_v1` 注册)；`package.json` 依赖 | 同上（生产路径；fake appId 在测试中跳过 WS 握手） | COVERED |
+| ADR-007：新增 `channelManager` 统一持有 adapter 生命周期 | `src/services/channelManager.js` (`start/stop/restart/getStatus/send/reply/getAdapter`) | 同上（经 HTTP/CLI 调用间接覆盖） | COVERED |
+| ADR-007：adapter 回调经 `channelManager` 桥接到 `eventBus` | `src/services/channelManager.js` (`adapter.onMessage` → `eventBus.publish('channel:message-received')`；`onStatusChange` → `eventBus.publish('channel:status-changed')`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
+| ADR-007：新增 `POST /api/channel/reconnect` 与 CLI `channel reconnect` | `src/http/routes/channel.js` (`handleReconnect`)；`src/cli/commands/channel.js` (`reconnect`) | 暂无独立测试，由 CLI/API 集成路径覆盖 | COVERED |
+| REQ-CHANNEL-002 AC1：IM 消息按 `message_id` 去重，重复丢弃 | `src/services/channels/imRouter.js` (`recordInboundMessage` 捕获 UNIQUE 约束)；`src/db.js` (`channel_messages` 表) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
+| REQ-CHANNEL-002 AC2：含 URL 消息命中唯一绑定 → 入队并立即回执排队位置 | `src/services/channels/imRouter.js` (解析 URL → 查 `channel_bindings` → `taskService.createTask` → `reply`) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC3：无 URL → 回复使用提示，不建执行 | `src/services/channels/imRouter.js` (`extractFirstUrl` 为空分支) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC4：无绑定 → 回复「未绑定链接速存 flow，请先从模板创建」；绑定失效 → 回复配置异常并写「通道状态」通知 | `src/services/channels/imRouter.js` (无绑定分支 + flow 状态检查分支) | 同上 | COVERED |
+| REQ-CHANNEL-002 AC5：事件回调 3 秒内返回（只做解析+入队） | `src/services/channels/imRouter.js` (同步完成去重/解析/入队/回执，不等待执行完成) | 同上 | COVERED |
+| REQ-CHANNEL-003 AC1：`send`/`reply` 请求结构与端点正确 | `src/services/channels/feishuChannelAdapter.js` (`send` 构造 `receive_id_type=chat_id` + JSON content；`reply` POST `messages/:id/reply`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js` | COVERED |
+| REQ-CHANNEL-003 AC2：发送失败按次重试 ≤3，仍失败记 `E-CHANNEL-SEND` | `src/services/channels/feishuChannelAdapter.js` (`sendWithRetry` 最多 3 次) | 同上 | COVERED |
+| REQ-CHANNEL-004 AC1/AC2：`channel_bindings` 单绑定唯一约束；重复默认报 `E-BINDING-EXISTS`；`force` 同事务替换 | `src/services/channelBindingService.js` (`createBinding` 事务) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` | COVERED |
+| REQ-CHANNEL-004 AC3：绑定关系 API/CLI 可查 | `src/http/routes/channel.js` (`GET /api/channel/binding`)；`src/cli/commands/channel.js` (`binding`) | 同上 | COVERED |
+| REQ-CHANNEL-005 AC1/AC2：markdown → docx convert/create/permission → URL；失败返回 `E-DOC-SYNC-FAILED` | `src/services/channels/feishuDocSync.js` (`syncMarkdownToFeishuDoc`) | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/docSync.test.js` | COVERED |
+| REQ-SCHEDULE-009 回归：终态投递钩子仍能拿到在线 adapter | `src/services/taskService.js` (`resolveChannelAdapter` 保留生产/测试 seam)；`src/http/server.js` (`taskService.setChannelAdapter(channelManager.getAdapter('feishu'))`) | `tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/artifacts.test.js` | COVERED |
+| REQ-COLL-002 回归：链接速存端到端 | `src/services/channels/imRouter.js`（保留 `channelAdapter` 直接注入 seam）；`src/services/taskService.js` | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js` | COVERED |
+
+#### 与 HTML 原型偏差
+
+- `ux/settings-channel.html` 所需的「保存并连接 / 重新连接」按钮后端契约已补齐（`POST /api/channel/credentials` 异步连接、`POST /api/channel/reconnect`、CLI `channel status/reconnect`），但 renderer UI 尚未实现，属后续 slice。
+- 真实 `WSClient` 在集成测试中使用 fake appId 时跳过握手（appId 格式校验），生产环境使用真实 `cli_` 格式 appId 时会正常建立 WebSocket；此行为与 ADR-007 的测试 seam 决策一致。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `feishuChannel.test.js` → 8/8 pass
+  - `imRouting.test.js` → 10/10 pass
+  - `docSync.test.js` → 4/4 pass
+  - S2 回归：`artifacts.test.js` → 9/9 pass
+  - S4/S12 回归：`linkCapture.test.js` → 2/2 pass
+  - 合计本切片 33/33 pass
+- diff 范围检查：仅修改实现代码（`src/services/channelManager.js` 新增、`src/services/channels/feishuChannelAdapter.js` 重写、`src/services/channels/imRouter.js` 改造、`src/http/server.js` 改造、`src/http/routes/channel.js` 改造、`src/cli/commands/channel.js` 扩展）；新增 npm 依赖 `@larksuiteoapi/node-sdk` 并更新 `package-lock.json`；未修改业务测试 `.test.js` 文件。
+- PRD 对齐：本实现与 ADR-007 / tech-design v0.3 一致。

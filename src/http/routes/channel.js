@@ -1,11 +1,6 @@
 import * as channelBindingService from "../../services/channelBindingService.js";
 import * as settingsService from "../../services/settingsService.js";
-
-let channelAdapter = null;
-
-export function setChannelAdapter(adapter) {
-  channelAdapter = adapter;
-}
+import * as channelManager from "../../services/channelManager.js";
 
 export function handleChannel(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -24,6 +19,10 @@ export function handleChannel(req, res, body, pathParts) {
 
   if (resource === "credentials") {
     return handleCredentials(req, res, body);
+  }
+
+  if (resource === "reconnect") {
+    return handleReconnect(req, res);
   }
 
   return notFound(res);
@@ -72,22 +71,37 @@ function handleBinding(req, res, body) {
 
 function handleStatus(req, res) {
   if (req.method !== "GET") return notFound(res);
-  const status = channelAdapter?.getStatus ? channelAdapter.getStatus() : "offline";
-  return ok(res, { status });
+  const status = channelManager.getStatus("feishu");
+  return ok(res, { channelType: "feishu", ...status });
 }
 
-function handleCredentials(req, res, body) {
+async function handleCredentials(req, res, body) {
   if (req.method !== "POST") return notFound(res);
   const { appId, appSecret } = body || {};
   if (!appId || !appSecret) {
     return badRequest(res, "appId and appSecret are required", "E-CHANNEL-CRED");
   }
+
+  let saved;
   try {
-    const result = settingsService.saveChannelCredentials({ appId, appSecret });
-    return created(res, result);
+    saved = settingsService.saveChannelCredentials({ appId, appSecret });
   } catch (err) {
     return badRequest(res, err.message, "E-CHANNEL-CRED");
   }
+
+  // Restart the adapter asynchronously and return the first connection attempt.
+  const restartResult = await channelManager.restart("feishu", { appId, appSecret });
+  return created(res, {
+    appId: saved.appId,
+    status: restartResult.status,
+    error: restartResult.error
+  });
+}
+
+async function handleReconnect(req, res) {
+  if (req.method !== "POST") return notFound(res);
+  const result = await channelManager.restart("feishu");
+  return ok(res, { channelType: "feishu", status: result.status, error: result.error });
 }
 
 function sendJson(res, status, data) {
