@@ -459,4 +459,18 @@ Slice 5 实现与已知签核测试覆盖完成。
   - `516aeb4`：修复 `artifactPathGuard` 对 `projectRoot === '/'` 的 prefix 判断。
 - PRD 对齐子代理复查：`ALIGNED`。
 
+#### Refactor 子代理验证
+
+- 原始 HEAD：`72b1775`
+- Refactor commit：`3408118 [refactor] Slice 6: execution artifacts ui`
+- 修改文件：
+  - `src/main/main.js`：提取 `assertArtifactPathAllowed` helper，消除两个 IPC handler 的白名单校验重复。
+  - `src/renderer/components/task/ExecutionDetail.jsx`：提取 `openArtifactPath` / `showArtifactInFolder` helper，消除按钮 onclick 内联重复逻辑。
+- 父代理独立验证：
+  - `artifactOpenPath.test.js` → 5/5 pass
+  - `artifacts.test.js`（S2 回归）→ 9/9 pass
+  - E2E `artifactsTab.test.cjs` → 4/4 pass
+- diff 范围检查：仅修改 S6 实现代码（`src/main/main.js`、`src/renderer/components/task/ExecutionDetail.jsx`），未触碰业务测试或夹具。
+- PRD 意图保持对齐：行为与契约未改变。
+
 Slice 6 标记完成。
