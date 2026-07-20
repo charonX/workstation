@@ -141,13 +141,60 @@ Slice 1 标记完成。
 
 #### 父代理验证记录
 
-- 业务测试验证：
+- 业务测试验证（refactor 后）：
   - `scheduleTriggers.test.js` → 10/10 pass
   - `triggerVariables.test.js` → 3/3 pass
   - `executionQueue.test.js` → 7/7 pass
   - `artifacts.test.js` → 9/9 pass
-- 回归检查：`node --test tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/server.test.js` → 9/9 pass
+  - S1 回归：`server.test.js` → 9/9 pass
+  - 合计 38/38 pass
 - diff 范围检查：仅修改实现代码，未触碰业务测试
+- PRD 对齐子代理：首次 `MISALIGNMENT_FOUND`（生产未订阅 `schedule:triggered`、E-QUEUE-FULL 未穿透、status 硬编码）；fix subagent 修复后复查仍发现 `MISALIGNMENT_FOUND`（E-SCHED-FLOW-INVALID 对 flow 已删路径、schedule 异常标记）；第二次 fix 后复查为 `ALIGNED`
+- Refactor subagent：完成安全重构，测试仍 38/38 pass
+- 提交记录：
+  - `[build] Slice 2: scheduler queue artifacts delivery` (`1d1c7f1`)
+  - `[bugfix] S2: production wiring and queue-full handling` (`0915766`)
+  - `[bugfix] S2: mark invalid schedule when target flow missing/draft` (`89b0cd5`)
+  - `[refactor] Slice 2: scheduler queue artifacts delivery` (`d6d292c`)
+
+Slice 2 标记完成。
 
 ---
 
+
+### S3 / notification-service
+
+**状态**: DONE  
+**测试命令**:
+- `node --test tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js`  
+**测试结果**: 6/6 pass
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-7 / §10 稳定块 10：通知实体（类型/标题/摘要/时间/已读/关联执行） | `src/db.js` (`notifications` 表 + 索引); `src/services/notificationService.js` (`notify`/`list`/`markRead`, `rowToNotification` 暴露 `readAt`) | `tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js` | COVERED |
+| §6.1 OP-7 步骤 2：按时间倒序展示事件，类型包含产物产出/执行失败/通道状态 | `src/services/notificationService.js` (`list` ORDER BY createdAt DESC); `src/http/routes/notifications.js` (`GET /api/notifications` 返回 `{items, unreadCount}`) | 同上 | COVERED |
+| §6.1 OP-7 步骤 3：标记已读后持久化，徽标清零 | `src/services/notificationService.js` (`markRead` 支持 `{ids}` 与 `{all: true}`); `src/http/routes/notifications.js` (`POST :id/read`, `POST read-all`) | 同上 | COVERED |
+| §6.2 / §8：通知写入失败仅记日志 `E-NOTIFY-FAILED`，不阻断主流程 | `src/services/notificationService.js` (`notify` catch 写入失败并 console.error `E-NOTIFY-FAILED`，不抛错；关闭 DB 后清空缓存以便下次重连) | 同上 | COVERED |
+| REQ-NOTIFY-001 AC1/AC2：`notifications` 表字段完整，type ∈ {artifact, execution-failed, channel-status} | `src/db.js` (DDL); `src/services/notificationService.js` (类型校验与写入) | 同上 | COVERED |
+| REQ-NOTIFY-001 AC3：API 列表 + 未读数 + 单条/全部已读 + `unreadOnly` 过滤 | `src/http/routes/notifications.js`; `src/services/notificationService.js` | 同上 | COVERED |
+| REQ-NOTIFY-001 AC3：CLI `notify list [--unread]` / `notify read --id <id> \| --all` 等价 | `src/cli/commands/notify.js`; `src/cli/opc-workstation.js` (`notify` 实体注册) | 同上 | COVERED |
+| §10 / tech-design：执行终态触发通知（产物产出/执行失败） | `src/services/taskService.js` (`writeExecutionNotification` 在 `executeTask` finally 中调用；success+artifacts → type="artifact"；error → type="execution-failed") | 同上（API 面）+ S2 产物/投递测试回归 | COVERED |
+| §10 / tech-design：通道掉线/恢复通知由 S5 真实接入，S3 service 层支持 type="channel-status" | `src/services/notificationService.js` (类型校验接受 channel-status)；S5 负责实际调用 | — | PREPARED |
+
+#### 与 HTML 原型偏差
+
+- 通知中心 UI（侧边栏徽标、列表页、类型配色、产物产出跳转）属 S8 / REQ-NOTIFY-002，本切片仅实现服务层与 API/CLI，UI 尚未接入。偏差：N/A（按计划分层）。
+
+#### 父代理验证记录
+
+- 业务测试验证：`node --test tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js` → 6/6 pass
+- S1/S2 回归测试：共 38/38 pass
+- diff 范围检查：仅修改实现代码，未触碰业务测试
+- 提交记录：
+  - `[build] Slice 3: notification service` (待写入)
+
+Slice 3 标记完成。
+
+---

@@ -8,6 +8,7 @@ import * as schedule from "./commands/schedule.js";
 import * as task from "./commands/task.js";
 import * as skill from "./commands/skill.js";
 import * as dashboard from "./commands/dashboard.js";
+import * as notify from "./commands/notify.js";
 
 const entities = {
   settings,
@@ -16,7 +17,8 @@ const entities = {
   schedule,
   task,
   skill,
-  dashboard
+  dashboard,
+  notify
 };
 
 function parseArgs(args) {

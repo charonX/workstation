@@ -5,6 +5,7 @@ import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
 import { createExecutionQueue, recoverInterruptedExecutions as recoverInterruptedExecutionsFromQueue } from "./executionQueue.js";
 import * as schedulerService from "./schedulerService.js";
+import * as notificationService from "./notificationService.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -501,6 +502,11 @@ export async function executeTask(execution, flow, project) {
       } catch (deliveryErr) {
         console.error("[taskService] terminal delivery failed:", deliveryErr.message);
       }
+      try {
+        writeExecutionNotification(execution.id);
+      } catch (notifyErr) {
+        console.error("[taskService] execution notification failed:", notifyErr.message);
+      }
     }
   }
 }
@@ -559,6 +565,30 @@ function extractErrorCode(execution) {
     if (match) return match[0];
   }
   return undefined;
+}
+
+function writeExecutionNotification(executionId) {
+  const execution = getExecution(executionId);
+  if (!execution) return;
+  if (execution.status === "success") {
+    const artifacts = execution.artifacts || [];
+    if (artifacts.length === 0) return;
+    const paths = artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
+    notificationService.notify({
+      type: "artifact",
+      title: "产物产出",
+      body: paths.join("\n") || "执行成功",
+      executionId: execution.id
+    });
+  } else if (execution.status === "error") {
+    const reason = extractErrorCode(execution) || "E-AGENT-FAILED";
+    notificationService.notify({
+      type: "execution-failed",
+      title: "执行失败",
+      body: reason,
+      executionId: execution.id
+    });
+  }
 }
 
 async function collectArtifacts(project, execution) {

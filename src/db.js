@@ -83,6 +83,7 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS skills;
     DROP TABLE IF EXISTS skill_repos;
     DROP TABLE IF EXISTS projects;
+    DROP TABLE IF EXISTS notifications;
   `);
   initSchema(database);
 }
@@ -232,6 +233,18 @@ function initSchema(database) {
       status TEXT,
       message TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      executionId TEXT,
+      createdAt TEXT NOT NULL,
+      readAt TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_createdAt ON notifications(createdAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_notifications_readAt ON notifications(readAt);
 
     ${EXECUTION_NODES_DDL}
   `);
