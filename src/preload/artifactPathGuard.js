@@ -56,5 +56,7 @@ export function isArtifactPathAllowed(projectRoot, artifactPath) {
 function isInsideOrEqual(child, parent) {
   if (child === parent) return true;
   // Ensure the child is a true descendant: parent path followed by a separator.
-  return child.startsWith(parent + path.sep);
+  // Special-case the filesystem root so that "/" does not become "//".
+  const prefix = parent.endsWith(path.sep) ? parent : parent + path.sep;
+  return child.startsWith(prefix);
 }
