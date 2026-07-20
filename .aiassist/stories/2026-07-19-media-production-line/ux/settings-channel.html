@@ -1,0 +1,494 @@
+<!-- @dsCard group="media-production-line" name="飞书通道配置" viewport="desktop" -->
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>设置 · 飞书通道 · OPC Workstation</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      line-height: var(--ch-leading-normal);
+      background: var(--ch-bg);
+      color: var(--ch-text);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; }
+
+    /* ─── app shell ─── */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--ch-sidebar-width) 1fr;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .app-main { grid-row: 2; grid-column: 2; overflow: auto; padding: var(--ch-panel-padding); }
+
+    /* ─── topbar ─── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      height: var(--ch-topbar-height); padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface); border-bottom: 1px solid var(--ch-border);
+      grid-row: 1; grid-column: 1 / -1; gap: var(--ch-space-4);
+    }
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); flex: 1; min-width: 0; }
+    .topbar-logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); letter-spacing: -0.02em; white-space: nowrap; }
+    .topbar-search-form { max-width: 280px; width: 100%; }
+    .topbar-search-input {
+      width: 100%; padding: 6px 12px; background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+      color: var(--ch-text); font-size: var(--ch-text-sm); outline: none; font-family: var(--ch-font-sans);
+    }
+    .topbar-search-input:focus { border-color: var(--ch-accent); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); flex-shrink: 0; }
+    .icon-btn {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+      background: transparent; color: var(--ch-text-secondary); transition: background 0.15s ease, color 0.15s ease;
+    }
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+
+    /* ─── sidebar ─── */
+    .sidebar {
+      display: flex; flex-direction: column; background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border); grid-row: 2; grid-column: 1; overflow: hidden;
+    }
+    .sidebar-nav { flex: 1; overflow: auto; display: flex; flex-direction: column; padding: var(--ch-space-2); gap: var(--ch-space-1); }
+    .nav-group { margin-bottom: var(--ch-space-4); }
+    .nav-label {
+      font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--ch-space-3); margin-bottom: var(--ch-space-2);
+    }
+    .nav-link {
+      display: flex; align-items: center; gap: var(--ch-space-2);
+      padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text-secondary);
+      border-radius: var(--ch-radius-md); font-size: var(--ch-text-base); font-weight: var(--ch-weight-medium);
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .nav-link:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .nav-link.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .sidebar-bottom { border-top: 1px solid var(--ch-border); padding: var(--ch-space-2); }
+    .nav-badge {
+      margin-left: auto; background: var(--ch-error); color: #fff;
+      border-radius: var(--ch-radius-full); font-size: 10px; font-weight: var(--ch-weight-bold);
+      min-width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+    }
+
+    /* ─── page / settings grid ─── */
+    .page { max-width: 1200px; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--ch-space-6); }
+    .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .settings-grid { display: grid; grid-template-columns: 1fr 320px; gap: var(--ch-space-5); }
+    @media (max-width: 960px) { .settings-grid { grid-template-columns: 1fr; } }
+
+    /* ─── card ─── */
+    .card { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-lg); overflow: hidden; margin-bottom: var(--ch-space-4); }
+    .card-header { padding: var(--ch-space-4); border-bottom: 1px solid var(--ch-border); }
+    .card-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0 0 2px; }
+    .card-subtitle { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); margin: 0; }
+    .card-body { padding: var(--ch-space-4); }
+
+    /* ─── buttons ─── */
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px; border-radius: var(--ch-radius-md); font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm); border: 1px solid transparent; transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+    .btn-primary:hover:not(:disabled) { background: var(--ch-accent-dim); }
+    .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--ch-border-strong); background: var(--ch-surface-high); }
+    .btn-ghost { background: transparent; color: var(--ch-text-secondary); }
+    .btn-ghost:hover:not(:disabled) { background: var(--ch-surface-high); color: var(--ch-text); }
+    .btn-sm { padding: 4px 10px; font-size: var(--ch-text-xs); }
+
+    /* ─── form ─── */
+    .form-group { margin-bottom: var(--ch-space-5); }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label {
+      display: block; font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text-secondary);
+      margin-bottom: var(--ch-space-2); text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .form-input, .form-select {
+      width: 100%; padding: 8px 12px; background: var(--ch-surface-highest); border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md); color: var(--ch-text); font-size: var(--ch-text-sm); outline: none; font-family: var(--ch-font-mono);
+    }
+    .form-input:focus, .form-select:focus { border-color: var(--ch-accent); }
+    .form-input.invalid { border-color: var(--ch-error); }
+    .form-select { font-family: var(--ch-font-sans); cursor: pointer; }
+    .help-text { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: var(--ch-space-2); margin-bottom: 0; }
+    .field-error { display: none; color: var(--ch-error); font-size: var(--ch-text-xs); margin-top: var(--ch-space-1); }
+    .field-error.show { display: block; }
+    .form-static { padding: 8px 12px; background: var(--ch-surface-high); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); color: var(--ch-text-secondary); }
+    .form-static-mono { font-family: var(--ch-font-mono); font-size: 11px; word-break: break-all; }
+    .secret-row { display: flex; gap: var(--ch-space-2); }
+    .secret-row .form-input { flex: 1; }
+    .secret-toggle { flex-shrink: 0; }
+
+    /* ─── status ─── */
+    .status {
+      display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px;
+      border-radius: var(--ch-radius-full); font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-success { background: var(--ch-success-soft); color: var(--ch-success); }
+    .status-success .status-dot { background: var(--ch-success); }
+    .status-error { background: var(--ch-error-soft); color: var(--ch-error); }
+    .status-error .status-dot { background: var(--ch-error); }
+    .status-running { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .status-running .status-dot { background: var(--ch-accent); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ─── channel status row ─── */
+    .channel-status-row {
+      display: flex; align-items: center; gap: var(--ch-space-3);
+      padding: var(--ch-space-3); background: var(--ch-surface-high); border: 1px solid var(--ch-border);
+      border-radius: var(--ch-radius-md); margin-bottom: var(--ch-space-5);
+    }
+    .channel-status-meta { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); flex: 1; min-width: 0; }
+    .channel-status-meta .mono { font-family: var(--ch-font-mono); }
+    .channel-status-actions { display: flex; gap: var(--ch-space-2); flex-shrink: 0; }
+
+    /* ─── down alert ─── */
+    .alert-error {
+      display: none; background: var(--ch-error-soft); border: 1px solid var(--ch-error); border-radius: var(--ch-radius-md);
+      padding: var(--ch-space-3); font-size: var(--ch-text-sm); color: var(--ch-text); margin-bottom: var(--ch-space-5);
+    }
+    .alert-error.show { display: block; }
+    .alert-error strong { color: var(--ch-error); }
+
+    /* ─── channel help ─── */
+    .channel-help { border-top: 1px solid var(--ch-border); margin-top: var(--ch-space-5); padding-top: var(--ch-space-4); }
+    .channel-help-title { font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 var(--ch-space-2); }
+    .channel-help-list { margin: 0; padding-left: var(--ch-space-5); font-size: var(--ch-text-sm); color: var(--ch-text-secondary); }
+    .channel-help-list li { margin-bottom: var(--ch-space-1); }
+    .channel-help-list a { color: var(--ch-accent); }
+    .channel-help-list a:hover { text-decoration: underline; }
+
+    /* ─── toast ─── */
+    .toast-root { position: fixed; right: var(--ch-space-5); bottom: var(--ch-space-5); z-index: 2000; display: flex; flex-direction: column; gap: var(--ch-space-2); }
+    .toast {
+      background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong); border-radius: var(--ch-radius-md);
+      box-shadow: var(--ch-shadow-md); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-sm); color: var(--ch-text);
+      opacity: 0; transform: translateY(6px); transition: opacity 0.2s ease, transform 0.2s ease; max-width: 420px;
+      display: flex; align-items: center; gap: var(--ch-space-2);
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .toast-dot.error { background: var(--ch-error); }
+    .toast-dot.success { background: var(--ch-success); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-logo">OPC Workstation</div>
+        <form class="topbar-search-form" onsubmit="return false;">
+          <input type="search" class="topbar-search-input" placeholder="搜索项目、流程、执行…" aria-label="搜索" />
+        </form>
+      </div>
+      <div class="topbar-right">
+        <button type="button" class="icon-btn" aria-label="切换语言" title="切换语言">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </button>
+        <button type="button" class="icon-btn" aria-label="切换主题" title="切换主题">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+        <a class="icon-btn" href="notifications.html" aria-label="通知" title="通知">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </a>
+        <a class="icon-btn" href="settings-channel.html" aria-label="设置" title="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51V3"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <div class="nav-group">
+          <div class="nav-label">工作区</div>
+          <a class="nav-link" href="#">概览</a>
+          <a class="nav-link" href="#">工作区</a>
+          <a class="nav-link" href="#">流程</a>
+          <a class="nav-link" href="execution-detail.html">执行历史</a>
+          <a class="nav-link" href="sources.html">内容源</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">系统</div>
+          <a class="nav-link" href="#">技能</a>
+          <a class="nav-link active" href="settings-channel.html">设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-link" href="notifications.html">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>通知</span>
+          <span class="nav-badge" id="navBadge">4</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="app-main">
+      <div class="page">
+        <div class="page-header">
+          <h1 class="page-title">设置</h1>
+          <button type="button" class="btn btn-primary" id="savePageBtn">保存更改</button>
+        </div>
+
+        <div class="settings-grid">
+          <div class="settings-main">
+
+            <!-- 飞书通道（本 story 新增区块） -->
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">飞书通道</h2>
+                <p class="card-subtitle">长连接收发消息：接收链接触发速存 · 投递日报摘要与失败通知</p>
+              </div>
+              <div class="card-body">
+                <div class="alert-error" id="downAlert">
+                  <strong>通道已掉线。</strong>长连接断开且自动重连失败（E-CHANNEL-DOWN）。期间飞书消息将丢失，产物仅落盘本地文件。请检查凭据与网络后重新连接。
+                </div>
+
+                <div class="channel-status-row">
+                  <span class="status status-running" id="channelStatus">
+                    <span class="status-dot"></span><span id="channelStatusText">连接中</span>
+                  </span>
+                  <span class="channel-status-meta">
+                    长连接模式（WebSocket）· <span class="mono" id="lastEventText">上次连接：今天 08:20</span>
+                  </span>
+                  <span class="channel-status-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="simulateDownBtn" title="演示用：模拟长连接断开">模拟掉线</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="reconnectBtn">重新连接</button>
+                  </span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="appId">App ID</label>
+                  <input class="form-input" id="appId" value="cli_a7f3d9e2b1c48065" placeholder="cli_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+                  <div class="field-error" id="errAppId"></div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="appSecret">App Secret</label>
+                  <div class="secret-row">
+                    <input class="form-input" id="appSecret" type="password" value="9f2c4b7e1a8d3f6b5e0c2a4d8f1b3e6c" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn btn-secondary btn-sm secret-toggle" id="toggleSecretBtn">显示</button>
+                  </div>
+                  <div class="field-error" id="errAppSecret"></div>
+                  <p class="help-text">凭据仅保存在本机 settings.json（文件权限 600），不会上传。</p>
+                </div>
+                <div class="form-group">
+                  <button type="button" class="btn btn-primary" id="saveChannelBtn">保存凭据并连接</button>
+                </div>
+
+                <div class="channel-help">
+                  <p class="channel-help-title">关于飞书通道</p>
+                  <ul class="channel-help-list">
+                    <li>使用飞书<strong>长连接（WebSocket）</strong>模式接入，无需公网 IP 与回调域名，适合本地桌面应用。</li>
+                    <li>机器人收到 http(s) 链接即触发「链接速存」flow；定时日报完成后向飞书投递摘要。</li>
+                    <li>还没有应用？前往 <a href="#" id="feishuDocLink">飞书开放平台创建自建应用 ↗</a> 并开启机器人能力。</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 工作区（沿用现有设置页结构） -->
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">工作区</h2>
+                <p class="card-subtitle">配置项目和技能存储位置</p>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label class="form-label" for="wsRoot">工作区根目录</label>
+                  <input class="form-input" id="wsRoot" value="~/charon/code/workspace" spellcheck="false" />
+                  <p class="help-text">所有项目将被克隆或链接到此目录下。</p>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="skillRepo">技能仓库路径</label>
+                  <input class="form-input" id="skillRepo" value="~/.opc-workstation/skills" spellcheck="false" />
+                  <p class="help-text">集中式技能仓库位置；应用从此处读取可用技能。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 外观 -->
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">外观</h2>
+                <p class="card-subtitle">界面主题和显示偏好</p>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label class="form-label" for="themeSelect">主题</label>
+                  <select class="form-select" id="themeSelect">
+                    <option value="dark" selected>深色</option>
+                    <option value="light">浅色</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="densitySelect">密度</label>
+                  <select class="form-select" id="densitySelect">
+                    <option value="comfortable" selected>舒适</option>
+                    <option value="compact">紧凑</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-side">
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">关于</h2>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label class="form-label">版本</label>
+                  <div class="form-static">0.1.0-alpha</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">数据目录</label>
+                  <div class="form-static form-static-mono">~/.opc-workstation</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-root" id="toastRoot"></div>
+
+  <script src="_ds/global/_ds_bundle.js"></script>
+  <script>
+    'use strict';
+
+    /* 通道状态机（对应 PRD OP-1 / §8：连接中 / 在线 / 掉线 三态） */
+    const state = { channel: 'connecting', timer: null };
+
+    const $ = (sel) => document.querySelector(sel);
+
+    function toast(msg, kind) {
+      const root = $('#toastRoot');
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.innerHTML = `<span class="toast-dot ${kind || 'success'}"></span><span></span>`;
+      el.lastElementChild.textContent = msg;
+      root.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('show'));
+      setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 220);
+      }, 2800);
+    }
+
+    function setChannel(next, metaText) {
+      state.channel = next;
+      const pill = $('#channelStatus');
+      const text = $('#channelStatusText');
+      pill.classList.remove('status-running', 'status-success', 'status-error');
+      if (next === 'connecting') {
+        pill.classList.add('status-running');
+        text.textContent = '连接中';
+      } else if (next === 'online') {
+        pill.classList.add('status-success');
+        text.textContent = '在线';
+      } else {
+        pill.classList.add('status-error');
+        text.textContent = '掉线';
+      }
+      if (metaText) $('#lastEventText').textContent = metaText;
+      $('#downAlert').classList.toggle('show', next === 'down');
+      $('#reconnectBtn').disabled = next === 'connecting';
+    }
+
+    function nowTime() {
+      const d = new Date();
+      return `今天 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function connect(afterOnline) {
+      clearTimeout(state.timer);
+      setChannel('connecting', '正在建立长连接…');
+      state.timer = setTimeout(() => {
+        setChannel('online', `上次连接：${nowTime()}`);
+        if (afterOnline) afterOnline();
+      }, 1200);
+    }
+
+    /* ─── 表单校验（PRD §7：App ID / Secret 必填非空） ─── */
+    function clearErrors() {
+      for (const id of ['errAppId', 'errAppSecret']) {
+        const el = $('#' + id);
+        el.textContent = '';
+        el.classList.remove('show');
+      }
+      $('#appId').classList.remove('invalid');
+      $('#appSecret').classList.remove('invalid');
+    }
+    function showError(inputId, errId, msg) {
+      const err = $(errId);
+      err.textContent = msg;
+      err.classList.add('show');
+      $(inputId).classList.add('invalid');
+    }
+
+    $('#saveChannelBtn').addEventListener('click', () => {
+      clearErrors();
+      const appId = $('#appId').value.trim();
+      const secret = $('#appSecret').value.trim();
+      let ok = true;
+      if (!appId) { showError('#appId', '#errAppId', '凭据不能为空'); ok = false; }
+      if (!secret) { showError('#appSecret', '#errAppSecret', '凭据不能为空'); ok = false; }
+      if (!ok) return;
+      connect(() => toast('凭据已保存，飞书长连接已建立'));
+    });
+
+    $('#reconnectBtn').addEventListener('click', () => {
+      connect(() => toast('飞书通道已恢复在线'));
+    });
+
+    /* 演示：模拟掉线 → 掉线态 + 通知中心事件（侧栏徽标 +1） */
+    $('#simulateDownBtn').addEventListener('click', () => {
+      clearTimeout(state.timer);
+      setChannel('down', `掉线：${nowTime()} · 自动重连失败`);
+      const badge = $('#navBadge');
+      badge.textContent = String(parseInt(badge.textContent, 10) + 1);
+      toast('通知中心新增事件：飞书通道掉线', 'error');
+    });
+
+    $('#toggleSecretBtn').addEventListener('click', () => {
+      const input = $('#appSecret');
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      $('#toggleSecretBtn').textContent = showing ? '显示' : '隐藏';
+    });
+
+    $('#feishuDocLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      toast('演示环境：此处应打开飞书开放平台文档（open.feishu.cn）');
+    });
+
+    $('#savePageBtn').addEventListener('click', () => toast('设置已保存'));
+
+    $('#appId').addEventListener('input', () => { $('#appId').classList.remove('invalid'); $('#errAppId').classList.remove('show'); });
+    $('#appSecret').addEventListener('input', () => { $('#appSecret').classList.remove('invalid'); $('#errAppSecret').classList.remove('show'); });
+
+    /* 初始：演示「连接中 → 在线」的完整过渡 */
+    connect(null);
+  </script>
+</body>
+</html>

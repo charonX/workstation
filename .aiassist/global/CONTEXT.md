@@ -16,6 +16,9 @@
 | 执行 | Execution | 流程的一次具体运行 | `executions` 表 | run |
 | Skill | Skill | Claude Code 标准格式的可复用能力包 | `skills` 表 | plugin |
 | Schedule | Schedule | 按 cron 表达式自动触发流程的定义 | `schedules` 表 | cron job |
+| 内容源 | Content Source | 可被 Flow 按 tag 筛选引用的信息来源，一级实体；类型：webpage / rss / x / wechat | `content_sources` 表 | 信息源、订阅源 |
+| 通知 | Notification | 应用内系统事件记录（产物产出/执行失败/通道状态） | `notifications` 表 | 消息（易与 IM 消息混淆） |
+| 通道绑定 | Channel Binding | 通道类型到 Flow/Project 的单一路由绑定；IM 消息经它决定 createTask 的归属 | `channel_bindings` 表 | — |
 
 ## 业务概念
 
@@ -26,6 +29,11 @@
 | Skill Symlink | 项目目录下指向 skill 安装目录的符号链接 | Project, Skill | Project Detail 关联 skill |
 | Dependency Cascade | 关联 skill 时自动级联关联其 `dependencies` 声明的 skill | Skill | Project-skill 关联 |
 | Orphan Skill | repo 模型迁移后 `repoId` 为 NULL 的遗留 skill 记录 | Skill | 数据清理 |
+| 素材库 | 项目目录内约定的内容沉淀区：速存 markdown + 索引文件，供下游文章/视频 Flow 消费 | Project | 链接速存 / 收集管线 |
+| 通道 | 连接外部 IM 的触发与投递通道（第一实现：飞书长连接）；收=消息触发 Flow，发=执行结果送达 | Flow, Execution | 外部触发 / 日报送达 |
+| 产物 | Flow 执行产出的文件（日报、速存 markdown 等）；主锚点是项目文件，执行记录登记其路径 | Execution | 产物登记 / 通知 / 飞书文档同步 |
+| 触发来源 | 执行的启动方式：手动 / 调试 / schedule / 通道 | Execution | executions.trigger 字段 |
+| Tag | 内容源的品类标签；Flow 按 tag 筛选引用内容源，不做逐一关联 | 内容源 | 定时日报的来源圈定 |
 
 ## 状态与生命周期
 
@@ -51,3 +59,5 @@
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |
 | 2026-07-08 | 更新 CLI 与 HTTP API 术语定义 | codex-harness-desktop attempt-2 tech-design |
 | 2026-07-16 | 新增 skill-repo、skill symlink、dependency cascade、orphan skill 术语 | codex-harness-desktop /reflect |
+| 2026-07-19 | 新增内容源、通知实体；素材库、通道、产物、触发来源、Tag 概念 | 2026-07-19-media-production-line |
+| 2026-07-19 | 新增通道绑定实体（tech-design review 阻塞项 1） | 2026-07-19-media-production-line |

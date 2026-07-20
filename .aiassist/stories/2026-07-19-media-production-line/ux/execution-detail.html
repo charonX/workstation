@@ -1,0 +1,612 @@
+<!-- @dsCard group="media-production-line" name="执行详情·产物" viewport="desktop" -->
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>执行历史 · OPC Workstation</title>
+  <link rel="stylesheet" href="_ds/global/tokens.css">
+  <link rel="stylesheet" href="_ds/global/styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--ch-font-sans);
+      font-size: var(--ch-text-base);
+      line-height: var(--ch-leading-normal);
+      background: var(--ch-bg);
+      color: var(--ch-text);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; }
+
+    /* ─── app shell ─── */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--ch-sidebar-width) 1fr;
+      grid-template-rows: var(--ch-topbar-height) 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .app-main { grid-row: 2; grid-column: 2; overflow: auto; padding: var(--ch-panel-padding); }
+
+    /* ─── topbar ─── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      height: var(--ch-topbar-height); padding: 0 var(--ch-panel-padding);
+      background: var(--ch-surface); border-bottom: 1px solid var(--ch-border);
+      grid-row: 1; grid-column: 1 / -1; gap: var(--ch-space-4);
+    }
+    .topbar-left { display: flex; align-items: center; gap: var(--ch-space-4); flex: 1; min-width: 0; }
+    .topbar-logo { font-weight: var(--ch-weight-bold); font-size: var(--ch-text-lg); letter-spacing: -0.02em; white-space: nowrap; }
+    .topbar-search-form { max-width: 280px; width: 100%; }
+    .topbar-search-input {
+      width: 100%; padding: 6px 12px; background: var(--ch-surface-highest);
+      border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+      color: var(--ch-text); font-size: var(--ch-text-sm); outline: none; font-family: var(--ch-font-sans);
+    }
+    .topbar-search-input:focus { border-color: var(--ch-accent); }
+    .topbar-right { display: flex; align-items: center; gap: var(--ch-space-3); flex-shrink: 0; }
+    .icon-btn {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+      background: transparent; color: var(--ch-text-secondary); transition: background 0.15s ease, color 0.15s ease;
+    }
+    .icon-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+
+    /* ─── sidebar ─── */
+    .sidebar {
+      display: flex; flex-direction: column; background: var(--ch-surface);
+      border-right: 1px solid var(--ch-border); grid-row: 2; grid-column: 1; overflow: hidden;
+    }
+    .sidebar-nav { flex: 1; overflow: auto; display: flex; flex-direction: column; padding: var(--ch-space-2); gap: var(--ch-space-1); }
+    .nav-group { margin-bottom: var(--ch-space-4); }
+    .nav-label {
+      font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--ch-space-3); margin-bottom: var(--ch-space-2);
+    }
+    .nav-link {
+      display: flex; align-items: center; gap: var(--ch-space-2);
+      padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text-secondary);
+      border-radius: var(--ch-radius-md); font-size: var(--ch-text-base); font-weight: var(--ch-weight-medium);
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .nav-link:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+    .nav-link.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .sidebar-bottom { border-top: 1px solid var(--ch-border); padding: var(--ch-space-2); }
+    .nav-badge {
+      margin-left: auto; background: var(--ch-error); color: #fff;
+      border-radius: var(--ch-radius-full); font-size: 10px; font-weight: var(--ch-weight-bold);
+      min-width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+    }
+
+    /* ─── page ─── */
+    .page { max-width: 1200px; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--ch-space-6); }
+    .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .page-subtitle { color: var(--ch-text-secondary); font-size: var(--ch-text-sm); margin: 2px 0 0; }
+
+    /* ─── execution table ─── */
+    .table { width: 100%; border: 1px solid var(--ch-border); border-radius: var(--ch-radius-lg); overflow: hidden; background: var(--ch-surface); margin-bottom: var(--ch-space-5); }
+    .table-header, .table-row {
+      display: grid; grid-template-columns: 1.6fr 1.2fr 0.9fr 0.9fr 1.3fr 0.7fr;
+      gap: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-4); align-items: center;
+    }
+    .table-header {
+      background: var(--ch-surface-high); border-bottom: 1px solid var(--ch-border);
+      font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text-secondary);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .table-row { border-bottom: 1px solid var(--ch-border); font-size: var(--ch-text-sm); cursor: pointer; transition: background 0.15s ease; padding-top: var(--ch-space-3); padding-bottom: var(--ch-space-3); }
+    .table-row:last-child { border-bottom: none; }
+    .table-row:hover { background: var(--ch-surface-high); }
+    .table-row.active { background: var(--ch-accent-soft); }
+    .cell-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .cell-title { font-weight: var(--ch-weight-medium); color: var(--ch-text); }
+    .cell-meta { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); font-family: var(--ch-font-mono); }
+    .cell-text { color: var(--ch-text-secondary); font-size: var(--ch-text-sm); }
+    .cell-mono { color: var(--ch-text-secondary); font-size: var(--ch-text-xs); font-family: var(--ch-font-mono); }
+
+    /* ─── status ─── */
+    .status {
+      display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
+      border-radius: var(--ch-radius-full); font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-success { background: var(--ch-success-soft); color: var(--ch-success); }
+    .status-success .status-dot { background: var(--ch-success); }
+    .status-error { background: var(--ch-error-soft); color: var(--ch-error); }
+    .status-error .status-dot { background: var(--ch-error); }
+    .status-running { background: var(--ch-accent-soft); color: var(--ch-accent); }
+    .status-running .status-dot { background: var(--ch-accent); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ─── detail panel ─── */
+    .detail-panel { border: 1px solid var(--ch-border); border-radius: var(--ch-radius-lg); background: var(--ch-surface); overflow: hidden; }
+    .detail-header { display: flex; align-items: center; justify-content: space-between; padding: var(--ch-space-4); border-bottom: 1px solid var(--ch-border); gap: var(--ch-space-4); }
+    .detail-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0; }
+    .detail-subtitle { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); font-family: var(--ch-font-mono); margin-top: 2px; }
+    .detail-status { display: flex; align-items: center; gap: var(--ch-space-3); flex-shrink: 0; }
+    .detail-duration { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); font-family: var(--ch-font-mono); }
+    .detail-tabs { display: flex; gap: var(--ch-space-1); padding: 0 var(--ch-space-4); border-bottom: 1px solid var(--ch-border); }
+    .detail-tab {
+      padding: var(--ch-space-2) var(--ch-space-3); border-bottom: 2px solid transparent;
+      color: var(--ch-text-secondary); font-size: var(--ch-text-sm); font-weight: var(--ch-weight-medium);
+      transition: color 0.15s ease, border-color 0.15s ease; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .detail-tab:hover { color: var(--ch-text); }
+    .detail-tab.active { color: var(--ch-accent); border-bottom-color: var(--ch-accent); }
+    .tab-chip { background: var(--ch-accent-soft); color: var(--ch-accent); border-radius: var(--ch-radius-full); font-size: 10px; font-weight: var(--ch-weight-semibold); padding: 0 6px; line-height: 16px; }
+    .detail-body { padding: var(--ch-space-3) var(--ch-space-4); min-height: 240px; }
+    .detail-placeholder { color: var(--ch-text-secondary); text-align: center; padding: var(--ch-space-6) 0; margin: 0; font-size: var(--ch-text-sm); }
+
+    /* ─── nodes tab ─── */
+    .execution-node-list { display: flex; flex-direction: column; gap: var(--ch-space-3); }
+    .execution-node { border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); background: var(--ch-surface-high); padding: var(--ch-space-3); }
+    .execution-node-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--ch-space-2); }
+    .execution-node-name { font-size: var(--ch-text-sm); font-weight: var(--ch-weight-semibold); margin-right: var(--ch-space-2); }
+    .execution-node-id { font-family: var(--ch-font-mono); font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); }
+    .execution-node-fields { display: grid; grid-template-columns: 140px 1fr; gap: var(--ch-space-1) var(--ch-space-3); font-size: var(--ch-text-xs); }
+    .execution-node-field-label { color: var(--ch-text-secondary); font-weight: var(--ch-weight-medium); }
+    .execution-node-field-value { font-family: var(--ch-font-mono); color: var(--ch-text); word-break: break-word; }
+
+    /* ─── logs tab ─── */
+    .log-entry { font-family: var(--ch-font-mono); font-size: var(--ch-text-xs); padding: var(--ch-space-2) 0; border-bottom: 1px solid var(--ch-border); display: flex; gap: var(--ch-space-3); }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--ch-text-tertiary); min-width: 80px; flex-shrink: 0; }
+    .log-level { color: var(--ch-accent); min-width: 110px; flex-shrink: 0; font-weight: var(--ch-weight-medium); }
+    .log-level.error { color: var(--ch-error); }
+    .log-msg { color: var(--ch-text-secondary); word-break: break-word; }
+    .log-msg.error { color: var(--ch-error); }
+
+    /* ─── variables tab ─── */
+    .kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 1px; border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); overflow: hidden; font-family: var(--ch-font-mono); font-size: var(--ch-text-xs); }
+    .kv-key { background: var(--ch-surface-high); padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text-secondary); font-weight: var(--ch-weight-medium); }
+    .kv-value { background: var(--ch-surface); padding: var(--ch-space-2) var(--ch-space-3); color: var(--ch-text); word-break: break-word; }
+
+    /* ─── output tab ─── */
+    .output-box {
+      background: var(--ch-surface-high); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+      padding: var(--ch-space-4); font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+      white-space: pre-wrap; word-break: break-word; color: var(--ch-text); margin: 0; max-height: 400px; overflow: auto;
+    }
+
+    /* ─── artifacts tab（本 story 新增） ─── */
+    .artifact-list { display: flex; flex-direction: column; gap: var(--ch-space-3); }
+    .artifact-card { border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); background: var(--ch-surface-high); overflow: hidden; }
+    .artifact-row { display: flex; align-items: center; gap: var(--ch-space-3); padding: var(--ch-space-3); transition: background 0.15s ease; }
+    .artifact-card:hover { border-color: var(--ch-border-strong); }
+    .artifact-icon {
+      width: 32px; height: 32px; border-radius: var(--ch-radius-md); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--ch-accent-soft); color: var(--ch-accent);
+      font-family: var(--ch-font-mono); font-size: 10px; font-weight: var(--ch-weight-bold);
+    }
+    .artifact-icon.index { background: var(--ch-info-soft); color: var(--ch-info); }
+    .artifact-main { flex: 1; min-width: 0; }
+    .artifact-name-row { display: flex; align-items: baseline; gap: var(--ch-space-2); }
+    .artifact-name { font-size: var(--ch-text-sm); font-weight: var(--ch-weight-semibold); }
+    .artifact-size { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); font-family: var(--ch-font-mono); }
+    .artifact-path { font-family: var(--ch-font-mono); font-size: var(--ch-text-xs); color: var(--ch-text-secondary); word-break: break-all; margin-top: 2px; }
+    .artifact-actions { display: flex; gap: var(--ch-space-2); flex-shrink: 0; }
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--ch-space-2);
+      padding: 6px 14px; border-radius: var(--ch-radius-md); font-weight: var(--ch-weight-semibold);
+      font-size: var(--ch-text-sm); border: 1px solid transparent; transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
+    .btn-secondary:hover { border-color: var(--ch-border-strong); background: var(--ch-surface-highest); }
+    .btn-ghost { background: transparent; color: var(--ch-text-secondary); }
+    .btn-ghost:hover { background: var(--ch-surface-highest); color: var(--ch-text); }
+    .btn-sm { padding: 4px 10px; font-size: var(--ch-text-xs); }
+    .sync-row {
+      display: flex; align-items: center; gap: var(--ch-space-2);
+      border-top: 1px solid var(--ch-border); padding: var(--ch-space-2) var(--ch-space-3);
+      font-size: var(--ch-text-xs); color: var(--ch-text-secondary);
+    }
+    .sync-row .status-dot { flex-shrink: 0; }
+    .sync-row a { color: var(--ch-accent); font-family: var(--ch-font-mono); word-break: break-all; }
+    .sync-row a:hover { text-decoration: underline; }
+    .sync-row.sync-failed {
+      background: var(--ch-warning-soft); color: var(--ch-text);
+    }
+    .sync-row.sync-failed strong { color: var(--ch-warning); }
+    .artifacts-note { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin: var(--ch-space-3) 0 0; }
+
+    /* ─── toast ─── */
+    .toast-root { position: fixed; right: var(--ch-space-5); bottom: var(--ch-space-5); z-index: 2000; display: flex; flex-direction: column; gap: var(--ch-space-2); }
+    .toast {
+      background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong); border-radius: var(--ch-radius-md);
+      box-shadow: var(--ch-shadow-md); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-sm); color: var(--ch-text);
+      opacity: 0; transform: translateY(6px); transition: opacity 0.2s ease, transform 0.2s ease; max-width: 460px;
+      font-family: var(--ch-font-mono); font-size: var(--ch-text-xs);
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-logo">OPC Workstation</div>
+        <form class="topbar-search-form" onsubmit="return false;">
+          <input type="search" class="topbar-search-input" placeholder="搜索项目、流程、执行…" aria-label="搜索" />
+        </form>
+      </div>
+      <div class="topbar-right">
+        <button type="button" class="icon-btn" aria-label="切换语言" title="切换语言">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </button>
+        <button type="button" class="icon-btn" aria-label="切换主题" title="切换主题">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+        <a class="icon-btn" href="notifications.html" aria-label="通知" title="通知">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </a>
+        <a class="icon-btn" href="settings-channel.html" aria-label="设置" title="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51V3"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <div class="nav-group">
+          <div class="nav-label">工作区</div>
+          <a class="nav-link" href="#">概览</a>
+          <a class="nav-link" href="#">工作区</a>
+          <a class="nav-link" href="#">流程</a>
+          <a class="nav-link active" href="execution-detail.html">执行历史</a>
+          <a class="nav-link" href="sources.html">内容源</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">系统</div>
+          <a class="nav-link" href="#">技能</a>
+          <a class="nav-link" href="settings-channel.html">设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-link" href="notifications.html">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>通知</span>
+          <span class="nav-badge">4</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="app-main">
+      <div class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">执行历史</h1>
+            <p class="page-subtitle">flow 执行记录与产物追溯（稳定块 8：产物登记最小化）。</p>
+          </div>
+        </div>
+
+        <!-- 执行列表 -->
+        <div class="table">
+          <div class="table-header">
+            <span>Flow</span><span>项目</span><span>触发来源</span><span>状态</span><span>开始时间</span><span>耗时</span>
+          </div>
+          <div id="execRows"></div>
+        </div>
+
+        <!-- 执行详情 -->
+        <div class="detail-panel" id="detailPanel"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-root" id="toastRoot"></div>
+
+  <script src="_ds/global/_ds_bundle.js"></script>
+  <script>
+    'use strict';
+
+    /* ─── mock 数据：4 条执行记录（覆盖 schedule / channel 触发，success / error） ─── */
+    const EXECUTIONS = [
+      {
+        id: 'exec-1042', flowName: 'AI 科技日报', projectName: 'news-aggregator',
+        trigger: 'schedule', status: 'success', startedAt: '2026-07-19 10:00:01', duration: '2m 14s',
+        variables: { topic: 'AI 科技动态', trigger: 'schedule', scheduledAt: '2026-07-19T10:00:00+08:00', sourceCount: '5（登记内容源）' },
+        nodes: [
+          { name: 'schedule-trigger', nodeId: 'node-trigger', status: 'success', fields: { type: 'schedule', cron: '0 10 * * *', result: '到点触发，注入变量 topic' } },
+          { name: 'collect-digest', nodeId: 'node-agent', status: 'success', fields: { type: 'agent (claude)', prompt: '收集 5 个登记内容源，按版块合成日报', duration: '1m 58s', skills: 'fetch-to-markdown, topic-daily-digest' } },
+          { name: 'deliver', nodeId: 'node-output', status: 'success', fields: { type: 'output', result: '产物登记 1 个文件；飞书摘要消息已送达；云文档已创建' } },
+        ],
+        logs: [
+          { time: '10:00:01', node: 'scheduler', message: 'schedule:triggered → 创建执行 exec-1042，注入变量 topic=AI 科技动态' },
+          { time: '10:00:03', node: 'agent', message: '开始收集 5 个登记内容源（Hacker News / 少数派 / 量子位 / 阮一峰 / Karpathy）' },
+          { time: '10:01:12', node: 'agent', message: '抓取完成：14 条候选条目，进入合成' },
+          { time: '10:02:01', node: 'agent', message: '日报合成完成：4 个版块（头条 / 新工具 / 研究进展 / 观点）' },
+          { time: '10:02:09', node: 'output', message: '写入 outputs/daily/2026-07-19-ai-daily.md（frontmatter 含主题/来源/生成时间）' },
+          { time: '10:02:13', node: 'feishu-doc-sync', message: '云文档创建成功 docx/AIDaily20260719' },
+          { time: '10:02:15', node: 'output', message: '飞书摘要消息已送达；通知中心落「产物产出」' },
+        ],
+        output: '日报已生成：14 条条目 · 4 个版块（头条 / 新工具 / 研究进展 / 观点）。\n产物：outputs/daily/2026-07-19-ai-daily.md\n飞书：摘要消息已送达 + 云文档已同步。',
+        artifacts: [
+          { name: '2026-07-19-ai-daily.md', path: 'outputs/daily/2026-07-19-ai-daily.md', kind: 'md', size: '18.2 KB', sync: { state: 'synced', url: 'https://opc.feishu.cn/docx/AIDaily20260719' } },
+        ],
+      },
+      {
+        id: 'exec-1041', flowName: '链接速存', projectName: 'news-aggregator',
+        trigger: 'channel', status: 'success', startedAt: '2026-07-19 09:31:48', duration: '42s',
+        variables: { url: 'https://www.anthropic.com/engineering/building-effective-agents', sender: '张磊（飞书）', messageId: 'om_x100b5455de2c8' },
+        nodes: [
+          { name: 'channel-trigger', nodeId: 'node-trigger', status: 'success', fields: { type: 'channel (feishu)', message: '收到飞书消息，解析出 1 个链接', result: '注入变量 url / sender / messageId' } },
+          { name: 'fetch-save', nodeId: 'node-agent', status: 'success', fields: { type: 'agent (claude)', prompt: '抓取链接正文转 Markdown 并存入素材库', duration: '38s', skills: 'fetch-to-markdown' } },
+          { name: 'deliver', nodeId: 'node-output', status: 'success', fields: { type: 'output', result: '产物登记 1 个文件；索引追加；飞书确认消息已回复' } },
+        ],
+        logs: [
+          { time: '09:31:48', node: 'feishu-channel', message: 'channel:message-received → om_x100b5455de2c8，解析出 URL' },
+          { time: '09:31:49', node: 'agent', message: '开始抓取 https://www.anthropic.com/engineering/building-effective-agents' },
+          { time: '09:32:14', node: 'agent', message: '正文提取完成（24.6 KB），转 Markdown' },
+          { time: '09:32:26', node: 'output', message: '写入 materials/2026-07-19-building-effective-agents.md；LIBRARY.md 追加 1 行' },
+          { time: '09:32:30', node: 'feishu-channel', message: '确认消息已回复（含产物位置）；通知中心落「产物产出」' },
+        ],
+        output: '速存成功：materials/2026-07-19-building-effective-agents.md\n索引：materials/LIBRARY.md 追加 1 行\n飞书：确认消息已回复（含产物位置）。',
+        artifacts: [
+          { name: '2026-07-19-building-effective-agents.md', path: 'materials/2026-07-19-building-effective-agents.md', kind: 'md', size: '24.6 KB', sync: { state: 'synced', url: 'https://opc.feishu.cn/docx/MatBuildingAgents0719' } },
+          { name: 'LIBRARY.md', path: 'materials/LIBRARY.md', kind: 'index', size: '4.1 KB', sync: { state: 'none', note: '索引文件，无需同步云文档' } },
+        ],
+      },
+      {
+        id: 'exec-1039', flowName: 'AI 科技日报', projectName: 'news-aggregator',
+        trigger: 'schedule', status: 'error', startedAt: '2026-07-18 10:00:01', duration: '58s',
+        variables: { topic: 'AI 科技动态', trigger: 'schedule', scheduledAt: '2026-07-18T10:00:00+08:00', sourceCount: '5（登记内容源）' },
+        nodes: [
+          { name: 'schedule-trigger', nodeId: 'node-trigger', status: 'success', fields: { type: 'schedule', cron: '0 10 * * *', result: '到点触发，注入变量 topic' } },
+          { name: 'collect-digest', nodeId: 'node-agent', status: 'error', fields: { type: 'agent (claude)', prompt: '收集 5 个登记内容源，按版块合成日报', error: 'E-AGENT-FAILED：量子位公众号抓取超时，重试耗尽（3/3）', duration: '54s' } },
+          { name: 'deliver', nodeId: 'node-output', status: 'skipped', fields: { type: 'output', result: '未执行（上游失败）' } },
+        ],
+        logs: [
+          { time: '10:00:01', node: 'scheduler', message: 'schedule:triggered → 创建执行 exec-1039，注入变量 topic=AI 科技动态' },
+          { time: '10:00:04', node: 'agent', message: '开始收集 5 个登记内容源' },
+          { time: '10:00:22', node: 'agent', message: '量子位公众号抓取超时（10s），重试 1/3', level: 'error' },
+          { time: '10:00:36', node: 'agent', message: '量子位公众号抓取超时，重试 2/3', level: 'error' },
+          { time: '10:00:50', node: 'agent', message: '量子位公众号抓取超时，重试 3/3', level: 'error' },
+          { time: '10:00:59', node: 'agent', message: 'E-AGENT-FAILED：重试耗尽，执行置为 error；半成品文件不登记为产物', level: 'error' },
+          { time: '10:01:00', node: 'feishu-channel', message: '失败通知已送达飞书；通知中心落「执行失败」' },
+        ],
+        output: '执行失败（E-AGENT-FAILED）：量子位公众号抓取超时，重试耗尽（3/3）。\n半成品文件不登记为产物；飞书已收到失败通知。',
+        artifacts: [],
+      },
+      {
+        id: 'exec-1036', flowName: '链接速存', projectName: 'news-aggregator',
+        trigger: 'channel', status: 'success', startedAt: '2026-07-18 16:20:11', duration: '37s',
+        variables: { url: 'https://agentic-patterns.com/llm-agents-overview', sender: '张磊（飞书）', messageId: 'om_x100b53f9a1d04' },
+        nodes: [
+          { name: 'channel-trigger', nodeId: 'node-trigger', status: 'success', fields: { type: 'channel (feishu)', message: '收到飞书消息，解析出 1 个链接', result: '注入变量 url / sender / messageId' } },
+          { name: 'fetch-save', nodeId: 'node-agent', status: 'success', fields: { type: 'agent (claude)', prompt: '抓取链接正文转 Markdown 并存入素材库', duration: '31s', skills: 'fetch-to-markdown' } },
+          { name: 'deliver', nodeId: 'node-output', status: 'success', fields: { type: 'output', result: '产物登记 1 个文件；云文档同步失败，降级为文字消息送达' } },
+        ],
+        logs: [
+          { time: '16:20:11', node: 'feishu-channel', message: 'channel:message-received → om_x100b53f9a1d04，解析出 URL' },
+          { time: '16:20:12', node: 'agent', message: '开始抓取 https://agentic-patterns.com/llm-agents-overview' },
+          { time: '16:20:40', node: 'output', message: '写入 materials/2026-07-18-llm-agents-overview.md；LIBRARY.md 追加 1 行' },
+          { time: '16:20:44', node: 'feishu-doc-sync', message: 'E-DOC-SYNC-FAILED：docx API 返回 500，降级为文字消息送达', level: 'error' },
+          { time: '16:20:48', node: 'feishu-channel', message: '确认消息已回复（文字消息，含文件路径）；执行保持 success' },
+        ],
+        output: '速存成功：materials/2026-07-18-llm-agents-overview.md\n云文档同步失败（E-DOC-SYNC-FAILED）→ 已降级为飞书文字消息送达；文件落盘不受影响。',
+        artifacts: [
+          { name: '2026-07-18-llm-agents-overview.md', path: 'materials/2026-07-18-llm-agents-overview.md', kind: 'md', size: '12.8 KB', sync: { state: 'failed' } },
+        ],
+      },
+    ];
+
+    const state = { selectedId: 'exec-1042', tab: 'artifacts' };
+    const TABS = [
+      { key: 'nodes', label: '节点' },
+      { key: 'logs', label: '日志' },
+      { key: 'variables', label: '变量' },
+      { key: 'output', label: '输出' },
+      { key: 'artifacts', label: '产物', chip: true },
+    ];
+
+    /* ─── utils ─── */
+    const $ = (sel) => document.querySelector(sel);
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function toast(msg) {
+      const root = $('#toastRoot');
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = msg;
+      root.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('show'));
+      setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 220);
+      }, 2600);
+    }
+
+    /* ─── 执行列表 ─── */
+    function renderExecRows() {
+      $('#execRows').innerHTML = EXECUTIONS.map((ex) => `
+        <div class="table-row${state.selectedId === ex.id ? ' active' : ''}" data-id="${esc(ex.id)}" role="button" tabindex="0">
+          <div class="cell-main">
+            <span class="cell-title">${esc(ex.flowName)}</span>
+            <span class="cell-meta">${esc(ex.id)}</span>
+          </div>
+          <span class="cell-text">${esc(ex.projectName)}</span>
+          <span class="cell-mono">${esc(ex.trigger)}</span>
+          <span class="status status-${ex.status}"><span class="status-dot"></span>${ex.status}</span>
+          <span class="cell-mono">${esc(ex.startedAt)}</span>
+          <span class="cell-text">${esc(ex.duration)}</span>
+        </div>`).join('');
+    }
+
+    /* ─── 详情面板 ─── */
+    function current() {
+      return EXECUTIONS.find((e) => e.id === state.selectedId);
+    }
+
+    function renderDetail() {
+      const ex = current();
+      const tabs = TABS.map((t) => `
+        <button type="button" role="tab" aria-selected="${state.tab === t.key}"
+          class="detail-tab${state.tab === t.key ? ' active' : ''}" data-tab="${t.key}">
+          ${t.label}${t.chip ? '<span class="tab-chip">新</span>' : ''}
+        </button>`).join('');
+
+      $('#detailPanel').innerHTML = `
+        <div class="detail-header">
+          <div>
+            <h2 class="detail-title">执行详情 #${esc(ex.id)}</h2>
+            <div class="detail-subtitle">${esc(ex.flowName)} · ${esc(ex.projectName)} · trigger=${esc(ex.trigger)} · ${esc(ex.startedAt)}</div>
+          </div>
+          <div class="detail-status">
+            <span class="detail-duration">用时 ${esc(ex.duration)}</span>
+            <span class="status status-${ex.status}"><span class="status-dot"></span>${ex.status}</span>
+          </div>
+        </div>
+        <div class="detail-tabs" role="tablist">${tabs}</div>
+        <div class="detail-body" id="detailBody" role="tabpanel"></div>`;
+      renderTabBody();
+    }
+
+    function renderTabBody() {
+      const ex = current();
+      const body = $('#detailBody');
+      if (state.tab === 'nodes') {
+        body.innerHTML = `<div class="execution-node-list">${ex.nodes.map((n) => `
+          <div class="execution-node">
+            <div class="execution-node-header">
+              <span><span class="execution-node-name">${esc(n.name)}</span><span class="execution-node-id">${esc(n.nodeId)}</span></span>
+              <span class="status status-${n.status === 'skipped' ? 'running' : n.status}"><span class="status-dot"></span>${esc(n.status)}</span>
+            </div>
+            <div class="execution-node-fields">
+              ${Object.entries(n.fields).map(([k, v]) => `
+                <span class="execution-node-field-label">${esc(k)}</span>
+                <span class="execution-node-field-value">${esc(v)}</span>`).join('')}
+            </div>
+          </div>`).join('')}</div>`;
+      } else if (state.tab === 'logs') {
+        body.innerHTML = ex.logs.length
+          ? ex.logs.map((l) => `
+            <div class="log-entry">
+              <span class="log-time">${esc(l.time)}</span>
+              <span class="log-level${l.level === 'error' ? ' error' : ''}">${esc(l.node)}</span>
+              <span class="log-msg${l.level === 'error' ? ' error' : ''}">${esc(l.message)}</span>
+            </div>`).join('')
+          : '<p class="detail-placeholder">暂无日志。</p>';
+      } else if (state.tab === 'variables') {
+        body.innerHTML = `<div class="kv-grid">
+          ${Object.entries(ex.variables).map(([k, v]) => `
+            <div class="kv-key">${esc(k)}</div><div class="kv-value">${esc(v)}</div>`).join('')}
+        </div>`;
+      } else if (state.tab === 'output') {
+        body.innerHTML = `<pre class="output-box">${esc(ex.output)}</pre>`;
+      } else if (state.tab === 'artifacts') {
+        body.innerHTML = renderArtifacts(ex);
+      }
+    }
+
+    /* ─── 产物 tab（本 story 新增，稳定块 8：执行记录关联产物文件路径列表） ─── */
+    function renderArtifacts(ex) {
+      if (!ex.artifacts.length) {
+        return `
+          <p class="detail-placeholder">本次执行未登记产物。</p>
+          <p class="artifacts-note" style="text-align:center;">执行失败时半成品文件不登记为产物（PRD §8 E-AGENT-FAILED）。</p>`;
+      }
+      return `
+        <div class="artifact-list">
+          ${ex.artifacts.map((a, i) => `
+            <div class="artifact-card">
+              <div class="artifact-row">
+                <span class="artifact-icon${a.kind === 'index' ? ' index' : ''}">${a.kind === 'index' ? 'IDX' : 'MD'}</span>
+                <div class="artifact-main">
+                  <div class="artifact-name-row">
+                    <span class="artifact-name">${esc(a.name)}</span>
+                    <span class="artifact-size">${esc(a.size)}</span>
+                  </div>
+                  <div class="artifact-path">${esc(a.path)}</div>
+                </div>
+                <div class="artifact-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" data-open="${i}">打开</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-reveal="${i}">在文件夹中显示</button>
+                </div>
+              </div>
+              ${renderSyncRow(a)}
+            </div>`).join('')}
+        </div>
+        <p class="artifacts-note">产物以项目相对路径登记在执行记录中，CLI / API 可查（稳定块 8）。</p>`;
+    }
+
+    function renderSyncRow(a) {
+      if (a.sync.state === 'synced') {
+        return `
+          <div class="sync-row">
+            <span class="status-dot" style="background:var(--ch-success);"></span>
+            <span>已同步飞书云文档</span>
+            <a href="#" data-doc="${esc(a.sync.url)}">${esc(a.sync.url)} ↗</a>
+          </div>`;
+      }
+      if (a.sync.state === 'failed') {
+        return `
+          <div class="sync-row sync-failed">
+            <span class="status-dot" style="background:var(--ch-warning);"></span>
+            <span><strong>云文档同步失败（E-DOC-SYNC-FAILED）。</strong>已降级为飞书文字消息送达（含文件路径）；文件落盘不受影响，执行保持 success。</span>
+          </div>`;
+      }
+      return `
+        <div class="sync-row">
+          <span class="status-dot" style="background:var(--ch-text-tertiary);"></span>
+          <span>${esc(a.sync.note || '未同步')}</span>
+        </div>`;
+    }
+
+    /* ─── 交互 ─── */
+    $('#execRows').addEventListener('click', (e) => {
+      const row = e.target.closest('.table-row');
+      if (!row) return;
+      state.selectedId = row.dataset.id;
+      // 默认 tab：成功执行落到「产物」，失败执行落到「日志」
+      const ex = current();
+      state.tab = ex.status === 'success' ? 'artifacts' : 'logs';
+      renderExecRows();
+      renderDetail();
+    });
+
+    $('#detailPanel').addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-tab]');
+      if (tab) {
+        state.tab = tab.dataset.tab;
+        document.querySelectorAll('.detail-tab').forEach((t) => {
+          const active = t.dataset.tab === state.tab;
+          t.classList.toggle('active', active);
+          t.setAttribute('aria-selected', String(active));
+        });
+        renderTabBody();
+        return;
+      }
+      const openBtn = e.target.closest('[data-open]');
+      if (openBtn) {
+        const a = current().artifacts[Number(openBtn.dataset.open)];
+        toast(`已调用系统默认应用打开 ${a.path}（演示）`);
+        return;
+      }
+      const revealBtn = e.target.closest('[data-reveal]');
+      if (revealBtn) {
+        const a = current().artifacts[Number(revealBtn.dataset.reveal)];
+        const dir = a.path.split('/').slice(0, -1).join('/');
+        toast(`已在文件管理器中显示 ${dir}/（演示）`);
+        return;
+      }
+      const docLink = e.target.closest('[data-doc]');
+      if (docLink) {
+        e.preventDefault();
+        toast(`已在浏览器打开飞书云文档（演示链接）：${docLink.dataset.doc}`);
+      }
+    });
+
+    renderExecRows();
+    renderDetail();
+  </script>
+</body>
+</html>

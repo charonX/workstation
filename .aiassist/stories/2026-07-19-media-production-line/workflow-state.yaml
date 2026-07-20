@@ -1,0 +1,43 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-07-19-media-production-line
+intention: >-
+  workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
+  agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
+
+phase: TEST       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-07-19
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-07-19, from: -, to: THINK, note: "创建 story。触发：x.com/Zesee/status/2072417062165635433（Codex+Remotion 视频日更生产线）；已完成系统 gap 分析，P0=调度空壳+headless内存库，P1=无artifact模型+无结构化输出契约，P2=流式/审核门/foreach/Codex provider"}
+  - {at: 2026-07-19, from: THINK, to: PRD, note: "完成需求洞察（interview-notes.md）：第一刀=收集段；场景A定时科技日报+场景B飞书链接速存；方向A（双场景合建），IM第一通道=飞书，产物=项目文件+飞书文档镜像；生成 prd.md"}
+  - {at: 2026-07-19, from: PRD, to: DESIGN, note: "PRD v0.2 经 /review 修订（内容源UI+通知中心进scope、OP-6拆语义、场景A来源锁定、砍项预案、补录ADR-003/004）"}
+  - {at: 2026-07-19, from: DESIGN, to: TECH-DESIGN, note: "4个UX原型验收通过（内容源管理/通知中心/飞书通道/执行详情产物）；内容源关联定为tag筛选（取消反查与删除警告）、通知跳转模式确认、凭据保存即连接；PRD 回流 v0.3"}
+  - {at: 2026-07-19, from: TECH-DESIGN, to: DOMAIN-MODEL, note: "回插一站：PRD 引入内容源/素材库/通道/通知四个新术语，先经 /domain-model 登记再进 tech-design"}
+  - {at: 2026-07-19, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "CONTEXT.md 登记完成：内容源/通知实体 + 素材库/通道/产物/触发来源/Tag 概念；下一步先 /research 调研飞书 OpenAPI 再 /tech-design"}
+  - {at: 2026-07-19, from: TECH-DESIGN, to: CRYSTALLIZE, note: "三轮对抗决策（单server顶替/串行队列/开箱模板）；tech-design v0.1 + ADR-006；review-tech FAIL(3阻塞6警告)→全部修复出 v0.2（通道绑定/全局归属/系统层投递等）"}
+  - {at: 2026-07-19, from: CRYSTALLIZE, to: TEST, note: "结晶完成：11 稳定块 → 21 REQ（requirements.md v1 + hash）；新增 channel-integration/collection-pipeline 两个能力域"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"
+  compiled: true
+  preview: ".aiassist/stories/2026-07-19-media-production-line/ux/preview.html"
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: [sources.html, notifications.html, settings-channel.html, execution-detail.html]
+
+# 已生成的变体(按需)。
+variants:
+  active: []
