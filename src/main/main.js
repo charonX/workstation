@@ -78,6 +78,12 @@ async function createWindow() {
         await takeoverExistingServer({ port: existing.port, timeoutMs: 5000 });
       } catch (err) {
         console.error("Failed to takeover existing server:", err.message);
+        dialog.showErrorBox(
+          "Server Takeover Failed",
+          `Could not take over the existing workstation server: ${err.message}`
+        );
+        app.quit();
+        return;
       }
     }
     serverCtx = await startServer({ reset: false });
