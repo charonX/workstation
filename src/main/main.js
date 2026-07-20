@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fsSync from "node:fs";
@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import { defaultDbPath, migrateLegacyDb } from "../db.js";
 import { discoverServer } from "../cli/server.js";
 import { takeoverExistingServer } from "../serverRegistry.js";
+import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 
 // Handle squirrel startup events (Windows installer)
 if (process.platform === "win32" && (await import("electron-squirrel-startup")).default) {
@@ -135,6 +136,26 @@ ipcMain.handle("opc-select-directory", async (_event, { title, defaultPath }) =>
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+function resolveArtifactPath(projectRoot, artifactPath) {
+  return path.isAbsolute(artifactPath)
+    ? artifactPath
+    : path.resolve(projectRoot, artifactPath);
+}
+
+ipcMain.handle("opc-open-artifact-path", async (_event, { projectRoot, artifactPath }) => {
+  if (!isArtifactPathAllowed(projectRoot, artifactPath)) {
+    throw new Error("E-ARTIFACT-PATH-FORBIDDEN");
+  }
+  return shell.openPath(resolveArtifactPath(projectRoot, artifactPath));
+});
+
+ipcMain.handle("opc-show-artifact-in-folder", async (_event, { projectRoot, artifactPath }) => {
+  if (!isArtifactPathAllowed(projectRoot, artifactPath)) {
+    throw new Error("E-ARTIFACT-PATH-FORBIDDEN");
+  }
+  shell.showItemInFolder(resolveArtifactPath(projectRoot, artifactPath));
 });
 
 app.whenReady().then(createWindow);
