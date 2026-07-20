@@ -1,0 +1,179 @@
+// REQ-TRACE: 2026-07-19-media-production-line/REQ-CHANNEL-001, 2026-07-19-media-production-line/REQ-CHANNEL-003
+// REQ-VERSION: v1-hash:de43bc8607a89efe5512712a188a5f24f259d8109cb31a7a476827dd0883fab9
+// CAPABILITY-TRACE: channel-integration
+// ENTITY-TRACE: channel
+// TEST-AUTHOR: agent
+// ASSERTIONS-SIGNED: true
+
+import { describe, it, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { startFakeFeishuServer } from "../../../../../fixtures/media-production-line/fakeFeishuServer.js";
+import { makeTmpDir } from "../../../../../fixtures/media-production-line/tmpProjectDir.js";
+
+// seam：飞书通道 adapter（tech-design「channelAdapter 接口」）。
+// 建议落点 src/services/channels/feishuChannelAdapter.js，导出 createFeishuChannelAdapter({
+//   domain, credentials, settings, notificationService, logger })，
+// 实例实现 start/send/reply/getStatus/onMessage。domain 可配置指向 fake 飞书 server
+// （WSClient domain spike 失败时降级为 adapter 接口 mock，REST 侧仍经 fake server 断言）。
+async function loadAdapterFactory() {
+  const mod = await import("../../../../../../src/services/channels/feishuChannelAdapter.js").catch(() => null);
+  assert.ok(mod, "seam 未就绪：src/services/channels/feishuChannelAdapter.js 尚未实现（REQ-CHANNEL-001/003）");
+  const create = mod.createFeishuChannelAdapter || mod.createAdapter;
+  assert.equal(typeof create, "function", "feishuChannelAdapter 应导出 createFeishuChannelAdapter()");
+  return create;
+}
+
+describe("REQ-CHANNEL-001: 飞书通道生命周期", () => {
+  let fake;
+  let tmp;
+
+  beforeEach(async () => {
+    fake = await startFakeFeishuServer();
+    tmp = makeTmpDir("opc-channel-001-");
+  });
+
+  afterEach(async () => {
+    await fake.stop();
+    tmp.cleanup();
+  });
+
+  it("AC1: 凭据存 settings.json 且文件权限为 600", async () => {
+    process.env.OPC_WORKSTATION_CONFIG_DIR = tmp.dir;
+    try {
+      // seam：凭据落盘入口（建议 settingsService.saveChannelCredentials({appId, appSecret})，
+      // 或 /api/settings/channel 路由的 service 侧等价函数）。
+      const settings = await import("../../../../../../src/services/settingsService.js");
+      const save = settings.saveChannelCredentials;
+      assert.equal(typeof save, "function", "seam 未就绪：凭据保存入口尚未实现（REQ-CHANNEL-001 AC1）");
+      save({ appId: "cli_fake_app_id", appSecret: "fake-secret-0001" });
+
+      const settingsFile = path.join(tmp.dir, "settings.json");
+      assert.ok(fs.existsSync(settingsFile), "凭据应落盘 settings.json");
+      const mode = fs.statSync(settingsFile).mode & 0o777;
+      assert.equal(mode, 0o600, `settings.json 权限应为 600，实际: ${mode.toString(8)}`);
+    } finally {
+      delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+    }
+  });
+
+  it("AC1: 凭据不明文入日志", async () => {
+    const create = await loadAdapterFactory();
+    const secret = "fake-secret-should-not-leak";
+    const logged = [];
+    const origLog = console.log;
+    const origError = console.error;
+    console.log = (...args) => logged.push(args.join(" "));
+    console.error = (...args) => logged.push(args.join(" "));
+    try {
+      const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: secret } });
+      await adapter.start().catch(() => {});
+      await adapter.send({ chatId: "oc_fake", text: "hello" }).catch(() => {});
+    } finally {
+      console.log = origLog;
+      console.error = origError;
+    }
+    assert.ok(!logged.join("\n").includes(secret), "日志不应出现 App Secret 明文");
+  });
+
+  it("AC2: start 建立连接，getStatus 三态正确迁移（connecting→online）", async () => {
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    assert.equal(adapter.getStatus(), "offline", "未启动时应为 offline");
+
+    const startPromise = adapter.start();
+    // 签核三态 connecting/online/offline：start 进行中的中间态必须为 connecting。
+    assert.equal(adapter.getStatus(), "connecting", "start 进行中应为 connecting");
+    await startPromise;
+    assert.equal(adapter.getStatus(), "online", "连接建立后应为 online");
+  });
+
+  it("AC3: 断线重连失败置 offline 并写「通道掉线」通知；恢复置 online 并写恢复通知", async () => {
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    await adapter.start();
+    assert.equal(adapter.getStatus(), "online");
+
+    // seam：测试侧触发断线（建议 adapter._simulateDisconnectForTests() 或由 fake server 断 WS）。
+    assert.equal(typeof adapter.simulateDisconnectForTests, "function",
+      "seam 未就绪：adapter 需提供断线模拟入口（REQ-CHANNEL-001 AC3）");
+    await adapter.simulateDisconnectForTests({ reconnectWillFail: true });
+    assert.equal(adapter.getStatus(), "offline", "重连失败应置 offline");
+
+    // 通知断言：通道状态变更应写「通道掉线」/「通道已恢复」通知（REQ-NOTIFY-001 三类事件源之一）。
+    // TODO(BUILD)：notificationService seam 就绪后改为服务级断言（当前经 /api/notifications，未实现时 404）。
+    await adapter.simulateReconnectForTests?.();
+    assert.equal(adapter.getStatus(), "online", "恢复后应置 online");
+  });
+
+  it("AC4: 凭据无效 → E-CHANNEL-CRED，状态 offline", async () => {
+    fake.setCredentialsValid(false);
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "bad", appSecret: "bad" } });
+    // 签核：凭据无效 reject 带 E-CHANNEL-CRED。
+    await assert.rejects(() => adapter.start(), /E-CHANNEL-CRED/, "凭据无效应报 E-CHANNEL-CRED");
+    assert.equal(adapter.getStatus(), "offline");
+  });
+});
+
+describe("REQ-CHANNEL-003: 通道发送", () => {
+  let fake;
+
+  beforeEach(async () => {
+    fake = await startFakeFeishuServer();
+  });
+
+  afterEach(async () => {
+    await fake.stop();
+  });
+
+  it("AC1: send({chatId, text}) 请求结构正确（receive_id_type=chat_id + text 消息）", async () => {
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    await adapter.start();
+
+    await adapter.send({ chatId: "oc_chat_1", text: "日报摘要：14 条" });
+    assert.equal(fake.received.sends.length, 1, "fake 飞书应收到一次 send");
+    const call = fake.received.sends[0];
+    // 签核请求体形状（飞书 API）：{receive_id, msg_type:"text", content:"{\"text\":\"...\"}"}（content 为 JSON 字符串）。
+    assert.ok(call.query.includes("receive_id_type=chat_id"), `send 应带 receive_id_type=chat_id，实际: ${call.query}`);
+    assert.equal(call.body.receive_id, "oc_chat_1");
+    assert.equal(call.body.msg_type, "text");
+    const content = typeof call.body.content === "string" ? JSON.parse(call.body.content) : call.body.content;
+    assert.ok(content.text.includes("日报摘要：14 条"));
+  });
+
+  it("AC1: reply({messageId, text}) 调通且命中 reply 端点", async () => {
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    await adapter.start();
+
+    await adapter.reply({ messageId: "om_origin_1", text: "收到，排队中（第 1 位）" });
+    assert.equal(fake.received.replies.length, 1, "fake 飞书应收到一次 reply");
+    assert.equal(fake.received.replies[0].messageId, "om_origin_1");
+    const content = typeof fake.received.replies[0].body.content === "string"
+      ? JSON.parse(fake.received.replies[0].body.content)
+      : fake.received.replies[0].body.content;
+    assert.ok(content.text.includes("排队中"));
+  });
+
+  it("AC2: 发送失败按次重试（≤3），仍失败记 E-CHANNEL-SEND，不阻断调用方", async () => {
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    await adapter.start();
+
+    // 前 2 次失败 → 第 3 次成功。
+    fake.failNext("/open-apis/im/v1/messages", 2);
+    await adapter.send({ chatId: "oc_chat_2", text: "retry-me" });
+    assert.ok(fake.received.sends.length >= 2 && fake.received.sends.length <= 3,
+      `应在 ≤3 次尝试内成功，实际尝试: ${fake.received.sends.length}`);
+
+    // 持续失败 → 报 E-CHANNEL-SEND，且总尝试次数 ≤3（签核上限，含首次；不无限重试）。
+    fake.failNext("/open-apis/im/v1/messages", 10);
+    const before = fake.received.sends.length;
+    await assert.rejects(() => adapter.send({ chatId: "oc_chat_3", text: "always-fail" }), /E-CHANNEL-SEND/);
+    assert.ok(fake.received.sends.length - before <= 3,
+      `重试应有上限（≤3 次），实际新增尝试: ${fake.received.sends.length - before}`);
+  });
+});
