@@ -23,6 +23,8 @@ history:
   - {at: 2026-07-19, from: CRYSTALLIZE, to: TEST, note: "结晶完成：11 稳定块 → 21 REQ（requirements.md v1 + hash）；新增 channel-integration/collection-pipeline 两个能力域"}
   - {at: 2026-07-19, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：24 REQ（修正计数）× ≥1 自动化测试，101 api/cli + 14 e2e 用例；签核 4 决策（E-SCHED-FLOW-INVALID/E-SRC-DUP=409/DB直写播种/§5整体批准），50 处 TODO 清零；signoff commit 1c6b09c；发现既有缺陷（schedules 非法cron挂起）留 bug 循环"}
   - {at: 2026-07-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过，契约交内层实现循环"}
+  - {at: 2026-07-19, from: BUILD, to: TECH-DESIGN, note: "S5 PRD 对齐发现真实长连接未落地；research 确认官方推荐 WebSocket/WSClient，需回流重定官方 SDK 集成方案"}
+  - {at: 2026-07-19, from: TECH-DESIGN, to: BUILD, note: "tech-design v0.3 与 ADR-007 已更新；签核已完成，直接回到 BUILD 重新实现 S5"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -36,7 +38,7 @@ slices:
   - {id: S2, name: scheduler-queue-artifacts-delivery, status: complete, commits: [1d1c7f1, 0915766, 89b0cd5, d6d292c], reqs: [REQ-SCHEDULE-005, REQ-SCHEDULE-006, REQ-SCHEDULE-007, REQ-SCHEDULE-008, REQ-SCHEDULE-009, REQ-FLOW-029]}
   - {id: S3, name: notification-service, status: complete, commits: [d7f166f, e7984e6], reqs: [REQ-NOTIFY-001]}
   - {id: S4, name: content-source-service, status: complete, commits: [1df6016, d798416, 69fd785], reqs: [REQ-SRC-001, REQ-SRC-002]}
-  - {id: S5, name: feishu-channel-adapter, status: pending, reqs: [REQ-CHANNEL-001, REQ-CHANNEL-002, REQ-CHANNEL-003, REQ-CHANNEL-004, REQ-CHANNEL-005]}
+  - {id: S5, name: feishu-channel-adapter, status: complete, commits: [19c263b, 60692eb, ad46ce6, b89901f, ff6593e, 750d7e6], reqs: [REQ-CHANNEL-001, REQ-CHANNEL-002, REQ-CHANNEL-003, REQ-CHANNEL-004, REQ-CHANNEL-005]}
   - {id: S6, name: execution-artifacts-ui, status: pending, reqs: [REQ-FLOW-030]}
   - {id: S7, name: sources-ui, status: pending, reqs: [REQ-SRC-003]}
   - {id: S8, name: notification-ui, status: pending, reqs: [REQ-NOTIFY-002]}

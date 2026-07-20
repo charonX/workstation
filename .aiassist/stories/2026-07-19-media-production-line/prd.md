@@ -71,8 +71,8 @@
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | 在 Settings 填入飞书 App ID / App Secret 并保存 | 校验非空，保存凭据，建立长连接 | settings 持久化 |
-| 2 | 查看通道状态 | 显示"在线"（连接中/在线/掉线三态） | CLI/API 可查状态 |
+| 1 | 在 Settings 填入飞书 App ID / App Secret 并保存 | 校验非空，保存凭据，**异步**启动长连接；返回首次连接尝试状态/错误 | settings 持久化；API/CLI 返回 `{appId, status, error?}` |
+| 2 | 查看通道状态 | 显示"在线"（连接中/在线/掉线三态） | CLI/API 可查状态；状态变更实时广播事件 |
 
 **OP-2 内容源管理（CLI + UI 双入口）**（稳定块 3）
 
@@ -266,7 +266,8 @@
 - **砍项预案（白纸黑字留退路，由签核门裁决）**：结晶/测试阶段若判定 story 太厚，按序砍——① 飞书文档同步（稳定块 7）：降级为仅文件落盘 + 飞书文字消息；② 内容源类型收窄：仅 `webpage`/`rss` 进验收，`x`/`wechat` 移出；③ 通知中心（稳定块 10）：降级为仅 API + 最简列表（无徽标/无跳转）；④ 内容源管理 UI：降级为仅 CLI/API。砍任一项须同步更新本 PRD 稳定块与验收场景。
 - **调度有效性边界（review R1 拆清）**：没有运行中的 server 进程就没有到点触发——定时触发只在 App 运行中或常驻 headless server 期间有效；错过的触发不补偿。CLI 手动运行自起 headless 与无人值守定时是两种独立语义（OP-6a / OP-6b）。
 - **场景 A 内容来源锁定（review R2）**：日报以登记内容源聚合为主（验收锚定），agent 主题搜索为补充（不进验收）；此约束同时限定移动块 6 的设计方向。
-- **原型验收裁决（2026-07-19，5 个边界问题）**：① 产物"打开/在文件夹中显示"按钮保留，/tech-design 明确 Electron preload 暴露面（shell.openPath 等）；② 通知跳转模式确认（产物产出→执行详情），写入稳定块 10；③ 通道"恢复"事件归入通道状态类、绿色，确认；④ 内容源与 flow 关联=tag 筛选，反查接口与删除警告取消（移动块 6 关闭）；⑤ 凭据保存即连接（移动块 7 关闭）。
+- **原型验收裁决（2026-07-19，5 个边界问题）**：① 产物"打开/在文件夹中显示"按钮保留，/tech-design 明确 Electron preload 暴露面（shell.openPath 等）；② 通知跳转模式确认（产物产出→执行详情），写入稳定块 10；③ 通道"恢复"事件归入通道状态类、绿色，确认；④ 内容源与 flow 关联=tag 筛选，反查接口与删除警告取消（移动块 6 关闭）；⑤ 凭据保存即连接（移动块 7 关闭），连接为异步并返回首次尝试状态，同时提供显式 reconnect 入口。
+- **BUILD 回流补充（2026-07-19）**：S5 飞书通道实现 initially 未接入真实 WebSocket 长连接，经 PRD 对齐后回流 `/tech-design`；确认使用 `@larksuiteoapi/node-sdk` WSClient + 独立 `channelManager`；adapter 通过回调与 channelManager 交互，由 channelManager 桥接到 eventBus；测试 seam 以 adapter 接口注入 + fake REST server 为主。
 - **ADR-003/004 文件已补录**（review R4）：原仅存在于 architecture.md 章节与 README 索引，2026-07-19 补建实体文件。
 - **Feishu OpenAPI 前置调研**：长连接事件模型、消息收发、docx API 的接口细节建议先 `/research` 再进 `/tech-design`（workflow 支持该顺序）。
 - **日报默认模板**（移动块 1 的初始值）：版块 = 头条 / 新工具 / 研究进展 / 观点，各 3–5 条，每条一句摘要 + 原文链接。

@@ -16,3 +16,4 @@
 | ADR-004 | Project 与 Skill 通过文件系统软连接关联 | 已接受 | 2026-07-16 | REQ-WORKSPACE-006、REQ-SKILL-004 |
 | ADR-005 | Claude Agent 节点采用 Claude Agent SDK 并复用本机凭证 | 已接受 | 2026-07-17 | REQ-FLOW-020、REQ-FLOW-026、REQ-FLOW-028 |
 | ADR-006 | 单 server 运行时与统一本地存储 | 已接受 | 2026-07-19 | 待结晶（2026-07-19-media-production-line） |
+| ADR-007 | 飞书通道采用官方 SDK WSClient 与独立 channelManager | 已接受 | 2026-07-19 | REQ-CHANNEL-001 ~ REQ-CHANNEL-005 |
