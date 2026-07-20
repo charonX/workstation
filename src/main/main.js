@@ -144,17 +144,19 @@ function resolveArtifactPath(projectRoot, artifactPath) {
     : path.resolve(projectRoot, artifactPath);
 }
 
-ipcMain.handle("opc-open-artifact-path", async (_event, { projectRoot, artifactPath }) => {
+function assertArtifactPathAllowed(projectRoot, artifactPath) {
   if (!isArtifactPathAllowed(projectRoot, artifactPath)) {
     throw new Error("E-ARTIFACT-PATH-FORBIDDEN");
   }
+}
+
+ipcMain.handle("opc-open-artifact-path", async (_event, { projectRoot, artifactPath }) => {
+  assertArtifactPathAllowed(projectRoot, artifactPath);
   return shell.openPath(resolveArtifactPath(projectRoot, artifactPath));
 });
 
 ipcMain.handle("opc-show-artifact-in-folder", async (_event, { projectRoot, artifactPath }) => {
-  if (!isArtifactPathAllowed(projectRoot, artifactPath)) {
-    throw new Error("E-ARTIFACT-PATH-FORBIDDEN");
-  }
+  assertArtifactPathAllowed(projectRoot, artifactPath);
   shell.showItemInFolder(resolveArtifactPath(projectRoot, artifactPath));
 });
 

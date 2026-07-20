@@ -36,6 +36,20 @@ function normalizeArtifact(artifact) {
   };
 }
 
+function openArtifactPath(projectPath, artifactPath) {
+  if (!projectPath) return;
+  window.opc
+    .openArtifactPath(projectPath, artifactPath)
+    .catch((err) => console.error("打开产物失败:", err));
+}
+
+function showArtifactInFolder(projectPath, artifactPath) {
+  if (!projectPath) return;
+  window.opc
+    .showArtifactInFolder(projectPath, artifactPath)
+    .catch((err) => console.error("在文件夹中显示失败:", err));
+}
+
 export default function ExecutionDetail({ execution }) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("nodes");
@@ -209,24 +223,14 @@ export default function ExecutionDetail({ execution }) {
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
-                            onClick={() => {
-                              if (!execution.projectPath) return;
-                              window.opc
-                                .openArtifactPath(execution.projectPath, artifactPath)
-                                .catch((err) => console.error("打开产物失败:", err));
-                            }}
+                            onClick={() => openArtifactPath(execution.projectPath, artifactPath)}
                           >
                             打开
                           </button>
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm"
-                            onClick={() => {
-                              if (!execution.projectPath) return;
-                              window.opc
-                                .showArtifactInFolder(execution.projectPath, artifactPath)
-                                .catch((err) => console.error("在文件夹中显示失败:", err));
-                            }}
+                            onClick={() => showArtifactInFolder(execution.projectPath, artifactPath)}
                           >
                             在文件夹中显示
                           </button>
