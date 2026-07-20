@@ -243,8 +243,10 @@ Slice 3 标记完成。
   - S3 回归：`notifications.test.js` → 6/6 pass
   - 合计 30/30 pass
 - diff 范围检查：仅修改实现代码（`src/services/contentSourceService.js`, `src/http/routes/contentSources.js`, `src/http/server.js`, `src/cli/commands/source.js`, `src/cli/opc-workstation.js`, `src/db.js`），未触碰业务测试
-- PRD 对齐子代理：待复查
-- Refactor subagent：待执行
+- PRD 对齐子代理：`ALIGNED`
+- Refactor subagent：未触发（改动范围小、风格与既有模块一致）
+- 提交记录：
+  - `[build] Slice 4: content source service` (`1df6016`)
 
 Slice 4 标记完成。
 
