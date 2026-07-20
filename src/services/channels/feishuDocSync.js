@@ -11,37 +11,27 @@ async function fetchTenantAccessToken(domain, credentials) {
   return data.tenant_access_token;
 }
 
-async function postJson(url, body, token) {
+async function requestJson(method, url, body, token) {
   const res = await fetch(url, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body)
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok && data.code === 0, status: res.status, data };
+}
+
+async function postJson(url, body, token) {
+  return requestJson("POST", url, body, token);
 }
 
 async function patchJson(url, body, token) {
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok && data.code === 0, status: res.status, data };
+  return requestJson("PATCH", url, body, token);
 }
 
 async function writeDocumentBlocks(domain, documentId, blocks, token) {
-  const res = await fetch(
-    `${domain}/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/blocks/${encodeURIComponent(documentId)}/children`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ children: blocks })
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok && data.code === 0, status: res.status, data };
+  const url = `${domain}/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/blocks/${encodeURIComponent(documentId)}/children`;
+  return requestJson("POST", url, { children: blocks }, token);
 }
 
 export async function syncMarkdownToFeishuDoc({ markdown, title, domain, credentials } = {}) {

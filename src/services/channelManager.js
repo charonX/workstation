@@ -144,18 +144,18 @@ export function getAdapter(channelType) {
   return channels.get(channelType)?.adapter || null;
 }
 
-export async function send(channelType, payload) {
+async function dispatchToAdapter(channelType, method, payload) {
   const adapter = getAdapter(channelType);
   if (!adapter) {
     throw new Error(`E-CHANNEL-SEND: ${channelType} adapter is not available`);
   }
-  return adapter.send(payload);
+  return adapter[method](payload);
+}
+
+export async function send(channelType, payload) {
+  return dispatchToAdapter(channelType, "send", payload);
 }
 
 export async function reply(channelType, payload) {
-  const adapter = getAdapter(channelType);
-  if (!adapter) {
-    throw new Error(`E-CHANNEL-SEND: ${channelType} adapter is not available`);
-  }
-  return adapter.reply(payload);
+  return dispatchToAdapter(channelType, "reply", payload);
 }

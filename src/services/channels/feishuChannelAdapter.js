@@ -64,6 +64,22 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     }
   }
 
+  function closeWebSocketClient(context = "") {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (wsClient) {
+      try {
+        wsClient.close({ force: true });
+      } catch (err) {
+        const suffix = context ? ` in ${context}` : "";
+        log.error(`[feishuChannelAdapter] failed to close WSClient${suffix}:`, err.message);
+      }
+      wsClient = null;
+    }
+  }
+
   async function fetchTenantAccessToken() {
     const url = `${baseUrl}/open-apis/auth/v3/tenant_access_token/internal`;
     const res = await fetch(url, {
@@ -220,18 +236,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     },
 
     async stop() {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      if (wsClient) {
-        try {
-          wsClient.close({ force: true });
-        } catch (err) {
-          log.error("[feishuChannelAdapter] failed to close WSClient:", err.message);
-        }
-        wsClient = null;
-      }
+      closeWebSocketClient();
       tenantAccessToken = null;
       setStatus("offline", "stopped");
     },
@@ -289,18 +294,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     },
 
     simulateDisconnectForTests({ reconnectWillFail = false } = {}) {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      if (wsClient) {
-        try {
-          wsClient.close({ force: true });
-        } catch (err) {
-          log.error("[feishuChannelAdapter] failed to close WSClient in simulate disconnect:", err.message);
-        }
-        wsClient = null;
-      }
+      closeWebSocketClient("simulate disconnect");
       setStatus("offline", reconnectWillFail ? "reconnect failed" : "disconnected");
       log.info("[feishuChannelAdapter] simulated disconnect");
 

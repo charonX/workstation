@@ -50,6 +50,14 @@ export function createImRouter({
     throw new Error("E-CHANNEL-CONFIG: no reply channel available");
   };
 
+  async function safeReply(payload, context) {
+    try {
+      return await replyFn(payload);
+    } catch (err) {
+      console.error(`[imRouter] failed to reply ${context}:`, err.message);
+    }
+  }
+
   const messageHandler = async (msg) => {
     const { messageId, chatId, senderId, text } = msg || {};
     if (!messageId) return;
@@ -61,31 +69,19 @@ export function createImRouter({
 
     const url = extractFirstUrl(text);
     if (!url) {
-      try {
-        await replyFn({ messageId, text: "发送 http(s) 链接即可速存到素材库" });
-      } catch (err) {
-        console.error("[imRouter] failed to reply usage hint:", err.message);
-      }
+      await safeReply({ messageId, text: "发送 http(s) 链接即可速存到素材库" }, "usage hint");
       return;
     }
 
     const binding = channelBindingService.getBinding("feishu");
     if (!binding) {
-      try {
-        await replyFn({ messageId, text: "未绑定链接速存 flow，请先从模板创建" });
-      } catch (err) {
-        console.error("[imRouter] failed to reply no-binding hint:", err.message);
-      }
+      await safeReply({ messageId, text: "未绑定链接速存 flow，请先从模板创建" }, "no-binding hint");
       return;
     }
 
     const flow = flowService.getFlow(binding.flowId);
     if (!flow || flow.status !== "published") {
-      try {
-        await replyFn({ messageId, text: "链接速存 flow 配置异常（flow 不存在或未发布），请检查模板实例" });
-      } catch (err) {
-        console.error("[imRouter] failed to reply invalid-binding hint:", err.message);
-      }
+      await safeReply({ messageId, text: "链接速存 flow 配置异常（flow 不存在或未发布），请检查模板实例" }, "invalid-binding hint");
       try {
         notificationService.notify({
           type: "channel-status",
@@ -117,19 +113,11 @@ export function createImRouter({
       const errText = (err.message && (err.message.includes("E-QUEUE-FULL") || err.message.includes("队列已满")))
         ? "队列已满，稍后再发"
         : `入队失败：${err.message || "请稍后重试"}`;
-      try {
-        await replyFn({ messageId, text: errText });
-      } catch (replyErr) {
-        console.error("[imRouter] failed to reply enqueue error:", replyErr.message);
-      }
+      await safeReply({ messageId, text: errText }, "enqueue error");
       return;
     }
 
-    try {
-      await replyFn({ messageId, text: `收到，排队中（第 ${queuePosition} 位）` });
-    } catch (err) {
-      console.error("[imRouter] failed to reply queue position:", err.message);
-    }
+    await safeReply({ messageId, text: `收到，排队中（第 ${queuePosition} 位）` }, "queue position");
   };
 
   let unsubscribe = null;
