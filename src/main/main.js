@@ -23,14 +23,11 @@ process.env.OPC_WORKSTATION_CONFIG_DIR = userData;
 // REQ-WORKSPACE-008/010: use the unified workspace DB path and migrate legacy userData/data.db if present.
 const newDbPath = defaultDbPath();
 process.env.DB_PATH = newDbPath;
-const legacyDbPath = path.join(userData, "data.db");
-if (fsSync.existsSync(legacyDbPath) && !fsSync.existsSync(newDbPath)) {
-  migrateLegacyDb({
-    legacyPath: legacyDbPath,
-    targetPath: newDbPath,
-    logger: (entry) => console.log(JSON.stringify(entry))
-  });
-}
+migrateLegacyDb({
+  legacyPath: path.join(userData, "data.db"),
+  targetPath: newDbPath,
+  logger: (entry) => console.log(JSON.stringify(entry))
+});
 
 const { startServer, stopServer } = await import("../http/server.js");
 

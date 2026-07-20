@@ -56,8 +56,8 @@ export function startServer(options = {}) {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
       activeServers.add(server);
-      const owner = options.owner ?? process.pid;
-      server._opcOwner = String(owner);
+      const owner = String(options.owner ?? process.pid);
+      server._opcOwner = owner;
       try {
         registerServerRecord(port, process.pid, owner);
       } catch {
@@ -67,7 +67,7 @@ export function startServer(options = {}) {
       runExecutionLogPurge();
       // 触发点 B：每日定时清理。
       purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
-      resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner: server._opcOwner });
+      resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
 }

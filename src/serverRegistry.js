@@ -117,7 +117,7 @@ export function unregisterServerRecord(owner) {
   }
 }
 
-function sleep(ms) {
+function sleepAsync(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -160,7 +160,7 @@ export async function takeoverExistingServer({ port, pid, timeoutMs = 5000 }) {
     if (!(await isServerReachable(port))) {
       return;
     }
-    await sleep(150);
+    await sleepAsync(150);
   }
 
   const err = new Error(`E-SERVER-TAKEOVER-TIMEOUT: existing server at ${baseUrl} did not shut down within ${timeoutMs}ms`);
