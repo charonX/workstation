@@ -447,4 +447,16 @@ Slice 5 实现与已知签核测试覆盖完成。
 - E2E 未运行：`artifactsTab.test.cjs` 依赖 `rebuild:electron` 与 Playwright 环境，本次未执行；实现结构与 E2E locator（`.artifact-row` / `[data-testid='artifact-row']`、`.artifact-path` / `[data-testid='artifact-path']`、按钮文案「打开」「在文件夹中显示」、默认 tab 行为）已按签核对齐。
 - 回归观察：`tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js` 有两条用例在本地以 `node --test` 运行时状态停留在 `queued`，与本切片改动无关（未触碰执行队列/引擎），作为 concern 记录。
 
+#### 父代理补充验证与 PRD 对齐
+
+- E2E 实际运行：
+  - 命令：`npm run rebuild:electron && npx playwright test tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/e2e/artifactsTab.test.cjs`
+  - 结果：4/4 pass（产物 tab 可见、成功列表、失败空态、默认 tab 行为）。
+- 修复记录：
+  - `cb36299`：preload 不再直接 require Node 模块 / guard，改为通过 IPC 调用 main 进程，避免 Electron sandbox 下 preload 崩溃导致「Unable to connect to the workstation server」。
+  - `2634340`：E2E fixture 增加 `DB_PATH` 隔离，每次运行使用临时 DB；成功 case 在创建执行后播种产物文件。
+  - `6b58df5`：将播种时机改为「先写文件、执行启动后 touch 刷新 mtime」，避免空 flow 执行过快导致 race。
+  - `516aeb4`：修复 `artifactPathGuard` 对 `projectRoot === '/'` 的 prefix 判断。
+- PRD 对齐子代理复查：`ALIGNED`。
+
 Slice 6 标记完成。
