@@ -25,6 +25,7 @@ function scheduleTask(schedule) {
     // don't see a compensation-like burst when the server restarts.
     if (Date.now() - loadedAt < LOAD_GRACE_MS) return;
     eventBus.publish("schedule:triggered", {
+      scheduleId: schedule.id,
       projectId: schedule.projectId,
       flowId: schedule.flowId,
       variables

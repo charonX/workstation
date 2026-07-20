@@ -70,6 +70,7 @@ function toListView(schedule) {
     cron: schedule.cron,
     enabled: schedule.enabled,
     variables: schedule.variables,
+    error: schedule.error,
     cronDescription: taskService.getCronDescription(schedule.cron)
   };
 }

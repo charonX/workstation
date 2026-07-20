@@ -4,7 +4,7 @@ import { run } from "../flowEngine/flowEngine.js";
 import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
 import { createExecutionQueue, recoverInterruptedExecutions as recoverInterruptedExecutionsFromQueue } from "./executionQueue.js";
-import { validateCron } from "./schedulerService.js";
+import * as schedulerService from "./schedulerService.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -71,8 +71,8 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
     );
   }
   const insertSchedule = db.prepare(`
-    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   for (const schedule of seed.schedules || []) {
     insertSchedule.run(
@@ -81,7 +81,8 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
       schedule.flowId,
       schedule.cron,
       schedule.enabled !== false ? 1 : 0,
-      JSON.stringify(schedule.variables ?? {})
+      JSON.stringify(schedule.variables ?? {}),
+      schedule.error ?? null
     );
   }
 }
@@ -226,20 +227,29 @@ function rowToSchedule(row) {
     flowId: row.flowId,
     cron: row.cron,
     enabled: Boolean(row.enabled),
-    variables: JSON.parse(row.variables || "{}")
+    variables: JSON.parse(row.variables || "{}"),
+    error: row.error || null
   };
 }
 
-export function createTask({ projectId, flowId, trigger, variables }) {
+export function createTask({ projectId, flowId, trigger, variables, scheduleId }) {
   if (!projectId) throw new Error("Project is required");
   const project = projectService.getProjectDetail(projectId);
   if (!project) throw new Error("Project not found");
   const flow = flowService.getFlow(flowId);
-  if (!flow) throw new Error("Flow not found");
 
-  if (trigger === "schedule" && flow.status !== "published") {
-    console.error(`E-SCHED-FLOW-INVALID: Scheduled execution skipped for flow ${flowId} (status=${flow.status})`);
-    return { skipped: true, reason: "E-SCHED-FLOW-INVALID" };
+  if (trigger === "schedule") {
+    if (!flow || flow.status !== "published") {
+      const reason = "E-SCHED-FLOW-INVALID";
+      const statusLabel = flow ? flow.status : "missing";
+      console.error(`${reason}: Scheduled execution skipped for flow ${flowId} (status=${statusLabel})`);
+      if (scheduleId) {
+        markScheduleInvalid(scheduleId, reason);
+      }
+      return { skipped: true, reason };
+    }
+  } else if (!flow) {
+    throw new Error("Flow not found");
   }
 
   const inputVariables = parseVariables(variables);
@@ -583,10 +593,23 @@ async function collectArtifacts(project, execution) {
   return artifacts;
 }
 
+export function markScheduleInvalid(scheduleId, error) {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM schedules WHERE id = ?").get(scheduleId);
+  if (!row) return undefined;
+  db.prepare("UPDATE schedules SET enabled = 0, error = ? WHERE id = ?").run(error, scheduleId);
+  try {
+    schedulerService.remove(scheduleId);
+  } catch {
+    // Ignore teardown races.
+  }
+  return rowToSchedule({ ...row, enabled: 0, error });
+}
+
 export function createSchedule({ projectId, flowId, cron, variables }) {
   if (!projectId) throw new Error("Project is required");
   if (!cron) throw new Error("Cron expression is required");
-  validateCron(cron);
+  schedulerService.validateCron(cron);
   const schedule = {
     id: nextScheduleId(),
     projectId,
@@ -597,15 +620,16 @@ export function createSchedule({ projectId, flowId, cron, variables }) {
   };
   const db = getDb();
   db.prepare(`
-    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO schedules (id, projectId, flowId, cron, enabled, variables, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     schedule.id,
     schedule.projectId,
     schedule.flowId,
     schedule.cron,
     schedule.enabled ? 1 : 0,
-    JSON.stringify(schedule.variables)
+    JSON.stringify(schedule.variables),
+    schedule.error ?? null
   );
   return { ...schedule };
 }
@@ -776,7 +800,7 @@ export function getCronDescription(cronExpression) {
 }
 
 export function subscribeToScheduleTriggers() {
-  return eventBus.subscribe("schedule:triggered", ({ projectId, flowId, variables }) => {
-    createTask({ projectId, flowId, trigger: "schedule", variables });
+  return eventBus.subscribe("schedule:triggered", ({ scheduleId, projectId, flowId, variables }) => {
+    createTask({ scheduleId, projectId, flowId, trigger: "schedule", variables });
   });
 }

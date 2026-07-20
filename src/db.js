@@ -202,7 +202,8 @@ function initSchema(database) {
       flowId TEXT NOT NULL,
       cron TEXT NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
-      variables TEXT NOT NULL DEFAULT '{}'
+      variables TEXT NOT NULL DEFAULT '{}',
+      error TEXT
     );
 
     CREATE TABLE IF NOT EXISTS executions (
@@ -260,6 +261,9 @@ function migrateSchema(database) {
   }
   if (!hasColumn(database, "schedules", "variables")) {
     database.exec(`ALTER TABLE schedules ADD COLUMN variables TEXT NOT NULL DEFAULT '{}'`);
+  }
+  if (!hasColumn(database, "schedules", "error")) {
+    database.exec(`ALTER TABLE schedules ADD COLUMN error TEXT`);
   }
   if (!hasColumn(database, "executions", "artifacts")) {
     database.exec(`ALTER TABLE executions ADD COLUMN artifacts TEXT`);
