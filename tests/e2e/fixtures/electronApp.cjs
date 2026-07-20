@@ -64,11 +64,12 @@ async function startViteDevServer() {
  * Start the Electron application with a temporary userData directory.
  * Waits for the HTTP server to be ready by polling server.json in userData.
  *
- * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, firstWindow: import('@playwright/test').Page, apiBaseUrl: string, userDataDir: string }>}
+ * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, firstWindow: import('@playwright/test').Page, apiBaseUrl: string, userDataDir: string, dbPath: string }>}
  */
 async function startElectronApp() {
   await startViteDevServer();
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-"));
+  const dbPath = path.join(userDataDir, "data.db");
 
   const electronApp = await electron.launch({
     args: [
@@ -79,6 +80,7 @@ async function startElectronApp() {
     env: {
       ...process.env,
       NODE_ENV: "development",
+      DB_PATH: dbPath,
     },
   });
 
@@ -111,7 +113,7 @@ async function startElectronApp() {
 
   const apiBaseUrl = `http://127.0.0.1:${serverJson.port}`;
 
-  return { electronApp, firstWindow, apiBaseUrl, userDataDir };
+  return { electronApp, firstWindow, apiBaseUrl, userDataDir, dbPath };
 }
 
 /**

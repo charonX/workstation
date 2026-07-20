@@ -3,7 +3,9 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true
+// ASSERTIONS-SIGNED: false
+// NOTE: 本测试经 /test-author 修复：E2E fixture 增加 DB_PATH 隔离；成功 case 在创建执行后立即写产物文件，
+// 使 collectArtifacts 能登记到 artifacts。修复后需重新签核。
 
 /**
  * Executions 产物 tab 与打开动作（E2E）。
@@ -16,6 +18,8 @@
  */
 
 const { test, expect } = require("@playwright/test");
+const fs = require("node:fs");
+const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow, createExecution } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
@@ -75,10 +79,13 @@ test.describe("REQ-FLOW-030 Executions 产物 tab（E2E，UX 原型映射）", (
   });
 
   test("成功执行的产物 tab 展示 artifacts 列表（文件名/路径）与打开动作按钮", async () => {
-    // 前置：一次成功执行且登记了产物（产物登记由 REQ-SCHEDULE-008 落地；
-    // 本用例在其 seam 就绪前将红在「列表行为空」，属功能未实现的预期红）。
+    // 前置：一次成功执行且登记了产物（产物登记由 REQ-SCHEDULE-008 落地）。
+    // 空 flow 不会自动产出文件，因此在创建执行后立即写一个产物文件，让 collectArtifacts 登记。
     const flow = await createFlow(apiBaseUrl, { name: "Artifacts List Flow", projectId: project.id });
     const execution = await createExecution(apiBaseUrl, { projectId: project.id, flowId: flow.id });
+    const artifactFile = path.join(project.localPath, "outputs/daily/2026-07-19-ai-daily.md");
+    fs.mkdirSync(path.dirname(artifactFile), { recursive: true });
+    fs.writeFileSync(artifactFile, "# daily digest", "utf8");
     await waitForTerminalStatus(apiBaseUrl, execution.id);
 
     await openExecutionsPage(firstWindow);
