@@ -43,7 +43,8 @@ function isValidHttpUrl(value) {
 
 function validateFields({ name, type, tags, config }, { partial = false } = {}) {
   if (!partial || name !== undefined) {
-    if (typeof name !== "string" || name.trim().length === 0 || name.trim().length > 64) {
+    const trimmed = typeof name === "string" ? name.trim() : "";
+    if (trimmed.length === 0 || trimmed.length > 64) {
       throw validationError("名称必填且不超过 64 字符", "E-SRC-NAME");
     }
   }
@@ -75,15 +76,12 @@ function validateFields({ name, type, tags, config }, { partial = false } = {}) 
   }
 }
 
-function getDbRef() {
-  return getDb();
-}
-
 export function create({ name, type, tags, config, enabled } = {}) {
   validateFields({ name, type, tags, config });
 
-  const db = getDbRef();
-  const existing = db.prepare("SELECT id FROM content_sources WHERE name = ?").get(name.trim());
+  const db = getDb();
+  const trimmedName = name.trim();
+  const existing = db.prepare("SELECT id FROM content_sources WHERE name = ?").get(trimmedName);
   if (existing) {
     throw validationError("内容源名称已存在", "E-SRC-DUP");
   }
@@ -96,13 +94,13 @@ export function create({ name, type, tags, config, enabled } = {}) {
   db.prepare(
     `INSERT INTO content_sources (id, name, type, tags, config, enabled, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, name.trim(), type, JSON.stringify(normalizedTags), config.trim(), normalizedEnabled, createdAt);
+  ).run(id, trimmedName, type, JSON.stringify(normalizedTags), config.trim(), normalizedEnabled, createdAt);
 
   return get(id);
 }
 
 export function list() {
-  const db = getDbRef();
+  const db = getDb();
   const rows = db.prepare("SELECT * FROM content_sources ORDER BY createdAt DESC").all();
   return rows.map(rowToSource);
 }
@@ -117,7 +115,7 @@ export function listByTag({ tag, enabledOnly = false } = {}) {
 }
 
 export function get(id) {
-  const db = getDbRef();
+  const db = getDb();
   const row = db.prepare("SELECT * FROM content_sources WHERE id = ?").get(id);
   if (!row) return undefined;
   return rowToSource(row);
@@ -136,7 +134,7 @@ export function update(id, fields = {}) {
     { partial: true }
   );
 
-  const db = getDbRef();
+  const db = getDb();
   const updates = [];
   const params = [];
 
@@ -188,7 +186,7 @@ export function toggle(id) {
 }
 
 export function deleteSource(id) {
-  const db = getDbRef();
+  const db = getDb();
   const result = db.prepare("DELETE FROM content_sources WHERE id = ?").run(id);
   return result.changes > 0;
 }

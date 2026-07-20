@@ -2,58 +2,63 @@ import * as contentSourceService from "../../services/contentSourceService.js";
 
 export function handleContentSources(req, res, body, pathParts) {
   if (pathParts.length === 0) {
-    if (req.method === "GET") {
-      const url = new URL(req.url, `http://${req.headers.host}`);
-      const tag = url.searchParams.get("tag");
-      const enabledOnly = url.searchParams.get("enabled") === "1";
-      const items = tag
-        ? contentSourceService.listByTag({ tag, enabledOnly })
-        : contentSourceService.list();
-      return ok(res, items);
-    }
-
-    if (req.method === "POST") {
-      try {
-        const source = contentSourceService.create(body);
-        res.writeHead(201, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify(source));
-      } catch (err) {
-        return handleServiceError(res, err);
-      }
-    }
-
-    return notFound(res);
+    return handleRoot(req, res, body);
   }
 
-  const sourceId = pathParts[0];
-
   if (pathParts.length === 1) {
-    if (req.method === "GET") {
-      const source = contentSourceService.get(sourceId);
-      if (!source) return notFound(res, "Content source not found");
-      return ok(res, source);
-    }
+    return handleById(req, res, body, pathParts[0]);
+  }
 
-    if (req.method === "PATCH") {
-      try {
-        const updated =
-          Object.keys(body || {}).length === 0
-            ? contentSourceService.toggle(sourceId)
-            : contentSourceService.update(sourceId, body);
-        if (!updated) return notFound(res, "Content source not found");
-        return ok(res, updated);
-      } catch (err) {
-        return handleServiceError(res, err);
-      }
-    }
+  return notFound(res);
+}
 
-    if (req.method === "DELETE") {
-      const deleted = contentSourceService.deleteSource(sourceId);
-      if (!deleted) return notFound(res, "Content source not found");
-      return noContent(res);
-    }
+function handleRoot(req, res, body) {
+  if (req.method === "GET") {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const tag = url.searchParams.get("tag");
+    const enabledOnly = url.searchParams.get("enabled") === "1";
+    const items = tag
+      ? contentSourceService.listByTag({ tag, enabledOnly })
+      : contentSourceService.list();
+    return ok(res, items);
+  }
 
-    return notFound(res);
+  if (req.method === "POST") {
+    try {
+      const source = contentSourceService.create(body);
+      return created(res, source);
+    } catch (err) {
+      return handleServiceError(res, err);
+    }
+  }
+
+  return notFound(res);
+}
+
+function handleById(req, res, body, sourceId) {
+  if (req.method === "GET") {
+    const source = contentSourceService.get(sourceId);
+    if (!source) return notFound(res, "Content source not found");
+    return ok(res, source);
+  }
+
+  if (req.method === "PATCH") {
+    try {
+      const updated =
+        Object.keys(body || {}).length === 0
+          ? contentSourceService.toggle(sourceId)
+          : contentSourceService.update(sourceId, body);
+      if (!updated) return notFound(res, "Content source not found");
+      return ok(res, updated);
+    } catch (err) {
+      return handleServiceError(res, err);
+    }
+  }
+
+  if (req.method === "DELETE") {
+    const deleted = contentSourceService.deleteSource(sourceId);
+    if (!deleted) return notFound(res, "Content source not found");
+    return noContent(res);
   }
 
   return notFound(res);
@@ -70,9 +75,17 @@ function handleServiceError(res, err) {
   return internalError(res, err.message);
 }
 
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
+function sendJson(res, status, data) {
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+function ok(res, data) {
+  return sendJson(res, 200, data);
+}
+
+function created(res, data) {
+  return sendJson(res, 201, data);
 }
 
 function noContent(res) {
@@ -81,21 +94,17 @@ function noContent(res) {
 }
 
 function badRequest(res, message, code = "VALIDATION_ERROR") {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: code, message }));
+  return sendJson(res, 400, { error: code, message });
 }
 
 function conflict(res, message, code = "CONFLICT") {
-  res.writeHead(409, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: code, message }));
+  return sendJson(res, 409, { error: code, message });
 }
 
 function notFound(res, message = "Not found") {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message }));
+  return sendJson(res, 404, { error: "NOT_FOUND", message });
 }
 
 function internalError(res, message) {
-  res.writeHead(500, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "INTERNAL_ERROR", message }));
+  return sendJson(res, 500, { error: "INTERNAL_ERROR", message });
 }

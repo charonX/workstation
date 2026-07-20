@@ -36,15 +36,7 @@ export async function list(flags = {}) {
 
 export async function update(flags) {
   const server = await ensureServer();
-  const body = {};
-  if (flags.name !== undefined) body.name = flags.name;
-  if (flags.type !== undefined) body.type = flags.type;
-  if (flags.config !== undefined) body.config = flags.config;
-  if (flags.tags !== undefined) body.tags = parseTags(flags.tags);
-  if (flags.enabled !== undefined) {
-    body.enabled = flags.enabled === "false" ? false : Boolean(flags.enabled);
-  }
-
+  const body = buildUpdateBody(flags);
   const res = await fetch(`${server.baseUrl}/api/content-sources/${flags.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -63,23 +55,30 @@ export async function toggle(flags) {
   return handleResponse(res);
 }
 
-async function deleteSource(flags) {
+export async function deleteSource(flags) {
   const server = await ensureServer();
   const res = await fetch(`${server.baseUrl}/api/content-sources/${flags.id}`, { method: "DELETE" });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ message: "Request failed" }));
-    const err = new Error(data.message || "Request failed");
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
+  await handleResponse(res, 204);
   return { success: true };
 }
 
 export { deleteSource as delete };
 
+function buildUpdateBody(flags) {
+  const body = {};
+  if (flags.name !== undefined) body.name = flags.name;
+  if (flags.type !== undefined) body.type = flags.type;
+  if (flags.config !== undefined) body.config = flags.config;
+  if (flags.tags !== undefined) body.tags = parseTags(flags.tags);
+  if (flags.enabled !== undefined) {
+    body.enabled = flags.enabled === "false" ? false : Boolean(flags.enabled);
+  }
+  return body;
+}
+
 async function handleResponse(res, expectedStatus) {
-  const data = await res.json();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
   if (!res.ok || (expectedStatus && res.status !== expectedStatus)) {
     const err = new Error(data.message || "Request failed");
     err.status = res.status;
