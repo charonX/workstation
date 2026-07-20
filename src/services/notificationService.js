@@ -38,11 +38,12 @@ export function notify({ type, title, body, executionId } = {}) {
     const dbRef = getDbRef();
     const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
+    const normalizedExecutionId = executionId ?? null;
     dbRef.prepare(
       `INSERT INTO notifications (id, type, title, body, executionId, createdAt, readAt)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, type, title, body, executionId ?? null, createdAt, null);
-    return rowToNotification({ id, type, title, body, executionId: executionId ?? null, createdAt, readAt: null });
+    ).run(id, type, title, body, normalizedExecutionId, createdAt, null);
+    return rowToNotification({ id, type, title, body, executionId: normalizedExecutionId, createdAt, readAt: null });
   } catch (err) {
     console.error(`E-NOTIFY-FAILED: failed to write notification: ${err.message}`);
     if (isDbClosedError(err)) {
@@ -54,10 +55,12 @@ export function notify({ type, title, body, executionId } = {}) {
 
 export function list({ unreadOnly = false } = {}) {
   const dbRef = getDbRef();
-  const where = unreadOnly ? "WHERE readAt IS NULL" : "";
-  const rows = dbRef.prepare(
-    `SELECT * FROM notifications ${where} ORDER BY createdAt DESC`
-  ).all();
+  let sql = "SELECT * FROM notifications";
+  if (unreadOnly) {
+    sql += " WHERE readAt IS NULL";
+  }
+  sql += " ORDER BY createdAt DESC";
+  const rows = dbRef.prepare(sql).all();
   return rows.map(rowToNotification);
 }
 

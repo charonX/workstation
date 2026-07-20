@@ -571,9 +571,8 @@ function writeExecutionNotification(executionId) {
   const execution = getExecution(executionId);
   if (!execution) return;
   if (execution.status === "success") {
-    const artifacts = execution.artifacts || [];
-    if (artifacts.length === 0) return;
-    const paths = artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
+    const paths = extractArtifactPaths(execution);
+    if (paths.length === 0) return;
     notificationService.notify({
       type: "artifact",
       title: "产物产出",
