@@ -31,6 +31,19 @@ async function patchJson(url, body, token) {
   return { ok: res.ok && data.code === 0, status: res.status, data };
 }
 
+async function writeDocumentBlocks(domain, documentId, blocks, token) {
+  const res = await fetch(
+    `${domain}/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/blocks/${encodeURIComponent(documentId)}/children`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ children: blocks })
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok && data.code === 0, status: res.status, data };
+}
+
 export async function syncMarkdownToFeishuDoc({ markdown, title, domain, credentials } = {}) {
   if (!markdown || !title || !domain || !credentials?.appId || !credentials?.appSecret) {
     return { error: { code: "E-DOC-SYNC-FAILED", stage: "input" } };
@@ -69,7 +82,17 @@ export async function syncMarkdownToFeishuDoc({ markdown, title, domain, credent
     return { error: { code: "E-DOC-SYNC-FAILED", stage: "create" } };
   }
 
-  // 3. Set tenant-readable permission.
+  // 3. Write converted blocks into the new document.
+  const blocks = convertResult.data?.data?.blocks;
+  if (!Array.isArray(blocks) || blocks.length === 0) {
+    return { error: { code: "E-DOC-SYNC-FAILED", stage: "convert" } };
+  }
+  const writeResult = await writeDocumentBlocks(baseUrl, documentId, blocks, token);
+  if (!writeResult.ok) {
+    return { error: { code: "E-DOC-SYNC-FAILED", stage: "write" } };
+  }
+
+  // 4. Set tenant-readable permission.
   const permissionResult = await patchJson(
     `${baseUrl}/open-apis/drive/v1/permissions/${encodeURIComponent(documentId)}/public`,
     { security_setting: { permission: "tenant_readable" } },

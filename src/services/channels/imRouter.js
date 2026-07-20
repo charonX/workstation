@@ -114,8 +114,11 @@ export function createImRouter({
       queuePosition = result.queuePosition ?? 1;
     } catch (err) {
       console.error("[imRouter] failed to create task:", err.message);
+      const errText = (err.message && (err.message.includes("E-QUEUE-FULL") || err.message.includes("队列已满")))
+        ? "队列已满，稍后再发"
+        : `入队失败：${err.message || "请稍后重试"}`;
       try {
-        await replyFn({ messageId, text: `入队失败：${err.message || "请稍后重试"}` });
+        await replyFn({ messageId, text: errText });
       } catch (replyErr) {
         console.error("[imRouter] failed to reply enqueue error:", replyErr.message);
       }
