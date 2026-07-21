@@ -41,14 +41,14 @@
 | 2 | **headless 持久化与常驻**：(a) CLI 手动命令在 App 未启动时自起 headless server，DB 默认落盘用户数据目录（`~/.opc-workstation/`），`:memory:` 仅供测试显式使用；(b) 无人值守定时 = 常驻 headless server（调度器随其生命周期运行）；没有运行中的 server 进程就没有到点触发；(c) 全系统任一时刻单 server：App 与常驻 headless 不并存，App 启动时顶替既有 server 并接管调度/通道，二者共用同一 DB 文件（`~/.opc-workstation/data.db`） | 无人值守是验收前提；现状 `db.js:9-14` 默认内存库，跑完即丢。两种语义在 review 后拆清，不再混淆 |
 | 3 | **内容源一级实体 + 管理 UI**：名称/类型/**tags（品类标签，flow 按 tag 筛选引用）**/配置/启停；CRUD 经 HTTP API + CLI，并提供应用内管理页面（列表/新建/编辑/启停/删除）；类型初版 `webpage` / `rss` / `x` / `wechat`，其中 x/wechat 尽力抓取、不进验收 | 用户明确"维护一个内容源"，review 后明确要 UI 管理（接口之上前端很轻）；原型验收确认关联方式=tag 筛选 |
 | 4 | **场景 A · 定时日报**：主题 × 内容源 → cron 触发 → agent 收集+合成 → 项目素材库产出日报 markdown（frontmatter 含主题/来源/生成时间）→ 飞书收到日报摘要。**内容来源显式锁定：以登记的内容源聚合为主（验收锚定日报条目来自登记源），agent 围绕主题的自主搜索为补充（不进验收）。flow 通过 tag 筛选引用内容源（如 tag=AI 的全部启用源），不逐一关联，内容源侧无反向引用** | 用户给定的验收场景；来源语义经 review 锁死 |
-| 5 | **飞书通道**：长连接模式接入（无公网 IP）；凭据存 settings；**收**——接收消息、解析链接、触发对应 flow 并注入变量（url/sender/messageId）；**发**——flow 执行结果回复到飞书 | 用户确认第一通道押飞书；长连接是 2026 年官方推荐的无公网方案 |
+| 5 | **飞书通道**：长连接模式接入（无公网 IP）；凭据存 settings；**收**——接收消息、触发对应 flow 并注入原始消息变量（text/sender/messageId），URL 等业务解析由 flow 下游节点/skill 自行完成；**发**——flow 执行结果回复到飞书 | 用户确认第一通道押飞书；长连接是 2026 年官方推荐的无公网方案 |
 | 6 | **场景 B · 链接速存**：链接正文 → markdown 存入项目内约定素材库目录（含索引文件追加），机器人回复确认 | 用户给定的验收场景 |
 | 7 | **飞书文档同步**：产物可同步创建飞书云文档；同步失败不阻塞文件落盘（降级为仅文件 + 飞书文字消息） | 用户明确"内容沉淀看是否也可以放入飞书文档中"；主锚点仍是项目文件 |
 | 8 | **产物登记最小化**：执行记录关联产物文件路径列表，CLI/API 可查，Executions 详情可见 | 产物可追溯是"检查产物"的最小承载面；独立 artifact 仓储在范围外 |
 | 9 | **收集能力 skill 化**：网页抓取转 markdown、主题日报合成、飞书文档同步等逻辑全部实现在项目 skill 层，经现有 skillService 安装注入；系统内核不含抓取代码 | 符合系统既有 skill 架构（ADR-003/004）与泊舟方法论"能力沉淀为 skill" |
 | 10 | **通知中心**：应用内通知实体（类型/标题/摘要/时间/已读/关联执行）+ UI 入口（未读徽标 + 列表页）；事件初版：产物产出（日报/速存成功）、执行失败、通道掉线/恢复（恢复归入通道状态类、绿色）；通知写入失败不阻断主流程；"产物产出"类通知可点击跳转执行详情 | 用户 review 时明确加上；打开应用即知系统状态，不用翻执行记录 |
 | 11 | **开箱模板**：内置 2 个 flow 模板（定时日报、链接速存）+ 3 个收集 skill 包（fetch-to-markdown、topic-daily-digest、feishu-doc-sync）；UI 一键"从模板创建"，创建链接速存模板时自动完成通道绑定 | tech-design 确认：用户目标是拿来就用，模板是验收场景的最短路径 |
-| 12 | **飞书消息触发节点**：Flow Editor 新增 `feishuMessage` 触发节点，专用于接收飞书 IM 消息并触发 flow；固定输出 `url` / `sender` / `messageId`（对应当前消息中的链接、发送者、飞书 message_id），用户可改 defaultValue 但不可删除；链接速存模板默认使用该节点；飞书通道消息只路由到包含该节点的已发布 flow | 用户明确"需要一个专门的飞书接收消息节点"，避免通用 trigger 被任意 IM 消息触发；与通道绑定/模板联动 |
+| 12 | **飞书消息触发节点**：Flow Editor 新增 `feishuMessage` 触发节点，专用于接收飞书 IM 消息并触发 flow；固定输出 `text` / `sender` / `messageId`（分别对应原始消息文本、发送者、飞书 message_id），用户可改 defaultValue 但不可删除；**不在节点层解析 URL 等业务内容**，下游 agent/skill 自行从 `text` 中提取所需信息；链接速存模板默认使用该节点；飞书通道消息只路由到包含该节点的已发布 flow | 用户明确"需要一个专门的飞书接收消息节点"，且节点应保持通用：只映射原始事件字段，不做业务解析；与通道绑定/模板联动 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
@@ -97,9 +97,9 @@
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | 在飞书给机器人发一个 http(s) 链接 | 长连接收到消息，message_id 去重，解析出 URL；检查绑定 flow 包含 `feishuMessage` 触发节点 | 通道日志 + 去重表 + 节点存在性校验 |
+| 1 | 在飞书给机器人发消息（链接速存场景下发送 http(s) 链接） | 长连接收到消息，message_id 去重；检查绑定 flow 包含 `feishuMessage` 触发节点 | 通道日志 + 去重表 + 节点存在性校验 |
 | 2 | 系统入队（per-project 串行）并立即回执 | 飞书收到"收到，排队中（第 N 位）" | mock seam 断言回执 |
-| 3 | 轮到后创建执行（trigger=channel，注入 url/sender/messageId），`feishuMessage` 节点把变量合并进 context，agent 抓取正文转 markdown | markdown 写入素材库目录，索引文件追加一行 | **文件真实存在**，frontmatter 含 source url/title/fetchedAt；节点记录可见 |
+| 3 | 轮到后创建执行（trigger=channel，注入 text/sender/messageId），`feishuMessage` 节点把变量合并进 context，下游 agent/skill 从 `text` 中提取 URL 并抓取正文转 markdown | markdown 写入素材库目录，索引文件追加一行 | **文件真实存在**，frontmatter 含 source url/title/fetchedAt；节点记录可见 |
 | 4 | 执行完成 | 飞书收到"已存：<路径>"；通知中心落"产物产出"通知；产物路径登记执行记录 | mock seam 断言；通知列表可见 |
 
 **OP-5 产物同步飞书文档**（稳定块 7）
@@ -144,8 +144,8 @@
 |---|---|---|
 | Schedule 到点但 flow 为 draft / 已删除 | 不创建执行；记日志并标记 schedule 异常 | E-SCHED-FLOW-INVALID |
 | agent 节点重试耗尽仍失败 | 执行 error；飞书收到失败通知（场景 A）；通知中心落"执行失败" | E-AGENT-FAILED |
-| 飞书收到不含链接的文本消息 | 不触发执行；回复使用提示 | E-MSG-NO-URL（非错误，提示分支） |
 | 绑定 flow 存在但无 `feishuMessage` 触发节点 | 不创建执行；回复配置异常提示并写"通道状态"通知 | E-CHANNEL-FLOW-NO-TRIGGER |
+| 下游 skill 从 text 中未提取到有效 URL（链接速存场景） | 不落盘产物；飞书回复使用提示或明确失败原因 | E-MSG-NO-URL / E-FETCH-FAILED（由 skill 决定，非节点层分支） |
 | 链接抓取失败（404/超时/反爬/需登录） | 不落盘产物；飞书回复明确失败原因 | E-FETCH-FAILED |
 | 长连接断开 | 自动重连；重连失败通道状态置"掉线"，通知中心落"通道掉线" | E-CHANNEL-DOWN |
 | 飞书文档同步失败 | 降级：仅文件落盘 + 飞书文字消息（含文件路径），执行不置 error | E-DOC-SYNC-FAILED |
@@ -205,7 +205,7 @@
 - **内容源**：新表 `content_sources` + `contentSourceService` + `/api/content-sources` + CLI `source` 实体；前端新增管理页面。
 - **飞书通道 adapter**：独立模块，负责长连接收发；通过 eventBus（如 `channel:message-received`）与 flow 触发解耦；凭据存 `settings.json`。
 - **通知中心**：新表 `notifications` + `notificationService` + `/api/notifications`（列表/标记已读）；关键事件（执行终态、通道状态变更、产物产出）写入通知；前端侧边栏入口 + 未读徽标 + 列表页。
-- **触发变量注入**：schedule / IM 触发时携带变量（topic、url、sender），经 `taskService.createTask` 扩展传参（现状仅 projectId/flowId，/tech-design 细化）。
+- **触发变量注入**：schedule / IM 触发时携带变量（schedule 场景为 topic 等；IM 场景为 text/sender/messageId 等原始事件字段），经 `taskService.createTask` 扩展传参（现状仅 projectId/flowId，/tech-design 细化）。URL 等业务解析不在注入层做。
 - **收集 skills**：`fetch-to-markdown`、`topic-daily-digest`、`feishu-doc-sync` 三个初版 skill，经现有 skillService 安装注入项目。
 - **产物登记**：executions 增加产物路径列表字段（或关联表——/tech-design），Executions 详情展示。
 
@@ -300,3 +300,4 @@
 | v0.3 | 2026-07-19 | 原型验收：内容源关联改为 tag 筛选（关闭移动块 6/7）、取消反查与删除警告、内容源加 tags 字段、通知跳转与恢复事件语义确认 | AI + 人 |
 | v0.4 | 2026-07-19 | tech-design 反向同步：单 server/顶替语义入稳定块 2、新增稳定块 11 开箱模板与用户故事 8、OP-4 改两步回复+去重、新增 OP-8、范围外+2、§13 记决策 | AI + 人 |
 | v0.5 | 2026-07-21 | BUG 阶段回流：新增稳定块 12「飞书消息触发节点」；OP-4/OP-8 更新；新增错误状态 E-CHANNEL-FLOW-NO-TRIGGER；§13 记回流决策 | AI + 人 |
+| v0.6 | 2026-07-21 | attempt-3 归档重做：稳定块 12 从"节点层解析 URL"改为"节点只输出原始消息 text/sender/messageId，业务解析下沉到下游 skill/agent"；OP-4/§6.2 同步更新 | AI + 人 |
