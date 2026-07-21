@@ -43,6 +43,7 @@ export default function ExecutionList({ executions, selectedId, onSelect }) {
               key={ex.id}
               className={`table-row${selectedId === ex.id ? " active" : ""}`}
               data-testid="execution-row"
+              data-highlighted={String(selectedId === ex.id)}
               onClick={() => onSelect(ex)}
               role="button"
               tabIndex={0}
