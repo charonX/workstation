@@ -906,3 +906,36 @@ Slice 10 标记完成。
 Slice 11 标记完成。
 
 ---
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-4 / REQ-COLL-002 AC1：fake 飞书发送含 URL 消息 → 立即回复排队回执 | `src/services/channels/imRouter.js`（去重/路由/回执/入队） | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js` | COVERED |
+| REQ-COLL-002 AC2：执行完成后素材文件 `materials/<date>-<slug>.md` 真实存在，frontmatter 含 source/title/fetchedAt | `src/services/taskService.js` `executeTask` + mock agent 写文件 | 同上 | COVERED |
+| REQ-COLL-002 AC2：索引文件 `materials/LIBRARY.md` 追加一行 | mock agent 按 skill 契约追加 | 同上 | COVERED |
+| REQ-COLL-002 AC3：完成回复「已存：<路径>」；artifacts 登记；通知「产物产出」 | `src/services/taskService.js` `buildTerminalSuccessText` + `deliverTerminalNotification` + `writeExecutionNotification` | 同上 | COVERED |
+| REQ-COLL-002 AC4：抓取失败 → 无落盘、无索引追加，飞书收到 E-FETCH-FAILED 回复 | `src/services/taskService.js` 失败分支 `artifacts=[]` + `buildTerminalFailureText`（从 logs 提取 E-FETCH-FAILED） | 同上 | COVERED |
+| tech-design「系统层投递规则」：taskService 统一投递，agent 不参与发送 | `src/services/taskService.js` `deliverTerminalNotification` | 同上 | COVERED |
+
+#### 与 PRD/tech-design 的已知偏差
+
+- 无。S12 端到端链路完全由前置切片（S5 IM 路由、S2 队列/产物登记/投递、S3 通知）的能力组合而成，与 PRD/tech-design 意图一致。
+
+#### 测试结果摘要
+
+- `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js` → 2/2 pass
+
+#### 修改文件
+
+- 无新增代码修改；S12 依赖前置切片实现。
+
+#### 父代理验证记录
+
+- 业务测试验证：`linkCapture.test.js` → 2/2 pass
+- diff 范围检查：S12 未引入新的实现文件修改（前置切片已覆盖）。
+- PRD 对齐：实现与签核断言一致。
+
+Slice 12 标记完成。
+
+---
