@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -28,6 +28,7 @@ history:
   - {at: 2026-07-21, from: BUILD, to: QA, note: "12 个 BUILD 切片全部完成；本 story 单元/集成/CLI 测试 108/108 pass；全量 test:unit 存在 6 个既有失败（非本 story）；进入 QA 跑 E2E/回归"}
   - {at: 2026-07-21, from: QA, to: REFLECT, note: "QA 报告完成：本 story E2E 14/14 pass（串行重跑），全量失败均为前置 story/通用 E2E flaky；浏览器验证与覆盖率未配置；进入 REFLECT 人工验收"}
   - {at: 2026-07-21, from: REFLECT, to: BUG, note: "REFLECT 发现设置页缺少飞书通道配置区块（与已批准 UX 原型 settings-channel.html 不一致），建 BUG-001"}
+  - {at: 2026-07-21, from: BUG, to: BUG, note: "BUG-001 修复后验证：保存飞书凭据后输入框未回显已保存的 App ID / App Secret，建 BUG-002"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

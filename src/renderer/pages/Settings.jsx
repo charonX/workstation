@@ -16,7 +16,7 @@ const DEFAULT_CHANNEL_STATUS = { status: "offline", error: null };
 
 export default function Settings() {
   const { t } = useTranslation();
-  const [settings, updateSettings, loading] = useSettings();
+  const [settings, updateSettings, reloadSettings, loading] = useSettings();
   const [form, setForm] = useState({ ...DEFAULT_FORM });
   const formRef = useRef(form);
   const initializedRef = useRef(false);
@@ -49,13 +49,23 @@ export default function Settings() {
     }
   }, [settings]);
 
-  // Load Feishu channel status when the settings page mounts.
+  // Load Feishu channel status and saved credentials when the settings page mounts.
+  // Use a ref to avoid depending on the unstable reloadSettings callback identity.
+  const reloadSettingsRef = useRef(reloadSettings);
+  reloadSettingsRef.current = reloadSettings;
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const status = await getChannelStatus();
-        if (!cancelled) setChannelStatus(status || DEFAULT_CHANNEL_STATUS);
+        const [status, freshSettings] = await Promise.all([
+          getChannelStatus(),
+          reloadSettingsRef.current()
+        ]);
+        if (cancelled) return;
+        setChannelStatus(status || DEFAULT_CHANNEL_STATUS);
+        const creds = freshSettings?.channelCredentials;
+        if (creds?.appId) setChannelAppId(creds.appId);
+        if (creds?.appSecret) setChannelAppSecret(creds.appSecret);
       } catch {
         if (!cancelled) setChannelStatus(DEFAULT_CHANNEL_STATUS);
       }
@@ -126,6 +136,13 @@ export default function Settings() {
         appSecret: channelAppSecret.trim(),
       });
       setChannelStatus({ status: result.status, error: result.error });
+      // Refresh the shared settings context so other pages/navigation see the
+      // latest channel credentials without requiring an app restart.
+      try {
+        await reloadSettings();
+      } catch {
+        // Ignore reload failures; the save itself already succeeded.
+      }
       if (result.error) {
         setChannelError(result.error);
       } else {

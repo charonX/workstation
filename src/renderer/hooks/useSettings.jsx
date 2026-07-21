@@ -42,8 +42,15 @@ export function SettingsProvider({ children }) {
     return updated;
   }, [settings?.language]);
 
+  const reloadSettings = useCallback(async () => {
+    const data = await getSettings();
+    setSettings(data);
+    applyToDocument(data, settings?.language);
+    return data;
+  }, [settings?.language]);
+
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings, loading, error }}>
+    <SettingsContext.Provider value={{ settings, updateSettings, reloadSettings, loading, error }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -63,12 +70,12 @@ function applyToDocument(data, previousLanguage) {
 
 /**
  * Load settings, apply data-theme/data-density/lang to document,
- * return [settings, updateSettings, loading, error].
+ * return [settings, updateSettings, reloadSettings, loading, error].
  */
 export function useSettings() {
   const ctx = useContext(SettingsContext);
   if (!ctx) {
     throw new Error("useSettings must be used within SettingsProvider");
   }
-  return [ctx.settings, ctx.updateSettings, ctx.loading, ctx.error];
+  return [ctx.settings, ctx.updateSettings, ctx.reloadSettings, ctx.loading, ctx.error];
 }

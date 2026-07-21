@@ -13,7 +13,7 @@ import Settings from "./pages/Settings.jsx";
 import "./i18n/index.js";
 
 function AppRoutes() {
-  const [, , loading, error] = useSettings();
+  const [, , , loading, error] = useSettings();
 
   if (loading) {
     return (
