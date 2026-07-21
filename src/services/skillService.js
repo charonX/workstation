@@ -540,7 +540,7 @@ function skillSymlinkPaths(skill, project) {
   return { targetDir, linkDir, linkPath };
 }
 
-function createSkillSymlink(skill, project) {
+export function createSkillSymlink(skill, project) {
   const paths = skillSymlinkPaths(skill, project);
   if (!paths) return;
   fs.mkdirSync(paths.linkDir, { recursive: true });
@@ -582,11 +582,10 @@ function resolveDependencySkill(raw, allSkills) {
   return allSkills.find((s) => s.name === raw);
 }
 
-export function linkSkill(skillId, projectId, visited = new Set()) {
-  if (visited.has(skillId)) return;
+export function linkSkillRaw(db, skillId, projectId, visited = new Set(), touched = new Set()) {
+  if (visited.has(skillId)) return touched;
   visited.add(skillId);
 
-  const db = getDb();
   const exists = db.prepare(`
     SELECT 1 FROM project_skills WHERE projectId = ? AND skillId = ?
   `).get(projectId, skillId);
@@ -595,20 +594,30 @@ export function linkSkill(skillId, projectId, visited = new Set()) {
       INSERT INTO project_skills (projectId, skillId) VALUES (?, ?)
     `).run(projectId, skillId);
   }
+  touched.add(skillId);
 
   const skill = getSkillDetail(skillId);
-  const project = projectService.getProjectDetail(projectId);
-  if (skill && project) {
-    createSkillSymlink(skill, project);
-  }
-
   if (skill?.dependencies?.length > 0) {
     const allSkills = listLinkableSkills();
     for (const dep of skill.dependencies) {
       const depSkill = resolveDependencySkill(dep, allSkills);
       if (depSkill) {
-        linkSkill(depSkill.id, projectId, visited);
+        linkSkillRaw(db, depSkill.id, projectId, visited, touched);
       }
+    }
+  }
+
+  return touched;
+}
+
+export function linkSkill(skillId, projectId, visited = new Set()) {
+  const db = getDb();
+  const touched = linkSkillRaw(db, skillId, projectId, visited);
+  const project = projectService.getProjectDetail(projectId);
+  for (const id of touched) {
+    const skill = getSkillDetail(id);
+    if (skill && project) {
+      createSkillSymlink(skill, project);
     }
   }
 }

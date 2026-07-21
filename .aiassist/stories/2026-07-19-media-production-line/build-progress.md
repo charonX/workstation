@@ -763,3 +763,43 @@ Slice 9 标记完成。
 `[build] Slice 10: template instantiation`
 
 ---
+
+### S10 / fix: production seeding and atomic instantiation transaction
+
+**修复日期**: 2026-07-21  
+**修复类型**: PRD/tech-design 阻塞缺口补全（bugfix）
+
+#### 修复内容
+
+1. **生产环境未播种内置 collection skill repo**
+   - `src/http/server.js`：将 `ensureBuiltInCollectionSkills()` 从 `options.reset !== false` 分支内移到分支外，确保测试路径（reset）与生产路径（reset:false，包括 `src/main/main.js` / `src/cli/headless-server.js`）在 DB 就绪后均执行幂等播种。
+   - 函数本身已按路径存在性做幂等检查，生产启动重复调用无副作用。
+
+2. **模板实例化的 flow 创建与通道绑定未处于同一事务**
+   - `src/services/channelBindingService.js`：新增 `createBindingRaw(db, ...)`，只执行验证与 SQL（DELETE/INSERT），不开启 `db.transaction()`；原 `createBinding(...)` 保持 public 接口不变，内部用 `db.transaction(...)` 包装 `createBindingRaw`。
+   - `src/services/skillService.js`：新增 `linkSkillRaw(db, skillId, projectId, visited?, touched?)`，只写 `project_skills` 表并递归解析依赖，不创建 symlink；导出 `createSkillSymlink` 供外部使用；原 `linkSkill(...)` 保持 public 接口不变，先调用 `linkSkillRaw` 再统一创建 symlink。
+   - `src/services/templateService.js`：`instantiateTemplate` 重写编排：
+     - 事务外解析模板与 skill ID（缺失技能仍提前抛 `E-TPL-SKILL-MISSING`）。
+     - 开启 `db.transaction()`，在事务内依次调用 `flowService.createFlow`（单条 INSERT，不开事务）、`skillService.linkSkillRaw`、`channelBindingService.createBindingRaw`。
+     - 事务提交后，为本次触及的所有 skill 创建 symlink；文件系统副作用失败时记录 `console.warn`，不反转已提交事务。
+     - 保持对外返回 `{ flowId, flow, binding }`。
+
+#### 修改文件
+
+- `src/http/server.js`
+- `src/services/channelBindingService.js`
+- `src/services/skillService.js`
+- `src/services/templateService.js`
+- `.aiassist/stories/2026-07-19-media-production-line/build-progress.md`
+
+#### 验证结果
+
+- `node --test tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js` → 6/6 pass
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` → 22/22 pass
+- 额外回归：`node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js tests/capabilities/skill-management/skill/codex-harness-desktop/api/skill.test.js tests/capabilities/workspace-management/project/codex-harness-desktop/api/project.test.js` → 35/35 pass
+
+#### Commit
+
+`[bugfix] S10: production seeding and atomic instantiation transaction`
+
+---

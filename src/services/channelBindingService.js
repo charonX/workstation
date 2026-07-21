@@ -16,12 +16,11 @@ function rowToBinding(row) {
   };
 }
 
-export function createBinding({ channelType, flowId, projectId, force = false } = {}) {
+export function createBindingRaw(db, { channelType, flowId, projectId, force = false } = {}) {
   if (!channelType) throw new Error("E-BINDING-INVALID: channelType is required");
   if (!flowId) throw new Error("E-BINDING-INVALID: flowId is required");
   if (!projectId) throw new Error("E-BINDING-INVALID: projectId is required");
 
-  const db = getDb();
   const existing = db.prepare("SELECT * FROM channel_bindings WHERE channelType = ?").get(channelType);
   if (existing && !force) {
     const err = new Error("E-BINDING-EXISTS: channel binding already exists");
@@ -32,18 +31,21 @@ export function createBinding({ channelType, flowId, projectId, force = false } 
   const id = crypto.randomUUID();
   const createdAt = timestamp();
 
-  const writeBinding = db.transaction(() => {
-    if (existing) {
-      db.prepare("DELETE FROM channel_bindings WHERE channelType = ?").run(channelType);
-    }
-    db.prepare(`
-      INSERT INTO channel_bindings (id, channelType, flowId, projectId, createdAt)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, channelType, flowId, projectId, createdAt);
-  });
+  if (existing) {
+    db.prepare("DELETE FROM channel_bindings WHERE channelType = ?").run(channelType);
+  }
+  db.prepare(`
+    INSERT INTO channel_bindings (id, channelType, flowId, projectId, createdAt)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, channelType, flowId, projectId, createdAt);
 
-  writeBinding();
   return rowToBinding({ id, channelType, flowId, projectId, createdAt });
+}
+
+export function createBinding({ channelType, flowId, projectId, force = false } = {}) {
+  const db = getDb();
+  const writeBinding = db.transaction(() => createBindingRaw(db, { channelType, flowId, projectId, force }));
+  return writeBinding();
 }
 
 export function getBinding(channelType) {

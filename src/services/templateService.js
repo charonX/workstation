@@ -1,3 +1,4 @@
+import { getDb } from "../db.js";
 import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
 import * as skillService from "./skillService.js";
@@ -128,16 +129,11 @@ export function instantiateTemplate({ templateId, projectId, overrides, force = 
     throw createError(`Invalid project: ${projectId}`, "E-TPL-PROJECT-INVALID", 400);
   }
 
+  const db = getDb();
   const nodeList = applyOverrides(cloneDeep(template.nodeList), overrides);
-  const flow = flowService.createFlow({
-    name: template.name,
-    projectId,
-    description: template.description,
-    nodeList,
-    edges: cloneDeep(template.edges)
-  });
 
-  // Link required collection skills to the project (recursively resolves dependencies).
+  // Resolve required collection skills before the transaction so missing skills fail early.
+  const skillIds = [];
   for (const skillName of template.skills) {
     const skillId = findSkillIdByName(skillName);
     if (!skillId) {
@@ -147,17 +143,53 @@ export function instantiateTemplate({ templateId, projectId, overrides, force = 
         500
       );
     }
-    skillService.linkSkill(skillId, projectId);
+    skillIds.push(skillId);
   }
 
+  let flow;
   let binding = null;
-  if (template.createChannelBinding) {
-    binding = channelBindingService.createBinding({
-      channelType: "feishu",
-      flowId: flow.id,
+
+  const instantiate = db.transaction(() => {
+    flow = flowService.createFlow({
+      name: template.name,
       projectId,
-      force
+      description: template.description,
+      nodeList,
+      edges: cloneDeep(template.edges)
     });
+
+    const linkedSkillIds = new Set();
+    for (const skillId of skillIds) {
+      const touched = skillService.linkSkillRaw(db, skillId, projectId);
+      for (const id of touched) {
+        linkedSkillIds.add(id);
+      }
+    }
+
+    if (template.createChannelBinding) {
+      binding = channelBindingService.createBindingRaw(db, {
+        channelType: "feishu",
+        flowId: flow.id,
+        projectId,
+        force
+      });
+    }
+
+    return linkedSkillIds;
+  });
+
+  const linkedSkillIds = instantiate();
+
+  // Skill symlink 是文件系统副作用，不可回滚；在事务提交后执行，失败仅记录日志。
+  for (const skillId of linkedSkillIds) {
+    try {
+      const skill = skillService.getSkillDetail(skillId);
+      if (skill && project) {
+        skillService.createSkillSymlink(skill, project);
+      }
+    } catch (err) {
+      console.warn(`Failed to create skill symlink for ${skillId}:`, err.message);
+    }
   }
 
   return {

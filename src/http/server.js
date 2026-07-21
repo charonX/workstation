@@ -69,8 +69,10 @@ export function startServer(options = {}) {
     }
     resetDb(dbPath);
     settingsService.resetSettings();
-    ensureBuiltInCollectionSkills();
   }
+  // 生产路径（reset:false）与测试路径都需要幂等播种内置 collection skill repo，
+  // 否则首次启动或新 DB 文件时 templateService 会因找不到内置技能而抛 E-TPL-SKILL-MISSING。
+  ensureBuiltInCollectionSkills();
 
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
