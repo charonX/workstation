@@ -14,19 +14,66 @@ function parseIpv4(host) {
   return nums;
 }
 
+function parseIpv6(host) {
+  // Expand compressed IPv6 to 8 groups of 16-bit hex.
+  const lower = host.toLowerCase();
+  let expanded = lower;
+  if (lower.includes("::")) {
+    const sides = lower.split("::");
+    const left = sides[0] ? sides[0].split(":") : [];
+    const right = sides[1] ? sides[1].split(":") : [];
+    const missing = 8 - left.length - right.length;
+    if (missing < 0) return null;
+    expanded = [...left, ...Array(missing).fill("0"), ...right].join(":");
+  }
+  const groups = expanded.split(":");
+  if (groups.length !== 8) return null;
+  const nums = groups.map((g) => {
+    const n = parseInt(g, 16);
+    return Number.isFinite(n) && n >= 0 && n <= 0xffff ? n : -1;
+  });
+  if (nums.some((n) => n === -1)) return null;
+  return nums;
+}
+
 function isPrivateIp(host) {
   const lower = host.toLowerCase();
   if (lower === "localhost" || lower === "0.0.0.0") return true;
 
-  const ip = parseIpv4(host);
-  if (!ip) return false;
+  // IPv4-mapped IPv6 addresses: ::ffff:<ipv4>
+  const mappedMatch = lower.match(/^::ffff:([\d.]+)$/);
+  if (mappedMatch) {
+    const ip = parseIpv4(mappedMatch[1]);
+    if (ip) {
+      const [a, b] = ip;
+      if (a === 127) return true;
+      if (a === 10) return true;
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 169 && b === 254) return true;
+    }
+  }
 
-  const [a, b] = ip;
-  if (a === 127) return true;
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 169 && b === 254) return true;
+  const ip4 = parseIpv4(host);
+  if (ip4) {
+    const [a, b] = ip4;
+    if (a === 127) return true;
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+
+  const ip6 = parseIpv6(host);
+  if (ip6) {
+    // ::1 loopback
+    if (ip6.every((n) => n === 0) || (ip6[0] === 0 && ip6[1] === 0 && ip6[2] === 0 && ip6[3] === 0 && ip6[4] === 0 && ip6[5] === 0 && ip6[6] === 0 && ip6[7] === 1)) return true;
+    // fe80::/10 link-local
+    if ((ip6[0] & 0xffc0) === 0xfe80) return true;
+    // fc00::/7 unique local
+    if ((ip6[0] & 0xfe00) === 0xfc00) return true;
+  }
 
   return false;
 }

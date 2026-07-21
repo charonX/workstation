@@ -662,7 +662,11 @@ Slice 8 标记完成。
 - diff 范围检查：仅新增资产文件（`src/assets/skill-repos/opc-collection-skills/...`）并更新 `build-progress.md`，未触碰业务测试
 - PRD 对齐：实现与签核断言一致
 
-Slice 9 标记完成。
+#### PRD 对齐复查
+
+- 状态：`MISALIGNMENT_FOUND`
+- 缺口：`validateUrl.js` 未阻断 IPv6 私网地址（`[::1]`、`[fe80::1]`、`[::ffff:127.0.0.1]` 等），与 PRD「SSRF 阻断私网 IP」意图及脚本注释「IPv6 私网范围本期按阻断处理」不符。
+- 处理决定：补充 IPv6 loopback/link-local/unique local/IPv4-mapped 私网检测。
 
 ---
 
