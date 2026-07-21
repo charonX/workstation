@@ -81,6 +81,7 @@ async function startElectronApp() {
       ...process.env,
       NODE_ENV: "development",
       DB_PATH: dbPath,
+      OPC_WORKSTATION_CONFIG_DIR: userDataDir,
     },
   });
 
