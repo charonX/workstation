@@ -509,9 +509,10 @@ Slice 6 标记完成。
 
 #### 与 HTML 原型偏差
 
-- 列表「配置」列显示完整配置字符串（URL 或账号标识），而非原型中仅显示 hostname+pathname。原因：E2E 签核断言 `getByText('https://news.ycombinator.com')` 要求完整 URL 可见；不扩展数据契约的前提下直接展示 config 原值。
+- 列表「配置」列显示完整配置字符串（URL 或账号标识），与 `ux/sources.html` 原型一致（原型直接渲染 `esc(s.config)`）。E2E 签核断言 `getByText('https://news.ycombinator.com')` 要求完整 URL 可见。
 - 列表行未显示原型中的「共 N 个来源 · M 个启用」计数。原因：本切片聚焦 REQ-SRC-003 明确验收项，计数信息未进入签核断言；可在后续迭代补充而不破坏契约。
 - 类型选项卡未使用原型中的 4 列等宽 grid 在极窄屏幕下的换行行为未做额外适配；桌面视口与原型一致。
+- 模态框未实现 `Escape` 键关闭，以及非 tag 输入框按 `Enter` 提交表单。原因：PRD/E2E 未断言这些交互细节，属非阻塞增强项。
 
 #### 父代理验证记录
 
@@ -521,6 +522,20 @@ Slice 6 标记完成。
   - 合计 16/16 pass
 - diff 范围检查：新增 renderer 文件（`src/renderer/pages/Sources.jsx`、`src/renderer/api/contentSources.js`、`src/renderer/hooks/useContentSources.js`）；修改 renderer 文件（`App.jsx`、`Sidebar.jsx`、`index.css`、i18n 文件、`useSettings.jsx`）；修改服务端默认语言/路径（`src/services/settingsService.js`）；修改测试基础设施（`tests/e2e/fixtures/electronApp.cjs` 增加 `OPC_WORKSTATION_CONFIG_DIR` 隔离设置）。未修改业务测试 `.test.cjs`/`.test.js` 文件。
 - PRD 对齐：实现与 `ux/sources.html` 及签核断言一致。
+
+#### Refactor 子代理验证
+
+- 原始 HEAD：`7d6952e`
+- Refactor commit：`18e761b [refactor] Slice 7: sources ui`
+- 修改文件：
+  - `src/renderer/pages/Sources.jsx`：移除死代码 `enabledCount`；提取 `selectedMeta`/`isEditing`/`clearFieldError` helper。
+  - `src/renderer/components/layout/Sidebar.jsx`：内部 `NavLink` 重命名为 `SidebarNavLink` 以避免与 react-router `NavLink` 混淆。
+  - `src/renderer/index.css`：删除 `.cell-main`/`.cell-title`/`.cell-meta` 重复定义。
+- 父代理独立验证：
+  - `contentSources.test.js`（API 回归）→ 10/10 pass
+  - `sourcesPage.test.cjs`（E2E）→ 6/6 pass
+- diff 范围检查：仅修改 S7 实现代码，未触碰业务测试。
+- PRD 意图保持对齐。
 
 Slice 7 标记完成。
 
