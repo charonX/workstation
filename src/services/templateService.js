@@ -29,7 +29,7 @@ const BUILTIN_TEMPLATES = [
       buildFeishuMessageNode(),
       buildAgentNode(
         "fetch-to-markdown",
-        "You are a collection agent. When triggered with a URL, call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library. URL: {{n1.url}}"
+        "You are a collection agent. The user sent a raw IM message in {{n1.text}}. Extract the first http(s) URL from it and call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library."
       )
     ],
     edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "agent" }],
@@ -71,7 +71,7 @@ function buildFeishuMessageNode() {
     type: "feishuMessage",
     config: {
       outputVariables: [
-        { name: "url", type: "string", defaultValue: "" },
+        { name: "text", type: "string", defaultValue: "" },
         { name: "sender", type: "string", defaultValue: "" },
         { name: "messageId", type: "string", defaultValue: "" }
       ]

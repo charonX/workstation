@@ -53,8 +53,7 @@ function wireAdapter(record, adapter) {
       messageId: msg.messageId,
       chatId: msg.chatId,
       senderId: msg.senderId,
-      text: msg.text,
-      url: msg.url
+      text: msg.text
     });
   });
   adapter.onStatusChange(({ status, previousStatus, reason }) => {

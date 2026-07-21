@@ -9,12 +9,6 @@ function timestamp() {
   return new Date().toISOString();
 }
 
-function extractFirstUrl(text) {
-  if (typeof text !== "string") return null;
-  const match = text.match(/https?:\/\/[^\s]+/i);
-  return match ? match[0] : null;
-}
-
 async function writeChannelStatusNotification(notificationService, body, code) {
   try {
     notificationService.notify({
@@ -80,12 +74,6 @@ export function createImRouter({
       return;
     }
 
-    const url = extractFirstUrl(text);
-    if (!url) {
-      await safeReply({ messageId, text: "发送 http(s) 链接即可速存到素材库" }, "usage hint");
-      return;
-    }
-
     const binding = channelBindingService.getBinding("feishu");
     if (!binding) {
       await safeReply({ messageId, text: "未绑定链接速存 flow，请先从模板创建" }, "no-binding hint");
@@ -119,7 +107,7 @@ export function createImRouter({
         flowId: binding.flowId,
         trigger: "channel",
         variables: {
-          url,
+          text,
           sender: senderId,
           messageId,
           channelReply: { channelType: "feishu", chatId, messageId }

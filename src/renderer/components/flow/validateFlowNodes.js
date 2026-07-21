@@ -9,7 +9,7 @@
 // variables editor dropdown in NodeConfigPanel.
 export const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
-const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["url", "sender", "messageId"];
+const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
 function validateFeishuMessageConfig(config, base, t, errors) {
   const path = `${base}.outputVariables`;

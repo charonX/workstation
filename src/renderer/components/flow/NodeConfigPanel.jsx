@@ -206,13 +206,13 @@ function TriggerFields({ config, onChange, t }) {
 }
 
 const FEISHU_MESSAGE_FIXED_OUTPUTS = [
-  { name: "url", type: "string", defaultValue: "" },
+  { name: "text", type: "string", defaultValue: "" },
   { name: "sender", type: "string", defaultValue: "" },
   { name: "messageId", type: "string", defaultValue: "" }
 ];
 
 function FeishuMessageFields({ config, onChange, t }) {
-  // REQ-FLOW-031：固定输出 url/sender/messageId；用户可改 defaultValue，不可删除/重命名。
+  // REQ-FLOW-031：固定输出 text/sender/messageId；用户可改 defaultValue，不可删除/重命名。
   const existing = Array.isArray(config.outputVariables) ? config.outputVariables : [];
   const byName = new Map(existing.map((v) => [v.name, v]));
   const variables = FEISHU_MESSAGE_FIXED_OUTPUTS.map((fixed) => ({

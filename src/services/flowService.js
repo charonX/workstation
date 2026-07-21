@@ -14,7 +14,7 @@ const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
 const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
-const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["url", "sender", "messageId"];
+const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -1097,3 +1097,62 @@ Refactor subagent 完成一轮安全重构，状态 `REFACTORED`。
 - 重构：✅ REFACTORED（commit `eefe878`）
 - 下一步：进入 `/qa-runner` 跑 E2E/回归
 
+---
+
+## 2026-07-21 Slice S13-reflow：feishuMessage 输出契约从 url 改为 text
+
+### 变更动因
+
+attempt-3 签核调整：飞书消息触发节点不再在路由层解析 URL，而是将原始 IM 文本 `text` 作为固定输出透传给下游 skill/agent，由 skill 自行提取 URL。固定输出由 `url/sender/messageId` 改为 `text/sender/messageId`。
+
+### PRD → Code 可追溯性
+
+| 文件 | 变更内容 | 覆盖的 REQ/PRD 意图 |
+|---|---|---|
+| `src/services/flowService.js` | `FEISHU_MESSAGE_REQUIRED_OUTPUTS` 由 `["url", "sender", "messageId"]` 改为 `["text", "sender", "messageId"]` | REQ-FLOW-031：服务端校验 feishuMessage 节点固定输出结构 |
+| `src/renderer/components/flow/validateFlowNodes.js` | `FEISHU_MESSAGE_REQUIRED_OUTPUTS` 同样改为 `text/sender/messageId` | REQ-FLOW-031：前端镜像校验，非法配置不发 PATCH |
+| `src/renderer/components/flow/NodeConfigPanel.jsx` | `FEISHU_MESSAGE_FIXED_OUTPUTS` 首项由 `url` 改为 `text`；注释同步更新 | REQ-FLOW-031：配置面板固定展示 text/sender/messageId，用户仅可改 defaultValue |
+| `src/services/templateService.js` | `buildFeishuMessageNode` 首项输出由 `url` 改为 `text`；链接速存模板 agent prompt 改用 `{{n1.text}}` 并指示 skill 从原文提取 URL | REQ-TPL-001：链接速存模板实例化后触发节点符合新契约；REQ-COLL-002：URL 提取职责下放到 fetch-to-markdown skill |
+| `src/services/channelManager.js` | `eventBus.publish('channel:message-received', ...)` 移除 `url` 字段，仅保留 `channelType/messageId/chatId/senderId/text` | REQ-CHANNEL-002：channelManager 桥接 adapter 消息时不解析 URL，原始文本透传 |
+| `src/services/channels/imRouter.js` | 移除 `extractFirstUrl`；`messageHandler` 不再因无 URL 提前返回；`taskService.createTask` 的 `variables.url` 改为 `variables.text` | REQ-CHANNEL-002：任意文本消息均入队；IM 路由层只做去重/绑定/入队，不做 URL 解析 |
+
+### 测试验证
+
+#### 受影响业务测试（`node --test` 单跑）
+
+```bash
+node --test \
+  tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js \
+  tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/upstreamVariables.test.js \
+  tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js \
+  tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js \
+  tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js
+# ℹ tests 35 / pass 35 / fail 0
+```
+
+- `imRouting.test.js` AC3 明确断言：无 URL 的任意文本消息也入队并回执排队位置。
+- `templates.test.js` AC1 明确断言：链接速存模板首节点固定输出为 `text/sender/messageId`。
+- `feishuMessageNode.test.js` AC3/AC4/AC5 全部基于 `text/sender/messageId` 契约通过。
+- `upstreamVariables.test.js` 确认 `text` 变量对下游 agent 可见。
+
+#### 全量单元回归
+
+```bash
+npm run test:unit
+# ℹ tests 261 / pass 255 / fail 6
+```
+
+6 个失败均为 S13 之前已存在的既有失败（`executionLog.test.js` 2 处、`language.test.js` 1 处、`task.test.js` 3 处），与本 slice 无关。
+
+#### E2E / Renderer
+
+- `feishuMessageNode.test.cjs` 为 Playwright E2E 测试，需通过 `npm run test:e2e` 运行（未在本次单跑）。
+- 项目无独立 `test:renderer` 或 vitest 脚本，renderer 组件验证由 Playwright E2E 覆盖。
+
+### Slice S13-reflow 状态
+
+- 代码变更：✅ 完成
+- 受影响业务测试：✅ 35/35 通过
+- 全量单元回归：✅ 无新增失败
+- Commit：`[build] S13-reflow: feishuMessage uses text/sender/messageId`
+
