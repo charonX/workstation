@@ -668,6 +668,40 @@ Slice 8 标记完成。
 - 缺口：`validateUrl.js` 未阻断 IPv6 私网地址（`[::1]`、`[fe80::1]`、`[::ffff:127.0.0.1]` 等），与 PRD「SSRF 阻断私网 IP」意图及脚本注释「IPv6 私网范围本期按阻断处理」不符。
 - 处理决定：补充 IPv6 loopback/link-local/unique local/IPv4-mapped 私网检测。
 
+#### 修复记录
+
+- Fix commit：`2a01ee9 [bugfix] S9: block IPv6 private addresses in SSRF guard`、`0615b82 [bugfix] S9: strip brackets and detect IPv4-mapped private addresses`
+- 修改文件：`src/assets/skill-repos/opc-collection-skills/skills/fetch-to-markdown/scripts/validateUrl.js`
+- 关键修复：
+  - `assertPublicUrl` 中剥离 `parsed.hostname` 的方括号，兼容 IPv6 字面量。
+  - `isPrivateIp` 中补充 IPv6 loopback（`::1`、`::`）、link-local（`fe80::/10`）、unique local（`fc00::/7`）。
+  - 补充 IPv4-mapped 私网检测（`::ffff:7f00:1`、`::ffff:0a00:1` 等），覆盖 URL 解析后的十六进制形式。
+- 验证：
+  - `collectionSkills.test.js` → 5/5 pass
+  - 手动验证：`[::1]`、`[fe80::1]`、`[fc00::1]`、`[::ffff:127.0.0.1]`、`[::ffff:10.0.0.1]` 均被阻断；公网 URL 仍放行。
+
+#### 二次 PRD 对齐复查
+
+- 状态：`ALIGNED`
+- SSRF 缺口已修复；`2001:db8::/32` 等 IPv6 文档/保留段未纳入阻断，PRD/REQ 未明确枚举，作为已知策略边界保留。
+
 ---
+
+---
+
+#### Refactor 子代理验证
+
+- 原始 HEAD：`0615b82`
+- Refactor commit：`6515cf7 [refactor] Slice 9: collection skills`
+- 修改文件：
+  - `src/assets/skill-repos/opc-collection-skills/skills/fetch-to-markdown/scripts/validateUrl.js`：简化 `isPrivateIp` 分支，提取 `_hexOctet` helper，统一错误消息模板。
+  - `src/assets/skill-repos/opc-collection-skills/skills/topic-daily-digest/SKILL.md`：将 `## Output` 与 `## Examples` 顺序调整，使输出约定更靠近调用方。
+  - `src/assets/skill-repos/opc-collection-skills/skills/feishu-doc-sync/SKILL.md`：移除重复的权限说明段落。
+- 父代理独立验证：
+  - `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js` → 5/5 pass
+- diff 范围检查：仅修改 S9 实现资产，未触碰业务测试。
+- PRD 意图保持对齐。
+
+Slice 9 标记完成。
 
 ---
