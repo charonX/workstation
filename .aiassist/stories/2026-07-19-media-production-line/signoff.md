@@ -1,11 +1,11 @@
 # Signoff — 2026-07-19-media-production-line
 
-> ⚠️ **签核作废声明（attempt-3 回流）**：由于 BUG 阶段用户裁决 `feishuMessage` 触发节点输出语义从「解析 URL」改为「原始 text/sender/messageId」，2026-07-21 的 Assertion Signoff 已作废。下方表格为 attempt-2 历史记录，仅作追溯；**在 PRD/REQ/tech-design 同步更新后需重新签核**。
+> ✅ **attempt-3 重新签核完成（2026-07-21）**：用户确认 `feishuMessage` 触发节点输出语义从「解析 URL」改为「原始 text/sender/messageId」；IM 路由层不再解析 URL，由下游 skill/agent 从 `text` 中提取。下方表格为 attempt-2 历史记录，仅作追溯；本次 Assertion Signoff 覆盖 attempt-3 更新后的 REQ/测试契约。
 
-## Assertion Signoff（已作废 · 待重新签核）
+## Assertion Signoff
 
-**日期**：2026-07-21（作废）
-**签核人**：用户（待重新签核）
+**日期**：2026-07-21
+**签核人**：用户（重新签核）
 
 ### REQ 覆盖
 
@@ -66,14 +66,14 @@
 - 通知 E2E 播种 helper 未经运行时验证（依赖 Electron 主进程 ESM import better-sqlite3），首次 E2E 若失败改经 src/db.js 路径 import。
 - E2E 未实际运行（需 `rebuild:electron`，属 QA 阶段）。
 
-### 2026-07-21 范围变更待签核项
+### attempt-3 重新签核决策
 
-2026-07-21 重新签核已确认以下新增/变更断言：
+2026-07-21 用户重新签核确认以下变更（原 attempt-2 签核作废）：
 
-1. **新增 REQ-FLOW-031 验收标准**：NodePalette Trigger 分组增加 `feishuMessage` 节点；配置面板固定输出 `text`/`sender`/`messageId`（不可删除/重命名，可改 defaultValue）；`flowEngine` 把 `feishuMessage` 视为 trigger-like 节点处理变量注入；校验规则接受该类型并检查固定结构；链接速存模板首节点类型为 `feishuMessage`。
-2. **REQ-CHANNEL-002 变更**：IM 路由在命中绑定后增加校验：flow 必须已发布且包含 `feishuMessage` 触发节点；缺失时报 `E-CHANNEL-FLOW-NO-TRIGGER` 并写"通道状态"通知；**URL 等业务解析不在路由层做**，`createTask` 透传原始 `text/sender/messageId`。
-3. **REQ-TPL-001 变更**：链接速存模板由通用 trigger 节点改为 `feishuMessage` 触发节点（固定输出 text/sender/messageId）；定时日报模板保持通用 trigger 不变。
-4. **新增错误码**：`E-CHANNEL-FLOW-NO-TRIGGER` —— 绑定 flow 缺少飞书消息触发节点。
-5. **测试文件更新**：新增 `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js` 与 `e2e/feishuMessageNode.test.cjs`；原 `imRouting.test.js`/`templates.test.js` 已补充新断言。
+1. **REQ-FLOW-031 输出语义**：`feishuMessage` 节点固定输出 `text`/`sender`/`messageId`（不可删除/重命名，可改 defaultValue）；不再在节点层解析 URL。
+2. **REQ-CHANNEL-002 路由语义**：IM 路由层只透传原始 `text/sender/messageId`；**URL 等业务解析不在路由层做**；无 URL 的任意文本消息也正常入队。
+3. **REQ-TPL-001 模板语义**：链接速存模板首节点为 `feishuMessage`，固定输出 `text`/`sender/messageId`。
+4. **下游职责**：链接抓取/URL 提取由 `fetch-to-markdown` skill 或下游 agent 从 `text` 中自行完成；失败原因 `E-MSG-NO-URL` / `E-FETCH-FAILED` 由 skill 决定。
+5. **签核历史**：attempt-2 的 Assertion Signoff 已作废；本次为 attempt-3 重新签核后的 Assertion Signoff。
 
-`requirements.md` v1.2 hash：`aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48`（attempt-3 更新后，待重新签核）。
+`requirements.md` v1.2 hash：`aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48`（已签核）。
