@@ -880,3 +880,29 @@ Slice 10 标记完成。
 - 当前状态：测试已绿（2/2 pass），说明 S5/S2/S3 的实现已满足场景 B 端到端契约。
 
 ---
+
+#### PRD 对齐复查
+
+- 状态：`ALIGNED_WITH_NOTED_GAPS`
+- 对齐项：cron 触发、队列执行、文件落盘、产物登记、终态投递、通知写入、失败分支均已在实现与签核测试中覆盖。
+- 缺口项（非阻塞，作为已知偏差保留）：
+  - `missing-test`：签核测试 `dailyDigest.test.js` 未显式断言日报文件名由 topic 派生（仅硬编码 `ai-daily` 并做通用正则匹配）。因业务测试文件已签核且禁止修改，该 PRD 锚点作为已知测试覆盖缺口保留。
+  - `missing-test`：签核测试未创建登记内容源，mock agent 直接硬编码 URL，未验证条目来自已登记源。同上，作为已知测试覆盖缺口保留。
+  - `tech-design-gap`：schedule 触发无 `channelReply` 时使用默认 `chatId="default"` 投递。真实生产环境需要后续补充默认通知目标配置（如 settings 中 `defaultNotificationChatId` 或 schedule.variables 支持 `channelReply`）。该点已在「与 PRD/tech-design 的已知偏差」中记录。
+
+---
+
+#### Refactor 子代理验证
+
+- 原始 HEAD：`5d5fb2d`
+- Refactor commit：`87f758f [refactor] Slice 11: daily digest e2e`
+- 修改文件：
+  - `src/services/taskService.js`：提取 `resolveTerminalRecipient(execution)` helper，将 channelReply 解析与 schedule 默认 chat 决策移出 `deliverTerminalNotification`；保持行为不变。
+- 父代理独立验证：
+  - `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/dailyDigest.test.js tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js tests/capabilities/scheduling-execution/schedule/2026-07-19-media-production-line/api/scheduleTriggers.test.js` → 36/36 pass
+- diff 范围检查：仅修改 S11 实现代码（`src/services/taskService.js`），未触碰业务测试。
+- PRD 意图保持对齐。
+
+Slice 11 标记完成。
+
+---

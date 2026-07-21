@@ -44,8 +44,8 @@ slices:
   - {id: S8, name: notification-ui, status: complete, commits: [fe88992, f9191dd, aafa51d, 55bdcd7], reqs: [REQ-NOTIFY-002]}
   - {id: S9, name: collection-skills, status: complete, commits: [6dbc17f, 2a01ee9, 0615b82, 6515cf7], reqs: [REQ-COLL-003]}
   - {id: S10, name: template-instantiation, status: complete, commits: [d839440, d3edd18, 18d5bb8], reqs: [REQ-TPL-001]}
-  - {id: S11, name: daily-digest-e2e, status: in_progress, reqs: [REQ-COLL-001]}
-  - {id: S12, name: link-capture-e2e, status: pending, reqs: [REQ-COLL-002]}
+  - {id: S11, name: daily-digest-e2e, status: complete, commits: [5d5fb2d, 87f758f], reqs: [REQ-COLL-001]}
+  - {id: S12, name: link-capture-e2e, status: in_progress, reqs: [REQ-COLL-002]}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
