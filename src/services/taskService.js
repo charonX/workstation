@@ -574,8 +574,20 @@ async function resolveChannelAdapter() {
 async function deliverTerminalNotification(executionId) {
   const execution = getExecution(executionId);
   if (!execution) return;
+
+  let chatId;
+  let messageId;
   const channelReply = execution.variables?.channelReply;
-  if (!channelReply) return;
+  if (channelReply) {
+    chatId = channelReply.chatId;
+    messageId = channelReply.messageId;
+  } else if (execution.trigger === "schedule") {
+    // 场景 A · 定时日报：schedule 触发无显式 channelReply 时，若当前 channel
+    // adapter 在线，仍向默认 chat 投递日报摘要/失败通知。
+    chatId = "default";
+  } else {
+    return;
+  }
 
   const adapter = await resolveChannelAdapter();
   if (!adapter) return;
@@ -585,10 +597,10 @@ async function deliverTerminalNotification(executionId) {
     : buildTerminalFailureText(execution);
 
   try {
-    if (channelReply.messageId) {
-      await adapter.reply({ messageId: channelReply.messageId, text });
-    } else if (channelReply.chatId) {
-      await adapter.send({ chatId: channelReply.chatId, text });
+    if (messageId) {
+      await adapter.reply({ messageId, text });
+    } else if (chatId) {
+      await adapter.send({ chatId, text });
     }
   } catch (err) {
     console.error(`[taskService] E-CHANNEL-SEND: failed to deliver terminal notification for ${executionId}:`, err.message);

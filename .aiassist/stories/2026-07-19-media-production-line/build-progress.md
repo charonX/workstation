@@ -20,7 +20,7 @@
 | S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | DONE | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
 | S9 | 收集 skill 包 | REQ-COLL-003 | 无（依赖 skillService） | pending | `collection-pipeline/collection/api/collectionSkills.test.js` |
 | S10 | 模板实例化 | REQ-TPL-001 | S1, S4, S5 | pending | `collection-pipeline/template/api/templates.test.js` |
-| S11 | 场景 A · 定时日报端到端 | REQ-COLL-001 | S2, S3, S5, S9 | pending | `collection-pipeline/collection/api/dailyDigest.test.js` |
+| S11 | 场景 A · 定时日报端到端 | REQ-COLL-001 | S2, S3, S5, S9 | DONE | `collection-pipeline/collection/api/dailyDigest.test.js` |
 | S12 | 场景 B · 链接速存端到端 | REQ-COLL-002 | S2, S3, S5, S9 | pending | `collection-pipeline/collection/api/linkCapture.test.js` |
 
 ---
@@ -823,7 +823,7 @@ Slice 10 标记完成。
 
 ### S11 / daily-digest-e2e
 
-**状态**: IN PROGRESS  
+**状态**: DONE  
 **REQ-ID**: REQ-COLL-001  
 **依赖**: S2 (scheduler/queue/artifacts/delivery), S3 (notification), S5 (feishu channel adapter), S9 (collection skills), S10 (template instantiation)  
 **测试文件**:
@@ -834,7 +834,34 @@ Slice 10 标记完成。
 - 场景 A 端到端链路：cron 到点（注入 `* * * * * *`）→ `schedulerService` publish `schedule:triggered` → `taskService.createTask({trigger:"schedule"})` → `executionQueue` → `executeTask` → mock agent 写 `outputs/daily/<date>-<topic-slug>.md` → 产物登记 → 终态投递（日报摘要）→ 通知「产物产出」。
 - 失败场景：mock agent 返回 error → 执行 error → 飞书收到失败通知（E-AGENT-FAILED）→ 通知「执行失败」→ 无产物登记、无文件落盘。
 - 测试 seam：`taskService.setAgentExecutorForTests` / `setChannelAdapterForTests`。
-- 当前状态：链路大部分已就绪；schedule 触发时 execution.variables 缺少 `channelReply`，导致 `deliverTerminalNotification` 提前返回，fake 飞书未收到日报摘要/失败通知。
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-3 / REQ-COLL-001 AC1：cron 到点创建执行（trigger=schedule，variables 含 topic） | `src/services/schedulerService.js`（publish `schedule:triggered`）+ `src/services/taskService.js`（`subscribeToScheduleTriggers` → `createTask`） | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/dailyDigest.test.js` | COVERED |
+| REQ-COLL-001 AC2：日报文件真实落盘，frontmatter 含 topic/sources/generatedAt | 测试 fixture `mockAgent.js` 按 skill 契约写文件；`src/services/taskService.js` `collectArtifacts` 登记 | 同上 | COVERED |
+| REQ-COLL-001 AC3：fake 飞书收到日报摘要；artifacts 登记；通知「产物产出」 | `src/services/taskService.js` `deliverTerminalNotification` / `writeExecutionNotification` | 同上 | COVERED |
+| REQ-COLL-001 AC4：执行失败 → 飞书失败通知 + 通知「执行失败」+ 无产物登记 | `src/services/taskService.js` `buildTerminalFailureText` + `deliverTerminalNotification`；失败分支 `artifacts=[]` | 同上 | COVERED |
+| tech-design「系统层投递规则」：taskService 统一投递，agent 不参与发送 | `src/services/taskService.js` `deliverTerminalNotification` | 同上 | COVERED |
+
+#### 与 PRD/tech-design 的已知偏差
+
+- tech-design「系统层投递规则」字面描述为“无 `channelReply` 时不投递”。本实现为了覆盖场景 A（schedule 触发无显式回复上下文），在 `execution.trigger === "schedule"` 且没有 `channelReply` 时，若 `resolveChannelAdapter()` 返回在线 adapter，则使用默认 `chatId="default"` 调用 `adapter.send`。偏差原因：schedule 触发源不像 IM 场景有 `chatId`/`messageId`，但 PRD §6.1 OP-3 明确要求“飞书收到日报摘要消息”；完全按字面“无 channelReply 不投递”会导致场景 A 验收失败。失败时仍仅记录日志，不反转终态，保持 REQ-SCHEDULE-009 的边界约束。
+
+#### 测试结果摘要
+
+- `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/dailyDigest.test.js tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js` → 4/4 pass（dailyDigest 2/2，linkCapture 2/2）
+- `node --test tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js` → 22/22 pass
+- `node --test tests/capabilities/scheduling-execution/schedule/2026-07-19-media-production-line/api/scheduleTriggers.test.js` → 10/10 pass
+
+#### 修改文件
+
+- `src/services/taskService.js`（`deliverTerminalNotification`：schedule 触发无 `channelReply` 时默认向在线 adapter 投递）
+
+#### Commit
+
+`[build] Slice 11: daily digest e2e`
 
 ---
 
