@@ -42,7 +42,20 @@
     "dark": "Dark",
     "light": "Light",
     "english": "English",
-    "chinese": "中文"
+    "chinese": "中文",
+    "channel": "Feishu Channel",
+    "channelSubtitle": "Long-connection message receiving and delivery: receive links to trigger capture, deliver digest and failure notifications",
+    "appId": "App ID",
+    "appSecret": "App Secret",
+    "show": "Show",
+    "hide": "Hide",
+    "saveCredentials": "Save Credentials & Connect",
+    "reconnect": "Reconnect",
+    "credentialsRequired": "Credentials are required",
+    "channelHelp": "Use Feishu WebSocket long-connection mode; no public IP or callback domain needed. The robot triggers the link-capture flow on receiving an http(s) link, and delivers digests after daily runs.",
+    "credentialsSaved": "Credentials saved",
+    "channelConnected": "Feishu channel is online",
+    "channelReconnected": "Feishu channel reconnected"
   },
   "sources": {
     "title": "Sources",

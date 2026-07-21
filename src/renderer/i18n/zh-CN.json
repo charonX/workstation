@@ -42,7 +42,20 @@
     "dark": "深色",
     "light": "浅色",
     "english": "English",
-    "chinese": "中文"
+    "chinese": "中文",
+    "channel": "飞书通道",
+    "channelSubtitle": "长连接收发消息：接收链接触发速存，投递日报摘要与失败通知",
+    "appId": "App ID",
+    "appSecret": "App Secret",
+    "show": "显示",
+    "hide": "隐藏",
+    "saveCredentials": "保存凭据并连接",
+    "reconnect": "重新连接",
+    "credentialsRequired": "凭据不能为空",
+    "channelHelp": "使用飞书长连接（WebSocket）模式接入，无需公网 IP 与回调域名。机器人收到 http(s) 链接即触发链接速存 flow，定时日报完成后投递摘要。",
+    "credentialsSaved": "凭据已保存",
+    "channelConnected": "飞书通道已在线",
+    "channelReconnected": "飞书通道已恢复"
   },
   "sources": {
     "title": "内容源",
