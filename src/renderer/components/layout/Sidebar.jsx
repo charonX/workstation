@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useUnreadCount } from "../../hooks/useUnreadCount.js";
 
 function SidebarNavLink({ to, testid, children }) {
   const location = useLocation();
@@ -17,6 +18,7 @@ function SidebarNavLink({ to, testid, children }) {
 
 export default function Sidebar() {
   const { t } = useTranslation();
+  const unreadCount = useUnreadCount();
 
   return (
     <aside className="sidebar" data-testid="sidebar">
@@ -35,6 +37,17 @@ export default function Sidebar() {
           <SidebarNavLink to="/settings" testid="nav-settings">{t("nav.settings")}</SidebarNavLink>
         </div>
       </nav>
+      <div className="sidebar-bottom">
+        <SidebarNavLink to="/notifications" testid="nav-notifications">
+          <span>{t("nav.notifications")}</span>
+          <span
+            className={`nav-badge${unreadCount === 0 ? " hidden" : ""}`}
+            data-testid="nav-notifications-badge"
+          >
+            {unreadCount}
+          </span>
+        </SidebarNavLink>
+      </div>
     </aside>
   );
 }

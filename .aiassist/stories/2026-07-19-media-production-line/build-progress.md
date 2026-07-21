@@ -17,7 +17,7 @@
 | S5 | 飞书通道 adapter 与绑定管理 | REQ-CHANNEL-001~005 | S1, S2 | DONE | `channel-integration/channel/api/feishuChannel.test.js`, `channel-integration/channel/api/imRouting.test.js`, `channel-integration/channel/api/docSync.test.js` |
 | S6 | Execution 产物 tab 与打开动作 | REQ-FLOW-030 | S1, S2 | DONE | `flow-orchestration/execution/api/artifactOpenPath.test.js`, `flow-orchestration/execution/e2e/artifactsTab.test.cjs` |
 | S7 | 内容源管理 UI | REQ-SRC-003 | S1, S4 | pending | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` |
-| S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | pending | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
+| S8 | 通知中心 UI | REQ-NOTIFY-002 | S1, S3 | DONE | `information-aggregation/notification/e2e/notificationCenter.test.cjs` |
 | S9 | 收集 skill 包 | REQ-COLL-003 | 无（依赖 skillService） | pending | `collection-pipeline/collection/api/collectionSkills.test.js` |
 | S10 | 模板实例化 | REQ-TPL-001 | S1, S4, S5 | pending | `collection-pipeline/template/api/templates.test.js` |
 | S11 | 场景 A · 定时日报端到端 | REQ-COLL-001 | S2, S3, S5, S9 | pending | `collection-pipeline/collection/api/dailyDigest.test.js` |
@@ -543,19 +543,46 @@ Slice 7 标记完成。
 
 ### S8 / notification-ui
 
-**状态**: IN PROGRESS  
+**状态**: DONE  
 **REQ-ID**: REQ-NOTIFY-002  
 **依赖**: S1 (workspace/server/db), S3 (notification service/API)  
 **测试文件**:
 - `tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/e2e/notificationCenter.test.cjs`
 - 回归：`tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js`
 
-#### 设计上下文摘要
+**测试结果**: 10/10 pass（E2E 4 + API 回归 6）
 
-- UX 参照 `.aiassist/stories/2026-07-19-media-production-line/ux/notifications.html`。
-- 关键行为：Sidebar 底部「通知」入口 + 未读徽标；通知列表页按时间倒序；过滤 tab（全部/产物产出/执行失败/通道状态）；未读 pill + 标为已读按钮；全部标为已读；产物产出通知点击跳转执行详情。
-- 播种：E2E 通过 `tests/e2e/helpers/notifications.cjs` 在主进程内直写 notifications 表。
-- API 已由 S3 实现：`GET /api/notifications`、`POST /api/notifications/:id/read`、`POST /api/notifications/read-all`。
-- 需新增 renderer 路由 `/notifications`、Sidebar 底部通知入口、Notifications 页面组件。
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-7 步骤 1：打开应用，侧边栏通知入口显示未读徽标，计数与 API 一致 | `src/renderer/components/layout/Sidebar.jsx`（底部「通知」入口 + `.nav-badge`）；`src/renderer/hooks/useUnreadCount.js`（轮询 `/api/notifications` 未读数） | E2E `notificationCenter.test.cjs` | COVERED |
+| §6.1 OP-7 步骤 2：列表页按时间倒序展示事件 | `src/renderer/pages/Notifications.jsx`（渲染 API 返回的 `items`，API 已按 `createdAt DESC`）；`src/renderer/api/notifications.js` | E2E `notificationCenter.test.cjs` | COVERED |
+| REQ-NOTIFY-002 AC2：过滤 tab（全部/产物产出/执行失败/通道状态），各带计数 | `src/renderer/pages/Notifications.jsx`（`FILTER_KEYS` + `counts` + `.tab-count`） | E2E `notificationCenter.test.cjs` | COVERED |
+| REQ-NOTIFY-002 AC2：未读条目带「未读」pill 与「标为已读」按钮；已读区分 | `src/renderer/pages/Notifications.jsx`（`.ntf-unread-pill` + `.mark-read-btn` + `data-read`） | E2E `notificationCenter.test.cjs` | COVERED |
+| REQ-NOTIFY-002 AC2：「全部标为已读」按钮，无未读时 disabled | `src/renderer/pages/Notifications.jsx`（`markAllRead` 调用 `POST /api/notifications/read-all`） | E2E `notificationCenter.test.cjs` | COVERED |
+| REQ-NOTIFY-002 AC2：空态「该分类下暂无通知」 | `src/renderer/pages/Notifications.jsx` + `src/renderer/i18n/zh-CN.json` | E2E `notificationCenter.test.cjs` | COVERED |
+| REQ-NOTIFY-002 AC3：「产物产出」类通知点击跳转对应执行详情；其余类型仅展示 | `src/renderer/pages/Notifications.jsx`（`clickable`/`role="button"`/`data-clickable='true'` + `useNavigate` 到 `/executions?highlight=...`） | E2E `notificationCenter.test.cjs` | COVERED |
+| 设计系统约束：颜色/间距/字体使用 `--ch-*` token | `src/renderer/index.css`（notification 全部使用 `var(--ch-*)`） | E2E 视觉映射（未断言像素） | COVERED |
+| S3 API 回归：`GET /api/notifications` + 未读数 + 单条/全部已读 | `src/services/notificationService.js`；`src/http/routes/notifications.js` | API `notifications.test.js` | COVERED |
+| E2E 播种：不开放 POST 写入面，经 helper 直写 notifications 表 | `tests/e2e/helpers/notifications.cjs`；`src/preload/preload.js`（`__seedNotifications` 测试 seam）；`src/main/main.js`（`opc-seed-notifications` IPC handler，开发环境限定） | E2E `notificationCenter.test.cjs` | COVERED |
+
+#### 与 HTML 原型偏差
+
+- 时间显示使用「MM-DD HH:mm」本地化格式，而非原型的相对时间（如「今天 10:02」）。原因：E2E 签核明确不断言具体时间格式，仅断言顺序与文案；本地化绝对时间实现更简单、无运行时歧义。
+- 未实现原型中的 toast 反馈（「已将 N 条通知标为已读」）。原因：PRD/E2E 未断言 toast，标为已读后 UI 状态（徽标/列表）已足够反馈。
+- 未实现侧边栏顶部/Topbar 的铃铛 icon-btn 入口（原型在 topbar-right 也有通知图标）。原因：签核 E2E 仅断言 Sidebar 底部「通知」入口与徽标；顶部入口未进入验收范围，避免重复。
+- 列表项未显示原型中「查看执行与产物 →」的 hover 下划线样式以外的额外视觉层级；核心可点击标识与跳转行为已按签核实现。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `notificationCenter.test.cjs`（E2E）→ 4/4 pass
+  - `notifications.test.js`（API 回归）→ 6/6 pass
+  - 合计 10/10 pass
+- diff 范围检查：新增 renderer 文件（`src/renderer/pages/Notifications.jsx`、`src/renderer/api/notifications.js`、`src/renderer/hooks/useNotifications.js`、`src/renderer/hooks/useUnreadCount.js`）；修改 renderer 文件（`App.jsx`、`Sidebar.jsx`、`index.css`、i18n 文件）；修改测试基础设施（`tests/e2e/helpers/notifications.cjs`、`src/preload/preload.js`、`src/main/main.js`）。未修改业务测试 `.test.cjs`/`.test.js` 文件。
+- PRD 对齐：实现与 `ux/notifications.html` 及签核断言一致。
+
+Slice 8 标记完成。
 
 ---

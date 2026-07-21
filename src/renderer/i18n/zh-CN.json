@@ -5,6 +5,7 @@
     "flows": "流程",
     "executions": "执行历史",
     "sources": "内容源",
+    "notifications": "通知",
     "skills": "技能",
     "settings": "设置",
     "system": "系统"
@@ -76,6 +77,13 @@
     "xWechatDisclaimer": "x / wechat 类型为尽力抓取，不进入验收保障",
     "deleteTitle": "删除内容源",
     "deleteMessage": "确定删除内容源「{{name}}」吗？此操作不可撤销；按 tag 引用该来源的 flow 下次执行时将自然少一个来源。"
+  },
+  "notifications": {
+    "title": "通知",
+    "subtitle": "系统事件：产物产出、执行失败、通道掉线与恢复。",
+    "markAllRead": "全部标为已读",
+    "markRead": "标为已读",
+    "empty": "该分类下暂无通知。"
   },
   "skills": {
     "title": "技能",

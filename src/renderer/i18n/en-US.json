@@ -5,6 +5,7 @@
     "flows": "Flows",
     "executions": "Executions",
     "sources": "Sources",
+    "notifications": "Notifications",
     "skills": "Skills",
     "settings": "Settings",
     "system": "System"
@@ -76,6 +77,13 @@
     "xWechatDisclaimer": "x / wechat sources are best-effort and not covered by acceptance guarantees",
     "deleteTitle": "Delete Content Source",
     "deleteMessage": "Are you sure you want to delete content source \"{{name}}\"? This cannot be undone; flows referencing this source by tag will naturally skip it on next run."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "System events: artifact produced, execution failures, channel status changes.",
+    "markAllRead": "Mark all as read",
+    "markRead": "Mark as read",
+    "empty": "No notifications in this category."
   },
   "skills": {
     "title": "Skills",

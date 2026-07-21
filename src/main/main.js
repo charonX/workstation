@@ -7,6 +7,7 @@ import { defaultDbPath, migrateLegacyDb } from "../db.js";
 import { discoverServer } from "../cli/server.js";
 import { takeoverExistingServer } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
+import { getDb } from "../db.js";
 
 // Handle squirrel startup events (Windows installer)
 if (process.platform === "win32" && (await import("electron-squirrel-startup")).default) {
@@ -159,6 +160,31 @@ ipcMain.handle("opc-show-artifact-in-folder", async (_event, { projectRoot, arti
   assertArtifactPathAllowed(projectRoot, artifactPath);
   shell.showItemInFolder(resolveArtifactPath(projectRoot, artifactPath));
 });
+
+// Test-only seam: E2E helper seeds notifications by writing directly to the DB.
+// Guarded to development so production builds do not expose this surface.
+if (process.env.NODE_ENV === "development") {
+  ipcMain.handle("opc-seed-notifications", async (_event, notifications) => {
+    const list = Array.isArray(notifications) ? notifications : [];
+    const db = getDb();
+    const insert = db.prepare(`
+      INSERT OR REPLACE INTO notifications (id, type, title, body, executionId, createdAt, readAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const n of list) {
+      insert.run(
+        n.id,
+        n.type,
+        n.title,
+        n.body ?? null,
+        n.executionId ?? null,
+        n.createdAt,
+        n.readAt ?? null
+      );
+    }
+    return list.length;
+  });
+}
 
 app.whenReady().then(createWindow);
 

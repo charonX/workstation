@@ -7,6 +7,7 @@ import Flows from "./pages/Flows.jsx";
 import FlowEditor from "./pages/FlowEditor.jsx";
 import Executions from "./pages/Executions.jsx";
 import Sources from "./pages/Sources.jsx";
+import Notifications from "./pages/Notifications.jsx";
 import Skills from "./pages/Skills.jsx";
 import Settings from "./pages/Settings.jsx";
 import "./i18n/index.js";
@@ -40,6 +41,7 @@ function AppRoutes() {
           <Route path="/flows/:id" element={<FlowEditor />} />
           <Route path="/executions" element={<Executions />} />
           <Route path="/sources" element={<Sources />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/tasks" element={<Navigate to="/executions" replace />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/settings" element={<Settings />} />

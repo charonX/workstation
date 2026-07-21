@@ -71,4 +71,12 @@ contextBridge.exposeInMainWorld("opc", {
    * @param {Function} fn - async (title, defaultPath) => string | null
    */
   __setSelectDirectoryImpl: (fn) => { selectDirectoryImpl = fn; },
+
+  /**
+   * Test-only seam to seed notifications directly into the DB from E2E tests.
+   * @param {Array<object>} notifications
+   * @returns {Promise<number>}
+   */
+  __seedNotifications: (notifications) =>
+    ipcRenderer.invoke("opc-seed-notifications", notifications),
 });
