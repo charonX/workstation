@@ -44,8 +44,7 @@ export function createBindingRaw(db, { channelType, flowId, projectId, force = f
 
 export function createBinding({ channelType, flowId, projectId, force = false } = {}) {
   const db = getDb();
-  const writeBinding = db.transaction(() => createBindingRaw(db, { channelType, flowId, projectId, force }));
-  return writeBinding();
+  return db.transaction(() => createBindingRaw(db, { channelType, flowId, projectId, force }))();
 }
 
 export function getBinding(channelType) {

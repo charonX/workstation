@@ -10,27 +10,11 @@ const BUILTIN_TEMPLATES = [
     name: "定时日报",
     description: "按主题从内容源收集条目并合成日报",
     nodeList: [
-      {
-        id: "trigger",
-        type: "trigger",
-        config: {
-          outputVariables: [
-            { name: "topic", type: "string", defaultValue: "" }
-          ]
-        }
-      },
-      {
-        id: "agent",
-        type: "agent",
-        config: {
-          provider: "anthropic",
-          options: {
-            systemPrompt:
-              "You are a collection agent. When triggered with a topic, call the `topic-daily-digest` skill to generate a structured daily digest. Use the injected `topic` variable to drive the collection.",
-            maxTurns: 10
-          }
-        }
-      }
+      buildTriggerNode("topic"),
+      buildAgentNode(
+        "topic-daily-digest",
+        "You are a collection agent. When triggered with a topic, call the `topic-daily-digest` skill to generate a structured daily digest. Use the injected `topic` variable to drive the collection."
+      )
     ],
     edges: [{ id: "e1", sourceNodeId: "trigger", targetNodeId: "agent" }],
     skills: ["topic-daily-digest"]
@@ -40,27 +24,11 @@ const BUILTIN_TEMPLATES = [
     name: "链接速存",
     description: "抓取 IM 消息中的链接正文并转为 markdown 存入素材库",
     nodeList: [
-      {
-        id: "trigger",
-        type: "trigger",
-        config: {
-          outputVariables: [
-            { name: "url", type: "string", defaultValue: "" }
-          ]
-        }
-      },
-      {
-        id: "agent",
-        type: "agent",
-        config: {
-          provider: "anthropic",
-          options: {
-            systemPrompt:
-              "You are a collection agent. When triggered with a URL, call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library.",
-            maxTurns: 10
-          }
-        }
-      }
+      buildTriggerNode("url"),
+      buildAgentNode(
+        "fetch-to-markdown",
+        "You are a collection agent. When triggered with a URL, call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library."
+      )
     ],
     edges: [{ id: "e1", sourceNodeId: "trigger", targetNodeId: "agent" }],
     skills: ["fetch-to-markdown"],
@@ -83,6 +51,32 @@ function cloneDeep(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function buildTriggerNode(outputVariableName) {
+  return {
+    id: "trigger",
+    type: "trigger",
+    config: {
+      outputVariables: [
+        { name: outputVariableName, type: "string", defaultValue: "" }
+      ]
+    }
+  };
+}
+
+function buildAgentNode(skillName, prompt) {
+  return {
+    id: "agent",
+    type: "agent",
+    config: {
+      provider: "anthropic",
+      options: {
+        systemPrompt: prompt,
+        maxTurns: 10
+      }
+    }
+  };
+}
+
 function applyOverrides(nodeList, overrides) {
   if (!overrides || typeof overrides !== "object") return nodeList;
   for (const node of nodeList) {
@@ -102,6 +96,22 @@ function findSkillIdByName(name) {
   const skills = skillService.listLinkableSkills();
   const skill = skills.find((s) => s.name === name);
   return skill?.id;
+}
+
+function resolveRequiredSkillIds(template) {
+  const skillIds = [];
+  for (const skillName of template.skills) {
+    const skillId = findSkillIdByName(skillName);
+    if (!skillId) {
+      throw createError(
+        `Required collection skill not available: ${skillName}`,
+        "E-TPL-SKILL-MISSING",
+        500
+      );
+    }
+    skillIds.push(skillId);
+  }
+  return skillIds;
 }
 
 export function listTemplates() {
@@ -133,18 +143,7 @@ export function instantiateTemplate({ templateId, projectId, overrides, force = 
   const nodeList = applyOverrides(cloneDeep(template.nodeList), overrides);
 
   // Resolve required collection skills before the transaction so missing skills fail early.
-  const skillIds = [];
-  for (const skillName of template.skills) {
-    const skillId = findSkillIdByName(skillName);
-    if (!skillId) {
-      throw createError(
-        `Required collection skill not available: ${skillName}`,
-        "E-TPL-SKILL-MISSING",
-        500
-      );
-    }
-    skillIds.push(skillId);
-  }
+  const skillIds = resolveRequiredSkillIds(template);
 
   let flow;
   let binding = null;
@@ -160,8 +159,7 @@ export function instantiateTemplate({ templateId, projectId, overrides, force = 
 
     const linkedSkillIds = new Set();
     for (const skillId of skillIds) {
-      const touched = skillService.linkSkillRaw(db, skillId, projectId);
-      for (const id of touched) {
+      for (const id of skillService.linkSkillRaw(db, skillId, projectId)) {
         linkedSkillIds.add(id);
       }
     }

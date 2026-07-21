@@ -20,20 +20,24 @@ export function handleTemplates(req, res, body, pathParts) {
       });
       return created(res, result);
     } catch (err) {
-      if (err.code === "E-TPL-NOT-FOUND") {
-        return notFound(res, err.message, err.code);
-      }
-      if (err.code === "E-TPL-PROJECT-INVALID") {
-        return badRequest(res, err.message, err.code);
-      }
-      if (err.code === "E-BINDING-EXISTS") {
-        return conflict(res, err.message, err.code);
-      }
-      return internalError(res, err.message);
+      return sendTemplateError(res, err);
     }
   }
 
   return notFound(res);
+}
+
+function sendTemplateError(res, err) {
+  if (err.code === "E-TPL-NOT-FOUND") {
+    return notFound(res, err.message, err.code);
+  }
+  if (err.code === "E-TPL-PROJECT-INVALID") {
+    return badRequest(res, err.message, err.code);
+  }
+  if (err.code === "E-BINDING-EXISTS") {
+    return conflict(res, err.message, err.code);
+  }
+  return internalError(res, err.message);
 }
 
 function sendJson(res, status, data) {
