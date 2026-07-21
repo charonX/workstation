@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-TPL-001
-// REQ-VERSION: v1-hash:de43bc8607a89efe5512712a188a5f24f259d8109cb31a7a476827dd0883fab9
+// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
 // CAPABILITY-TRACE: collection-pipeline
 // ENTITY-TRACE: template
 // TEST-AUTHOR: agent
@@ -78,6 +78,54 @@ describe("REQ-TPL-001: 模板实例化", () => {
     for (const required of ["fetch-to-markdown", "topic-daily-digest"]) {
       assert.ok(linkedNames.includes(required), `项目应关联收集 skill ${required}，实际: ${linkedNames}`);
     }
+  });
+
+  it("AC1: 链接速存模板生成的 flow 首节点为 feishuMessage 触发节点（固定输出 url/sender/messageId）", async () => {
+    const res = await instantiate(TPL_LINK);
+    assert.equal(res.status, 201, `实际: ${res.status}`);
+    const data = await res.json();
+    const flowId = data.flowId || data.flow.id;
+
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows/${flowId}`)).json();
+    const nodes = typeof flow.nodeList === "string" ? JSON.parse(flow.nodeList) : flow.nodeList;
+    const triggerNode = nodes.find((n) => n.type === "feishuMessage");
+    assert.ok(triggerNode, "链接速存模板应包含 feishuMessage 触发节点");
+    assert.equal(triggerNode.id, "n1", "首节点 id 应为 n1（模板约定）");
+
+    const outputs = triggerNode.config?.outputVariables || [];
+    const names = outputs.map((v) => v.name);
+    assert.deepEqual(names, ["url", "sender", "messageId"], "固定输出变量顺序应为 url/sender/messageId");
+    for (const v of outputs) {
+      assert.equal(v.type, "string", `${v.name} 类型应为 string`);
+    }
+  });
+
+  it("AC4: 链接速存模板生成的 flow 被 IM 消息触发时，注入变量能被 feishuMessage 节点正确合并进 context", async () => {
+    const { run } = await import("../../../../../../src/flowEngine/flowEngine.js");
+    const res = await instantiate(TPL_LINK);
+    assert.equal(res.status, 201);
+    const data = await res.json();
+    const flowId = data.flowId || data.flow.id;
+
+    const flow = await (await fetch(`${serverCtx.baseUrl}/api/flows/${flowId}`)).json();
+    const nodeList = typeof flow.nodeList === "string" ? JSON.parse(flow.nodeList) : flow.nodeList;
+    const publishedFlow = { ...flow, nodeList };
+
+    const store = { prompts: [] };
+    const capture = (store) => async ({ node }) => {
+      store.prompts.push({ nodeId: node.id, prompt: node.config.prompt });
+      return { status: "success", output: "mocked" };
+    };
+
+    const result = await run(
+      publishedFlow,
+      { executors: { agent: capture(store) } },
+      { url: "https://example.com/link", sender: "ou_123", messageId: "om_456" }
+    );
+
+    assert.equal(result.status, "success");
+    const agentPrompt = store.prompts.find((p) => p.nodeId !== "n1")?.prompt || "";
+    assert.ok(agentPrompt.includes("https://example.com/link"), "agent prompt 应能引用注入的 url 变量");
   });
 
   it("AC2: 链接速存模板实例化同事务写入 channel_bindings；已有绑定无 force 报 E-BINDING-EXISTS", async () => {

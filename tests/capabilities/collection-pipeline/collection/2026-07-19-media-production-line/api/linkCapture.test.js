@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-COLL-002
-// REQ-VERSION: v1-hash:de43bc8607a89efe5512712a188a5f24f259d8109cb31a7a476827dd0883fab9
+// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
 // CAPABILITY-TRACE: collection-pipeline
 // ENTITY-TRACE: collection
 // TEST-AUTHOR: agent
@@ -85,7 +85,17 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
         name: "链接速存",
         projectId: project.id,
         nodeList: [
-          { id: "n1", type: "trigger", config: { outputVariables: [{ name: "url", type: "string", defaultValue: "" }] } },
+          {
+            id: "n1",
+            type: "feishuMessage",
+            config: {
+              outputVariables: [
+                { name: "url", type: "string", defaultValue: "" },
+                { name: "sender", type: "string", defaultValue: "" },
+                { name: "messageId", type: "string", defaultValue: "" }
+              ]
+            }
+          },
           { id: "n2", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "out", prompt: "抓取 {{n1.url}} 转 Markdown 存素材库" } }
         ],
         edges: [{ sourceNodeId: "n1", targetNodeId: "n2" }]

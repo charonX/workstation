@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-CHANNEL-002, 2026-07-19-media-production-line/REQ-CHANNEL-004
-// REQ-VERSION: v1-hash:de43bc8607a89efe5512712a188a5f24f259d8109cb31a7a476827dd0883fab9
+// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
 // CAPABILITY-TRACE: channel-integration
 // ENTITY-TRACE: channel
 // TEST-AUTHOR: agent
@@ -55,16 +55,32 @@ async function loadBindingService() {
   return mod;
 }
 
-async function createProjectFlow(baseUrl, { publish = true } = {}) {
+async function createProjectFlow(baseUrl, { publish = true, includeFeishuMessageNode = true } = {}) {
   const project = await (await fetch(`${baseUrl}/api/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "IM Project", localPath: "/tmp/im-project" })
   })).json();
+  const nodeList = includeFeishuMessageNode
+    ? [
+        {
+          id: "n1",
+          type: "feishuMessage",
+          config: {
+            outputVariables: [
+              { name: "url", type: "string", defaultValue: "" },
+              { name: "sender", type: "string", defaultValue: "" },
+              { name: "messageId", type: "string", defaultValue: "" }
+            ]
+          }
+        },
+        { id: "n2", type: "agent", config: { provider: "anthropic", outputVariable: "out", prompt: "url={{n1.url}}" } }
+      ]
+    : [];
   const flow = await (await fetch(`${baseUrl}/api/flows`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Link Capture", projectId: project.id })
+    body: JSON.stringify({ name: "Link Capture", projectId: project.id, nodes: nodeList })
   })).json();
   if (publish) {
     await fetch(`${baseUrl}/api/flows/${flow.id}`, {
@@ -167,6 +183,26 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     assert.equal(res.status, 200, "通知列表端点应可用（REQ-NOTIFY-001）");
     const { items } = await res.json();
     assert.ok(items.some((n) => n.type === "channel-status"), "绑定异常应写「通道状态」通知");
+  });
+
+  it("AC4: 绑定指向 flow 无 feishuMessage 触发节点 → 回复配置异常并写「通道状态」通知（E-CHANNEL-FLOW-NO-TRIGGER）", async () => {
+    const binding = await loadBindingService();
+    const { project, flow } = await createProjectFlow(serverCtx.baseUrl, { includeFeishuMessageNode: false });
+    binding.createBinding({ channelType: "feishu", flowId: flow.id, projectId: project.id });
+
+    adapter.emitMessage({ messageId: "om_no_trigger_1", chatId: "oc_1", senderId: "ou_1", text: "https://example.com/no-trigger" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(adapter.replies.length, 1, "缺少 feishuMessage 节点应回复配置异常提示");
+    assert.ok(adapter.replies[0].text.includes("配置异常"), `实际回执: ${adapter.replies[0].text}`);
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/notifications`);
+    assert.equal(res.status, 200);
+    const { items } = await res.json();
+    assert.ok(items.some((n) => n.type === "channel-status"), "缺少 feishuMessage 节点应写「通道状态」通知");
+
+    const executions = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
+    assert.equal(executions.length, 0, "缺少触发节点时不应创建执行");
   });
 
   it("AC5: 事件回调在下游耗时场景下 3 秒内返回（回调内只做解析+入队）", async () => {
