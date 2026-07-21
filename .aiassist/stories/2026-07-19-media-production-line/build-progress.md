@@ -705,3 +705,22 @@ Slice 8 标记完成。
 Slice 9 标记完成。
 
 ---
+
+### S10 / template-instantiation
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-TPL-001  
+**依赖**: S1 (workspace/server/db), S4 (content source), S5 (channel binding), S9 (collection skills)  
+**测试文件**:
+- `tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js`
+
+#### 设计上下文摘要
+
+- 内置 2 个模板：
+  - `daily-digest`（定时日报）：生成含 trigger + agent 节点的 draft flow；agent 调用 `topic-daily-digest` skill；依赖 `fetch-to-markdown`。
+  - `link-capture`（链接速存）：生成含 trigger + agent 节点的 draft flow；agent 调用 `fetch-to-markdown` skill；实例化时**同事务**写入 `channel_bindings`（channelType='feishu'）。
+- `POST /api/templates/:id/instantiate`：输入 `{projectId, overrides?}`，输出 `{flowId, flow?, binding?}`；错误码 `E-TPL-NOT-FOUND` / `E-TPL-PROJECT-INVALID` / `E-BINDING-EXISTS`。
+- CLI：`opc-workstation template list` / `opc-workstation template instantiate --id <id> --project-id <pid> [--force]`。
+- 内置 skill 包 `opc-collection-skills` 需要在 server 启动时注册到 `skill_repos`/`skills` 表（幂等），以便 `linkSkill` 关联到项目。
+
+---
