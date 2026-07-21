@@ -958,7 +958,7 @@ Slice 12 标记完成。
 | S10 | REQ-TPL-001 | ✅ complete | d839440, d3edd18, 18d5bb8 |
 | S11 | REQ-COLL-001 | ✅ complete | 5d5fb2d, 87f758f |
 | S12 | REQ-COLL-002 | ✅ complete | （依赖前置切片，无新增代码 commit） |
-| S13 | REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001 | ⚠️ DONE_WITH_CONCERNS | d729472 |
+| S13 | REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001 | ⚠️ DONE_WITH_CONCERNS | b2b5b17 |
 
 ### 测试结果
 
