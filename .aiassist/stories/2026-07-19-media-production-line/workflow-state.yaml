@@ -42,7 +42,7 @@ slices:
   - {id: S6, name: execution-artifacts-ui, status: complete, commits: [45bbb3a, 516aeb4, cb36299, 2634340, 6b58df5, 4e8ca33, 3408118], reqs: [REQ-FLOW-030]}
   - {id: S7, name: sources-ui, status: complete, commits: [8ab3b32, 7d6952e, 18e761b], reqs: [REQ-SRC-003]}
   - {id: S8, name: notification-ui, status: complete, commits: [fe88992, f9191dd, aafa51d, 55bdcd7], reqs: [REQ-NOTIFY-002]}
-  - {id: S9, name: collection-skills, status: pending, reqs: [REQ-COLL-003]}
+  - {id: S9, name: collection-skills, status: in_progress, reqs: [REQ-COLL-003]}
   - {id: S10, name: template-instantiation, status: pending, reqs: [REQ-TPL-001]}
   - {id: S11, name: daily-digest-e2e, status: pending, reqs: [REQ-COLL-001]}
   - {id: S12, name: link-capture-e2e, status: pending, reqs: [REQ-COLL-002]}

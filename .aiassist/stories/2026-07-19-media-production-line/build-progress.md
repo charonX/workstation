@@ -622,3 +622,21 @@ Slice 7 标记完成。
 Slice 8 标记完成。
 
 ---
+
+### S9 / collection-skills
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-COLL-003  
+**依赖**: skillService 已存在  
+**测试文件**:
+- `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js`
+
+#### 设计上下文摘要
+
+- 收集能力 skill 化：网页抓取转 markdown、主题日报合成、飞书文档同步三个逻辑全部实现在项目 skill 层，经现有 `skillService` 安装注入。
+- 签核资产落点：`src/assets/skill-repos/opc-collection-skills/skills/{fetch-to-markdown,topic-daily-digest,feishu-doc-sync}/SKILL.md`。
+- `fetch-to-markdown` 需附带 SSRF 校验脚本 `scripts/validateUrl.js`，拒绝私网 IP。
+- `fetch-to-markdown/SKILL.md` 需含 `UNTRUSTED` 与「不可信」锚点。
+- skill 包内文件不得 import/require 内核源码（仅经公开 CLI/文件交互）。
+
+---
