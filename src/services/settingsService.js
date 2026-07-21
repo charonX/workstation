@@ -9,8 +9,13 @@ function resolveConfigDir() {
   return path.join(os.homedir(), ".opc-workstation");
 }
 
-const configDir = resolveConfigDir();
-const settingsFile = path.join(configDir, "settings.json");
+function configDir() {
+  return resolveConfigDir();
+}
+
+function settingsFile() {
+  return path.join(configDir(), "settings.json");
+}
 
 const defaults = {
   workspaceRoot: "~/codex-harness-workspace",
@@ -38,8 +43,9 @@ function normalizeSettings(settings) {
 }
 
 function readSettings() {
+  const file = settingsFile();
   try {
-    const data = fs.readFileSync(settingsFile, "utf8");
+    const data = fs.readFileSync(file, "utf8");
     return { ...defaults, ...JSON.parse(data) };
   } catch {
     return { ...defaults };
@@ -47,9 +53,11 @@ function readSettings() {
 }
 
 function writeSettings(settings) {
+  const dir = configDir();
+  const file = settingsFile();
   try {
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(settings, null, 2));
   } catch {
     // Ignore persistence failures in restricted environments (tests, CI).
   }
@@ -86,7 +94,7 @@ export function saveChannelCredentials({ appId, appSecret } = {}) {
   };
   writeSettings(settings);
   try {
-    fs.chmodSync(settingsFile, 0o600);
+    fs.chmodSync(settingsFile(), 0o600);
   } catch {
     // Ignore permission failures in restricted environments (tests, CI).
   }

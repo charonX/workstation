@@ -68,6 +68,15 @@ export function startServer(options = {}) {
       process.env.DB_PATH = dbPath;
     }
     resetDb(dbPath);
+    // Isolate settings.json as well: tests must not overwrite the user's real
+    // ~/.opc-workstation/settings.json. Only set a temp config dir if the caller
+    // has not already configured one.
+    if (!process.env.OPC_WORKSTATION_CONFIG_DIR) {
+      process.env.OPC_WORKSTATION_CONFIG_DIR = path.join(
+        os.tmpdir(),
+        `opc-workstation-test-config-${process.pid}-${Date.now()}`
+      );
+    }
     settingsService.resetSettings();
   }
   // 生产路径（reset:false）与测试路径都需要幂等播种内置 collection skill repo，
