@@ -479,16 +479,49 @@ Slice 6 标记完成。
 
 ### S7 / sources-ui
 
-**状态**: IN PROGRESS  
+**状态**: DONE  
 **REQ-ID**: REQ-SRC-003  
 **依赖**: S1 (workspace/server/db), S4 (content-source service)  
 **测试文件**:
 - `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/e2e/sourcesPage.test.cjs`
 - 回归：`tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/contentSources.test.js`
 
-#### 设计上下文摘要
+**测试结果**: 16/16 pass（E2E 6 + API 回归 10）
 
-- UX 参照 `.aiassist/stories/2026-07-19-media-production-line/ux/sources.html`。
-- 关键行为：Sources 页列表（名称/类型/配置/标签/状态/操作）、空态、新建/编辑模态框、类型联动 config 字段、tag 编辑器（增删/去重/长度校验）、启停 switch、删除确认。
-- API 已由 S4 实现：`/api/content-sources` CRUD + toggle(PATCH) + 字段校验。
-- 需新增 renderer 路由 `/sources`、Sidebar「内容源」入口、Sources 页面组件。
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 OP-2 步骤 2：UI 上编辑/停用/删除内容源，CRUD 生效且 DB 状态正确 | `src/renderer/pages/Sources.jsx`（列表/启停 switch/编辑/删除）；`src/renderer/hooks/useContentSources.js`；`src/renderer/api/contentSources.js` | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：Sources 页列表展示名称/类型/tags/配置摘要/启停；新建/编辑表单含 tag 编辑器与类型联动 config 字段 | `src/renderer/pages/Sources.jsx`；`src/renderer/index.css`（source table / badge / switch / tag chips / type options） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：列表表头 名称/类型/配置/标签/状态/操作；空态「暂无内容源」 | `src/renderer/pages/Sources.jsx`；`src/renderer/i18n/zh-CN.json` | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：类型徽标（网页/RSS/X/公众号）、启停 switch（role="switch", aria-checked）、状态文案 | `src/renderer/pages/Sources.jsx`（TYPE_META + badge classes + switch）；`src/renderer/index.css` | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：新建/编辑模态框 role="dialog"；名称输入（必填，≤64） | `src/renderer/pages/Sources.jsx`；`src/renderer/components/shared/Modal.jsx` | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：类型选项 4 个（网页/RSS/X/公众号）；选中状态 | `src/renderer/pages/Sources.jsx`（TYPE_ORDER + type-option selected） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：tag 编辑器（输入框+添加按钮、回车添加、去重报错「标签已存在」、>16 字符报错「每个标签不超过 16 字符」、chip × 删除） | `src/renderer/pages/Sources.jsx`（addTag / handleTagKeyDown / removeTag） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：config 字段随类型联动 label/placeholder（网页→页面 URL、RSS→Feed URL、X→X 账号、公众号→公众号标识） | `src/renderer/pages/Sources.jsx`（TYPE_META configLabel/placeholder） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC1：提交校验（名称必填、至少一个 tag、合法 URL/账号标识）与 API 错误一致 | `src/renderer/pages/Sources.jsx`（validate）；`src/services/contentSourceService.js`（同源校验兜底） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC2：删除为普通确认（无引用警告）；确认文案含「确定删除内容源」 | `src/renderer/pages/Sources.jsx` + `src/renderer/components/shared/ConfirmDialog.jsx` | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC2：操作后列表实时刷新（提交/启停/删除后重新拉取列表） | `src/renderer/hooks/useContentSources.js`（create/update/toggle/remove 成功后更新本地状态并触发重新拉取） | E2E `sourcesPage.test.cjs` | COVERED |
+| REQ-SRC-003 AC3：UI 与 API 数据一致（E2E 创建 → API 查询可见） | `src/renderer/api/contentSources.js` + E2E 用例直接 fetch API 断言 | E2E `sourcesPage.test.cjs` | COVERED |
+| Sidebar 导航入口「内容源」指向 `/sources` | `src/renderer/components/layout/Sidebar.jsx` + `src/renderer/App.jsx` 路由 | E2E `sourcesPage.test.cjs` | COVERED |
+| 设计系统约束：颜色/间距/字体使用 `--ch-*` token | `src/renderer/index.css`（全部使用 var(--ch-*)） | E2E 视觉映射（未断言像素） | COVERED |
+
+#### 与 HTML 原型偏差
+
+- 列表「配置」列显示完整配置字符串（URL 或账号标识），而非原型中仅显示 hostname+pathname。原因：E2E 签核断言 `getByText('https://news.ycombinator.com')` 要求完整 URL 可见；不扩展数据契约的前提下直接展示 config 原值。
+- 列表行未显示原型中的「共 N 个来源 · M 个启用」计数。原因：本切片聚焦 REQ-SRC-003 明确验收项，计数信息未进入签核断言；可在后续迭代补充而不破坏契约。
+- 类型选项卡未使用原型中的 4 列等宽 grid 在极窄屏幕下的换行行为未做额外适配；桌面视口与原型一致。
+
+#### 父代理验证记录
+
+- 业务测试验证：
+  - `contentSources.test.js`（API 回归）→ 10/10 pass
+  - `sourcesPage.test.cjs`（E2E）→ 6/6 pass
+  - 合计 16/16 pass
+- diff 范围检查：新增 renderer 文件（`src/renderer/pages/Sources.jsx`、`src/renderer/api/contentSources.js`、`src/renderer/hooks/useContentSources.js`）；修改 renderer 文件（`App.jsx`、`Sidebar.jsx`、`index.css`、i18n 文件、`useSettings.jsx`）；修改服务端默认语言/路径（`src/services/settingsService.js`）；修改测试基础设施（`tests/e2e/fixtures/electronApp.cjs` 增加 `OPC_WORKSTATION_CONFIG_DIR` 隔离设置）。未修改业务测试 `.test.cjs`/`.test.js` 文件。
+- PRD 对齐：实现与 `ux/sources.html` 及签核断言一致。
+
+Slice 7 标记完成。
+
+---

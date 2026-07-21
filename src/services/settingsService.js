@@ -16,7 +16,7 @@ const defaults = {
   workspaceRoot: "~/codex-harness-workspace",
   skillRepoPath: "~/.codex-harness/skills",
   theme: "dark",
-  language: "en-US",
+  language: "zh-CN",
   density: "comfortable"
 };
 

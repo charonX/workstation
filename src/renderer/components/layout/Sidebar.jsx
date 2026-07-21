@@ -27,6 +27,7 @@ export default function Sidebar() {
           <NavLink to="/workspace" testid="nav-workspace">{t("nav.workspace")}</NavLink>
           <NavLink to="/flows" testid="nav-flows">{t("nav.flows")}</NavLink>
           <NavLink to="/executions" testid="nav-executions">{t("nav.executions")}</NavLink>
+          <NavLink to="/sources" testid="nav-sources">{t("nav.sources")}</NavLink>
         </div>
         <div className="nav-group">
           <div className="nav-label">{t("nav.system")}</div>

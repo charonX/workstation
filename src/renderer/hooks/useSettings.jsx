@@ -54,7 +54,7 @@ function applyToDocument(data, previousLanguage) {
   document.documentElement.setAttribute("data-theme", theme);
   const density = data.density || "comfortable";
   document.documentElement.setAttribute("data-density", density);
-  const language = data.language || "en-US";
+  const language = data.language || "zh-CN";
   if (language !== previousLanguage) {
     document.documentElement.setAttribute("lang", language);
     changeLanguage(language);
