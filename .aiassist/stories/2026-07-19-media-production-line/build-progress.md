@@ -474,3 +474,21 @@ Slice 5 实现与已知签核测试覆盖完成。
 - PRD 意图保持对齐：行为与契约未改变。
 
 Slice 6 标记完成。
+
+---
+
+### S7 / sources-ui
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-SRC-003  
+**依赖**: S1 (workspace/server/db), S4 (content-source service)  
+**测试文件**:
+- `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/e2e/sourcesPage.test.cjs`
+- 回归：`tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/contentSources.test.js`
+
+#### 设计上下文摘要
+
+- UX 参照 `.aiassist/stories/2026-07-19-media-production-line/ux/sources.html`。
+- 关键行为：Sources 页列表（名称/类型/配置/标签/状态/操作）、空态、新建/编辑模态框、类型联动 config 字段、tag 编辑器（增删/去重/长度校验）、启停 switch、删除确认。
+- API 已由 S4 实现：`/api/content-sources` CRUD + toggle(PATCH) + 字段校验。
+- 需新增 renderer 路由 `/sources`、Sidebar「内容源」入口、Sources 页面组件。
