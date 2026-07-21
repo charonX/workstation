@@ -803,3 +803,20 @@ Slice 9 标记完成。
 `[bugfix] S10: production seeding and atomic instantiation transaction`
 
 ---
+
+#### Refactor 子代理验证
+
+- 原始 HEAD：`d3edd18`
+- Refactor commit：`18d5bb8 [refactor] Slice 10: template instantiation`
+- 修改文件：
+  - `src/services/templateService.js`：提取 `buildTriggerNode`/`buildAgentNode` helper 消除模板间重复；提取 `resolveRequiredSkillIds` 明确事务前解析阶段；简化 touched-skill 收集循环。
+  - `src/http/routes/templates.js`：提取 `sendTemplateError` 统一错误码到 HTTP 状态映射。
+  - `src/services/channelBindingService.js`：简化 `createBinding` 事务包装，移除中间 `writeBinding` 变量。
+- 父代理独立验证：
+  - `node --test tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/feishuChannel.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js tests/capabilities/skill-management/skill/codex-harness-desktop/api/skill.test.js` → 45/45 pass
+- diff 范围检查：仅修改 S10 实现代码，未触碰业务测试。
+- PRD 意图保持对齐。
+
+Slice 10 标记完成。
+
+---
