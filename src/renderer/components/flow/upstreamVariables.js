@@ -29,11 +29,12 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
   const groups = [];
   for (const node of nodes) {
     if (node.id === currentNodeId) continue;
-    const isTrigger = node.data?.type === "trigger";
-    if (!isTrigger && !upstream.has(node.id)) continue;
+    const type = node.data?.type;
+    const isTriggerLike = type === "trigger" || type === "feishuMessage";
+    if (!isTriggerLike && !upstream.has(node.id)) continue;
 
     const variables = [];
-    if (isTrigger) {
+    if (isTriggerLike) {
       const declared = node.data?.config?.outputVariables;
       for (const variable of Array.isArray(declared) ? declared : []) {
         const name = typeof variable?.name === "string" ? variable.name.trim() : "";
