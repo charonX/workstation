@@ -540,3 +540,22 @@ Slice 6 标记完成。
 Slice 7 标记完成。
 
 ---
+
+### S8 / notification-ui
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-NOTIFY-002  
+**依赖**: S1 (workspace/server/db), S3 (notification service/API)  
+**测试文件**:
+- `tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/e2e/notificationCenter.test.cjs`
+- 回归：`tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/notifications.test.js`
+
+#### 设计上下文摘要
+
+- UX 参照 `.aiassist/stories/2026-07-19-media-production-line/ux/notifications.html`。
+- 关键行为：Sidebar 底部「通知」入口 + 未读徽标；通知列表页按时间倒序；过滤 tab（全部/产物产出/执行失败/通道状态）；未读 pill + 标为已读按钮；全部标为已读；产物产出通知点击跳转执行详情。
+- 播种：E2E 通过 `tests/e2e/helpers/notifications.cjs` 在主进程内直写 notifications 表。
+- API 已由 S3 实现：`GET /api/notifications`、`POST /api/notifications/:id/read`、`POST /api/notifications/read-all`。
+- 需新增 renderer 路由 `/notifications`、Sidebar 底部通知入口、Notifications 页面组件。
+
+---
