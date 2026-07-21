@@ -6,7 +6,7 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: ASSERTION-SIGNOFF        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 3        # 第几次尝试。归档重做时 +1。
 bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
@@ -40,6 +40,7 @@ history:
   - {at: 2026-07-21, from: BUG, to: QA, note: "BUG-004 修复：upstreamVariables.js 把 feishuMessage 与 trigger 同等处理，暴露其 outputVariables；新增回归测试；全量 test:unit 255/261 通过，6 个既有失败未恶化"}
   - {at: 2026-07-21, from: QA, to: PRD, note: "用户确认回流：稳定块 12 方案层假设错（不应在 feishuMessage 节点提前解析 URL），初衷（链接速存）仍成立；归档 attempt-2，见 archive/attempt-2/reason.md"}
   - {at: 2026-07-21, from: PRD, to: ASSERTION-SIGNOFF, note: "PRD/REQ/tech-design/test-plan 已按 text/sender/messageId 契约同步更新；signoff 声明作废待重新签核；等待用户确认断言"}
+  - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成 attempt-3 重新签核；契约交 /implementer 重新实现 S13 及相关切片"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
