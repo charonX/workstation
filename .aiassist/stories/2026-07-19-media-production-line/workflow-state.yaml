@@ -33,6 +33,7 @@ history:
   - {at: 2026-07-21, from: PRD, to: TEST, note: "用户确认设计变更，进入 /test-author 为新 REQ-FLOW-031 及变更 REQ-CHANNEL-002/REQ-TPL-001 补测试骨架"}
   - {at: 2026-07-21, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架补齐：新增 feishuMessageNode API/E2E 测试，扩展 imRouting/templates 测试；等待用户签核"}
   - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成重新签核，契约交 /implementer 实现"}
+  - {at: 2026-07-21, from: BUILD, to: QA, note: "S13 feishu-message-trigger-node 实现、PRD 对齐、refactor pass 完成；目标业务测试 30/30 绿；全量 test:unit 249/256 通过，7 个失败均为既有/并发隔离问题，与 S13 无关"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -54,6 +55,7 @@ slices:
   - {id: S10, name: template-instantiation, status: complete, commits: [d839440, d3edd18, 18d5bb8], reqs: [REQ-TPL-001]}
   - {id: S11, name: daily-digest-e2e, status: complete, commits: [5d5fb2d, 87f758f], reqs: [REQ-COLL-001]}
   - {id: S12, name: link-capture-e2e, status: complete, reqs: [REQ-COLL-002]}
+  - {id: S13, name: feishu-message-trigger-node, status: complete, commits: [b2b5b17, 7665646, 6b63dfb, 640b25b, ce84fc2, eefe878], reqs: [REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001]}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:

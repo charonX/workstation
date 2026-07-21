@@ -1068,9 +1068,32 @@ node --test tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-p
 # ℹ tests 30 / pass 30 / fail 0
 ```
 
+---
+
+## 2026-07-21 Refactor Pass
+
+Refactor subagent 完成一轮安全重构，状态 `REFACTORED`。
+
+### 修改文件与理由
+
+| 文件 | 重构内容 | 理由 |
+|---|---|---|
+| `src/services/channels/imRouter.js` | 提取 `writeChannelStatusNotification` helper，替换两处重复的错误通知块 | 消除 flow 配置异常分支的重复代码 |
+| `src/renderer/components/flow/validateFlowNodes.js` | 提取 `validateFeishuMessageConfig` helper | 降低主校验循环嵌套，与其他节点类型校验结构一致 |
+| `src/services/templateService.js` | 引入 `TRIGGER_LIKE_NODE_TYPES` 常量并在 `applyOverrides` 中使用 | 替换魔法数组，与 `flowEngine.js` 的 trigger-like 集合语义对齐 |
+
+### 父代理独立验证
+
+- **Diff 范围锁**：仅修改上述 3 个 src 文件，未触碰业务测试或相邻代码。
+- **目标业务测试**：30/30 通过。
+- **全量 `npm run test:unit`**：256 个测试 / 249 通过 / 7 失败。
+  - 其中 6 个为 S13 之前已存在的既有失败（`executionLog.test.js`、`language.test.js`、`task.test.js`）。
+  - 新增 1 个失败 `REQ-SRC-001: CLI 创建内容源并出现在 list 输出` 为并发测试隔离问题：单独运行该文件时 5/5 通过；失败原因是全量并发运行时其他测试的日志混入 CLI stdout 导致 JSON 解析失败。与 S13 无关。
+
 ### Slice S13 状态
 
 - 业务测试：✅ 绿
 - PRD 对齐：✅ ALIGNED
-- 重构：待 refactor subagent
+- 重构：✅ REFACTORED（commit `eefe878`）
+- 下一步：进入 `/qa-runner` 跑 E2E/回归
 
