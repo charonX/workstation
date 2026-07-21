@@ -1,5 +1,17 @@
 import { useTranslation } from "react-i18next";
 
+function formatDate(isoString) {
+  if (!isoString) return "—";
+  const d = new Date(isoString);
+  return d.toLocaleString();
+}
+
+function formatDuration(duration) {
+  if (duration === null || duration === undefined) return "—";
+  if (duration < 60) return `${duration}s`;
+  return `${Math.floor(duration / 60)}m ${duration % 60}s`;
+}
+
 /**
  * ExecutionList — renders a table of executions.
  * Props:
@@ -9,18 +21,6 @@ import { useTranslation } from "react-i18next";
  */
 export default function ExecutionList({ executions, selectedId, onSelect }) {
   const { t } = useTranslation();
-
-  function formatDate(isoString) {
-    if (!isoString) return "—";
-    const d = new Date(isoString);
-    return d.toLocaleString();
-  }
-
-  function formatDuration(duration) {
-    if (duration === null || duration === undefined) return "—";
-    if (duration < 60) return `${duration}s`;
-    return `${Math.floor(duration / 60)}m ${duration % 60}s`;
-  }
 
   return (
     <div className="execution-list" data-testid="execution-list">

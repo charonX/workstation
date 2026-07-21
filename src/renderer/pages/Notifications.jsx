@@ -27,6 +27,59 @@ function dotClass(type) {
   return "warning";
 }
 
+function NotificationItem({ notification, onClick, onMarkRead }) {
+  const { t } = useTranslation();
+  const clickable = notification.type === "artifact";
+  const unread = !notification.readAt;
+
+  return (
+    <div
+      className={`ntf-item${unread ? " unread" : ""}${clickable ? " clickable" : ""}`}
+      data-testid="notification-item"
+      data-read={String(!unread)}
+      data-clickable={String(clickable)}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={() => onClick(notification)}
+      onKeyDown={(e) => {
+        if (clickable && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick(notification);
+        }
+      }}
+    >
+      <span className={`ntf-dot ${dotClass(notification.type)}`} />
+      <div className="ntf-main">
+        <div className="ntf-title-row">
+          <span className="ntf-title" data-testid="notification-title">
+            {notification.title}
+          </span>
+          {unread && <span className="ntf-unread-pill">未读</span>}
+          <span className="ntf-time">{formatTime(notification.createdAt)}</span>
+        </div>
+        <div className="ntf-summary">{notification.body}</div>
+        <div className="ntf-meta">
+          {notification.executionId && (
+            <span className="ntf-exec">关联执行 {notification.executionId}</span>
+          )}
+          {clickable && <span className="ntf-goto">查看执行与产物 →</span>}
+        </div>
+      </div>
+      <div className="ntf-actions">
+        {unread && (
+          <button
+            type="button"
+            className="mark-read-btn"
+            onClick={(e) => onMarkRead(e, notification.id)}
+          >
+            {t("notifications.markRead")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Notifications() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -56,11 +109,8 @@ export default function Notifications() {
 
   const handleItemClick = useCallback(
     (n) => {
-      if (n.type === "artifact" && n.executionId) {
-        navigate(`/executions?highlight=${n.executionId}`);
-      } else if (n.type === "artifact") {
-        navigate("/executions");
-      }
+      if (n.type !== "artifact") return;
+      navigate(n.executionId ? `/executions?highlight=${n.executionId}` : "/executions");
     },
     [navigate]
   );
@@ -110,57 +160,14 @@ export default function Notifications() {
             {filteredNotifications.length === 0 ? (
               <div className="list-empty">{t("notifications.empty")}</div>
             ) : (
-              filteredNotifications.map((n) => {
-                const clickable = n.type === "artifact";
-                const unread = !n.readAt;
-                return (
-                  <div
-                    key={n.id}
-                    className={`ntf-item${unread ? " unread" : ""}${clickable ? " clickable" : ""}`}
-                    data-testid="notification-item"
-                    data-read={String(!unread)}
-                    data-clickable={String(clickable)}
-                    role={clickable ? "button" : undefined}
-                    tabIndex={clickable ? 0 : undefined}
-                    onClick={() => handleItemClick(n)}
-                    onKeyDown={(e) => {
-                      if (clickable && (e.key === "Enter" || e.key === " ")) {
-                        e.preventDefault();
-                        handleItemClick(n);
-                      }
-                    }}
-                  >
-                    <span className={`ntf-dot ${dotClass(n.type)}`} />
-                    <div className="ntf-main">
-                      <div className="ntf-title-row">
-                        <span className="ntf-title" data-testid="notification-title">
-                          {n.title}
-                        </span>
-                        {unread && <span className="ntf-unread-pill">未读</span>}
-                        <span className="ntf-time">{formatTime(n.createdAt)}</span>
-                      </div>
-                      <div className="ntf-summary">{n.body}</div>
-                      <div className="ntf-meta">
-                        {n.executionId && (
-                          <span className="ntf-exec">关联执行 {n.executionId}</span>
-                        )}
-                        {clickable && <span className="ntf-goto">查看执行与产物 →</span>}
-                      </div>
-                    </div>
-                    <div className="ntf-actions">
-                      {unread && (
-                        <button
-                          type="button"
-                          className="mark-read-btn"
-                          onClick={(e) => handleMarkRead(e, n.id)}
-                        >
-                          {t("notifications.markRead")}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
+              filteredNotifications.map((n) => (
+                <NotificationItem
+                  key={n.id}
+                  notification={n}
+                  onClick={handleItemClick}
+                  onMarkRead={handleMarkRead}
+                />
+              ))
             )}
           </div>
         </>
