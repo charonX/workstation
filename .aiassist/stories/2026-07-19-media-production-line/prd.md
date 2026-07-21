@@ -48,6 +48,7 @@
 | 9 | **收集能力 skill 化**：网页抓取转 markdown、主题日报合成、飞书文档同步等逻辑全部实现在项目 skill 层，经现有 skillService 安装注入；系统内核不含抓取代码 | 符合系统既有 skill 架构（ADR-003/004）与泊舟方法论"能力沉淀为 skill" |
 | 10 | **通知中心**：应用内通知实体（类型/标题/摘要/时间/已读/关联执行）+ UI 入口（未读徽标 + 列表页）；事件初版：产物产出（日报/速存成功）、执行失败、通道掉线/恢复（恢复归入通道状态类、绿色）；通知写入失败不阻断主流程；"产物产出"类通知可点击跳转执行详情 | 用户 review 时明确加上；打开应用即知系统状态，不用翻执行记录 |
 | 11 | **开箱模板**：内置 2 个 flow 模板（定时日报、链接速存）+ 3 个收集 skill 包（fetch-to-markdown、topic-daily-digest、feishu-doc-sync）；UI 一键"从模板创建"，创建链接速存模板时自动完成通道绑定 | tech-design 确认：用户目标是拿来就用，模板是验收场景的最短路径 |
+| 12 | **飞书消息触发节点**：Flow Editor 新增 `feishuMessage` 触发节点，专用于接收飞书 IM 消息并触发 flow；固定输出 `url` / `sender` / `messageId`（对应当前消息中的链接、发送者、飞书 message_id），用户可改 defaultValue 但不可删除；链接速存模板默认使用该节点；飞书通道消息只路由到包含该节点的已发布 flow | 用户明确"需要一个专门的飞书接收消息节点"，避免通用 trigger 被任意 IM 消息触发；与通道绑定/模板联动 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
@@ -92,13 +93,13 @@
 | 5 | 产物送达 | 飞书收到日报摘要消息；通知中心落"产物产出"通知 | 飞书通道发出消息（mock seam 断言）；通知列表可见 |
 | 6 | 查看执行详情 | 产物文件路径已登记 | 执行记录含产物路径 |
 
-**OP-4 飞书链接速存**（稳定块 5、6、8）
+**OP-4 飞书链接速存**（稳定块 5、6、8、12）
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | 在飞书给机器人发一个 http(s) 链接 | 长连接收到消息，message_id 去重，解析出 URL | 通道日志 + 去重表 |
+| 1 | 在飞书给机器人发一个 http(s) 链接 | 长连接收到消息，message_id 去重，解析出 URL；检查绑定 flow 包含 `feishuMessage` 触发节点 | 通道日志 + 去重表 + 节点存在性校验 |
 | 2 | 系统入队（per-project 串行）并立即回执 | 飞书收到"收到，排队中（第 N 位）" | mock seam 断言回执 |
-| 3 | 轮到后创建执行（trigger=channel，注入 url/sender/messageId），agent 抓取正文转 markdown | markdown 写入素材库目录，索引文件追加一行 | **文件真实存在**，frontmatter 含 source url/title/fetchedAt |
+| 3 | 轮到后创建执行（trigger=channel，注入 url/sender/messageId），`feishuMessage` 节点把变量合并进 context，agent 抓取正文转 markdown | markdown 写入素材库目录，索引文件追加一行 | **文件真实存在**，frontmatter 含 source url/title/fetchedAt；节点记录可见 |
 | 4 | 执行完成 | 飞书收到"已存：<路径>"；通知中心落"产物产出"通知；产物路径登记执行记录 | mock seam 断言；通知列表可见 |
 
 **OP-5 产物同步飞书文档**（稳定块 7）
@@ -130,11 +131,11 @@
 | 2 | 打开通知列表 | 按时间倒序展示事件（产物产出/执行失败/通道掉线） | API 返回正确 |
 | 3 | 标记已读 | 已读状态持久化，徽标清零 | DB 状态正确 |
 
-**OP-8 从模板创建 flow**（稳定块 11）
+**OP-8 从模板创建 flow**（稳定块 11、12）
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | 在 Flows 页选择"从模板创建" → 定时日报 / 链接速存 | 生成 flow（含 agent 节点与 skill 引用），状态 draft | flow 可见可编辑 |
+| 1 | 在 Flows 页选择"从模板创建" → 定时日报 / 链接速存 | 生成 flow：定时日报含通用 trigger + agent；链接速存含 `feishuMessage` 触发节点 + agent，状态 draft | flow 可见可编辑；节点类型正确 |
 | 2 | 链接速存模板创建完成后 | 通道绑定自动完成（IM 消息 → 该 flow） | 绑定关系可查 |
 
 ### 6.2 分支与异常
@@ -144,6 +145,7 @@
 | Schedule 到点但 flow 为 draft / 已删除 | 不创建执行；记日志并标记 schedule 异常 | E-SCHED-FLOW-INVALID |
 | agent 节点重试耗尽仍失败 | 执行 error；飞书收到失败通知（场景 A）；通知中心落"执行失败" | E-AGENT-FAILED |
 | 飞书收到不含链接的文本消息 | 不触发执行；回复使用提示 | E-MSG-NO-URL（非错误，提示分支） |
+| 绑定 flow 存在但无 `feishuMessage` 触发节点 | 不创建执行；回复配置异常提示并写"通道状态"通知 | E-CHANNEL-FLOW-NO-TRIGGER |
 | 链接抓取失败（404/超时/反爬/需登录） | 不落盘产物；飞书回复明确失败原因 | E-FETCH-FAILED |
 | 长连接断开 | 自动重连；重连失败通道状态置"掉线"，通知中心落"通道掉线" | E-CHANNEL-DOWN |
 | 飞书文档同步失败 | 降级：仅文件落盘 + 飞书文字消息（含文件路径），执行不置 error | E-DOC-SYNC-FAILED |
@@ -181,6 +183,7 @@
 | 调度目标失效 | 到点时 flow 为 draft/已删 | E-SCHED-FLOW-INVALID | 日志 + schedule 标记异常；不创建执行 | 无副作用 |
 | 日报执行失败 | agent 重试耗尽 | E-AGENT-FAILED | 执行 error；飞书失败通知 + 通知中心"执行失败" | 半成品文件不登记为产物 |
 | 链接抓取失败 | 404/超时/反爬/需登录 | E-FETCH-FAILED | 飞书回复失败原因 | 不落盘、不追加索引 |
+| 绑定 flow 缺少飞书消息触发节点 | 绑定指向的 flow 无 `feishuMessage` 节点 | E-CHANNEL-FLOW-NO-TRIGGER | 回复配置异常提示并写"通道状态"通知；不创建执行 | 无 |
 | 飞书发送失败 | token 失效/网络错误 | E-CHANNEL-SEND | 执行保留 success（文件已落盘），发送重试后记告警日志 | 不影响主产物 |
 | 通道掉线 | 长连接断开且重连失败 | E-CHANNEL-DOWN | 状态"掉线" + 通知中心事件；恢复后置"在线"并落恢复事件 | 期间消息丢失（飞书侧不兜底） |
 | 文档同步失败 | docx API 错误 | E-DOC-SYNC-FAILED | 降级为文字消息送达 | 文件落盘不受影响 |
@@ -275,14 +278,15 @@
 - **最大风险假设**：飞书作为日常触点——若用户实际阅读场景不在飞书，场景 B 会沦为"建成了不按的门铃"。REFLECT 阶段以真实使用频率验证。
 - **新术语**（提交 `/domain-model` 确认）：内容源（Content Source）、素材库（Material Library，项目内约定目录）、通道（Channel）、通知（Notification）。
 - **与既有 story 的衔接**：`2026-07-16-flow-refinement` PRD 范围外 #9 预留了"webhook/触发来源建模"，本 story 以飞书通道落地其中的外部触发部分。
+- **BUG 阶段回流决策（2026-07-21）**：用户确认在 story 内新增稳定块 12「飞书消息触发节点」，不拆独立 story；链接速存模板由通用 trigger 改为 `feishuMessage` 节点；IM 路由增加对绑定 flow 是否包含该节点的校验，缺失时走 `E-CHANNEL-FLOW-NO-TRIGGER`。
 
 ## 14. PRD 完整性自检查
 
 | 检查项 | 状态 | 备注 |
 |---|---|---|
-| 操作流 | PASS | 9 条 happy path 覆盖全部稳定块；分支异常 9 条 |
-| 输入验证 | PASS | 内容源/Schedule/飞书凭据/IM 消息均有字段级规则；UI 与 CLI 同规则；通知中心 N/A（系统生成） |
-| 错误状态 | PASS | 9 类失败模式含跨模块外部依赖（飞书、抓取、DB、通知） |
+| 操作流 | PASS | 9 条 happy path 覆盖全部 12 个稳定块；分支异常 10 条（新增 E-CHANNEL-FLOW-NO-TRIGGER） |
+| 输入验证 | PASS | 内容源/Schedule/飞书凭据/IM 消息/`feishuMessage` 固定输出均有字段级规则；UI 与 CLI 同规则；通知中心 N/A（系统生成） |
+| 错误状态 | PASS | 10 类失败模式含跨模块外部依赖（飞书、抓取、DB、通知） |
 | 复杂度分级 | complex | 第 6–8 节已按红线完整填写 |
 
 ---
@@ -295,3 +299,4 @@
 | v0.2 | 2026-07-19 | review 修订：内容源管理 UI 与通知中心进 scope；OP-6 拆清两种 headless 语义（R1）；场景 A 来源锁定（R2）；砍项预案入 §13（R3）；补录 ADR-003/004（R4） | AI + 人 |
 | v0.3 | 2026-07-19 | 原型验收：内容源关联改为 tag 筛选（关闭移动块 6/7）、取消反查与删除警告、内容源加 tags 字段、通知跳转与恢复事件语义确认 | AI + 人 |
 | v0.4 | 2026-07-19 | tech-design 反向同步：单 server/顶替语义入稳定块 2、新增稳定块 11 开箱模板与用户故事 8、OP-4 改两步回复+去重、新增 OP-8、范围外+2、§13 记决策 | AI + 人 |
+| v0.5 | 2026-07-21 | BUG 阶段回流：新增稳定块 12「飞书消息触发节点」；OP-4/OP-8 更新；新增错误状态 E-CHANNEL-FLOW-NO-TRIGGER；§13 记回流决策 | AI + 人 |

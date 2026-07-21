@@ -6,8 +6,8 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: BUG       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
-attempt: 1        # 第几次尝试。归档重做时 +1。
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 2        # 第几次尝试。归档重做时 +1。
 bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
 
@@ -29,6 +29,10 @@ history:
   - {at: 2026-07-21, from: QA, to: REFLECT, note: "QA 报告完成：本 story E2E 14/14 pass（串行重跑），全量失败均为前置 story/通用 E2E flaky；浏览器验证与覆盖率未配置；进入 REFLECT 人工验收"}
   - {at: 2026-07-21, from: REFLECT, to: BUG, note: "REFLECT 发现设置页缺少飞书通道配置区块（与已批准 UX 原型 settings-channel.html 不一致），建 BUG-001"}
   - {at: 2026-07-21, from: BUG, to: BUG, note: "BUG-001 修复后验证：保存飞书凭据后输入框未回显已保存的 App ID / App Secret，建 BUG-002"}
+  - {at: 2026-07-21, from: BUG, to: PRD, note: "用户裁决：当前 story 内回流。新增「飞书消息」触发节点（feishuMessage），替代链接速存模板中的通用 trigger；原 assertion signoff 作废，需重新签核"}
+  - {at: 2026-07-21, from: PRD, to: TEST, note: "用户确认设计变更，进入 /test-author 为新 REQ-FLOW-031 及变更 REQ-CHANNEL-002/REQ-TPL-001 补测试骨架"}
+  - {at: 2026-07-21, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架补齐：新增 feishuMessageNode API/E2E 测试，扩展 imRouting/templates 测试；等待用户签核"}
+  - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成重新签核，契约交 /implementer 实现"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

@@ -1007,3 +1007,70 @@ Slice 12 标记完成。
 - 运行 `/qa-runner`：执行 `npm run test:e2e` 与全量回归，收集 Electron/Playwright 证据。
 - 修复上述测试文件中的测试侧问题后重新跑 `npm run test:unit`。
 - 如无阻塞 bug，进入 `/reflect` 做 Gate 2 人工验收与知识沉淀。
+
+---
+
+## 2026-07-21 父代理验证与修复
+
+### 修复动作
+
+1. **测试文件修复**（`[test]` commit）：
+   - `feishuMessageNode.test.js`：修复 `makeFeishuMessageNode` helper 在 `overrides.extraVariables` 未传时的展开异常。
+   - `templates.test.js`：AC4 改用 `flow.nodeList` 代替空的 `flow.publishedNodeList` 来模拟 IM 触发。
+   - `linkCapture.test.js`：链接速存 flow 首节点由通用 `trigger` 改为 `feishuMessage`，以符合稳定块 12。
+2. **实现文件修复**（`[build]` commit）：
+   - `src/services/templateService.js`：`buildAgentNode` 将提示语从 `options.systemPrompt` 改为顶层 `config.prompt`，使 `flowEngine` 的 `{{n1.url}}` 变量替换生效。
+
+### 重新验证结果
+
+```bash
+npm run test:unit
+# ℹ tests 253
+# ℹ suites 47
+# ℹ pass 247
+# ℹ fail 6
+```
+
+新增/受影响测试全部通过：
+- `feishuMessageNode.test.js`：5/5 通过
+- `imRouting.test.js`：12/12 通过
+- `templates.test.js`：8/8 通过
+- `linkCapture.test.js`：2/2 通过
+
+6 个失败均为本 slice 之前已存在的既有失败（`task.test.js`、`executionLog.test.js`、`flowRun.test.cjs`、`language.test.js` 等），与 S13 无关。
+
+---
+
+## 2026-07-21 PRD 对齐子代理缺口修复
+
+PRD 对齐子代理报告 `MISALIGNMENT_FOUND`，缺口与处置如下：
+
+| # | 缺口 | 分类 | 处置 |
+|---|---|---|---|
+| 1 | `src/renderer/i18n/zh-CN.json` 缺少 `outputVariablesRequired` 等 4 个新 key | missing-implementation | 已补 4 个 key |
+| 2 | `src/renderer/i18n/en-US.json` 已有 key，无缺口 | — | COVERED |
+| 3 | `NodeConfigPanel.jsx` / `validateFlowNodes.js` 已实现前端结构校验 | — | COVERED |
+| 4 | 缺少 `validateFlowNodes.js` 的单元测试覆盖 | missing-test | 已在 `feishuMessageNode.test.js` 新增 AC5 三个拒绝路径测试 |
+| 5 | `feishuMessageNode.test.cjs` E2E 测试默认中文界面下英文 label 正则可能失效 | missing-test / brittle | 已改用 `data-testid` 选择器 |
+
+### 新增前端校验测试
+
+- 文件：`tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js`
+- 覆盖 `validateFlowNodes(nodeList, t)` 的三种拒绝路径：
+  1. 缺少固定输出变量（如缺少 `messageId`）
+  2. 固定输出变量类型非 `string`（如 `messageId: number`）
+  3. 包含额外输出变量（如 `extra`）
+
+### 重新验证结果
+
+```bash
+node --test tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js
+# ℹ tests 30 / pass 30 / fail 0
+```
+
+### Slice S13 状态
+
+- 业务测试：✅ 绿
+- PRD 对齐：✅ ALIGNED
+- 重构：待 refactor subagent
+

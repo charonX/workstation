@@ -21,13 +21,13 @@
 | `executionQueue` | per-project 串行执行队列；入队/出队/排队位置查询 | 是 |
 | `notificationService` | 通知写入（执行终态/通道状态/产物产出）、列表、标记已读 | 是 |
 | `taskService`（改造） | `createTask` 新增 **variables 透传 + 入队 + 终态投递钩子**（`trigger` 字段与 `executions.variables` 现状已存在，见 `taskService.js:193`，本项不再说"扩展 trigger/variables"）；执行终态写通知；产物路径登记 | 否 |
-| `flowEngine` trigger executor（改造） | 注入变量覆盖 config 默认值 | 否 |
+| `flowEngine` trigger executor（改造） | 注入变量覆盖 config 默认值；新增 `feishuMessage` 节点类型映射到 trigger executor，变量播种/覆盖范围扩展至 trigger-like 节点 | 否 |
 | `db`（改造） | `defaultDbPath()` 统一 `~/.opc-workstation/data.db`；新表 `content_sources` / `notifications` / `channel_messages` / `channel_bindings`；executions 加 `artifacts` 列；schedules 加 `variables` JSON 列；启动迁移：旧 `userData/data.db` 存在且新路径不存在 → **复制**（非移动，留回滚）→ 记日志 | 否 |
 | `serverRegistry` / Electron main（改造） | App 启动发现既有 server 时顶替（shutdown 握手 + 接管注册表）；统一 DB 路径 | 否 |
 | `http server`（改造） | 新路由 `/api/content-sources`、`/api/notifications`、`/api/channel`、`/api/templates` | 否 |
 | CLI（改造） | `source` / `notify` / `channel` / `server` / `template` 实体命令 | 否 |
 | preload（改造） | 暴露 `shell.openPath` / `shell.showItemInFolder`，白名单限项目目录内路径 | 否 |
-| renderer（改造） | Sources 管理页、通知入口+列表页、Settings 飞书区块、Executions 产物 tab（参照 `ux/` 原型） | 否 |
+| renderer（改造） | Sources 管理页、通知入口+列表页、Settings 飞书区块、Executions 产物 tab；**Flow Editor 新增 `feishuMessage` 触发节点**：NodePalette Trigger 分组、NodeConfigPanel 固定输出 `url`/`sender`/`messageId`（不可删除，可改 defaultValue）（参照 `ux/` 原型） | 否 |
 | 内置模板与收集 skill 包（资产） | flow 模板 ×2（定时日报、链接速存）+ skill ×3（fetch-to-markdown、topic-daily-digest、feishu-doc-sync） | 是 |
 
 ### 模块关系图
@@ -74,8 +74,8 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 ### 场景 B · 飞书链接速存
 
 1. **触发**：`WSClient` 收到 `im.message.receive_v1` → `feishuChannelAdapter` 把原始事件转换成 `{messageId, chatId, senderId, text}` 并通过 `onMessage` 回调交给 `channelManager` → `channelManager` 发布 `eventBus.emit('channel:message-received', {channelType:'feishu', messageId, chatId, senderId, text, url?})`。
-2. **去重与路由**：`imRouter` 订阅该事件，按 `message_id` 查 `channel_messages` 去重（已见则丢弃并 ACK）；解析文本中第一个 http(s) URL（无 URL 走提示分支）。再查 `channel_bindings`（`channelType='feishu'`，单绑定）——**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知。命中绑定 → 立即 `reply`"收到，排队中（第 N 位）"（满足 3 秒时限）→ `createTask({projectId, flowId, trigger:"channel", variables:{url, sender, messageId, channelReply:{channelType, chatId, messageId}}})` 入队。
-3. **核心处理**：轮到后 agent 执行 `fetch-to-markdown` skill → `materials/<date>-<slug>.md`（frontmatter：source url/title/fetchedAt）+ 索引文件追加。
+2. **去重与路由**：`imRouter` 订阅该事件，按 `message_id` 查 `channel_messages` 去重（已见则丢弃并 ACK）；解析文本中第一个 http(s) URL（无 URL 走提示分支）。再查 `channel_bindings`（`channelType='feishu'`，单绑定）——**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知；**绑定指向的 flow 无 `feishuMessage` 触发节点** → 回复配置异常提示并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`）。命中绑定 → 立即 `reply`"收到，排队中（第 N 位）"（满足 3 秒时限）→ `createTask({projectId, flowId, trigger:"channel", variables:{url, sender, messageId, channelReply:{channelType, chatId, messageId}}})` 入队。
+3. **核心处理**：轮到后 `flowEngine` 执行 flow；`feishuMessage` 节点把注入变量合并进 context，下游 agent 执行 `fetch-to-markdown` skill → `materials/<date>-<slug>.md`（frontmatter：source url/title/fetchedAt）+ 索引文件追加。
 4. **副作用**：产物登记、写通知。
 5. **输出**：taskService 执行终态钩子统一投递——成功经 `channelReply` 回复"已存：`<路径>`"（回复原消息，可用 `reply_in_thread`）；失败投递模板化错误摘要（E-AGENT-FAILED / E-FETCH-FAILED 原因）。
 
@@ -121,7 +121,7 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | 系统错误 | DB 写失败 |
 | 副作用 | 新表 `channel_bindings`：`id TEXT PK / channelType TEXT NOT NULL / flowId TEXT NOT NULL / projectId TEXT NOT NULL / createdAt TEXT NOT NULL`，`channelType` 唯一（**单绑定**：每通道类型至多一条活跃绑定）；与模板实例化**同事务**写入 |
 | 幂等性 | 路由查询是；绑定写入否 |
-| 路由规则 | IM 消息 → adapter 查 `channel_bindings` where `channelType='feishu'` → 唯一绑定得 `{projectId, flowId}` → `createTask`；**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知 |
+| 路由规则 | IM 消息 → adapter 查 `channel_bindings` where `channelType='feishu'` → 唯一绑定得 `{projectId, flowId}` → 校验 flow 存在且已发布，并包含 `feishuMessage` 触发节点 → `createTask`；**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知；**绑定指向的 flow 无 `feishuMessage` 触发节点** → 回复配置异常提示并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`） |
 
 ### schedulerService
 
@@ -195,11 +195,25 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | 调用方 | renderer / CLI |
 | 被调用方 | `POST /api/templates/:id/instantiate` |
 | 输入 | `{projectId, overrides?}`（如日报 topic、cron） |
-| 输出 | 新建 flow（draft）；链接速存模板同时在 `channel_bindings` 建立通道绑定（单绑定） |
+| 输出 | 新建 flow（draft）：定时日报模板含通用 trigger 节点；链接速存模板含 `feishuMessage` 触发节点（固定输出 `url`/`sender`/`messageId`）+ agent 节点；链接速存模板同时在 `channel_bindings` 建立通道绑定（单绑定） |
 | 业务错误 | `E-TPL-NOT-FOUND` / `E-TPL-PROJECT-INVALID` / `E-BINDING-EXISTS`（该通道类型已有绑定；支持 `force` 参数替换，同事务删旧写新） |
 | 系统错误 | DB 写失败 |
 | 副作用 | 写 flows 表 + `channel_bindings`（**同事务**）；安装/关联收集 skill 包到项目 |
 | 幂等性 | 否 |
+
+### flowEngine 节点类型扩展（`feishuMessage`）
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | `flowEngine.run()` |
+| 被调用方 | `triggerExecutor`（`feishuMessage` 复用 trigger 执行逻辑，不引入新 executor） |
+| 输入 | node.type = `feishuMessage`；node.config.outputVariables 固定为 `[{name:"url",type:"string",defaultValue:""},{name:"sender",type:"string",defaultValue:""},{name:"messageId",type:"string",defaultValue:""}]` |
+| 输出 | 与 trigger 节点一致：把 `createTask` 注入的 variables 合并进 context，供下游按 `节点ID.变量名` 读取 |
+| 业务错误 | 节点固定输出缺失或类型非法 → flowService.validateNodeList / validateFlowNodes 拒绝保存（视作 `trigger` 类型校验） |
+| 系统错误 | — |
+| 副作用 | 无 |
+| 幂等性 | 是 |
+| 实现要点 | ① `defaultExecutors` 增加 `feishuMessage: triggerExecutor`；② `forEachTriggerVariable` / `seedTriggerVariables` / `applyTriggerVariableOverrides` 从"仅 type=trigger"扩展为"trigger-like 节点集合"（`trigger`、`feishuMessage`，未来可扩展）；③ 链接速存模板生成的 nodeList 首节点 type 为 `feishuMessage`；④ NodePalette 在 Trigger 分组列出；NodeConfigPanel 对 `feishuMessage` 渲染固定变量编辑器（禁用删除/重命名，允许改 defaultValue） |
 
 ## 测试 seams
 
@@ -224,6 +238,7 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | 单 server + 统一 DB + App 顶替 | A 单 server / B 双实例 / C 仅 App 有通道 | 双实例=双库双调度双触发（推死）；C 违反无人值守。→ ADR-006 | 顶替握手竞态 |
 | per-project 串行队列 | A 串行 / B 并发+文件锁 / C 全局串行 | 3 秒时限+文件不冲突+不过度设计 | 日报执行期间 IM 速存排队 |
 | 开箱模板 | A 内置模板+skill 包 / B 用户自拼 | 验收最短路径；拿来就用 | 模板与系统版本耦合升级 |
+| 飞书消息触发节点 `feishuMessage` | A 专用节点 / B 通用 trigger 扩展 subtype / C 通道层隐式注入变量 | 用户明确要"专门的飞书接收消息节点"，避免任意 trigger 被 IM 消息触发；模板与路由语义清晰；复用 trigger executor 减少新抽象 | 新增节点类型需同步改 palette/config/validation/模板/路由 |
 | 飞书 SDK `@larksuiteoapi/node-sdk` | 官方 SDK / 裸协议 / 企业微信 CLI | WSClient 自动重连+token 缓存+全 API 覆盖；adapter 抽象保可换；与 research 结论一致 | SDK 打包体积；fake WS server 复杂，本期只用 adapter 注入 seam |
 | 凭据手工 App ID/Secret，settings.json 明文+600 | 手工 / registerApp 扫码 | registerApp 仅见 README 未实测；手工是原型已验收路径；实现须同步落地 chmod 600 | 明文凭据（后续加密 story） |
 | 保存凭据后自动连接 + 显式 reconnect | A 自动 / B 手动 / C 混合 | PRD "保存即连接" + UX "重新连接" 按钮都需要 | 保存接口需返回首次连接尝试状态 |
@@ -279,3 +294,4 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | v0.1 | 2026-07-19 | 初稿（基于 prd v0.3 + research/feishu-open-platform-desktop-integration + 三轮对抗决策） | AI + 人 |
 | v0.2 | 2026-07-19 | review 修复：3 阻塞（通道绑定模型与 IM 路由、内容源归属=全局、回复责任方=系统层投递）+ 6 警告（schedules.variables、schedulerService 契约、createTask trigger 语义、孤儿执行恢复、旧数据迁移、风险表补两行+凭据 600 落地） | AI + 人 |
 | v0.3 | 2026-07-19 | BUILD S5 回流：明确引入 `@larksuiteoapi/node-sdk` WSClient；新增 `channelManager` 模块；adapter 通过回调与 channelManager 交互，由 channelManager 桥接到 eventBus；保存凭据后自动连接 + 显式 reconnect；状态变更 eventBus + `getStatus` 并存；测试 seam 明确为 adapter 注入 + fake REST server | AI + 人 |
+| v0.4 | 2026-07-21 | BUG 阶段 PRD 回流：新增 `feishuMessage` 触发节点；更新模块边界、场景 B 数据流、IM 路由规则、模板实例化、关键决策 | AI + 人 |

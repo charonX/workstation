@@ -1,8 +1,10 @@
 # Signoff — 2026-07-19-media-production-line
 
+> ✅ **范围变更已重新签核（2026-07-21）**：BUG 阶段用户裁决在 story 内回流，新增稳定块 12「飞书消息触发节点（`feishuMessage`）」。2026-07-19 的 Assertion Signoff 已作废，本次为重新签核后的 Assertion Signoff。
+
 ## Assertion Signoff
 
-**日期**：2026-07-19
+**日期**：2026-07-21
 **签核人**：用户
 
 ### REQ 覆盖
@@ -19,6 +21,7 @@
 | REQ-SCHEDULE-009 | 终态投递钩子 | `scheduling-execution/execution/api/artifacts.test.js` | ✅ |
 | REQ-FLOW-029 | trigger 注入变量覆盖 | `flow-orchestration/flow-engine/api/triggerVariables.test.js` | ✅ |
 | REQ-FLOW-030 | Executions 产物 tab 与打开动作 | `flow-orchestration/execution/api/artifactOpenPath.test.js`<br>`flow-orchestration/execution/e2e/artifactsTab.test.cjs` | ✅ |
+| REQ-FLOW-031 | 飞书消息触发节点 | `flow-orchestration/flow-engine/api/feishuMessageNode.test.js`<br>`flow-orchestration/flow-engine/e2e/feishuMessageNode.test.cjs` | ✅ |
 | REQ-CHANNEL-001 | 飞书通道生命周期 | `channel-integration/channel/api/feishuChannel.test.js` | ✅ |
 | REQ-CHANNEL-002 | IM 接收、去重与路由 | `channel-integration/channel/api/imRouting.test.js` | ✅ |
 | REQ-CHANNEL-003 | 通道发送 | `channel-integration/channel/api/feishuChannel.test.js` | ✅ |
@@ -28,7 +31,7 @@
 | REQ-SRC-002 | tag 筛选查询 | `collection-pipeline/content-source/cli/contentSources.test.js` | ✅ |
 | REQ-SRC-003 | 内容源管理 UI | `collection-pipeline/content-source/e2e/sourcesPage.test.cjs` | ✅ |
 | REQ-COLL-001 | 场景 A · 定时日报端到端 | `collection-pipeline/collection/api/dailyDigest.test.js` | ✅ |
-| REQ-COLL-002 | 场景 B · 链接速存端到端 | `collection-pipeline/collection/api/linkCapture.test.js` | ✅ |
+| REQ-COLL-002 | 场景 B · 链接速存端到端 | `collection-pipeline/collection/api/linkCapture.test.js` | ✅ | 2026-07-21 随稳定块 12 回流更新测试：flow 首节点改为 `feishuMessage` |
 | REQ-COLL-003 | 收集 skill 包与安全约束 | `collection-pipeline/collection/api/collectionSkills.test.js` | ✅ |
 | REQ-TPL-001 | 模板实例化 | `collection-pipeline/template/api/templates.test.js` | ✅ |
 | REQ-NOTIFY-001 | 通知服务 | `information-aggregation/notification/api/notifications.test.js` | ✅ |
@@ -40,7 +43,7 @@
 
 - [x] 不存在未关闭的 `prd-gap-report.md`
 - [x] PRD 第 6-8 节已覆盖或已声明 N/A
-- [x] 每个 REQ-ID 都有对应测试（24/24）
+- [x] 每个 REQ-ID 都有对应测试（25/25）
 - [x] 每个测试文件都有 `REQ-TRACE`、`REQ-VERSION`、`CAPABILITY-TRACE`、`ENTITY-TRACE`
 - [x] 每个 REQ 的 capability/entity 与 `business-capabilities.md` 一致
 - [x] 无 `// TODO: HUMAN ASSERTION` 占位（50 处全部落地清零）
@@ -62,4 +65,15 @@
 - **既有缺陷**：`POST /api/schedules` 收非法 cron 时不校验，`writeHead(201)` 后抛错导致 `ERR_HTTP_HEADERS_SENT` 响应挂起（test-plan §5 已记录）。→ 进 bug 循环处理；REQ-SCHEDULE-006 落地后该用例按 400 断言。
 - 通知 E2E 播种 helper 未经运行时验证（依赖 Electron 主进程 ESM import better-sqlite3），首次 E2E 若失败改经 src/db.js 路径 import。
 - E2E 未实际运行（需 `rebuild:electron`，属 QA 阶段）。
-- requirements.md hash：`de43bc8607a89efe5512712a188a5f24f259d8109cb31a7a476827dd0883fab9`（v1）。
+
+### 2026-07-21 范围变更待签核项
+
+2026-07-21 重新签核已确认以下新增/变更断言：
+
+1. **新增 REQ-FLOW-031 验收标准**：NodePalette Trigger 分组增加 `feishuMessage` 节点；配置面板固定输出 `url`/`sender`/`messageId`（不可删除/重命名，可改 defaultValue）；`flowEngine` 把 `feishuMessage` 视为 trigger-like 节点处理变量注入；校验规则接受该类型并检查固定结构；链接速存模板首节点类型为 `feishuMessage`。
+2. **REQ-CHANNEL-002 变更**：IM 路由在命中绑定后增加校验：flow 必须已发布且包含 `feishuMessage` 触发节点；缺失时报 `E-CHANNEL-FLOW-NO-TRIGGER` 并写"通道状态"通知。
+3. **REQ-TPL-001 变更**：链接速存模板由通用 trigger 节点改为 `feishuMessage` 触发节点（固定输出 url/sender/messageId）；定时日报模板保持通用 trigger 不变。
+4. **新增错误码**：`E-CHANNEL-FLOW-NO-TRIGGER` —— 绑定 flow 缺少飞书消息触发节点。
+5. **测试文件更新**：新增 `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js` 与 `e2e/feishuMessageNode.test.cjs`；原 `imRouting.test.js`/`templates.test.js` 已补充新断言。
+
+`requirements.md` v1.1 hash：`835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485`。
