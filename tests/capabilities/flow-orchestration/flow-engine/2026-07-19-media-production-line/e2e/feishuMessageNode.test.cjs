@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-FLOW-031
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
@@ -55,7 +55,7 @@ test.describe("REQ-FLOW-031 飞书消息触发节点（UI）", () => {
     await expect(firstWindow.getByText(/feishu|飞书/i).first()).toBeVisible();
   });
 
-  test("feishuMessage 节点配置面板固定展示 url/sender/messageId 且不可删除", async () => {
+  test("feishuMessage 节点配置面板固定展示 text/sender/messageId 且不可删除", async () => {
     await openFlowInEditor(firstWindow, apiBaseUrl, {
       projectId: project.id,
       name: "Feishu Message Config Flow",
@@ -67,7 +67,7 @@ test.describe("REQ-FLOW-031 飞书消息触发节点（UI）", () => {
     // 固定输出变量应存在（使用 testid 避免依赖界面语言）
     const nameInputs = firstWindow.locator("[data-testid='variable-name-input']");
     await expect(nameInputs).toHaveCount(3);
-    await expect(nameInputs.nth(0)).toHaveValue("url");
+    await expect(nameInputs.nth(0)).toHaveValue("text");
     await expect(nameInputs.nth(1)).toHaveValue("sender");
     await expect(nameInputs.nth(2)).toHaveValue("messageId");
 
@@ -75,7 +75,7 @@ test.describe("REQ-FLOW-031 飞书消息触发节点（UI）", () => {
     await expect(firstWindow.locator("[data-testid='remove-variable-button']")).not.toBeVisible();
 
     // 修改 defaultValue 后应能保存
-    await firstWindow.locator("[data-testid='variable-default-input']").nth(0).fill("https://default.example");
+    await firstWindow.locator("[data-testid='variable-default-input']").nth(0).fill("default text");
     await saveFlow(firstWindow);
   });
 
@@ -91,7 +91,7 @@ test.describe("REQ-FLOW-031 飞书消息触发节点（UI）", () => {
           position: { x: 80, y: 120 },
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "" },
+              { name: "text", type: "string", defaultValue: "" },
               { name: "sender", type: "string", defaultValue: "" },
               { name: "messageId", type: "string", defaultValue: "" },
             ],
@@ -104,7 +104,7 @@ test.describe("REQ-FLOW-031 飞书消息触发节点（UI）", () => {
     await nodeByIndex(firstWindow, 0).click();
     const nameInputs = firstWindow.locator("[data-testid='variable-name-input']");
     await expect(nameInputs).toHaveCount(3);
-    await expect(nameInputs.nth(0)).toHaveValue("url");
+    await expect(nameInputs.nth(0)).toHaveValue("text");
     await expect(nameInputs.nth(1)).toHaveValue("sender");
     await expect(nameInputs.nth(2)).toHaveValue("messageId");
   });

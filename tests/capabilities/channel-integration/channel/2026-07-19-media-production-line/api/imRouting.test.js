@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-CHANNEL-002, 2026-07-19-media-production-line/REQ-CHANNEL-004
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: channel-integration
 // ENTITY-TRACE: channel
 // TEST-AUTHOR: agent
@@ -39,7 +39,7 @@ function mockFeishuOpenPlatform({ tokenValid = true } = {}) {
 
 // seam：IM 路由（tech-design「通道绑定与 IM 路由」）。建议落点
 // src/services/channels/imRouter.js，导出 createImRouter({ channelAdapter, ... })，
-// 接线后 adapter.onMessage 进入路由：去重 → 解析 URL → 查绑定 → 回执 + createTask 入队。
+// 接线后 adapter.onMessage 进入路由：去重 → 查绑定 → 回执 + createTask 入队。
 async function loadImRouter() {
   const mod = await import("../../../../../../src/services/channels/imRouter.js").catch(() => null);
   assert.ok(mod, "seam 未就绪：src/services/channels/imRouter.js 尚未实现（REQ-CHANNEL-002）");
@@ -71,13 +71,13 @@ async function createProjectFlow(baseUrl, { publish = true, includeFeishuMessage
           type: "feishuMessage",
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "" },
+              { name: "text", type: "string", defaultValue: "" },
               { name: "sender", type: "string", defaultValue: "" },
               { name: "messageId", type: "string", defaultValue: "" }
             ]
           }
         },
-        { id: "n2", type: "agent", config: { provider: "anthropic", outputVariable: "out", prompt: "url={{n1.url}}" } }
+        { id: "n2", type: "agent", config: { provider: "anthropic", outputVariable: "out", prompt: "text={{n1.text}}" } }
       ]
     : [];
   const flow = await (await fetch(`${baseUrl}/api/flows`, {
@@ -128,7 +128,7 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     assert.equal(replies.length, 1, "重复消息应被去重（只回执一次）");
   });
 
-  it("AC2: 含 URL 消息命中唯一绑定 → 入队并立即回执排队位置", async () => {
+  it("AC2: 命中唯一绑定 → 入队并立即回执排队位置", async () => {
     const binding = await loadBindingService();
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl);
     binding.createBinding({ channelType: "feishu", flowId: flow.id, projectId: project.id });
@@ -145,16 +145,20 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     assert.ok(created, "命中绑定应创建 trigger=channel 的执行");
   });
 
-  it("AC3: 无 URL → 回复使用提示，不建执行", async () => {
+  it("AC3: 任意文本消息（无 URL）也入队并回执排队位置", async () => {
+    const binding = await loadBindingService();
+    const { project, flow } = await createProjectFlow(serverCtx.baseUrl);
+    binding.createBinding({ channelType: "feishu", flowId: flow.id, projectId: project.id });
+
     adapter.emitMessage({ messageId: "om_nourl_1", chatId: "oc_1", senderId: "ou_1", text: "在吗" });
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    assert.equal(adapter.replies.length, 1, "无 URL 也应回复使用提示");
-    // 签核使用提示文案。
-    assert.equal(adapter.replies[0].text, "发送 http(s) 链接即可速存到素材库");
+    assert.equal(adapter.replies.length, 1, "应立即回执");
+    assert.match(adapter.replies[0].text, /收到，排队中（第 \d+ 位）/, `回执应含排队位置，实际: ${adapter.replies[0].text}`);
 
     const executions = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
-    assert.equal(executions.length, 0, "无 URL 不应建执行");
+    const created = executions.find((e) => e.flowId === flow.id && e.trigger === "channel");
+    assert.ok(created, "任意文本消息命中绑定应创建 trigger=channel 的执行");
   });
 
   it("AC4: 无绑定 → 回复「未绑定链接速存 flow，请先从模板创建」，不建执行", async () => {

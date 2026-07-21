@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-FLOW-031
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
@@ -18,7 +18,7 @@ describe("REQ-FLOW-031: 变量选择器应包含 feishuMessage 节点输出", ()
     const nodes = [
       makeNode("n1", "feishuMessage", {
         outputVariables: [
-          { name: "url", type: "string", defaultValue: "" },
+          { name: "text", type: "string", defaultValue: "" },
           { name: "sender", type: "string", defaultValue: "" },
           { name: "messageId", type: "string", defaultValue: "" }
         ]
@@ -34,15 +34,15 @@ describe("REQ-FLOW-031: 变量选择器应包含 feishuMessage 节点输出", ()
     const names = feishuGroup.variables.map((v) => v.fullName);
     assert.deepEqual(
       names.sort(),
-      ["n1.messageId", "n1.sender", "n1.url"],
-      "应暴露 url/sender/messageId 三个变量"
+      ["n1.messageId", "n1.sender", "n1.text"],
+      "应暴露 text/sender/messageId 三个变量"
     );
   });
 
   it("feishuMessage 作为 trigger-like 节点，即使无边也对下游可见", () => {
     const nodes = [
       makeNode("n1", "feishuMessage", {
-        outputVariables: [{ name: "url", type: "string", defaultValue: "" }]
+        outputVariables: [{ name: "text", type: "string", defaultValue: "" }]
       }),
       makeNode("n2", "agent", { outputVariable: "out" })
     ];

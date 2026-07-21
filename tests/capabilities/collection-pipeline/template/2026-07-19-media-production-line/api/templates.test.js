@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-TPL-001
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: collection-pipeline
 // ENTITY-TRACE: template
 // TEST-AUTHOR: agent
@@ -80,7 +80,7 @@ describe("REQ-TPL-001: 模板实例化", () => {
     }
   });
 
-  it("AC1: 链接速存模板生成的 flow 首节点为 feishuMessage 触发节点（固定输出 url/sender/messageId）", async () => {
+  it("AC1: 链接速存模板生成的 flow 首节点为 feishuMessage 触发节点（固定输出 text/sender/messageId）", async () => {
     const res = await instantiate(TPL_LINK);
     assert.equal(res.status, 201, `实际: ${res.status}`);
     const data = await res.json();
@@ -94,7 +94,7 @@ describe("REQ-TPL-001: 模板实例化", () => {
 
     const outputs = triggerNode.config?.outputVariables || [];
     const names = outputs.map((v) => v.name);
-    assert.deepEqual(names, ["url", "sender", "messageId"], "固定输出变量顺序应为 url/sender/messageId");
+    assert.deepEqual(names, ["text", "sender", "messageId"], "固定输出变量顺序应为 text/sender/messageId");
     for (const v of outputs) {
       assert.equal(v.type, "string", `${v.name} 类型应为 string`);
     }
@@ -120,12 +120,12 @@ describe("REQ-TPL-001: 模板实例化", () => {
     const result = await run(
       publishedFlow,
       { executors: { agent: capture(store) } },
-      { url: "https://example.com/link", sender: "ou_123", messageId: "om_456" }
+      { text: "https://example.com/link", sender: "ou_123", messageId: "om_456" }
     );
 
     assert.equal(result.status, "success");
     const agentPrompt = store.prompts.find((p) => p.nodeId !== "n1")?.prompt || "";
-    assert.ok(agentPrompt.includes("https://example.com/link"), "agent prompt 应能引用注入的 url 变量");
+    assert.ok(agentPrompt.includes("https://example.com/link"), "agent prompt 应能引用注入的 text 变量");
   });
 
   it("AC2: 链接速存模板实例化同事务写入 channel_bindings；已有绑定无 force 报 E-BINDING-EXISTS", async () => {

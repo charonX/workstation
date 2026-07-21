@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-COLL-002
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: collection-pipeline
 // ENTITY-TRACE: collection
 // TEST-AUTHOR: agent
@@ -37,8 +37,11 @@ function todayStr() {
 }
 
 /** mock agent：按速存契约写 materials/<date>-<slug>.md 并追加索引一行。 */
-function createLinkCaptureAgent(projectDir, { slug, url, title }) {
-  return createMockAgentExecutor(() => {
+function createLinkCaptureAgent(projectDir, { slug, title }) {
+  return createMockAgentExecutor(({ context }) => {
+    const text = context?.["n1.text"] || "";
+    const urlMatch = text.match(/(https?:\/\/\S+)/);
+    const url = urlMatch ? urlMatch[1] : "";
     const materialRel = `materials/${todayStr()}-${slug}.md`;
     fs.writeFileSync(
       path.join(projectDir, materialRel),
@@ -90,13 +93,13 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
             type: "feishuMessage",
             config: {
               outputVariables: [
-                { name: "url", type: "string", defaultValue: "" },
+                { name: "text", type: "string", defaultValue: "" },
                 { name: "sender", type: "string", defaultValue: "" },
                 { name: "messageId", type: "string", defaultValue: "" }
               ]
             }
           },
-          { id: "n2", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "out", prompt: "抓取 {{n1.url}} 转 Markdown 存素材库" } }
+          { id: "n2", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "out", prompt: "使用 {{n1.text}} 转 Markdown 存素材库" } }
         ],
         edges: [{ sourceNodeId: "n1", targetNodeId: "n2" }]
       })
@@ -132,7 +135,6 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
     const articleUrl = contentServer.urlFor("/building-effective-agents");
     seams.taskService.setAgentExecutorForTests(createLinkCaptureAgent(tmp.dir, {
       slug: "building-effective-agents",
-      url: articleUrl,
       title: "Building effective agents"
     }));
 

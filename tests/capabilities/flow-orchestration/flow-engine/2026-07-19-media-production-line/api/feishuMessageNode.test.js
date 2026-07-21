@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-19-media-production-line/REQ-FLOW-031
-// REQ-VERSION: v1-hash:835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485
+// REQ-VERSION: v1-hash:aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
@@ -26,7 +26,7 @@ function makeFeishuMessageNode(id, overrides = {}) {
     type: "feishuMessage",
     config: {
       outputVariables: [
-        { name: "url", type: "string", defaultValue: "" },
+        { name: "text", type: "string", defaultValue: "" },
         { name: "sender", type: "string", defaultValue: "" },
         { name: "messageId", type: "string", defaultValue: "" },
         ...extraVariables
@@ -36,7 +36,7 @@ function makeFeishuMessageNode(id, overrides = {}) {
 }
 
 describe("REQ-FLOW-031: 飞书消息触发节点", () => {
-  it("AC3: createTask 注入的 url/sender/messageId 覆盖 feishuMessage 节点的 defaultValue", async () => {
+  it("AC3: createTask 注入的 text/sender/messageId 覆盖 feishuMessage 节点的 defaultValue", async () => {
     const flow = {
       nodeList: [
         makeFeishuMessageNode("n1"),
@@ -47,7 +47,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
             provider: "anthropic",
             model: "claude",
             outputVariable: "out",
-            prompt: "url={{n1.url}} sender={{n1.sender}} messageId={{n1.messageId}}"
+            prompt: "text={{n1.text}} sender={{n1.sender}} messageId={{n1.messageId}}"
           }
         }
       ],
@@ -58,13 +58,13 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
     const result = await run(
       flow,
       { executors: { agent: capturePromptExecutor(store) } },
-      { url: "https://example.com/x", sender: "ou_123", messageId: "om_456" }
+      { text: "https://example.com/x", sender: "ou_123", messageId: "om_456" }
     );
 
     assert.equal(result.status, "success");
     assert.equal(
       store.prompts[0].prompt,
-      "url=https://example.com/x sender=ou_123 messageId=om_456",
+      "text=https://example.com/x sender=ou_123 messageId=om_456",
       "注入变量应覆盖 feishuMessage 节点的默认值"
     );
   });
@@ -77,7 +77,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
           type: "feishuMessage",
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "https://default.example" },
+              { name: "text", type: "string", defaultValue: "default text" },
               { name: "sender", type: "string", defaultValue: "default-sender" }
             ]
           }
@@ -85,13 +85,13 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
         {
           id: "n2",
           type: "condition",
-          config: { expression: "n1.url === ''" }
+          config: { expression: "n1.text === ''" }
         }
       ],
       edges: [{ sourceNodeId: "n1", targetNodeId: "n2" }]
     };
 
-    const result = await run(flow, {}, { url: "", sender: "ou_789" });
+    const result = await run(flow, {}, { text: "", sender: "ou_789" });
     assert.equal(result.branch, "true", "注入空字符串应覆盖非空 defaultValue");
   });
 
@@ -107,7 +107,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
         type: "feishuMessage",
         config: {
           outputVariables: [
-            { name: "url", type: "string", defaultValue: "" },
+            { name: "text", type: "string", defaultValue: "" },
             { name: "sender", type: "string", defaultValue: "" }
             // 缺少 messageId
           ]
@@ -124,7 +124,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
         type: "feishuMessage",
         config: {
           outputVariables: [
-            { name: "url", type: "string", defaultValue: "" },
+            { name: "text", type: "string", defaultValue: "" },
             { name: "sender", type: "string", defaultValue: "" },
             { name: "messageId", type: "number", defaultValue: 0 }
           ]
@@ -144,7 +144,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
           type: "feishuMessage",
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "" },
+              { name: "text", type: "string", defaultValue: "" },
               { name: "sender", type: "string", defaultValue: "" }
             ]
           }
@@ -161,7 +161,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
           type: "feishuMessage",
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "" },
+              { name: "text", type: "string", defaultValue: "" },
               { name: "sender", type: "string", defaultValue: "" },
               { name: "messageId", type: "number", defaultValue: 0 }
             ]
@@ -179,7 +179,7 @@ describe("REQ-FLOW-031: 飞书消息触发节点", () => {
           type: "feishuMessage",
           config: {
             outputVariables: [
-              { name: "url", type: "string", defaultValue: "" },
+              { name: "text", type: "string", defaultValue: "" },
               { name: "sender", type: "string", defaultValue: "" },
               { name: "messageId", type: "string", defaultValue: "" },
               { name: "extra", type: "string", defaultValue: "" }
