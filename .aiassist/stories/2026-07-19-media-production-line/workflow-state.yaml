@@ -6,7 +6,7 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 3        # 第几次尝试。归档重做时 +1。
 bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
@@ -41,6 +41,7 @@ history:
   - {at: 2026-07-21, from: QA, to: PRD, note: "用户确认回流：稳定块 12 方案层假设错（不应在 feishuMessage 节点提前解析 URL），初衷（链接速存）仍成立；归档 attempt-2，见 archive/attempt-2/reason.md"}
   - {at: 2026-07-21, from: PRD, to: ASSERTION-SIGNOFF, note: "PRD/REQ/tech-design/test-plan 已按 text/sender/messageId 契约同步更新；signoff 声明作废待重新签核；等待用户确认断言"}
   - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成 attempt-3 重新签核；契约交 /implementer 重新实现 S13 及相关切片"}
+  - {at: 2026-07-21, from: BUILD, to: QA, note: "S13-reflow 实现、PRD 对齐、refactor pass 完成；目标业务测试 35/35 绿；全量 test:unit 255/261 通过，6 个失败为既有问题；进入 /qa-runner"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
@@ -64,6 +65,7 @@ slices:
   - {id: S11, name: daily-digest-e2e, status: complete, commits: [5d5fb2d, 87f758f], reqs: [REQ-COLL-001]}
   - {id: S12, name: link-capture-e2e, status: complete, reqs: [REQ-COLL-002]}
   - {id: S13, name: feishu-message-trigger-node, status: complete, commits: [b2b5b17, 7665646, 6b63dfb, 640b25b, ce84fc2, eefe878], reqs: [REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001]}
+  - {id: S13-reflow, name: feishu-message-trigger-node-reflow, status: complete, commits: [f403b3b, 3349431, a84774a], reqs: [REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001]}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
