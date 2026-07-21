@@ -583,6 +583,11 @@ Slice 7 标记完成。
 - diff 范围检查：新增 renderer 文件（`src/renderer/pages/Notifications.jsx`、`src/renderer/api/notifications.js`、`src/renderer/hooks/useNotifications.js`、`src/renderer/hooks/useUnreadCount.js`）；修改 renderer 文件（`App.jsx`、`Sidebar.jsx`、`index.css`、i18n 文件）；修改测试基础设施（`tests/e2e/helpers/notifications.cjs`、`src/preload/preload.js`、`src/main/main.js`）。未修改业务测试 `.test.cjs`/`.test.js` 文件。
 - PRD 对齐：实现与 `ux/notifications.html` 及签核断言一致。
 
-Slice 8 标记完成。
+#### PRD 对齐复查
+
+- 状态：`MISALIGNMENT_FOUND`
+- 缺口 1（阻塞）：产物产出通知点击后仅导航到 `/executions?highlight=<id>`，但 `Executions.jsx` 未消费 `highlight` 参数，没有自动选中/展开对应执行详情。
+- 缺口 2（待确认）：PRD 稳定块 10 写「通道恢复为绿色」，但 REQ-NOTIFY-002 AC2 仅要求三类配色（产物产出/执行失败/通道状态），实现已将 `channel-status` 统一用黄色。按签核 REQ 验收标准，此点不阻塞；作为已知偏差记录。
+- 处理决定：修复缺口 1，`Executions` 页消费 `highlight` 参数自动选中对应执行；缺口 2 保持现状并记录偏差。
 
 ---
