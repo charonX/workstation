@@ -7,13 +7,26 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { resetDb, getDb } from "../../../../../../src/db.js";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { resetDb, getDb, closeDb } from "../../../../../../src/db.js";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import { setQueryFn, resetQueryFn } from "../../../../../../src/flowEngine/claudeAgentAdapter.js";
 
 describe("REQ-FLOW-028: 执行日志持久化与自动清理", () => {
+  let tmpDir;
+
   beforeEach(() => {
-    resetDb();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-execution-log-"));
+    process.env.DB_PATH = path.join(tmpDir, "data.db");
+    resetDb(process.env.DB_PATH);
+  });
+
+  afterEach(() => {
+    closeDb();
+    delete process.env.DB_PATH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("flow 每次执行生成执行记录，包含节点输入/输出/分支/错误/重试次数", () => {

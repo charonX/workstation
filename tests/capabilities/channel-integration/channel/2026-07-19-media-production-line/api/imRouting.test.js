@@ -7,6 +7,9 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import { createMockChannelAdapter } from "../../../../../fixtures/media-production-line/mockChannelAdapter.js";
 
@@ -220,6 +223,8 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     // 本测试走完整生产路径：startServer 已通过 createImRouter({ channelManager }) 订阅
     // channel:message-received；保存凭据并重启 channelManager 后，adapter 的 onMessage 回调
     // 由 channelManager 桥接到 eventBus，最终触发 imRouter 创建执行。
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-imrouting-"));
+    process.env.OPC_WORKSTATION_CONFIG_DIR = tmpDir;
     const restoreFetch = mockFeishuOpenPlatform();
     try {
       const settings = await import("../../../../../../src/services/settingsService.js");
@@ -247,6 +252,8 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
       assert.ok(created, "imRouter 应通过 eventBus 桥接收到消息并创建 trigger=channel 的执行");
     } finally {
       restoreFetch();
+      delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });

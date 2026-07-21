@@ -48,9 +48,18 @@ function clearServerRegistry() {
 describe("REQ-CHANNEL-001 CLI 集成：channel credentials / status / reconnect", () => {
   let fake;
   let restoreFetch;
+  let tmpDir;
+
+  function runCli(cmd) {
+    return execSync(cmd, {
+      encoding: "utf-8",
+      env: { ...process.env, OPC_WORKSTATION_CONFIG_DIR: tmpDir }
+    });
+  }
 
   beforeEach(async () => {
     clearServerRegistry();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-channel-cli-"));
     fake = await startFakeFeishuServer();
     restoreFetch = mockFeishuOpenPlatform();
   });
@@ -59,12 +68,12 @@ describe("REQ-CHANNEL-001 CLI 集成：channel credentials / status / reconnect"
     restoreFetch();
     await fake.stop();
     clearServerRegistry();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("opc-workstation channel credentials 返回 {appId, status, error?}", () => {
-    const out = execSync(
-      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`,
-      { encoding: "utf-8" }
+    const out = runCli(
+      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`
     );
     const data = JSON.parse(out);
     assert.equal(data.appId, "cli_fake_cli", "CLI 应回显 appId");
@@ -73,11 +82,10 @@ describe("REQ-CHANNEL-001 CLI 集成：channel credentials / status / reconnect"
   });
 
   it("opc-workstation channel status 返回 {channelType, status, error?}", () => {
-    execSync(
-      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`,
-      { encoding: "utf-8" }
+    runCli(
+      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`
     );
-    const out = execSync(`node src/cli/opc-workstation.js channel status`, { encoding: "utf-8" });
+    const out = runCli(`node src/cli/opc-workstation.js channel status`);
     const data = JSON.parse(out);
     assert.equal(data.channelType, "feishu", "CLI 应返回 channelType=feishu");
     assert.ok(["connecting", "online", "offline"].includes(data.status), `status 应为三态之一，实际: ${data.status}`);
@@ -85,11 +93,10 @@ describe("REQ-CHANNEL-001 CLI 集成：channel credentials / status / reconnect"
   });
 
   it("opc-workstation channel reconnect 返回 {channelType, status, error?}", () => {
-    execSync(
-      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`,
-      { encoding: "utf-8" }
+    runCli(
+      `node src/cli/opc-workstation.js channel credentials --app-id cli_fake_cli --app-secret fake-secret-cli`
     );
-    const out = execSync(`node src/cli/opc-workstation.js channel reconnect`, { encoding: "utf-8" });
+    const out = runCli(`node src/cli/opc-workstation.js channel reconnect`);
     const data = JSON.parse(out);
     assert.equal(data.channelType, "feishu", "CLI 应返回 channelType=feishu");
     assert.ok(["connecting", "online", "offline"].includes(data.status), `status 应为三态之一，实际: ${data.status}`);
