@@ -41,6 +41,11 @@ export async function handleProjects(req, res, body, pathParts) {
   }
 
   if (pathParts.length === 2 && pathParts[1] === "skills") {
+    const detail = buildProjectDetail(projectId);
+    if (!detail) return notFound(res, "Project not found");
+    if (req.method === "GET") {
+      return ok(res, detail.skills);
+    }
     if (req.method === "PATCH") {
       const { skillId, linked } = body || {};
       if (!skillId) return badRequest(res, "skillId is required");
@@ -49,8 +54,7 @@ export async function handleProjects(req, res, body, pathParts) {
       } else {
         skillService.unlinkSkill(skillId, projectId);
       }
-      const detail = buildProjectDetail(projectId);
-      return ok(res, detail);
+      return ok(res, buildProjectDetail(projectId));
     }
     return notFound(res);
   }

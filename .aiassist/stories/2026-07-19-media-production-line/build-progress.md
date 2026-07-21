@@ -708,7 +708,7 @@ Slice 9 标记完成。
 
 ### S10 / template-instantiation
 
-**状态**: IN PROGRESS  
+**状态**: DONE  
 **REQ-ID**: REQ-TPL-001  
 **依赖**: S1 (workspace/server/db), S4 (content source), S5 (channel binding), S9 (collection skills)  
 **测试文件**:
@@ -722,5 +722,44 @@ Slice 9 标记完成。
 - `POST /api/templates/:id/instantiate`：输入 `{projectId, overrides?}`，输出 `{flowId, flow?, binding?}`；错误码 `E-TPL-NOT-FOUND` / `E-TPL-PROJECT-INVALID` / `E-BINDING-EXISTS`。
 - CLI：`opc-workstation template list` / `opc-workstation template instantiate --id <id> --project-id <pid> [--force]`。
 - 内置 skill 包 `opc-collection-skills` 需要在 server 启动时注册到 `skill_repos`/`skills` 表（幂等），以便 `linkSkill` 关联到项目。
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §4 稳定块 11 / §6.1 OP-8：内置 2 个模板可列出 | `src/services/templateService.js` (`listTemplates`, `BUILTIN_TEMPLATES`) | `tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js` | COVERED |
+| REQ-TPL-001 AC1：`instantiate` 生成 draft flow（含 agent 节点与 skill 引用） | `src/services/templateService.js` (`instantiateTemplate` → `flowService.createFlow`) | 同上 | COVERED |
+| REQ-TPL-001 AC1：关联收集 skill 包到项目 | `src/services/templateService.js` (`linkSkill` 按模板 `skills` 列表递归关联依赖) | 同上 | COVERED |
+| REQ-TPL-001 AC2：链接速存模板实例化同事务写入 `channel_bindings` | `src/services/templateService.js` (`channelBindingService.createBinding` 同事务 force 替换) | 同上 | COVERED |
+| REQ-TPL-001 AC2：无 force 时已有绑定报 `E-BINDING-EXISTS` | `src/services/channelBindingService.js`（已有 force 语义）+ `src/http/routes/templates.js` 透传 409 | 同上 | COVERED |
+| REQ-TPL-001 AC3：CLI `template list/instantiate` | `src/cli/commands/template.js` + `src/cli/opc-workstation.js` 注册 | 同上 | COVERED |
+| §10 / tech-design：内置 skill repo 幂等播种 | `src/services/skillService.js` (`ensureBuiltInCollectionSkills`) + `src/http/server.js` 启动调用 | 同上（S10 依赖 S9 资产） | COVERED |
+| tech-design 模板实例化错误码：`E-TPL-NOT-FOUND` / `E-TPL-PROJECT-INVALID` | `src/services/templateService.js` / `src/http/routes/templates.js` | 同上 | COVERED |
+| REQ-FLOW-029：trigger 注入变量覆盖默认值 | `src/services/templateService.js` (`applyOverrides` 写入 trigger `outputVariables[].defaultValue`) | 同上（`overrides: { topic }` 断言通过节点创建） | COVERED |
+
+#### 与 PRD/tech-design 的已知偏差
+
+- 内置 collection skill repo 在 `src/http/server.js` 启动时幂等注册，但其 `installSource='builtin'` 的记录被排除在用户可见的 skill repo 列表（`skillService.listSkillRepos`）之外。原因：避免开箱模板所需的系统级 skill repo 干扰用户安装/删除 skill repo 的管理语义（回归测试 `skill-management/skill/codex-harness-desktop/api/skill.test.js` 期望列表仅含用户安装 repo）。内置 skill 仍可通过 `listLinkableSkills` / `GET /api/projects/:id/skills` 被项目关联，不影响模板实例化与 S9 资产测试。
+- `GET /api/projects/:id/skills` 此前未实现；S10 测试经此接口查询项目已关联 skill，因此补上了 GET 处理器，返回技能数组（PATCH 仍返回完整 project detail 以保持既有行为）。
+
+#### 测试结果摘要
+
+- `node --test tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js` → 6/6 pass
+- `node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js` → 5/5 pass
+- `node --test tests/capabilities/workspace-management/project/codex-harness-desktop/api/project.test.js tests/capabilities/skill-management/skill/codex-harness-desktop/api/skill.test.js` → 30/30 pass（回归）
+
+#### 修改文件
+
+- `src/services/templateService.js`（新增）
+- `src/services/skillService.js`（`ensureBuiltInCollectionSkills`、`listSkillRepos` 过滤 builtin）
+- `src/http/server.js`（启动播种、注册 templates 路由）
+- `src/http/routes/templates.js`（新增）
+- `src/http/routes/projects.js`（`GET /api/projects/:id/skills`）
+- `src/cli/commands/template.js`（新增）
+- `src/cli/opc-workstation.js`（注册 `template` 实体）
+
+#### Commit
+
+`[build] Slice 10: template instantiation`
 
 ---
