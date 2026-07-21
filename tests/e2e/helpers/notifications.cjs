@@ -19,35 +19,13 @@
  * @returns {Promise<number>} 写入条数
  */
 async function seedNotifications(electronApp, userDataDir, notifications) {
-  return electronApp.evaluate(async ({ userDataDir, notifications }) => {
-    const path = await import("node:path");
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(path.join(userDataDir, "data.db"));
-    try {
-      db.pragma("busy_timeout = 5000");
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS notifications (
-          id TEXT PRIMARY KEY,
-          type TEXT NOT NULL,
-          title TEXT NOT NULL,
-          body TEXT,
-          executionId TEXT,
-          createdAt TEXT NOT NULL,
-          readAt TEXT
-        );
-      `);
-      const insert = db.prepare(`
-        INSERT OR REPLACE INTO notifications (id, type, title, body, executionId, createdAt, readAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const n of notifications) {
-        insert.run(n.id, n.type, n.title, n.body ?? null, n.executionId ?? null, n.createdAt, n.readAt ?? null);
-      }
-      return notifications.length;
-    } finally {
-      db.close();
+  const firstWindow = await electronApp.firstWindow();
+  return firstWindow.evaluate((list) => {
+    if (!window.opc?.__seedNotifications) {
+      throw new Error("E2E seed seam not available; ensure app is running with NODE_ENV=development");
     }
-  }, { userDataDir, notifications });
+    return window.opc.__seedNotifications(list);
+  }, notifications);
 }
 
 module.exports = { seedNotifications };
