@@ -625,7 +625,7 @@ Slice 8 标记完成。
 
 ### S9 / collection-skills
 
-**状态**: IN PROGRESS  
+**状态**: DONE  
 **REQ-ID**: REQ-COLL-003  
 **依赖**: skillService 已存在  
 **测试文件**:
@@ -638,5 +638,32 @@ Slice 8 标记完成。
 - `fetch-to-markdown` 需附带 SSRF 校验脚本 `scripts/validateUrl.js`，拒绝私网 IP。
 - `fetch-to-markdown/SKILL.md` 需含 `UNTRUSTED` 与「不可信」锚点。
 - skill 包内文件不得 import/require 内核源码（仅经公开 CLI/文件交互）。
+
+#### PRD→代码可追溯性表
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §4 稳定块 9 / §10：收集能力 skill 化，三个逻辑实现在 skill 层 | `src/assets/skill-repos/opc-collection-skills/skills/fetch-to-markdown/SKILL.md`、`skills/topic-daily-digest/SKILL.md`、`skills/feishu-doc-sync/SKILL.md` | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js` | COVERED |
+| REQ-COLL-003 AC1：三个 skill 以 skill repo 形式交付并注入项目 | 内置 skill repo `opc-collection-skills`；`skillService.createSkillRepo`/`createSkill`/`linkSkill` 复用既有能力创建 symlink | 同上 | COVERED |
+| REQ-COLL-003 AC2：`fetch-to-markdown` SSRF 阻断私网 IP | `src/assets/skill-repos/opc-collection-skills/skills/fetch-to-markdown/scripts/validateUrl.js`（`assertPublicUrl`/`validateUrl`） | 同上 | COVERED |
+| REQ-COLL-003 AC2：抓取内容以「不可信数据」标记包裹 | `skills/fetch-to-markdown/SKILL.md` 含 `UNTRUSTED` 与「不可信」锚点 | 同上 | COVERED |
+| REQ-COLL-003 AC3：skill 不依赖系统内核内部 API | skill 包仅含 `SKILL.md` 与纯 Node 内置模块脚本，无 `from/require(".../src/...")` | 同上 | COVERED |
+| §6.1 OP-4 步骤 3 / OP-5：fetch 输出路径与日报输出路径约定 | `fetch-to-markdown/SKILL.md`（`materials/<date>-<slug>.md`）、`topic-daily-digest/SKILL.md`（`outputs/daily/<date>-<topic>.md`） | 同上（文档契约，S11/S12 端到端接线） | PREPARED |
+| §6.1 OP-5：飞书文档同步输入/输出约定 | `feishu-doc-sync/SKILL.md`（输入 `markdownPath`/`title`，输出飞书文档 URL） | 同上（文档契约，S11/S12 接线） | PREPARED |
+
+#### 与 PRD/tech-design 的已知偏差
+
+- 本切片仅交付 skill 包资产与 SSRF 校验脚本，未实现实际抓取/合成/文档同步运行时；具体行为由 S10/S11/S12 通过模板和端到端测试以 mock/fake 驱动。偏差已按签核约定控制在资产层，不阻塞下游切片。
+- `feishu-doc-sync` 的飞书 OpenAPI 调用细节（`blocks/convert`、创建文档、权限 `tenant_readable`）在 SKILL.md 中仅作契约说明，实际系统层实现见 `src/services/channels/feishuDocSync.js`（S5）。skill 层本身不直接调用该服务。
+
+#### 父代理验证记录
+
+- 业务测试验证：`node --test tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/collectionSkills.test.js` → 5/5 pass
+- diff 范围检查：仅新增资产文件（`src/assets/skill-repos/opc-collection-skills/...`）并更新 `build-progress.md`，未触碰业务测试
+- PRD 对齐：实现与签核断言一致
+
+Slice 9 标记完成。
+
+---
 
 ---
