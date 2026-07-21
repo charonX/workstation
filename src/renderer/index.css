@@ -504,23 +504,6 @@ body {
   font-size: var(--ch-text-sm);
 }
 
-.cell-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.cell-title {
-  font-weight: var(--ch-weight-medium);
-  color: var(--ch-text);
-}
-
-.cell-meta {
-  font-size: var(--ch-text-xs);
-  color: var(--ch-text-tertiary);
-  font-family: var(--ch-font-mono);
-}
-
 .cell-text {
   color: var(--ch-text-secondary);
 }

@@ -79,6 +79,11 @@ export default function Sources() {
   const nameInputRef = useRef(null);
   const tagInputRef = useRef(null);
 
+  const selectedMeta = TYPE_META[selectedType];
+  const isEditing = !!editingSource;
+  const clearFieldError = (field) =>
+    setFieldErrors((prev) => ({ ...prev, [field]: "" }));
+
   const resetForm = useCallback(() => {
     setEditingSource(null);
     setSelectedType("webpage");
@@ -120,7 +125,7 @@ export default function Sources() {
     const value = tagInput.trim();
     if (!value) return;
 
-    setFieldErrors((prev) => ({ ...prev, tags: "" }));
+    clearFieldError("tags");
 
     if (value.length > 16) {
       setFieldErrors((prev) => ({
@@ -160,7 +165,6 @@ export default function Sources() {
     const errors = {};
     const trimmedName = name.trim();
     const trimmedConfig = config.trim();
-    const meta = TYPE_META[selectedType];
 
     if (!trimmedName || trimmedName.length > 64) {
       errors.name = t("sources.nameError");
@@ -170,7 +174,7 @@ export default function Sources() {
       errors.tags = t("sources.tagsRequired");
     }
 
-    if (meta.kind === "url") {
+    if (selectedMeta.kind === "url") {
       if (!isValidHttpUrl(trimmedConfig)) {
         errors.config = t("sources.urlRequired");
       }
@@ -233,8 +237,6 @@ export default function Sources() {
     await remove(deleteSource.id);
     setDeleteSource(null);
   }
-
-  const enabledCount = sources.filter((s) => s.enabled).length;
 
   return (
     <div className="page" data-testid="sources-page">
@@ -363,7 +365,7 @@ export default function Sources() {
       <Modal
         isOpen={isFormOpen}
         onClose={closeForm}
-        title={editingSource ? t("sources.editTitle") : t("sources.createTitle")}
+        title={isEditing ? t("sources.editTitle") : t("sources.createTitle")}
         size="md"
         testid="source-form-modal"
         footer={
@@ -382,7 +384,7 @@ export default function Sources() {
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {editingSource ? t("common.save") : t("sources.create")}
+              {isEditing ? t("common.save") : t("sources.create")}
             </button>
           </>
         }
@@ -399,7 +401,7 @@ export default function Sources() {
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              setFieldErrors((prev) => ({ ...prev, name: "" }));
+              clearFieldError("name");
             }}
             placeholder={t("sources.namePlaceholder")}
             autoComplete="off"
@@ -422,7 +424,7 @@ export default function Sources() {
                   onClick={() => {
                     setSelectedType(type);
                     setConfig("");
-                    setFieldErrors((prev) => ({ ...prev, config: "" }));
+                    clearFieldError("config");
                   }}
                 >
                   <span className={`badge ${meta.badgeClass}`}>{meta.label}</span>
@@ -445,7 +447,7 @@ export default function Sources() {
               value={tagInput}
               onChange={(e) => {
                 setTagInput(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, tags: "" }));
+                clearFieldError("tags");
               }}
               onKeyDown={handleTagKeyDown}
               placeholder={t("sources.tagPlaceholder")}
@@ -485,7 +487,7 @@ export default function Sources() {
 
         <div className="form-group">
           <label className="form-label" htmlFor="source-config">
-            {TYPE_META[selectedType].configLabel}
+            {selectedMeta.configLabel}
           </label>
           <input
             id="source-config"
@@ -493,15 +495,15 @@ export default function Sources() {
             value={config}
             onChange={(e) => {
               setConfig(e.target.value);
-              setFieldErrors((prev) => ({ ...prev, config: "" }));
+              clearFieldError("config");
             }}
-            placeholder={TYPE_META[selectedType].placeholder}
+            placeholder={selectedMeta.placeholder}
             autoComplete="off"
           />
           {fieldErrors.config && (
             <div className="field-error show">{fieldErrors.config}</div>
           )}
-          <p className="help-text">{TYPE_META[selectedType].help}</p>
+          <p className="help-text">{selectedMeta.help}</p>
         </div>
 
         {fieldErrors.general && (
