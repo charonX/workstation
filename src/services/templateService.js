@@ -83,8 +83,8 @@ function buildAgentNode(skillName, prompt) {
     type: "agent",
     config: {
       provider: "anthropic",
+      prompt,
       options: {
-        systemPrompt: prompt,
         maxTurns: 10
       }
     }

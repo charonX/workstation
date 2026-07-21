@@ -260,7 +260,11 @@
     "duplicateVariableName": "变量名重复：{{name}}",
     "invalidVariableType": "变量类型非法：{{type}}",
     "expressionRequired": "表达式不能为空",
-    "retriesInvalid": "重试次数必须是非负整数"
+    "retriesInvalid": "重试次数必须是非负整数",
+    "outputVariablesRequired": "输出变量必填",
+    "feishuMessageVariableRequired": "缺少必需的飞书消息输出变量：{{name}}",
+    "feishuMessageVariableType": "飞书消息变量 \"{{name}}\" 必须是字符串",
+    "feishuMessageUnexpectedVariable": "飞书消息输出变量中不允许：{{name}}"
   },
   "projectForm": {
     "title": "添加项目",
