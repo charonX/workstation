@@ -165,7 +165,7 @@
 | Schedule cron | 合法 5 段 cron 表达式 | "cron 表达式不合法" | E-SCHED-CRON |
 | Schedule flowId | 必须指向存在且未删除的 flow | "flow 不存在" | E-SCHED-FLOW |
 | 飞书 App ID / Secret | 必填非空 | "凭据不能为空" | E-CHANNEL-CRED |
-| IM 消息 | 取文本中第一个 http(s) 链接；无链接走提示分支 | 回复使用提示 | E-MSG-NO-URL |
+| IM 消息（路由层） | 透传原始 `text` / `sender` / `messageId`；不在路由层解析 URL 或做业务分支 | — | — |
 
 > 内容源管理 UI 表单与 CLI/API 使用同一套校验规则（前端即时提示，后端兜底拒绝）。通知中心无用户输入（系统生成）。
 

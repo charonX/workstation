@@ -27,7 +27,7 @@
 | `http server`（改造） | 新路由 `/api/content-sources`、`/api/notifications`、`/api/channel`、`/api/templates` | 否 |
 | CLI（改造） | `source` / `notify` / `channel` / `server` / `template` 实体命令 | 否 |
 | preload（改造） | 暴露 `shell.openPath` / `shell.showItemInFolder`，白名单限项目目录内路径 | 否 |
-| renderer（改造） | Sources 管理页、通知入口+列表页、Settings 飞书区块、Executions 产物 tab；**Flow Editor 新增 `feishuMessage` 触发节点**：NodePalette Trigger 分组、NodeConfigPanel 固定输出 `url`/`sender`/`messageId`（不可删除，可改 defaultValue）（参照 `ux/` 原型） | 否 |
+| renderer（改造） | Sources 管理页、通知入口+列表页、Settings 飞书区块、Executions 产物 tab；**Flow Editor 新增 `feishuMessage` 触发节点**：NodePalette Trigger 分组、NodeConfigPanel 固定输出 `text`/`sender`/`messageId`（不可删除，可改 defaultValue）（参照 `ux/` 原型） | 否 |
 | 内置模板与收集 skill 包（资产） | flow 模板 ×2（定时日报、链接速存）+ skill ×3（fetch-to-markdown、topic-daily-digest、feishu-doc-sync） | 是 |
 
 ### 模块关系图
@@ -73,9 +73,9 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 
 ### 场景 B · 飞书链接速存
 
-1. **触发**：`WSClient` 收到 `im.message.receive_v1` → `feishuChannelAdapter` 把原始事件转换成 `{messageId, chatId, senderId, text}` 并通过 `onMessage` 回调交给 `channelManager` → `channelManager` 发布 `eventBus.emit('channel:message-received', {channelType:'feishu', messageId, chatId, senderId, text, url?})`。
-2. **去重与路由**：`imRouter` 订阅该事件，按 `message_id` 查 `channel_messages` 去重（已见则丢弃并 ACK）；解析文本中第一个 http(s) URL（无 URL 走提示分支）。再查 `channel_bindings`（`channelType='feishu'`，单绑定）——**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知；**绑定指向的 flow 无 `feishuMessage` 触发节点** → 回复配置异常提示并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`）。命中绑定 → 立即 `reply`"收到，排队中（第 N 位）"（满足 3 秒时限）→ `createTask({projectId, flowId, trigger:"channel", variables:{url, sender, messageId, channelReply:{channelType, chatId, messageId}}})` 入队。
-3. **核心处理**：轮到后 `flowEngine` 执行 flow；`feishuMessage` 节点把注入变量合并进 context，下游 agent 执行 `fetch-to-markdown` skill → `materials/<date>-<slug>.md`（frontmatter：source url/title/fetchedAt）+ 索引文件追加。
+1. **触发**：`WSClient` 收到 `im.message.receive_v1` → `feishuChannelAdapter` 把原始事件转换成 `{messageId, chatId, senderId, text}` 并通过 `onMessage` 回调交给 `channelManager` → `channelManager` 发布 `eventBus.emit('channel:message-received', {channelType:'feishu', messageId, chatId, senderId, text})`。
+2. **去重与路由**：`imRouter` 订阅该事件，按 `message_id` 查 `channel_messages` 去重（已见则丢弃并 ACK）。再查 `channel_bindings`（`channelType='feishu'`，单绑定）——**无绑定** → 回复"未绑定链接速存 flow，请先从模板创建"（不建执行）；**绑定指向的 flow 已删/draft** → 回复配置异常提示并写"通道状态"通知；**绑定指向的 flow 无 `feishuMessage` 触发节点** → 回复配置异常提示并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`）。命中绑定 → 立即 `reply`"收到，排队中（第 N 位）"（满足 3 秒时限）→ `createTask({projectId, flowId, trigger:"channel", variables:{text, sender, messageId, channelReply:{channelType, chatId, messageId}}})` 入队。**URL 等业务解析不在路由层做**。
+3. **核心处理**：轮到后 `flowEngine` 执行 flow；`feishuMessage` 节点把注入变量合并进 context，下游 agent 执行 `fetch-to-markdown` skill（从 `text` 中自行解析/提取 URL） → `materials/<date>-<slug>.md`（frontmatter：source url/title/fetchedAt）+ 索引文件追加。
 4. **副作用**：产物登记、写通知。
 5. **输出**：taskService 执行终态钩子统一投递——成功经 `channelReply` 回复"已存：`<路径>`"（回复原消息，可用 `reply_in_thread`）；失败投递模板化错误摘要（E-AGENT-FAILED / E-FETCH-FAILED 原因）。
 
@@ -195,7 +195,7 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | 调用方 | renderer / CLI |
 | 被调用方 | `POST /api/templates/:id/instantiate` |
 | 输入 | `{projectId, overrides?}`（如日报 topic、cron） |
-| 输出 | 新建 flow（draft）：定时日报模板含通用 trigger 节点；链接速存模板含 `feishuMessage` 触发节点（固定输出 `url`/`sender`/`messageId`）+ agent 节点；链接速存模板同时在 `channel_bindings` 建立通道绑定（单绑定） |
+| 输出 | 新建 flow（draft）：定时日报模板含通用 trigger 节点；链接速存模板含 `feishuMessage` 触发节点（固定输出 `text`/`sender`/`messageId`）+ agent 节点；链接速存模板同时在 `channel_bindings` 建立通道绑定（单绑定） |
 | 业务错误 | `E-TPL-NOT-FOUND` / `E-TPL-PROJECT-INVALID` / `E-BINDING-EXISTS`（该通道类型已有绑定；支持 `force` 参数替换，同事务删旧写新） |
 | 系统错误 | DB 写失败 |
 | 副作用 | 写 flows 表 + `channel_bindings`（**同事务**）；安装/关联收集 skill 包到项目 |
@@ -207,7 +207,7 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 |---|---|
 | 调用方 | `flowEngine.run()` |
 | 被调用方 | `triggerExecutor`（`feishuMessage` 复用 trigger 执行逻辑，不引入新 executor） |
-| 输入 | node.type = `feishuMessage`；node.config.outputVariables 固定为 `[{name:"url",type:"string",defaultValue:""},{name:"sender",type:"string",defaultValue:""},{name:"messageId",type:"string",defaultValue:""}]` |
+| 输入 | node.type = `feishuMessage`；node.config.outputVariables 固定为 `[{name:"text",type:"string",defaultValue:""},{name:"sender",type:"string",defaultValue:""},{name:"messageId",type:"string",defaultValue:""}]` |
 | 输出 | 与 trigger 节点一致：把 `createTask` 注入的 variables 合并进 context，供下游按 `节点ID.变量名` 读取 |
 | 业务错误 | 节点固定输出缺失或类型非法 → flowService.validateNodeList / validateFlowNodes 拒绝保存（视作 `trigger` 类型校验） |
 | 系统错误 | — |

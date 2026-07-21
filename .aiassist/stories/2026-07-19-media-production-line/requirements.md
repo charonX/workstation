@@ -109,10 +109,10 @@
 - 接口契约：tech-design「flowEngine 节点类型扩展（`feishuMessage`）」。
 - 验收标准：
   1. Flow Editor NodePalette 的 Trigger 分组提供 `feishuMessage` 节点；点击可添加到画布。
-  2. `feishuMessage` 节点配置面板固定展示 `url` / `sender` / `messageId` 三个输出变量（type=string，defaultValue 默认可空）；用户可修改 defaultValue，但**不可删除、不可重命名**这三个变量。
-  3. `flowEngine.run()` 将 `feishuMessage` 视为 trigger-like 节点：注入的 `url`/`sender`/`messageId` 覆盖 defaultValue，并按 `节点ID.变量名` 写入 context；未注入时 fallback 到 defaultValue。
-  4. `flowService.validateNodeList` 与前端 `validateFlowNodes` 接受 `feishuMessage` 类型；校验其 outputVariables 符合固定结构（name ∈ {url,sender,messageId}、type=string）。
-  5. 链接速存模板实例化生成的 flow 首节点为 `feishuMessage`（固定输出 url/sender/messageId），而不是通用 trigger 节点。
+  2. `feishuMessage` 节点配置面板固定展示 `text` / `sender` / `messageId` 三个输出变量（type=string，defaultValue 默认可空）；用户可修改 defaultValue，但**不可删除、不可重命名**这三个变量。
+  3. `flowEngine.run()` 将 `feishuMessage` 视为 trigger-like 节点：注入的 `text`/`sender`/`messageId` 覆盖 defaultValue，并按 `节点ID.变量名` 写入 context；未注入时 fallback 到 defaultValue。
+  4. `flowService.validateNodeList` 与前端 `validateFlowNodes` 接受 `feishuMessage` 类型；校验其 outputVariables 符合固定结构（name ∈ {text,sender,messageId}、type=string）。
+  5. 链接速存模板实例化生成的 flow 首节点为 `feishuMessage`（固定输出 text/sender/messageId），而不是通用 trigger 节点。
 - 边界与错误：
   - 用户手动把 `feishuMessage` 节点 outputVariables 改成非法结构 → 保存/发布时校验拒绝（沿用 E-FLOW-CONFIG 类错误码）。
   - IM 路由命中绑定但 flow 缺少 `feishuMessage` 节点 → `E-CHANNEL-FLOW-NO-TRIGGER`（见 REQ-CHANNEL-002）。
@@ -134,9 +134,8 @@
 - 接口契约：tech-design「通道绑定与 IM 路由」。
 - 验收标准：
   1. 收到 `im.message.receive_v1` → 按 `message_id` 查 `channel_messages` 去重，重复消息丢弃且不再处理。
-  2. 文本含 http(s) URL → 查 `channel_bindings`（channelType='feishu'）→ 唯一绑定得 `{projectId, flowId}` → 校验 flow 已发布且包含 `feishuMessage` 触发节点 → 入队并立即回执"收到，排队中（第 N 位）"。
-  3. 无 URL → 回复使用提示，不建执行。
-  4. 无绑定 → 回复"未绑定链接速存 flow，请先从模板创建"；绑定指向 flow 已删/draft → 回复配置异常并写"通道状态"通知；绑定指向 flow 无 `feishuMessage` 触发节点 → 回复配置异常并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`）。
+  2. 查 `channel_bindings`（channelType='feishu'）→ 唯一绑定得 `{projectId, flowId}` → 校验 flow 已发布且包含 `feishuMessage` 触发节点 → `createTask({trigger:"channel", variables:{text,sender,messageId,channelReply}})` 入队并立即回执"收到，排队中（第 N 位）"。**URL 等业务解析不在路由层做**。
+  3. 无绑定 → 回复"未绑定链接速存 flow，请先从模板创建"；绑定指向 flow 已删/draft → 回复配置异常并写"通道状态"通知；绑定指向 flow 无 `feishuMessage` 触发节点 → 回复配置异常并写"通道状态"通知（`E-CHANNEL-FLOW-NO-TRIGGER`）。
   5. 事件回调在模拟长耗时场景下 3 秒内返回（回调内只做解析+入队）。
 - seam/测试：同上目录。
 
@@ -224,10 +223,10 @@
 
 - 优先级 P1 / 应该 / cross-module / http, taskService, skillService / collection-pipeline / template / 集成
 - 验收标准：
-  1. 内置 2 个模板（定时日报、链接速存）可列出；`POST /api/templates/:id/instantiate` 生成 draft flow 并关联收集 skill 包到项目：定时日报含通用 trigger + agent；链接速存含 `feishuMessage` 触发节点（固定输出 url/sender/messageId）+ agent。
+  1. 内置 2 个模板（定时日报、链接速存）可列出；`POST /api/templates/:id/instantiate` 生成 draft flow 并关联收集 skill 包到项目：定时日报含通用 trigger + agent；链接速存含 `feishuMessage` 触发节点（固定输出 text/sender/messageId）+ agent。
   2. 链接速存模板实例化**同事务**写入 channel_bindings；已有绑定时无 force 报 `E-BINDING-EXISTS`。
   3. CLI `opc-workstation template list/instantiate` 等价可用。
-  4. 链接速存模板生成的 flow 被 IM 消息触发时，注入的 url/sender/messageId 能被 `feishuMessage` 节点正确合并进 context。
+  4. 链接速存模板生成的 flow 被 IM 消息触发时，注入的 text/sender/messageId 能被 `feishuMessage` 节点正确合并进 context。
   3. CLI `opc-workstation template list/instantiate` 等价可用。
 - seam/测试：`tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/`。
 
@@ -285,3 +284,4 @@
 |---|---|---|---|
 | v1 | 2026-07-19 | 首次结晶：11 稳定块 → 24 REQ | AI + 人 |
 | v1.1 | 2026-07-21 | BUG 阶段 PRD 回流：新增 REQ-FLOW-031「飞书消息触发节点」；更新 REQ-CHANNEL-002/REQ-TPL-001；稳定块 12 加入追溯表；REQ 总数 25 | AI + 人 |
+| v1.2 | 2026-07-21 | attempt-3 重新签核前修正：REQ-CHANNEL-002 `channelType='feishu'` 拼写修正；REQ-TPL-001/REQ-CHANNEL-002 将 `url` 统一改为 `text`；URL 等业务解析明确不在路由层做 | AI + 人 |

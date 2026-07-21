@@ -1,11 +1,11 @@
 # Signoff — 2026-07-19-media-production-line
 
-> ✅ **范围变更已重新签核（2026-07-21）**：BUG 阶段用户裁决在 story 内回流，新增稳定块 12「飞书消息触发节点（`feishuMessage`）」。2026-07-19 的 Assertion Signoff 已作废，本次为重新签核后的 Assertion Signoff。
+> ⚠️ **签核作废声明（attempt-3 回流）**：由于 BUG 阶段用户裁决 `feishuMessage` 触发节点输出语义从「解析 URL」改为「原始 text/sender/messageId」，2026-07-21 的 Assertion Signoff 已作废。下方表格为 attempt-2 历史记录，仅作追溯；**在 PRD/REQ/tech-design 同步更新后需重新签核**。
 
-## Assertion Signoff
+## Assertion Signoff（已作废 · 待重新签核）
 
-**日期**：2026-07-21
-**签核人**：用户
+**日期**：2026-07-21（作废）
+**签核人**：用户（待重新签核）
 
 ### REQ 覆盖
 
@@ -58,7 +58,7 @@
 2. **E-SRC-DUP 状态码**：**409 Conflict**（资源冲突语义）。
 3. **通知 E2E 播种**：**DB 直写**（`tests/e2e/helpers/notifications.cjs`），不开放 `POST /api/notifications` 写入面。
 4. **§5 建议预期值整体批准**：回执「收到，排队中（第 N 位）」「队列已满，稍后再发」；模板 id `daily-digest`/`link-capture`；通知 API 面 `{items, unreadCount}` + `POST :id/read` + `POST read-all`；CLI `--tags` 逗号分隔、`task get --id`、`channel binding`、`notify list/read`、`template list/instantiate`；码值 `E-QUEUE-FULL`、`E-SERVER-TAKEOVER-TIMEOUT`、`E-DB-UNWRITABLE`；日报文件名 `outputs/daily/<date>-<topic-slug>.md`；索引文件 `materials/LIBRARY.md`；docSync 失败契约 `{error:{code:"E-DOC-SYNC-FAILED", stage}}`。
-5. **两处全等文案断言**（IM 无 URL 提示、绑定失效提示）：BUILD 必须逐字一致，属硬约束。
+5. **全等文案断言**（绑定失效提示）：BUILD 必须逐字一致，属硬约束。IM 消息无 URL 的处理已下沉到下游 skill/agent，不再作为路由层硬约束文案。
 
 ### 遗留问题
 
@@ -70,10 +70,10 @@
 
 2026-07-21 重新签核已确认以下新增/变更断言：
 
-1. **新增 REQ-FLOW-031 验收标准**：NodePalette Trigger 分组增加 `feishuMessage` 节点；配置面板固定输出 `url`/`sender`/`messageId`（不可删除/重命名，可改 defaultValue）；`flowEngine` 把 `feishuMessage` 视为 trigger-like 节点处理变量注入；校验规则接受该类型并检查固定结构；链接速存模板首节点类型为 `feishuMessage`。
-2. **REQ-CHANNEL-002 变更**：IM 路由在命中绑定后增加校验：flow 必须已发布且包含 `feishuMessage` 触发节点；缺失时报 `E-CHANNEL-FLOW-NO-TRIGGER` 并写"通道状态"通知。
-3. **REQ-TPL-001 变更**：链接速存模板由通用 trigger 节点改为 `feishuMessage` 触发节点（固定输出 url/sender/messageId）；定时日报模板保持通用 trigger 不变。
+1. **新增 REQ-FLOW-031 验收标准**：NodePalette Trigger 分组增加 `feishuMessage` 节点；配置面板固定输出 `text`/`sender`/`messageId`（不可删除/重命名，可改 defaultValue）；`flowEngine` 把 `feishuMessage` 视为 trigger-like 节点处理变量注入；校验规则接受该类型并检查固定结构；链接速存模板首节点类型为 `feishuMessage`。
+2. **REQ-CHANNEL-002 变更**：IM 路由在命中绑定后增加校验：flow 必须已发布且包含 `feishuMessage` 触发节点；缺失时报 `E-CHANNEL-FLOW-NO-TRIGGER` 并写"通道状态"通知；**URL 等业务解析不在路由层做**，`createTask` 透传原始 `text/sender/messageId`。
+3. **REQ-TPL-001 变更**：链接速存模板由通用 trigger 节点改为 `feishuMessage` 触发节点（固定输出 text/sender/messageId）；定时日报模板保持通用 trigger 不变。
 4. **新增错误码**：`E-CHANNEL-FLOW-NO-TRIGGER` —— 绑定 flow 缺少飞书消息触发节点。
 5. **测试文件更新**：新增 `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js` 与 `e2e/feishuMessageNode.test.cjs`；原 `imRouting.test.js`/`templates.test.js` 已补充新断言。
 
-`requirements.md` v1.1 hash：`835c36c5544138cce6439e02f7ba146691088bcb08b1de2b6224f939ddbc7485`。
+`requirements.md` v1.2 hash：`aeebbee331c0863144ca7b891e8faf8da12fde2bfbceb0ad525049febf3f1d48`（attempt-3 更新后，待重新签核）。
