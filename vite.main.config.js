@@ -14,6 +14,7 @@ export default defineConfig({
         "node-cron",
         "simple-git",
         "electron-squirrel-startup",
+        "@larksuiteoapi/node-sdk",
         /^node:/
       ]
     }
