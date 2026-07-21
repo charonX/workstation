@@ -5,7 +5,7 @@ import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 
 // Node types refined by this story (REQ-FLOW-018~021): these render the
 // per-type config fields plus the shared retries/onError section.
-const REFINED_NODE_TYPES = ["trigger", "condition", "agent"];
+const REFINED_NODE_TYPES = ["trigger", "feishuMessage", "condition", "agent"];
 
 
 
@@ -93,6 +93,7 @@ export default function NodeConfigPanel({
         )}
 
         {type === "trigger" && <TriggerFields config={config} onChange={onUpdateConfig} t={t} />}
+        {type === "feishuMessage" && <FeishuMessageFields config={config} onChange={onUpdateConfig} t={t} />}
         {type === "condition" && (
           <ConditionFields
             config={config}
@@ -200,6 +201,70 @@ function TriggerFields({ config, onChange, t }) {
       >
         {t("flowEditor.addVariable")}
       </button>
+    </div>
+  );
+}
+
+const FEISHU_MESSAGE_FIXED_OUTPUTS = [
+  { name: "url", type: "string", defaultValue: "" },
+  { name: "sender", type: "string", defaultValue: "" },
+  { name: "messageId", type: "string", defaultValue: "" }
+];
+
+function FeishuMessageFields({ config, onChange, t }) {
+  // REQ-FLOW-031：固定输出 url/sender/messageId；用户可改 defaultValue，不可删除/重命名。
+  const existing = Array.isArray(config.outputVariables) ? config.outputVariables : [];
+  const byName = new Map(existing.map((v) => [v.name, v]));
+  const variables = FEISHU_MESSAGE_FIXED_OUTPUTS.map((fixed) => ({
+    ...fixed,
+    ...byName.get(fixed.name)
+  }));
+
+  const updateVariable = (name, patch) => {
+    const next = variables.map((v) => (v.name === name ? { ...v, ...patch } : v));
+    onChange("outputVariables", next);
+  };
+
+  return (
+    <div className="form-group variables-editor" data-testid="feishu-message-variables-editor">
+      <span className="form-label">{t("flowEditor.variables")}</span>
+      {variables.map((variable, index) => (
+        <div className="variable-row" data-testid="variable-row" key={variable.name}>
+          <label className="form-label" htmlFor={`variable-name-${index}`}>
+            {t("flowEditor.variableName")}
+          </label>
+          <input
+            id={`variable-name-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="variable-name-input"
+            value={variable.name}
+            readOnly
+          />
+          <label className="form-label" htmlFor={`variable-type-${index}`}>
+            {t("flowEditor.variableType")}
+          </label>
+          <input
+            id={`variable-type-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="variable-type-display"
+            value={variable.type || "string"}
+            readOnly
+          />
+          <label className="form-label" htmlFor={`variable-default-${index}`}>
+            {t("flowEditor.defaultValue")}
+          </label>
+          <input
+            id={`variable-default-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="variable-default-input"
+            value={variable.defaultValue ?? ""}
+            onChange={(e) => updateVariable(variable.name, { defaultValue: e.target.value })}
+          />
+        </div>
+      ))}
     </div>
   );
 }

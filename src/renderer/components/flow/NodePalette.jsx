@@ -3,6 +3,7 @@ const NODE_CATEGORIES = [
     label: "Trigger",
     items: [
       { type: "trigger", name: "Manual", icon: "⏱" },
+      { type: "feishuMessage", name: "Feishu Message", icon: "✉️" },
     ],
   },
   {

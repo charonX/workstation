@@ -13,7 +13,8 @@ const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
+const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["url", "sender", "messageId"];
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -55,6 +56,42 @@ function validateTriggerConfig(config, base, details) {
       details.push({ path: `${path}[${index}].type`, message: `Invalid type: ${item.type}. Must be one of: string, number, array, object` });
     }
   });
+}
+
+function validateFeishuMessageConfig(config, base, details) {
+  const path = `${base}.outputVariables`;
+  if (!("outputVariables" in config) || config.outputVariables === undefined) {
+    details.push({ path, message: "Output variables are required" });
+    return;
+  }
+  const variables = config.outputVariables;
+  if (!Array.isArray(variables)) {
+    details.push({ path, message: "Output variables must be an array" });
+    return;
+  }
+
+  const byName = new Map();
+  variables.forEach((variable, index) => {
+    const item = isPlainObject(variable) ? variable : {};
+    byName.set(item.name, { item, index });
+  });
+
+  for (const required of FEISHU_MESSAGE_REQUIRED_OUTPUTS) {
+    if (!byName.has(required)) {
+      details.push({ path, message: `Missing required feishuMessage output variable: ${required}` });
+      continue;
+    }
+    const { item, index } = byName.get(required);
+    if (item.type !== "string") {
+      details.push({ path: `${path}[${index}].type`, message: `Invalid type: ${item.type}. feishuMessage variable "${required}" must be string` });
+    }
+  }
+
+  for (const { item, index } of byName.values()) {
+    if (!FEISHU_MESSAGE_REQUIRED_OUTPUTS.includes(item.name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Unexpected feishuMessage output variable: ${item.name}` });
+    }
+  }
 }
 
 function validateConditionConfig(config, base, details) {
@@ -104,6 +141,7 @@ export function validateNodeList(nodeList) {
     }
     validateCommonConfig(node.config, base, details);
     if (type === "trigger") validateTriggerConfig(node.config, base, details);
+    else if (type === "feishumessage") validateFeishuMessageConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
     else if (type === "agent") validateAgentConfig(node.config, base, details);
   });

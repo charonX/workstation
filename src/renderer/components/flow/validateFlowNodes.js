@@ -8,7 +8,8 @@
 // Variable type allowlist (tech-design §5.4); also drives the trigger
 // variables editor dropdown in NodeConfigPanel.
 export const VARIABLE_TYPES = ["string", "number", "array", "object"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
+const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["url", "sender", "messageId"];
 
 export function validateFlowNodes(nodeList, t) {
   const errors = [];
@@ -27,6 +28,31 @@ export function validateFlowNodes(nodeList, t) {
     }
 
     if (!config) return;
+
+    if (type === "feishumessage") {
+      const path = `${base}.outputVariables`;
+      if (!Array.isArray(config.outputVariables)) {
+        errors.push(`${path}: ${t("flowEditor.outputVariablesRequired")}`);
+      } else {
+        const byName = new Map();
+        config.outputVariables.forEach((variable, index) => {
+          const name = typeof variable?.name === "string" ? variable.name : "";
+          byName.set(name, { variable, index });
+        });
+        for (const required of FEISHU_MESSAGE_REQUIRED_OUTPUTS) {
+          if (!byName.has(required)) {
+            errors.push(`${path}: ${t("flowEditor.feishuMessageVariableRequired", { name: required })}`);
+          } else if (byName.get(required).variable?.type !== "string") {
+            errors.push(`${path}[${byName.get(required).index}].type: ${t("flowEditor.feishuMessageVariableType", { name: required })}`);
+          }
+        }
+        for (const { variable, index } of byName.values()) {
+          if (!FEISHU_MESSAGE_REQUIRED_OUTPUTS.includes(variable?.name)) {
+            errors.push(`${path}[${index}].name: ${t("flowEditor.feishuMessageUnexpectedVariable", { name: variable?.name })}`);
+          }
+        }
+      }
+    }
 
     if (type === "trigger" && Array.isArray(config.outputVariables)) {
       const seen = new Set();

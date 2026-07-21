@@ -94,6 +94,24 @@ export function createImRouter({
       return;
     }
 
+    const hasFeishuMessageTrigger = (flow.nodeList || []).some(
+      (n) => n.type?.toLowerCase() === "feishumessage"
+    );
+    if (!hasFeishuMessageTrigger) {
+      await safeReply({ messageId, text: "链接速存 flow 配置异常（缺少飞书消息触发节点），请检查模板实例" }, "no-trigger hint");
+      try {
+        notificationService.notify({
+          type: "channel-status",
+          title: "通道状态异常",
+          body: "链接速存 flow 配置异常（缺少飞书消息触发节点）",
+          code: "E-CHANNEL-FLOW-NO-TRIGGER"
+        });
+      } catch (err) {
+        console.error("[imRouter] failed to write channel-status notification:", err.message);
+      }
+      return;
+    }
+
     let queuePosition = 1;
     try {
       const result = taskService.createTask({

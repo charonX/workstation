@@ -24,13 +24,13 @@ const BUILTIN_TEMPLATES = [
     name: "链接速存",
     description: "抓取 IM 消息中的链接正文并转为 markdown 存入素材库",
     nodeList: [
-      buildTriggerNode("url"),
+      buildFeishuMessageNode(),
       buildAgentNode(
         "fetch-to-markdown",
-        "You are a collection agent. When triggered with a URL, call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library."
+        "You are a collection agent. When triggered with a URL, call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library. URL: {{n1.url}}"
       )
     ],
-    edges: [{ id: "e1", sourceNodeId: "trigger", targetNodeId: "agent" }],
+    edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "agent" }],
     skills: ["fetch-to-markdown"],
     createChannelBinding: true
   }
@@ -63,6 +63,20 @@ function buildTriggerNode(outputVariableName) {
   };
 }
 
+function buildFeishuMessageNode() {
+  return {
+    id: "n1",
+    type: "feishuMessage",
+    config: {
+      outputVariables: [
+        { name: "url", type: "string", defaultValue: "" },
+        { name: "sender", type: "string", defaultValue: "" },
+        { name: "messageId", type: "string", defaultValue: "" }
+      ]
+    }
+  };
+}
+
 function buildAgentNode(skillName, prompt) {
   return {
     id: "agent",
@@ -80,7 +94,7 @@ function buildAgentNode(skillName, prompt) {
 function applyOverrides(nodeList, overrides) {
   if (!overrides || typeof overrides !== "object") return nodeList;
   for (const node of nodeList) {
-    if (node.type !== "trigger" || !Array.isArray(node.config?.outputVariables)) {
+    if (!["trigger", "feishuMessage"].includes(node.type) || !Array.isArray(node.config?.outputVariables)) {
       continue;
     }
     for (const variable of node.config.outputVariables) {

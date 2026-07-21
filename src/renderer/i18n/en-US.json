@@ -260,7 +260,11 @@
     "duplicateVariableName": "Duplicate variable name: {{name}}",
     "invalidVariableType": "Invalid variable type: {{type}}",
     "expressionRequired": "Expression is required",
-    "retriesInvalid": "Retries must be a non-negative integer"
+    "retriesInvalid": "Retries must be a non-negative integer",
+    "outputVariablesRequired": "Output variables are required",
+    "feishuMessageVariableRequired": "Missing required feishuMessage output variable: {{name}}",
+    "feishuMessageVariableType": "feishuMessage variable \"{{name}}\" must be string",
+    "feishuMessageUnexpectedVariable": "Unexpected feishuMessage output variable: {{name}}"
   },
   "projectForm": {
     "title": "Add Project",

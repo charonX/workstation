@@ -5,8 +5,13 @@ const defaultExecutors = {
   foreach: forEachExecutor,
   while: whileExecutor,
   agent: agentExecutor,
-  trigger: triggerExecutor
+  trigger: triggerExecutor,
+  feishumessage: triggerExecutor
 };
+
+// Trigger-like node types share the same variable seeding / override semantics
+// (REQ-FLOW-031). Keep the set explicit so future trigger variants opt in.
+const TRIGGER_LIKE_NODE_TYPES = new Set(["trigger", "feishumessage"]);
 
 // signoff 决策 3：Claude Agent prompt 使用 {{fullName}} 引用注册表变量。
 const VARIABLE_REF_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -194,7 +199,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
 function forEachTriggerVariable(nodeList, callback) {
   for (const node of nodeList) {
-    if (node.type?.toLowerCase() !== "trigger") continue;
+    if (!TRIGGER_LIKE_NODE_TYPES.has(node.type?.toLowerCase())) continue;
     for (const varDef of node.config?.outputVariables ?? []) {
       if (!varDef || typeof varDef.name !== "string" || varDef.name === "") continue;
       callback(node, varDef);
@@ -202,7 +207,7 @@ function forEachTriggerVariable(nodeList, callback) {
   }
 }
 
-// REQ-FLOW-023 AC1：Trigger 节点声明的 outputVariables defaultValue 播种为初始注册表。
+// REQ-FLOW-023 AC1 / REQ-FLOW-031：Trigger-like 节点声明的 outputVariables defaultValue 播种为初始注册表。
 function seedTriggerVariables(nodeList, context) {
   forEachTriggerVariable(nodeList, (node, varDef) => {
     if ("defaultValue" in varDef) {
@@ -213,7 +218,7 @@ function seedTriggerVariables(nodeList, context) {
   });
 }
 
-// REQ-FLOW-029：createTask 注入的 variables（如 { topic: "AI" }）覆盖 trigger defaultValue，
+// REQ-FLOW-029 / REQ-FLOW-031：createTask 注入的 variables（如 { topic: "AI" }）覆盖 trigger-like defaultValue，
 // 并按 节点ID.变量名 进入注册表供下游节点读取。
 function applyTriggerVariableOverrides(nodeList, context, inputVariables) {
   forEachTriggerVariable(nodeList, (node, varDef) => {

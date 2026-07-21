@@ -958,6 +958,7 @@ Slice 12 标记完成。
 | S10 | REQ-TPL-001 | ✅ complete | d839440, d3edd18, 18d5bb8 |
 | S11 | REQ-COLL-001 | ✅ complete | 5d5fb2d, 87f758f |
 | S12 | REQ-COLL-002 | ✅ complete | （依赖前置切片，无新增代码 commit） |
+| S13 | REQ-FLOW-031, REQ-CHANNEL-002, REQ-TPL-001 | ⚠️ DONE_WITH_CONCERNS | d729472 |
 
 ### 测试结果
 
@@ -976,7 +977,33 @@ Slice 12 标记完成。
 3. **S11 schedule 默认投递**：无 `channelReply` 的 schedule 触发使用默认 `chatId="default"` 投递日报摘要；真实生产环境需后续补充默认通知目标配置。
 4. **S11 测试覆盖缺口**：签核测试未显式断言日报文件名由 topic 派生、条目来自登记内容源；作为已知偏差保留。
 
+## Slice S13：feishu-message-trigger-node（BUG 阶段回流新增）
+
+> 对应 REQ-ID：`REQ-FLOW-031`、`REQ-CHANNEL-002`、`REQ-TPL-001`
+
+### PRD → 代码可追溯性
+
+| PRD 稳定块 / REQ | 实现文件 | 关键代码/说明 |
+|---|---|---|
+| 稳定块 12：飞书消息触发节点；REQ-FLOW-031 AC3 | `src/flowEngine/flowEngine.js` | `defaultExecutors` 增加 `feishumessage: triggerExecutor`；`TRIGGER_LIKE_NODE_TYPES` 集合包含 `trigger`/`feishumessage`；变量播种/覆盖逻辑复用 trigger 语义 |
+| REQ-FLOW-031 AC4 | `src/services/flowService.js` | `VALIDATED_NODE_TYPES` 增加 `feishumessage`；新增 `validateFeishuMessageConfig` 校验固定输出 `url`/`sender`/`messageId` 且 `type=string` |
+| REQ-FLOW-031 AC1 | `src/renderer/components/flow/NodePalette.jsx` | Trigger 分组增加 `{ type: "feishuMessage", name: "Feishu Message", icon: "✉️" }` |
+| REQ-FLOW-031 AC2 | `src/renderer/components/flow/NodeConfigPanel.jsx` | 新增 `FeishuMessageFields`：固定展示三行变量，name/type 只读，defaultValue 可编辑，无删除按钮 |
+| REQ-FLOW-031 AC4（前端兜底） | `src/renderer/components/flow/validateFlowNodes.js` | `VALIDATED_NODE_TYPES` 增加 `feishumessage`；前端校验固定结构 |
+| REQ-CHANNEL-002 AC4 | `src/services/channels/imRouter.js` | 命中绑定并校验 flow 已发布后，检查 nodeList 是否含 `feishuMessage` 节点；缺失时回复配置异常并写 `channel-status` 通知 |
+| REQ-TPL-001 AC1/AC2 | `src/services/templateService.js` | 链接速存模板首节点改为 `buildFeishuMessageNode()`（id=`n1`，固定输出 url/sender/messageId）；agent prompt 引用 `{{n1.url}}`；定时日报模板保持 `trigger` 不变 |
+| i18n 文案 | `src/renderer/i18n/en-US.json` | 新增 `outputVariablesRequired`、`feishuMessageVariableRequired`、`feishuMessageVariableType`、`feishuMessageUnexpectedVariable` |
+
+### 测试结果
+
+- **新增/受影响 API 测试**：
+  - `imRouting.test.js`：12/12 通过
+  - `templates.test.js`：7/8 通过；1 处失败系测试自身读取 `flow.publishedNodeList` 模拟 IM 触发，但实例化生成的是 draft flow，`publishedNodeList` 为空
+  - `feishuMessageNode.test.js`：3/5 通过；2 处失败系测试 helper `makeFeishuMessageNode` 在 `overrides.extraVariables` 未传时展开 `undefined` 抛异常
+- **全量 `npm run test:unit`**：242/253 通过。新增失败主要系上述 3 个测试文件中的测试侧问题；另有 `linkCapture.test.js` 仍使用通用 `trigger` 节点，与稳定块 12「只触发含 feishuMessage 节点的 flow」冲突，需同步更新测试。
+
 ### 推荐下一步
 
 - 运行 `/qa-runner`：执行 `npm run test:e2e` 与全量回归，收集 Electron/Playwright 证据。
+- 修复上述测试文件中的测试侧问题后重新跑 `npm run test:unit`。
 - 如无阻塞 bug，进入 `/reflect` 做 Gate 2 人工验收与知识沉淀。
