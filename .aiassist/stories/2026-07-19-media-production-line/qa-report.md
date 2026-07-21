@@ -1,83 +1,96 @@
 # QA 报告 — 2026-07-19-media-production-line
 
 > 生成时间：2026-07-21
-> 执行人：/qa-runner
-> 对应 story：媒体生产线 · 收集管线
+> Story 阶段：BUILD → QA
+> 本次 QA 范围：attempt-3 S13-reflow（`feishuMessage` 输出契约改为 `text/sender/messageId`）及本 story 相关回归。
 
 ---
 
 ## 单元测试
 
+- 结果：**FAIL**（存在既有失败，S13-reflow 目标测试全绿）
 - 命令：`npm run test:unit`
-- 结果：**FAIL（全量）/ PASS（本 story）**
-- 统计：245 tests / 239 pass / 6 fail
-- 本 story 相关用例：**108 pass / 0 fail**
+- 输出：
+  - 总数：261
+  - 通过：254
+  - 失败：7
+- 失败详情：
+  1. `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/cli/contentSources.test.js:32`
+     - `REQ-SRC-001: CLI 创建内容源并出现在 list 输出（机器可读 JSON）`
+     - `SyntaxError: Unexpected token 'E', "Execution "... is not valid JSON`
+     - 根因：全量并发运行时其他测试日志混入 CLI stdout，导致 JSON 解析失败。单独运行该文件时通过，属并发隔离问题。
+  2. `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js:80`
+     - `引擎安全中止的执行也写入已执行节点的记录`
+     - 状态断言 `'queued' !== 'error'`
+  3. `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js:128`
+     - `agent 未声明 outputVariable 时 output 列仍捕获文本输出`
+     - 状态断言 `'queued' !== 'success'`
+  4. `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/language.test.js:26`
+     - `REQ-I18N-002: default language is English`
+     - 断言 `'zh-CN' !== 'en-US'`
+  5. `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js:38`
+     - `REQ-SCHEDULE-001: creates a manual task and starts running`
+     - 断言 `undefined !== 'running'`
+  6. `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js:98`
+     - `REQ-SCHEDULE-001: CLI runs a task`
+     - 断言 `undefined !== 'running'`
+  7. `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js:110`
+     - `BUG-012: execution runs the flow engine and records real output, logs and nodesRun`
+     - 断言 `undefined !== 'running'`
 
-### 失败清单（均非本 story 引入）
-
-| 测试文件 | 失败用例 | 备注 |
-|---|---|---|
-| `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js` | 引擎安全中止的执行也写入已执行节点的记录 | 前置 story，execution 状态卡在 `queued` |
-| `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js` | agent 未声明 outputVariable 时 output 列仍捕获文本输出 | 前置 story，execution 状态卡在 `queued` |
-| `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/language.test.js` | REQ-I18N-002: default language is English | 默认语言为 `zh-CN`，疑似持久化污染 |
-| `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js` | REQ-SCHEDULE-001: creates a manual task and starts running | 返回 `status=undefined` |
-| `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js` | REQ-SCHEDULE-001: CLI runs a task | 同上 |
-| `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js` | BUG-012: execution runs the flow engine and records real output, logs and nodesRun | 同上 |
-
-本 story 所有 REQ（含 REQ-WORKSPACE-008/009/010、REQ-SCHEDULE-005~009、REQ-FLOW-029/030、REQ-CHANNEL-001~005、REQ-SRC-001/002、REQ-COLL-001~003、REQ-TPL-001、REQ-NOTIFY-001/002）对应的单元/集成/CLI 测试全部通过。
+> 上述 7 个失败均为 S13-reflow 之前已存在的既有失败，与本次 `feishuMessage` text 契约改动无关。S13-reflow 目标业务测试 35/35 通过。
 
 ---
 
 ## E2E/UITests
 
-- 命令：
-  ```bash
-  npx playwright test \
-    tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/e2e/artifactsTab.test.cjs \
-    tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/e2e/sourcesPage.test.cjs \
-    tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/e2e/notificationCenter.test.cjs
-  ```
-- 结果：**PASS（串行重跑后全绿）**
-- 统计：14 tests / 14 pass（`--workers=1 --retries=2`）
+- 结果：**FAIL**（1 个连续失败，其余通过）
+- 命令：`npm run test:e2e -- --workers=1 <story 相关 E2E 文件>`
+- 本次运行范围：本 story 5 个 E2E 文件，共 20 个测试
+- 通过：19
+- 失败：1
 
-### 执行记录
+### 失败详情
 
-| 轮次 | 并发度 | 结果 | 说明 |
+| 测试文件 | 测试名 | 现象 | 根因 |
 |---|---|---|---|
-| 全量 `npm run test:e2e` | 3 workers | 39 failed / 41 passed | 本 story 仅 `artifactsTab.test.cjs:109` 失败（fetch failed），其余失败均来自前置 story / 通用 E2E |
-| 本 story 单独跑 | 3 workers | 12 passed / 2 failed | `artifactsTab.test.cjs:81`（fetch failed 等终态）、`notificationCenter.test.cjs:71`（点击「通知」链接超时，页面已关闭） |
-| 本 story 单独跑 | 1 worker，retries=2 | 14 passed / 0 failed | 串行下全部通过 |
+| `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/e2e/feishuMessageNode.test.cjs:58` | `feishuMessage 节点配置面板固定展示 text/sender/messageId 且不可删除` | 点击 Save 按钮超时；页面实际存在「保存」按钮 | `tests/e2e/helpers/flowEditor.cjs:63` 使用 `getByRole('button', { name: 'Save', exact: true })` 定位，但产品当前默认语言为中文，按钮文案为「保存」 |
 
-### 失败详情与判定
+### 重跑结果
 
-| 测试 | 现象 | 重试结果 | 判定 |
-|---|---|---|---|
-| `REQ-FLOW-030 › 成功执行的产物 tab 展示 artifacts 列表（文件名/路径）与打开动作按钮` | `waitForTerminalStatus` 超时，fetch 等 execution 终态 | 单独跑通过 | flaky（并行/调度竞态） |
-| `REQ-FLOW-030 › 失败执行（无登记产物）产物 tab 为空态` | 同上 fetch failed | 单独跑通过 | flaky |
-| `REQ-NOTIFY-002 › 列表按时间倒序，过滤 tab 结构正确` | 点击侧边栏「通知」链接超时，Electron context 已关闭 | 单独跑通过 | flaky（并行资源/窗口切换） |
+- 使用 `--workers=1` 串行重跑 story 相关 E2E：同样的 1 个测试失败。
+- 其余 4 个 story E2E 文件（settingsChannel、sourcesPage、artifactsTab、notificationCenter）在串行重跑中全部通过。
+- 失败为**连续失败**，非 flaky。
 
-所有本 story E2E 在串行重跑后均通过，无连续失败。
+### Playwright 产物
+
+- trace 路径：`test-results/capabilities-flow-orchestr-ed5b0-text-sender-messageId-且不可删除-electron/`
+- screenshot 路径：`test-results/capabilities-flow-orchestr-ed5b0-text-sender-messageId-且不可删除-electron/test-failed-1.png`
+
+### flaky 测试列表
+
+- 无。`sourcesPage` 和 `artifactsTab` 在并发运行时各有 1-2 个失败，串行重跑后全部通过，属于并发隔离/时序敏感，未列入 blocker。
 
 ---
 
 ## 运行时浏览器验证
 
 - 状态：**SKIPPED**
-- 原因：当前环境未配置 Chrome DevTools MCP；本 story 的 UX 验证已由 Playwright E2E 覆盖。
+- 说明：Chrome DevTools MCP 未配置，未调用 `/browser-verify`。
 
 ---
 
 ## Coverage
 
-- 结果：**未配置 / 未执行**
-- 说明：项目 `package.json` 中未配置覆盖率阈值或 coverage 工具（无 nyc/c8/istanbul 配置）。本 QA 阶段未强制收集覆盖率。
+- 状态：**SKIPPED**
+- 说明：项目未配置覆盖率阈值与收集命令。
 
 ---
 
 ## 手动验证
 
-- 结果：**SKIPPED**
-- 说明：核心流程（内容源管理、通知中心、执行产物 tab、场景 A/B 端到端）已由 E2E 与单元/集成测试覆盖；未在真实模拟器/真实飞书环境做额外手动验证。
+- 状态：**SKIPPED**
+- 说明：未启动 app 做手动流程验证；核心路径已由 API/E2E 测试覆盖。
 
 ---
 
@@ -85,26 +98,30 @@
 
 | 测试名 | 现象 | 处理 |
 |---|---|---|
-| `REQ-FLOW-030 › 成功执行的产物 tab 展示 artifacts 列表（文件名/路径）与打开动作按钮` | 并行跑时 fetch 等终态超时 | flaky，建议后续对 `waitForTerminalStatus` 增加更稳健的超时/轮询，或 E2E 默认串行 |
-| `REQ-FLOW-030 › 失败执行（无登记产物）产物 tab 为空态` | 全量并行跑时 fetch failed | flaky，同上 |
-| `REQ-NOTIFY-002 › 列表按时间倒序，过滤 tab 结构正确（全部/产物产出/执行失败/通道状态）` | 并行跑时 Electron context 已关闭导致点击失败 | flaky，建议通知中心 E2E 默认串行执行 |
+| `sourcesPage.test.cjs` 部分用例 | 并发运行时偶发 `ECONNREFUSED` 或页面关闭 | 串行重跑通过；建议后续优化 E2E 并发隔离 |
+| `artifactsTab.test.cjs:81` | 并发运行时等待执行终态超时 | 串行重跑通过；建议后续优化 E2E 并发隔离 |
 
 ---
 
 ## 结论
 
-- [x] 可进入 `/reflect`（本 story 无 open bugs，本 story 自动化测试全绿）
+- [ ] 可进入 `/reflect`（无 open bugs，QA 全绿）
 - [ ] 需回 BUILD
 - [ ] 需回 REQ
-- [ ] 有失败，建议调用 `/bug`
+- [x] **有失败，建议调用 `/bug` 或对失败 E2E 测试走 `/test-author` 修正**
 
-### 关键说明
+### 处理建议
 
-1. 本 story 全部 24 个 REQ 对应的自动化测试已通过（单元/集成/CLI 108 个 + E2E 14 个）。
-2. 全量 `test:unit` 的 6 个失败与全量 `test:e2e` 的 39 个失败中，仅 1~2 个属于本 story，且均为 flaky（串行重跑通过）。
-3. flaky 根因疑似 Electron/Playwright 并行 worker 资源竞争与调度器终态等待窗口；不属于产品代码逻辑连续失败，但建议后续优化 E2E 并发策略或等待条件。
-4. 真实飞书环境冒烟、UX 视觉还原度、日报内容质量等按 `requirements.md` 列为 REFLECT 人工验收项，不在本 QA 自动化范围内。
+`feishuMessageNode.test.cjs:58` 的连续失败根因是 **E2E helper 中硬编码英文 locator「Save」与产品当前中文默认 UI 不匹配**。该问题本质上属于跨 story 的测试债务：
 
-### 建议下一步
+- `src/services/settingsService.js:24` 与 `src/renderer/i18n/index.js:13` 默认语言为 `zh-CN`；
+- 而 `tests/e2e/helpers/flowEditor.cjs:63` 使用英文按钮文案定位；
+- 同时 `language.test.js` 期望默认语言为 `en-US`。
 
-进入 `/reflect` 做最终人工验收。若验收中发现具体缺陷，再回 `/bug` 处理。
+因此存在两层不一致：
+1. 产品默认语言与 `language.test.js` 契约不一致；
+2. E2E helper 文案定位与产品实际 UI 语言不一致。
+
+推荐下一步：**对 `feishuMessageNode.test.cjs:58` 调用 `/bug` 或回流 `/test-author`**，将 Save 按钮定位改为 `data-testid` 或在 E2E setup 中强制语言，避免依赖 UI 文案。修复后重新跑 E2E 即可进入 `/reflect`。
+
+S13-reflow 核心实现（`text/sender/messageId` 契约、路由层不解析 URL、模板/agent 更新、变量选择器暴露）已通过 35/35 目标 API 测试验证，无新增回归。
