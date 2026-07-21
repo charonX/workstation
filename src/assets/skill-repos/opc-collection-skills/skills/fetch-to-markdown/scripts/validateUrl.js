@@ -36,42 +36,50 @@ function parseIpv6(host) {
   return nums;
 }
 
+function isPrivateIpv4(a, b) {
+  if (a === 127) return true;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
 function isPrivateIp(host) {
   const lower = host.toLowerCase();
   if (lower === "localhost" || lower === "0.0.0.0") return true;
 
   const ip4 = parseIpv4(host);
   if (ip4) {
-    const [a, b] = ip4;
-    if (a === 127) return true;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    return false;
+    return isPrivateIpv4(ip4[0], ip4[1]);
   }
 
   const ip6 = parseIpv6(host);
-  if (ip6) {
-    // ::1 loopback (and ::/128 all-zeros)
-    if (ip6.every((n) => n === 0)) return true;
-    if (ip6[0] === 0 && ip6[1] === 0 && ip6[2] === 0 && ip6[3] === 0 && ip6[4] === 0 && ip6[5] === 0 && ip6[6] === 0 && ip6[7] === 1) return true;
-    // fe80::/10 link-local
-    if ((ip6[0] & 0xffc0) === 0xfe80) return true;
-    // fc00::/7 unique local
-    if ((ip6[0] & 0xfe00) === 0xfc00) return true;
+  if (!ip6) return false;
 
-    // IPv4-mapped IPv6 ::ffff:<ipv4> (also covers ::ffff:0:0/96)
-    if (ip6[0] === 0 && ip6[1] === 0 && ip6[2] === 0 && ip6[3] === 0 && ip6[4] === 0 && ip6[5] === 0xffff) {
-      const mapped = [ip6[6] >> 8, ip6[6] & 0xff, ip6[7] >> 8, ip6[7] & 0xff];
-      if (mapped.some((n) => n < 0 || n > 255)) return false;
-      const [a, b] = mapped;
-      if (a === 127) return true;
-      if (a === 10) return true;
-      if (a === 172 && b >= 16 && b <= 31) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 169 && b === 254) return true;
-    }
+  // ::/128 and ::1/128 loopback
+  if (ip6.every((n, i) => n === 0 || (i === 7 && n === 1))) {
+    return true;
+  }
+
+  // fe80::/10 link-local
+  if ((ip6[0] & 0xffc0) === 0xfe80) return true;
+
+  // fc00::/7 unique local
+  if ((ip6[0] & 0xfe00) === 0xfc00) return true;
+
+  // IPv4-mapped IPv6 ::ffff:<ipv4> (also covers ::ffff:0:0/96)
+  if (
+    ip6[0] === 0 &&
+    ip6[1] === 0 &&
+    ip6[2] === 0 &&
+    ip6[3] === 0 &&
+    ip6[4] === 0 &&
+    ip6[5] === 0xffff
+  ) {
+    const a = ip6[6] >> 8;
+    const b = ip6[6] & 0xff;
+    return isPrivateIpv4(a, b);
   }
 
   return false;
