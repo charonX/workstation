@@ -11,6 +11,34 @@ export const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["url", "sender", "messageId"];
 
+function validateFeishuMessageConfig(config, base, t, errors) {
+  const path = `${base}.outputVariables`;
+  if (!Array.isArray(config.outputVariables)) {
+    errors.push(`${path}: ${t("flowEditor.outputVariablesRequired")}`);
+    return;
+  }
+
+  const byName = new Map();
+  config.outputVariables.forEach((variable, index) => {
+    const name = typeof variable?.name === "string" ? variable.name : "";
+    byName.set(name, { variable, index });
+  });
+
+  for (const required of FEISHU_MESSAGE_REQUIRED_OUTPUTS) {
+    if (!byName.has(required)) {
+      errors.push(`${path}: ${t("flowEditor.feishuMessageVariableRequired", { name: required })}`);
+    } else if (byName.get(required).variable?.type !== "string") {
+      errors.push(`${path}[${byName.get(required).index}].type: ${t("flowEditor.feishuMessageVariableType", { name: required })}`);
+    }
+  }
+
+  for (const { variable, index } of byName.values()) {
+    if (!FEISHU_MESSAGE_REQUIRED_OUTPUTS.includes(variable?.name)) {
+      errors.push(`${path}[${index}].name: ${t("flowEditor.feishuMessageUnexpectedVariable", { name: variable?.name })}`);
+    }
+  }
+}
+
 export function validateFlowNodes(nodeList, t) {
   const errors = [];
   (nodeList || []).forEach((node, index) => {
@@ -30,28 +58,7 @@ export function validateFlowNodes(nodeList, t) {
     if (!config) return;
 
     if (type === "feishumessage") {
-      const path = `${base}.outputVariables`;
-      if (!Array.isArray(config.outputVariables)) {
-        errors.push(`${path}: ${t("flowEditor.outputVariablesRequired")}`);
-      } else {
-        const byName = new Map();
-        config.outputVariables.forEach((variable, index) => {
-          const name = typeof variable?.name === "string" ? variable.name : "";
-          byName.set(name, { variable, index });
-        });
-        for (const required of FEISHU_MESSAGE_REQUIRED_OUTPUTS) {
-          if (!byName.has(required)) {
-            errors.push(`${path}: ${t("flowEditor.feishuMessageVariableRequired", { name: required })}`);
-          } else if (byName.get(required).variable?.type !== "string") {
-            errors.push(`${path}[${byName.get(required).index}].type: ${t("flowEditor.feishuMessageVariableType", { name: required })}`);
-          }
-        }
-        for (const { variable, index } of byName.values()) {
-          if (!FEISHU_MESSAGE_REQUIRED_OUTPUTS.includes(variable?.name)) {
-            errors.push(`${path}[${index}].name: ${t("flowEditor.feishuMessageUnexpectedVariable", { name: variable?.name })}`);
-          }
-        }
-      }
+      validateFeishuMessageConfig(config, base, t, errors);
     }
 
     if (type === "trigger" && Array.isArray(config.outputVariables)) {

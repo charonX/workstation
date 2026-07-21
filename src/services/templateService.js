@@ -4,6 +4,8 @@ import * as projectService from "./projectService.js";
 import * as skillService from "./skillService.js";
 import * as channelBindingService from "./channelBindingService.js";
 
+const TRIGGER_LIKE_NODE_TYPES = ["trigger", "feishuMessage"];
+
 const BUILTIN_TEMPLATES = [
   {
     id: "daily-digest",
@@ -94,7 +96,7 @@ function buildAgentNode(skillName, prompt) {
 function applyOverrides(nodeList, overrides) {
   if (!overrides || typeof overrides !== "object") return nodeList;
   for (const node of nodeList) {
-    if (!["trigger", "feishuMessage"].includes(node.type) || !Array.isArray(node.config?.outputVariables)) {
+    if (!TRIGGER_LIKE_NODE_TYPES.includes(node.type) || !Array.isArray(node.config?.outputVariables)) {
       continue;
     }
     for (const variable of node.config.outputVariables) {

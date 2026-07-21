@@ -15,6 +15,19 @@ function extractFirstUrl(text) {
   return match ? match[0] : null;
 }
 
+async function writeChannelStatusNotification(notificationService, body, code) {
+  try {
+    notificationService.notify({
+      type: "channel-status",
+      title: "通道状态异常",
+      body,
+      ...(code ? { code } : {})
+    });
+  } catch (err) {
+    console.error("[imRouter] failed to write channel-status notification:", err.message);
+  }
+}
+
 function recordInboundMessage(messageId) {
   const db = getDb();
   try {
@@ -82,15 +95,7 @@ export function createImRouter({
     const flow = flowService.getFlow(binding.flowId);
     if (!flow || flow.status !== "published") {
       await safeReply({ messageId, text: "链接速存 flow 配置异常（flow 不存在或未发布），请检查模板实例" }, "invalid-binding hint");
-      try {
-        notificationService.notify({
-          type: "channel-status",
-          title: "通道状态异常",
-          body: "链接速存 flow 配置异常（flow 不存在或未发布）"
-        });
-      } catch (err) {
-        console.error("[imRouter] failed to write channel-status notification:", err.message);
-      }
+      await writeChannelStatusNotification(notificationService, "链接速存 flow 配置异常（flow 不存在或未发布）");
       return;
     }
 
@@ -99,16 +104,11 @@ export function createImRouter({
     );
     if (!hasFeishuMessageTrigger) {
       await safeReply({ messageId, text: "链接速存 flow 配置异常（缺少飞书消息触发节点），请检查模板实例" }, "no-trigger hint");
-      try {
-        notificationService.notify({
-          type: "channel-status",
-          title: "通道状态异常",
-          body: "链接速存 flow 配置异常（缺少飞书消息触发节点）",
-          code: "E-CHANNEL-FLOW-NO-TRIGGER"
-        });
-      } catch (err) {
-        console.error("[imRouter] failed to write channel-status notification:", err.message);
-      }
+      await writeChannelStatusNotification(
+        notificationService,
+        "链接速存 flow 配置异常（缺少飞书消息触发节点）",
+        "E-CHANNEL-FLOW-NO-TRIGGER"
+      );
       return;
     }
 
