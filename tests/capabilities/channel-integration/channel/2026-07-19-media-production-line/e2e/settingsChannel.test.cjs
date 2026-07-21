@@ -69,4 +69,22 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
     await expect(badge).toHaveAttribute("data-status", "offline");
     await expect(firstWindow.locator("[data-testid='channel-status-error']")).toBeVisible();
   });
+
+  test("保存凭据后离开并返回设置页，输入框回显已保存值", async () => {
+    const savedAppId = "cli_persisted_app_id";
+    const savedSecret = "persisted-secret-42";
+
+    await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.locator("[data-testid='channel-app-id-input']").fill(savedAppId);
+    await firstWindow.locator("[data-testid='channel-app-secret-input']").fill(savedSecret);
+    await firstWindow.locator("[data-testid='save-channel-credentials-button']").click();
+    await expect(firstWindow.locator("[data-testid='channel-status-badge']")).toBeVisible();
+
+    // 离开设置页再返回，验证凭据已从 settings.json 回显到输入框。
+    await firstWindow.click(locators.DASHBOARD_LINK);
+    await firstWindow.click(locators.SETTINGS_LINK);
+
+    await expect(firstWindow.locator("[data-testid='channel-app-id-input']")).toHaveValue(savedAppId);
+    await expect(firstWindow.locator("[data-testid='channel-app-secret-input']")).toHaveValue(savedSecret);
+  });
 });
