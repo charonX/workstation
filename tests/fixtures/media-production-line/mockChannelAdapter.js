@@ -13,7 +13,7 @@
  *   send: (args: {chatId: string, text: string}) => Promise<{messageId: string}>,
  *   reply: (args: {messageId: string, text: string}) => Promise<{messageId: string}>,
  *   getStatus: () => "connecting"|"online"|"offline",
- *   onMessage: (cb: (msg: {messageId: string, chatId: string, senderId: string, text: string, url?: string}) => void) => void,
+ *   onMessage: (cb: (msg: {messageId: string, chatId: string, senderId: string, text: string}) => void) => void,
  *   emitMessage: (msg: object) => void,
  *   setStatus: (status: "connecting"|"online"|"offline") => void,
  *   failNextSend: (times?: number) => void,
