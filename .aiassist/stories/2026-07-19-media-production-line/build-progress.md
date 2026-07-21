@@ -820,3 +820,36 @@ Slice 9 标记完成。
 Slice 10 标记完成。
 
 ---
+
+### S11 / daily-digest-e2e
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-COLL-001  
+**依赖**: S2 (scheduler/queue/artifacts/delivery), S3 (notification), S5 (feishu channel adapter), S9 (collection skills), S10 (template instantiation)  
+**测试文件**:
+- `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/dailyDigest.test.js`
+
+#### 设计上下文摘要
+
+- 场景 A 端到端链路：cron 到点（注入 `* * * * * *`）→ `schedulerService` publish `schedule:triggered` → `taskService.createTask({trigger:"schedule"})` → `executionQueue` → `executeTask` → mock agent 写 `outputs/daily/<date>-<topic-slug>.md` → 产物登记 → 终态投递（日报摘要）→ 通知「产物产出」。
+- 失败场景：mock agent 返回 error → 执行 error → 飞书收到失败通知（E-AGENT-FAILED）→ 通知「执行失败」→ 无产物登记、无文件落盘。
+- 测试 seam：`taskService.setAgentExecutorForTests` / `setChannelAdapterForTests`。
+- 当前状态：链路大部分已就绪；schedule 触发时 execution.variables 缺少 `channelReply`，导致 `deliverTerminalNotification` 提前返回，fake 飞书未收到日报摘要/失败通知。
+
+---
+
+### S12 / link-capture-e2e
+
+**状态**: IN PROGRESS  
+**REQ-ID**: REQ-COLL-002  
+**依赖**: S2 (scheduler/queue/artifacts/delivery), S3 (notification), S5 (feishu channel adapter / IM 路由), S9 (collection skills), S10 (template instantiation)  
+**测试文件**:
+- `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js`
+
+#### 设计上下文摘要
+
+- 场景 B 端到端链路：fake 飞书发送含 URL 消息 → `imRouter` 去重/路由 → 立即回执「收到，排队中（第 N 位）」 → `createTask({trigger:"channel", variables:{url, channelReply}})` → 队列 → mock agent 写 `materials/<date>-<slug>.md` + 索引追加 → 产物登记 → 终态投递「已存：<路径>」 → 通知「产物产出」。
+- 失败场景：mock agent 返回 E-FETCH-FAILED → 无落盘/无索引 → 飞书收到含 E-FETCH-FAILED 的回复。
+- 当前状态：测试已绿（2/2 pass），说明 S5/S2/S3 的实现已满足场景 B 端到端契约。
+
+---
