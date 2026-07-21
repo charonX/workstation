@@ -939,3 +939,44 @@ Slice 11 标记完成。
 Slice 12 标记完成。
 
 ---
+
+## BUILD 阶段汇总
+
+### 切片完成状态
+
+| 切片 | REQ-ID | 状态 | Commits |
+|---|---|---|---|
+| S1 | REQ-WORKSPACE-008/009/010 | ✅ complete | a03182ac, 0b6f3254, 65aa1c7f |
+| S2 | REQ-SCHEDULE-005/006/007/008/009, REQ-FLOW-029 | ✅ complete | 1d1c7f1, 0915766, 89b0cd5, d6d292c |
+| S3 | REQ-NOTIFY-001 | ✅ complete | d7f166f, e7984e6 |
+| S4 | REQ-SRC-001/002 | ✅ complete | 1df6016, d798416, 69fd785 |
+| S5 | REQ-CHANNEL-001/002/003/004/005 | ✅ complete | 19c263b, 60692eb, ad46ce6, b89901f, ff6593e, 750d7e6 |
+| S6 | REQ-FLOW-030 | ✅ complete | 45bbb3a, 516aeb4, cb36299, 2634340, 6b58df5, 4e8ca33, 3408118 |
+| S7 | REQ-SRC-003 | ✅ complete | 8ab3b32, 7d6952e, 18e761b |
+| S8 | REQ-NOTIFY-002 | ✅ complete | fe88992, f9191dd, aafa51d, 55bdcd7 |
+| S9 | REQ-COLL-003 | ✅ complete | 6dbc17f, 2a01ee9, 0615b82, 6515cf7 |
+| S10 | REQ-TPL-001 | ✅ complete | d839440, d3edd18, 18d5bb8 |
+| S11 | REQ-COLL-001 | ✅ complete | 5d5fb2d, 87f758f |
+| S12 | REQ-COLL-002 | ✅ complete | （依赖前置切片，无新增代码 commit） |
+
+### 测试结果
+
+- **本 story 单元/集成/CLI 测试**：`npm run test:unit` 中 `2026-07-19-media-production-line` 相关用例 **108 pass / 0 fail**。
+- **全量 `npm run test:unit`**：245 tests / 239 pass / 6 fail。
+- **失败用例均不属于本 story**，为既有缺陷或环境默认值差异：
+  1. `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/executionLog.test.js` × 2 — 其他 story，执行状态断言失败（`queued` vs `error/success`）。
+  2. `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/language.test.js` × 1 — 默认语言为 `zh-CN`，测试期望 `en-US`。
+  3. `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/task.test.js` × 3 — 既有任务调度测试，手动 task 状态返回 `undefined`。
+- **E2E 测试**：未在 BUILD 阶段通过 `npm run test:e2e` 运行（需 Electron 构建 + Playwright），将在 `/qa-runner` 阶段补齐。
+
+### 关键设计偏差与后续关注
+
+1. **S5 飞书长连接**：使用 `@larksuiteoapi/node-sdk` WSClient；fake WS server 集成因协议复杂度未进入本期验收，主 seam 为 adapter 注入 + fake REST server。
+2. **S10 内置 skill repo**：`installSource='builtin'` 的记录被排除在用户可见 skill repo 列表外，避免干扰用户管理语义。
+3. **S11 schedule 默认投递**：无 `channelReply` 的 schedule 触发使用默认 `chatId="default"` 投递日报摘要；真实生产环境需后续补充默认通知目标配置。
+4. **S11 测试覆盖缺口**：签核测试未显式断言日报文件名由 topic 派生、条目来自登记内容源；作为已知偏差保留。
+
+### 推荐下一步
+
+- 运行 `/qa-runner`：执行 `npm run test:e2e` 与全量回归，收集 Electron/Playwright 证据。
+- 如无阻塞 bug，进入 `/reflect` 做 Gate 2 人工验收与知识沉淀。

@@ -6,7 +6,7 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
@@ -25,6 +25,7 @@ history:
   - {at: 2026-07-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过，契约交内层实现循环"}
   - {at: 2026-07-19, from: BUILD, to: TECH-DESIGN, note: "S5 PRD 对齐发现真实长连接未落地；research 确认官方推荐 WebSocket/WSClient，需回流重定官方 SDK 集成方案"}
   - {at: 2026-07-19, from: TECH-DESIGN, to: BUILD, note: "tech-design v0.3 与 ADR-007 已更新；签核已完成，直接回到 BUILD 重新实现 S5"}
+  - {at: 2026-07-21, from: BUILD, to: QA, note: "12 个 BUILD 切片全部完成；本 story 单元/集成/CLI 测试 108/108 pass；全量 test:unit 存在 6 个既有失败（非本 story）；进入 QA 跑 E2E/回归"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
