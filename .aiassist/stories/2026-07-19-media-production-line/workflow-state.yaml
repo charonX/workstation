@@ -42,6 +42,7 @@ history:
   - {at: 2026-07-21, from: PRD, to: ASSERTION-SIGNOFF, note: "PRD/REQ/tech-design/test-plan 已按 text/sender/messageId 契约同步更新；signoff 声明作废待重新签核；等待用户确认断言"}
   - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成 attempt-3 重新签核；契约交 /implementer 重新实现 S13 及相关切片"}
   - {at: 2026-07-21, from: BUILD, to: QA, note: "S13-reflow 实现、PRD 对齐、refactor pass 完成；目标业务测试 35/35 绿；全量 test:unit 255/261 通过，6 个失败为既有问题；进入 /qa-runner"}
+  - {at: 2026-07-21, from: QA, to: QA, note: "/qa-runner 完成：目标 API 测试 35/35 绿；本 story E2E 19/20 通过；1 个连续失败（feishuMessageNode.test.cjs:58 Save 按钮英文 locator 与中文 UI 不匹配）；建议 /bug 或 /test-author 修正后进入 /reflect"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
