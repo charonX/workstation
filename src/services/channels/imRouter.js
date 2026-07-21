@@ -38,6 +38,35 @@ function recordInboundMessage(messageId) {
   }
 }
 
+function hasFeishuMessageTrigger(flow) {
+  return (flow.nodeList || []).some(
+    (n) => n.type?.toLowerCase() === "feishumessage"
+  );
+}
+
+function buildTaskVariables(msg, binding) {
+  const { messageId, chatId, senderId, text } = msg || {};
+  return {
+    projectId: binding.projectId,
+    flowId: binding.flowId,
+    trigger: "channel",
+    variables: {
+      text,
+      sender: senderId,
+      messageId,
+      channelReply: { channelType: "feishu", chatId, messageId }
+    }
+  };
+}
+
+function formatEnqueueError(err) {
+  const message = err?.message || "";
+  if (message.includes("E-QUEUE-FULL") || message.includes("队列已满")) {
+    return "队列已满，稍后再发";
+  }
+  return `入队失败：${message || "请稍后重试"}`;
+}
+
 export function createImRouter({
   channelAdapter,
   channelManager,
@@ -87,10 +116,7 @@ export function createImRouter({
       return;
     }
 
-    const hasFeishuMessageTrigger = (flow.nodeList || []).some(
-      (n) => n.type?.toLowerCase() === "feishumessage"
-    );
-    if (!hasFeishuMessageTrigger) {
+    if (!hasFeishuMessageTrigger(flow)) {
       await safeReply({ messageId, text: "链接速存 flow 配置异常（缺少飞书消息触发节点），请检查模板实例" }, "no-trigger hint");
       await writeChannelStatusNotification(
         notificationService,
@@ -100,29 +126,16 @@ export function createImRouter({
       return;
     }
 
-    let queuePosition = 1;
+    let taskResult;
     try {
-      const result = taskService.createTask({
-        projectId: binding.projectId,
-        flowId: binding.flowId,
-        trigger: "channel",
-        variables: {
-          text,
-          sender: senderId,
-          messageId,
-          channelReply: { channelType: "feishu", chatId, messageId }
-        }
-      });
-      queuePosition = result.queuePosition ?? 1;
+      taskResult = taskService.createTask(buildTaskVariables(msg, binding));
     } catch (err) {
       console.error("[imRouter] failed to create task:", err.message);
-      const errText = (err.message && (err.message.includes("E-QUEUE-FULL") || err.message.includes("队列已满")))
-        ? "队列已满，稍后再发"
-        : `入队失败：${err.message || "请稍后重试"}`;
-      await safeReply({ messageId, text: errText }, "enqueue error");
+      await safeReply({ messageId, text: formatEnqueueError(err) }, "enqueue error");
       return;
     }
 
+    const queuePosition = taskResult.queuePosition ?? 1;
     await safeReply({ messageId, text: `收到，排队中（第 ${queuePosition} 位）` }, "queue position");
   };
 

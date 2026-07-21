@@ -7,8 +7,6 @@ import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 // per-type config fields plus the shared retries/onError section.
 const REFINED_NODE_TYPES = ["trigger", "feishuMessage", "condition", "agent"];
 
-
-
 /**
  * Node properties panel for the Flow Editor.
  * Covers the three refined node types (trigger / condition / agent,

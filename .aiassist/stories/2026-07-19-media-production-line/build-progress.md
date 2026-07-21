@@ -1156,3 +1156,46 @@ npm run test:unit
 - 全量单元回归：✅ 无新增失败
 - Commit：`[build] S13-reflow: feishuMessage uses text/sender/messageId`
 
+---
+
+## 2026-07-21 Slice S13-reflow：安全重构（refactor subagent）
+
+### 重构范围
+
+仅修改 S13-reflow 已变更的文件：
+
+| 文件 | 重构内容 | 原因 |
+|---|---|---|
+| `src/services/channels/imRouter.js` | 从 `messageHandler` 提取 `hasFeishuMessageTrigger`、`buildTaskVariables`、`formatEnqueueError`；`queuePosition` 改为 `const` | 简化过长的消息处理函数，消除重复/嵌套，行为不变 |
+| `src/renderer/components/flow/NodeConfigPanel.jsx` | 删除 `REFINED_NODE_TYPES` 与 JSDoc 之间的多余空行 | 代码整洁 |
+| `tests/fixtures/media-production-line/mockChannelAdapter.js` | 更新 `onMessage` 回调类型注释，移除已废弃的 `url?: string`，保留 `text: string` | 类型注释与 S13-reflow 新契约保持一致 |
+| `.aiassist/stories/2026-07-19-media-production-line/build-progress.md` | 追加本重构记录 | 可追溯性 |
+
+### 重构原则
+
+- 仅做安全重构：提取局部辅助函数、整理格式、更新过时注释。
+- 不修改公共接口契约，不引入新行为。
+- 未修改业务测试文件。
+
+### 测试验证
+
+#### 受影响业务测试（`node --test` 单跑）
+
+```bash
+node --test \
+  tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js \
+  tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/upstreamVariables.test.js \
+  tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js \
+  tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js \
+  tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js
+# ℹ tests 35 / pass 35 / fail 0
+```
+
+### Slice S13-reflow 重构状态
+
+- 重构状态：✅ REFACTORED
+- 受影响业务测试：✅ 35/35 通过
+- 原始 commit：`f403b3b`
+- 新 commit：refactor commit（本记录所在 commit）；测试夹具注释更新 commit：`3349431`
+
+
