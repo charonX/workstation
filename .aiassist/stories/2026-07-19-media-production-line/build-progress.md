@@ -590,4 +590,35 @@ Slice 7 标记完成。
 - 缺口 2（待确认）：PRD 稳定块 10 写「通道恢复为绿色」，但 REQ-NOTIFY-002 AC2 仅要求三类配色（产物产出/执行失败/通道状态），实现已将 `channel-status` 统一用黄色。按签核 REQ 验收标准，此点不阻塞；作为已知偏差记录。
 - 处理决定：修复缺口 1，`Executions` 页消费 `highlight` 参数自动选中对应执行；缺口 2 保持现状并记录偏差。
 
+#### 修复记录
+
+- Fix commit：`aafa51d [bugfix] S8: highlight execution from notification click`
+- 修改文件：
+  - `src/renderer/pages/Executions.jsx`：引入 `useSearchParams` 读取 `highlight`，加载完成后自动选中对应 execution（列表中不存在则通过 `useExecution` 拉取），选中后清除 `highlight` 参数。
+  - `src/renderer/components/task/ExecutionList.jsx`：行元素增加 `data-highlighted` 属性。
+- 验证：
+  - `notificationCenter.test.cjs` → 4/4 pass
+  - `artifactsTab.test.cjs`（回归）→ 4/4 pass
+
+#### 二次 PRD 对齐复查
+
+- 状态：`ALIGNED`
+- 阻塞缺口已修复；通道恢复绿色标识作为已知偏差保留（数据模型无 level/sub-type 字段，REQ-NOTIFY-002 AC2 已满足）。
+
+#### Refactor 子代理验证
+
+- 原始 HEAD：`aafa51d`
+- Refactor commit：`55bdcd7 [refactor] Slice 8: notification ui`
+- 修改文件：
+  - `src/renderer/pages/Notifications.jsx`：提取 `NotificationItem` 子组件，简化 `handleItemClick`。
+  - `src/renderer/components/task/ExecutionList.jsx`：将 `formatDate`/`formatDuration` 移出组件为模块级纯函数。
+- 父代理独立验证：
+  - `notifications.test.js`（API 回归）→ 6/6 pass
+  - `notificationCenter.test.cjs`（E2E）→ 4/4 pass
+  - `artifactsTab.test.cjs`（回归）→ 4/4 pass
+- diff 范围检查：仅修改 S8 实现代码，未触碰业务测试。
+- PRD 意图保持对齐。
+
+Slice 8 标记完成。
+
 ---
