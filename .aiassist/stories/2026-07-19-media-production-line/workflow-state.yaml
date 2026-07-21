@@ -8,7 +8,7 @@ intention: >-
 
 phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 2        # 第几次尝试。归档重做时 +1。
-bug-counter: 3    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -36,6 +36,8 @@ history:
   - {at: 2026-07-21, from: BUILD, to: QA, note: "S13 feishu-message-trigger-node 实现、PRD 对齐、refactor pass 完成；目标业务测试 30/30 绿；全量 test:unit 249/256 通过，7 个失败均为既有/并发隔离问题，与 S13 无关"}
   - {at: 2026-07-21, from: QA, to: BUG, note: "用户报告跑测试后真实 settings.json 与 data.db 数据丢失；根因：测试未隔离 OPC_WORKSTATION_CONFIG_DIR / DB_PATH，startServer reset 及多个测试直接写入真实用户目录；建 BUG-003"}
   - {at: 2026-07-21, from: BUG, to: QA, note: "BUG-003 修复：settingsService.js 动态解析配置目录；startServer reset 时使用临时 config 目录；executionLog/imRouting/feishuChannel/channel-cli 测试改用临时 DB_PATH / OPC_WORKSTATION_CONFIG_DIR；全量 test:unit 250/256 通过，6 个既有失败未恶化；真实用户数据不再被测试污染"}
+  - {at: 2026-07-21, from: QA, to: BUG, note: "用户反馈 feishuMessage 节点变量无法被下游节点选择；根因：upstreamVariables.js 未把 feishuMessage 视为 trigger-like 节点；建 BUG-004"}
+  - {at: 2026-07-21, from: BUG, to: QA, note: "BUG-004 修复：upstreamVariables.js 把 feishuMessage 与 trigger 同等处理，暴露其 outputVariables；新增回归测试；全量 test:unit 255/261 通过，6 个既有失败未恶化"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
