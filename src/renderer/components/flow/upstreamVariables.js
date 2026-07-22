@@ -13,6 +13,12 @@
  * Groups are derived from live canvas state, so deleting or renaming an
  * upstream variable refreshes the picker immediately (REQ-FLOW-022 AC4).
  */
+const FEISHU_MESSAGE_FIXED_OUTPUTS = [
+  { name: "text", type: "string" },
+  { name: "sender", type: "string" },
+  { name: "messageId", type: "string" },
+];
+
 export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
   const upstream = new Set();
   const queue = [currentNodeId];
@@ -35,7 +41,12 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
 
     const variables = [];
     if (isTriggerLike) {
-      const declared = node.data?.config?.outputVariables;
+      let declared = node.data?.config?.outputVariables;
+      // BUG-016: feishuMessage nodes always expose text/sender/messageId even
+      // if the config has not been persisted yet (e.g. just added from palette).
+      if (type === "feishuMessage" && !Array.isArray(declared)) {
+        declared = FEISHU_MESSAGE_FIXED_OUTPUTS;
+      }
       for (const variable of Array.isArray(declared) ? declared : []) {
         const name = typeof variable?.name === "string" ? variable.name.trim() : "";
         if (name) {

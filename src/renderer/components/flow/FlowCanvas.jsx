@@ -38,6 +38,14 @@ function getDefaultConfig(type) {
       return { model: "codex", systemPrompt: "" };
     case "condition":
       return { expression: "" };
+    case "feishuMessage":
+      return {
+        outputVariables: [
+          { name: "text", type: "string", defaultValue: "" },
+          { name: "sender", type: "string", defaultValue: "" },
+          { name: "messageId", type: "string", defaultValue: "" },
+        ],
+      };
     case "forEach":
       return { array: "" };
     case "while":
