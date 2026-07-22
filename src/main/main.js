@@ -123,6 +123,8 @@ async function createWindow() {
     await mainWindow.loadFile(rendererPath);
   }
 
+  mainWindow.maximize();
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
