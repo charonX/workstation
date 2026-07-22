@@ -1,13 +1,23 @@
+// BUG-007: bootstrap-env MUST be the first project import. It sets
+// OPC_WORKSTATION_CONFIG_DIR and DB_PATH to app.getPath("userData") before any
+// module that transitively loads settingsService/db.js runs its top-level
+// initialization (ESM static imports are hoisted, so the order here is the
+// load order).
+import "./bootstrap-env.js";
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import { defaultDbPath, migrateLegacyDb } from "../db.js";
+import { migrateLegacyDb } from "../db.js";
 import { discoverServer } from "../cli/server.js";
 import { takeoverExistingServer } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
+
+const require = createRequire(import.meta.url);
 
 // Handle squirrel startup events (Windows installer)
 if (process.platform === "win32" && (await import("electron-squirrel-startup")).default) {
@@ -17,19 +27,68 @@ if (process.platform === "win32" && (await import("electron-squirrel-startup")).
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Isolate per-app settings and DB before any service modules are imported,
-// so that settingsService and the SQLite DB use the correct paths.
+// bootstrap-env.js already set OPC_WORKSTATION_CONFIG_DIR and DB_PATH based on
+// app.getPath("userData"). Read the resolved values back so we can migrate any
+// legacy data.db that predates the unified DB path.
 const userData = app.getPath("userData");
-process.env.OPC_WORKSTATION_CONFIG_DIR = userData;
-
-// REQ-WORKSPACE-008/010: use the unified workspace DB path and migrate legacy userData/data.db if present.
-const newDbPath = defaultDbPath();
-process.env.DB_PATH = newDbPath;
+const newDbPath = process.env.DB_PATH;
+// First, migrate any userData-local data.db (pre-unified-path era) onto the
+// canonical DB_PATH. After BUG-007 the canonical path IS userData/data.db, so
+// this first call is a no-op when both match — kept for forward compatibility.
 migrateLegacyDb({
   legacyPath: path.join(userData, "data.db"),
   targetPath: newDbPath,
   logger: (entry) => console.log(JSON.stringify(entry))
 });
+
+// BUG-007 one-time recovery: before the bootstrap-env fix, settingsService and
+// the DB were initialized against ~/.opc-workstation/ instead of userData/ due
+// to ESM import hoisting. The user's channel credentials were correctly written
+// to userData/settings.json (because saveChannelCredentials runs after env is
+// set), but flows/bindings/projects created during that window lived in
+// ~/.opc-workstation/data.db. Detect this by checking whether the home-dir DB
+// has channel_bindings (a story-2026-07-19 table) while the canonical DB does
+// not — if so, back up the stale canonical DB and copy over the real one.
+const legacyHomeDb = path.join(os.homedir(), ".opc-workstation", "data.db");
+if (fsSync.existsSync(legacyHomeDb) && fsSync.existsSync(newDbPath)) {
+  try {
+    const homeHasBindings = dbHasTable(legacyHomeDb, "channel_bindings");
+    const canonicalHasBindings = dbHasTable(newDbPath, "channel_bindings");
+    if (homeHasBindings && !canonicalHasBindings) {
+      const backupPath = `${newDbPath}.pre-bug-007.bak`;
+      fsSync.copyFileSync(newDbPath, backupPath);
+      fsSync.copyFileSync(legacyHomeDb, newDbPath);
+      console.log(JSON.stringify({
+        event: "bug-007-recovery-db",
+        source: legacyHomeDb,
+        target: newDbPath,
+        backup: backupPath,
+        note: "recovered flows/bindings from ~/.opc-workstation/ (pre-bootstrap-env)"
+      }));
+    }
+  } catch (err) {
+    console.error(JSON.stringify({ event: "bug-007-recovery-db-error", error: err.message }));
+  }
+}
+
+function dbHasTable(dbPath, tableName) {
+  // Lazy-load better-sqlite3 so the native binding does not affect bootstrap
+  // import order; this function only runs during one-time recovery after env is set.
+  const Database = require("better-sqlite3");
+  try {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const row = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+      ).get(tableName);
+      return !!row;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return false;
+  }
+}
 
 const { startServer, stopServer } = await import("../http/server.js");
 
