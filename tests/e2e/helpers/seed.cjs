@@ -57,6 +57,26 @@ async function createExecution(apiBaseUrl, body) {
 }
 
 /**
+ * Poll execution detail until it reaches a terminal state.
+ * @param {string} apiBaseUrl
+ * @param {string} executionId
+ * @param {object} options
+ * @param {number} options.timeoutMs
+ * @returns {Promise<object>}
+ */
+async function waitForExecutionTerminal(apiBaseUrl, executionId, { timeoutMs = 15000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${apiBaseUrl}/api/executions/${executionId}`);
+    if (!res.ok) throw new Error(`waitForExecutionTerminal failed: ${res.status}`);
+    const detail = await res.json();
+    if (detail.status === "success" || detail.status === "error") return detail;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`waitForExecutionTerminal timed out for ${executionId}`);
+}
+
+/**
  * @param {string} apiBaseUrl
  * @param {object} body
  * @returns {Promise<object>}
@@ -113,6 +133,7 @@ module.exports = {
   createProject,
   createFlow,
   createExecution,
+  waitForExecutionTerminal,
   installSkill,
   updateSettings,
 };

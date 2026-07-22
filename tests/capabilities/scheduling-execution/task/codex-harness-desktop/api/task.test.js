@@ -43,7 +43,8 @@ describe("Tasks and Executions", () => {
     });
     assert.equal(res.status, 201);
     const data = await res.json();
-    assert.equal(data.status, "running");
+    assert.ok(data.executionId, "executionId should be returned");
+    assert.equal(data.queuePosition, 1);
   });
 
   it("REQ-SCHEDULE-001: rejects task without project", async () => {
@@ -104,7 +105,8 @@ describe("Tasks and Executions", () => {
 
     const out = execSync(`${CLI} task run --project-id ${cliProject.id} --flow-id ${cliFlow.id}`, { encoding: "utf-8" });
     const data = JSON.parse(out);
-    assert.equal(data.status, "running");
+    assert.ok(data.executionId, "executionId should be returned");
+    assert.equal(data.queuePosition, 1);
   });
 
   it("BUG-012: execution runs the flow engine and records real output, logs and nodesRun", async () => {
@@ -126,13 +128,14 @@ describe("Tasks and Executions", () => {
       body: JSON.stringify({ projectId: project.id, flowId: agentFlow.id, trigger: "manual" })
     })).json();
 
-    assert.equal(execution.status, "running");
+    assert.ok(execution.executionId, "executionId should be returned");
+    assert.equal(execution.queuePosition, 1);
 
     // Poll until the asynchronous engine run completes.
     let detail;
     for (let i = 0; i < 20; i++) {
       detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${execution.id}`)).json();
-      if (detail.status !== "running") break;
+      if (detail.status !== "queued" && detail.status !== "running") break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 

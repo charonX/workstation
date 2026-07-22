@@ -31,7 +31,7 @@ async function getExecutionDetail(apiBaseUrl, executionId) {
 async function waitForExecutionNodes(apiBaseUrl, executionId) {
   await expect(async () => {
     const detail = await getExecutionDetail(apiBaseUrl, executionId);
-    expect(detail.status).not.toBe("running");
+    expect(["success", "error"]).toContain(detail.status);
     expect(Array.isArray(detail.nodes)).toBe(true);
     expect(detail.nodes.length).toBeGreaterThan(0);
   }).toPass({ timeout: 15000 });
@@ -107,6 +107,7 @@ test.describe("REQ-FLOW-028 执行日志持久化与自动清理（E2E）", () =
     await openExecutionsPage(firstWindow);
     await firstWindow.locator(locators.EXECUTION_ROW).first().click();
 
+    await firstWindow.getByTestId("nodes-tab").click();
     const nodesPanel = firstWindow.locator(NODES_PANEL);
     await expect(nodesPanel).toBeVisible();
     await expect(nodesPanel.getByText(/input/i).first()).toBeVisible();
@@ -147,6 +148,7 @@ test.describe("REQ-FLOW-028 执行日志持久化与自动清理（E2E）", () =
     await openExecutionsPage(firstWindow);
     await firstWindow.locator(locators.EXECUTION_ROW).first().click();
 
+    await firstWindow.getByTestId("nodes-tab").click();
     const nodesPanel = firstWindow.locator(NODES_PANEL);
     await expect(nodesPanel).toBeVisible();
     await expect(nodesPanel.getByText(/prompt/i).first()).toBeVisible();

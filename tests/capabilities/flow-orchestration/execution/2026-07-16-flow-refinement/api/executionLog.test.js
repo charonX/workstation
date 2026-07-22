@@ -112,7 +112,7 @@ describe("REQ-FLOW-028: 执行日志持久化与自动清理", () => {
       let detail;
       for (let i = 0; i < 100; i++) {
         detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${execution.id}`)).json();
-        if (detail.status !== "running") break;
+        if (detail.status !== "queued" && detail.status !== "running") break;
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
@@ -162,7 +162,7 @@ describe("REQ-FLOW-028: 执行日志持久化与自动清理", () => {
       let detail;
       for (let i = 0; i < 100; i++) {
         detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${execution.id}`)).json();
-        if (detail.status !== "running") break;
+        if (detail.status !== "queued" && detail.status !== "running") break;
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 

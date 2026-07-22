@@ -7,7 +7,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
-const { createProject, createFlow, createExecution } = require("../../../../../e2e/helpers/seed.cjs");
+const { createProject, createFlow, createExecution, waitForExecutionTerminal } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Dashboard", () => {
@@ -34,10 +34,14 @@ test.describe("Dashboard", () => {
       name: "Dashboard Flow",
       projectId: seededProject.id,
     });
-    await createExecution(apiBaseUrl, {
+    const execution = await createExecution(apiBaseUrl, {
       projectId: seededProject.id,
       flowId: seededFlow.id,
     });
+    await waitForExecutionTerminal(apiBaseUrl, execution.executionId);
+    // Reload so the renderer re-fetches dashboard data after the seeded execution
+    // has reached a terminal state (the app may have already loaded an empty/queued view).
+    await firstWindow.reload();
   });
 
   test.afterEach(async () => {
