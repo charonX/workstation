@@ -128,7 +128,11 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
   }
 
   function mapInboundMessage(eventData) {
-    const message = eventData?.event?.message;
+    // EventDispatcher.parse() spreads v2 schema event.header and event.event
+    // to the top level (node-sdk EventDispatcher.parse line 93585), so message
+    // and sender live directly on eventData. Fall back to the legacy v1 shape
+    // (.event.message / .event.sender) for backward compatibility.
+    const message = eventData?.message || eventData?.event?.message;
     if (!message) return null;
     let text = "";
     try {
@@ -137,10 +141,12 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     } catch {
       text = typeof message.content === "string" ? message.content : "";
     }
+    const senderObj = eventData?.sender?.sender_id || eventData?.event?.sender?.sender_id;
     return {
       messageId: message.message_id,
       chatId: message.chat_id,
-      senderId: eventData?.event?.sender?.sender_id?.user_id || eventData?.event?.sender?.sender_id?.open_id,
+      // Prefer open_id (stable across app re-installs) over user_id.
+      senderId: senderObj?.open_id || senderObj?.user_id || senderObj?.union_id,
       text
     };
   }
@@ -284,6 +290,24 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
 
     /** Test seam: inject an inbound message into the adapter. */
     simulateReceiveForTests(msg) {
+      for (const cb of messageListeners) {
+        try {
+          cb(msg);
+        } catch (err) {
+          log.error("[feishuChannelAdapter] message listener error:", err.message);
+        }
+      }
+    },
+
+    /**
+     * Test seam: inject a raw WS event (as EventDispatcher.parse would deliver
+     * for v2 schema events) through the same mapInboundMessage pipeline that the
+     * real WSClient dispatcher uses. This exercises the field-path resolution
+     * that simulateReceiveForTests bypasses.
+     */
+    simulateWsEventForTests(rawEvent) {
+      const msg = mapInboundMessage(rawEvent);
+      if (!msg) return;
       for (const cb of messageListeners) {
         try {
           cb(msg);
