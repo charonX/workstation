@@ -222,6 +222,68 @@ describe("REQ-CHANNEL-003: 通道发送", () => {
   });
 });
 
+describe("REQ-CHANNEL-003: 入站消息解析（WS v2 schema 事件）", () => {
+  let fake;
+
+  beforeEach(async () => {
+    fake = await startFakeFeishuServer();
+  });
+
+  afterEach(async () => {
+    await fake.stop();
+  });
+
+  it("AC: 真实 v2 schema WS 事件经 mapInboundMessage 正确解析为 {messageId, chatId, senderId, text}", async () => {
+    // BUG-006 回归测试：SDK EventDispatcher.parse() 会把 v2 schema 事件的
+    // .event 子对象展开到顶层（见 node-sdk EventDispatcher.parse line 93585:
+    //   return { [CEventType]: header.event_type, ...rest, ...header, ...event }
+    // ），所以 message/sender 在顶层而非 .event 下。
+    // mapInboundMessage 必须兼容该输出格式，否则所有入站消息返回 null 被静默丢弃。
+    const create = await loadAdapterFactory();
+    const adapter = create({ domain: fake.baseUrl, credentials: { appId: "cli_fake", appSecret: "fake" } });
+    await adapter.start();
+
+    const received = [];
+    adapter.onMessage((msg) => received.push(msg));
+
+    // v2 schema 事件经 EventDispatcher.parse 后的真实形态：message/sender 在顶层。
+    const v2WsEvent = {
+      event_type: "im.message.receive_v1",
+      event_id: "evt_test_001",
+      create_time: "1721000000000",
+      token: "verification-token",
+      app_id: "cli_fake",
+      tenant_key: "tenant_test",
+      message: {
+        message_id: "om_test_abc123",
+        chat_id: "oc_test_chat_001",
+        chat_type: "p2p",
+        content: JSON.stringify({ text: "收藏 https://example.com/test" }),
+        message_type: "text",
+        create_time: "1721000000000"
+      },
+      sender: {
+        sender_id: {
+          union_id: "on_test_union",
+          user_id: "ou_test_user",
+          open_id: "ou_test_open"
+        }
+      }
+    };
+
+    assert.equal(typeof adapter.simulateWsEventForTests, "function",
+      "seam 未就绪：adapter 需提供 simulateWsEventForTests 注入原始 WS 事件");
+    adapter.simulateWsEventForTests(v2WsEvent);
+
+    assert.equal(received.length, 1, `应收到一条消息，实际收到 ${received.length} 条（mapInboundMessage 返回 null 导致消息被丢弃）`);
+    const msg = received[0];
+    assert.equal(msg.messageId, "om_test_abc123", "messageId 应取自 message.message_id");
+    assert.equal(msg.chatId, "oc_test_chat_001", "chatId 应取自 message.chat_id");
+    assert.equal(msg.text, "收藏 https://example.com/test", "text 应取自 content.text");
+    assert.ok(msg.senderId, "senderId 应有值");
+  });
+});
+
 describe("REQ-CHANNEL-001 HTTP 集成：credentials / status / reconnect", () => {
   let fake;
   let serverCtx;
