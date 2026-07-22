@@ -3,6 +3,9 @@ import path from "node:path";
 import os from "node:os";
 
 export function getConfigDir() {
+  if (process.env.OPC_WORKSTATION_CONFIG_DIR) {
+    return process.env.OPC_WORKSTATION_CONFIG_DIR;
+  }
   return path.join(os.homedir(), ".opc-workstation");
 }
 

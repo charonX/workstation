@@ -1,4 +1,5 @@
 import { getDb, resetDb } from "../db.js";
+import crypto from "node:crypto";
 
 function timestamp() {
   return new Date().toISOString();
@@ -181,9 +182,7 @@ export function resetFlows(seed = []) {
 }
 
 function nextFlowId() {
-  const db = getDb();
-  const row = db.prepare("SELECT COUNT(*) AS count FROM flows").get();
-  return "f" + (row.count + 1);
+  return crypto.randomUUID();
 }
 
 function safeJson(value, fallback) {

@@ -8,6 +8,7 @@ import * as schedulerService from "./schedulerService.js";
 import * as notificationService from "./notificationService.js";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 
 const QUEUE_DRAINED_REASON = "E-QUEUE-DRAINED: execution aborted by queue lifecycle change";
 const QUEUED_STATE_OBSERVATION_MS = 250;
@@ -105,9 +106,7 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
 }
 
 function nextExecutionId() {
-  const db = getDb();
-  const row = db.prepare("SELECT COUNT(*) AS count FROM executions").get();
-  return "e" + (row.count + 1);
+  return crypto.randomUUID();
 }
 
 // REQ-FLOW-028 AC2：agent prompt 落库前截断到前 4000 字符。
@@ -208,9 +207,7 @@ export function purgeExpiredExecutions(db, { retentionDays = 7, now = new Date()
 }
 
 function nextScheduleId() {
-  const db = getDb();
-  const row = db.prepare("SELECT COUNT(*) AS count FROM schedules").get();
-  return "sch" + (row.count + 1);
+  return crypto.randomUUID();
 }
 
 function rowToExecution(row) {

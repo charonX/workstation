@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { simpleGit } from "simple-git";
 import { getDb, resetDb } from "../db.js";
 import * as settingsService from "./settingsService.js";
@@ -39,9 +40,7 @@ export function resetProjects(seed = []) {
 }
 
 function nextProjectId() {
-  const db = getDb();
-  const row = db.prepare("SELECT COUNT(*) AS count FROM projects").get();
-  return "p" + (row.count + 1);
+  return crypto.randomUUID();
 }
 
 function rowToProject(row) {

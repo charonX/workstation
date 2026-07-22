@@ -70,8 +70,10 @@ export async function startHeadlessServer() {
 
   return new Promise((resolve, reject) => {
     const serverScript = path.resolve(__dirname, "headless-server.js");
+    // In test mode, don't detach the headless server so it is terminated
+    // together with the CLI process and does not leak across test cases.
     const child = spawn(process.execPath, [serverScript], {
-      detached: true,
+      detached: process.env.NODE_ENV !== "test",
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, OPC_SERVER_OWNER: String(owner) }
     });
