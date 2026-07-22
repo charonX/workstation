@@ -5,13 +5,28 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { closeDb, resetDb } from "../../../../../../src/db.js";
 import { createFlow, updateFlow, getFlow, resetFlows } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-020: Claude Agent 节点统一 adapter 调用与输出变量", () => {
+  let tmpDir;
+
   beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-agent-config-"));
+    process.env.DB_PATH = path.join(tmpDir, "data.db");
+    resetDb(process.env.DB_PATH);
     resetFlows([]);
+  });
+
+  afterEach(() => {
+    closeDb();
+    delete process.env.DB_PATH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("保存 Claude Agent 节点时持久化 provider/outputVariable/prompt/retries/onError", () => {

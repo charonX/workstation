@@ -5,13 +5,28 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { closeDb, resetDb } from "../../../../../../src/db.js";
 import { createFlow, updateFlow, getFlow, resetFlows } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-019: Condition 节点 JS 表达式与 true/false 分支标识", () => {
+  let tmpDir;
+
   beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-condition-config-"));
+    process.env.DB_PATH = path.join(tmpDir, "data.db");
+    resetDb(process.env.DB_PATH);
     resetFlows([]);
+  });
+
+  afterEach(() => {
+    closeDb();
+    delete process.env.DB_PATH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("保存 Condition 节点时持久化 expression 到 config", () => {
