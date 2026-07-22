@@ -53,6 +53,25 @@ describe("REQ-FLOW-031: 变量选择器应包含 feishuMessage 节点输出", ()
     assert.equal(groups[0].nodeId, "n1");
   });
 
+  it("BUG-016: feishuMessage 节点未持久化 outputVariables 时仍暴露固定变量", () => {
+    const nodes = [
+      makeNode("n1", "feishuMessage", {}),
+      makeNode("n2", "agent", { outputVariable: "out" })
+    ];
+    const edges = [{ source: "n1", target: "n2" }];
+
+    const groups = getUpstreamVariableGroups(nodes, edges, "n2");
+    const feishuGroup = groups.find((g) => g.nodeId === "n1");
+    assert.ok(feishuGroup, "下游 agent 应能看到 feishuMessage 节点变量组");
+
+    const names = feishuGroup.variables.map((v) => v.fullName);
+    assert.deepEqual(
+      names.sort(),
+      ["n1.messageId", "n1.sender", "n1.text"],
+      "未持久化 config 时仍应暴露 text/sender/messageId"
+    );
+  });
+
   it("非 trigger-like 节点无边连接时不应出现在选择器", () => {
     const nodes = [
       makeNode("n1", "agent", { outputVariable: "agentOut" }),
