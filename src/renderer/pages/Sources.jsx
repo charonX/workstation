@@ -1,47 +1,49 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useContentSources } from "../hooks/useContentSources.js";
 import Modal from "../components/shared/Modal.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
 
-const TYPE_META = {
-  webpage: {
-    label: "网页",
-    badgeClass: "badge-webpage",
-    configLabel: "页面 URL",
-    placeholder: "https://example.com/page",
-    help: "抓取该网页正文并转为 Markdown。",
-    kind: "url",
-    desc: "单页抓取",
-  },
-  rss: {
-    label: "RSS",
-    badgeClass: "badge-rss",
-    configLabel: "Feed URL",
-    placeholder: "https://example.com/feed.xml",
-    help: "订阅 RSS / Atom 源的最新条目。",
-    kind: "url",
-    desc: "订阅源",
-  },
-  x: {
-    label: "X",
-    badgeClass: "badge-x",
-    configLabel: "X 账号",
-    placeholder: "@username",
-    help: "尽力抓取该账号时间线，质量不保障。",
-    kind: "account",
-    desc: "账号时间线",
-  },
-  wechat: {
-    label: "公众号",
-    badgeClass: "badge-wechat",
-    configLabel: "公众号标识",
-    placeholder: "@公众号名称或 ID",
-    help: "尽力抓取公众号推文，质量不保障。",
-    kind: "account",
-    desc: "公众号推文",
-  },
-};
+function getTypeMeta(t) {
+  return {
+    webpage: {
+      label: t("sources.typeLabels.webpage"),
+      badgeClass: "badge-webpage",
+      configLabel: t("sources.configLabels.webpage"),
+      placeholder: "https://example.com/page",
+      help: t("sources.typeHelp.webpage"),
+      kind: "url",
+      desc: t("sources.typeDescriptions.webpage"),
+    },
+    rss: {
+      label: t("sources.typeLabels.rss"),
+      badgeClass: "badge-rss",
+      configLabel: t("sources.configLabels.rss"),
+      placeholder: "https://example.com/feed.xml",
+      help: t("sources.typeHelp.rss"),
+      kind: "url",
+      desc: t("sources.typeDescriptions.rss"),
+    },
+    x: {
+      label: t("sources.typeLabels.x"),
+      badgeClass: "badge-x",
+      configLabel: t("sources.configLabels.x"),
+      placeholder: "@username",
+      help: t("sources.typeHelp.x"),
+      kind: "account",
+      desc: t("sources.typeDescriptions.x"),
+    },
+    wechat: {
+      label: t("sources.typeLabels.wechat"),
+      badgeClass: "badge-wechat",
+      configLabel: t("sources.configLabels.wechat"),
+      placeholder: "@公众号名称或 ID",
+      help: t("sources.typeHelp.wechat"),
+      kind: "account",
+      desc: t("sources.typeDescriptions.wechat"),
+    },
+  };
+}
 
 const TYPE_ORDER = ["webpage", "rss", "x", "wechat"];
 
@@ -61,6 +63,7 @@ function formatConfigSummary(config) {
 
 export default function Sources() {
   const { t } = useTranslation();
+  const TYPE_META = useMemo(() => getTypeMeta(t), [t]);
   const [sources, loading, error, refresh, create, update, toggle, remove] =
     useContentSources();
 

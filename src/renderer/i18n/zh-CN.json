@@ -89,14 +89,44 @@
     "accountRequired": "请提供账号标识",
     "xWechatDisclaimer": "x / wechat 类型为尽力抓取，不进入验收保障",
     "deleteTitle": "删除内容源",
-    "deleteMessage": "确定删除内容源「{{name}}」吗？此操作不可撤销；按 tag 引用该来源的 flow 下次执行时将自然少一个来源。"
+    "deleteMessage": "确定删除内容源「{{name}}」吗？此操作不可撤销；按 tag 引用该来源的 flow 下次执行时将自然少一个来源。",
+    "typeLabels": {
+      "webpage": "网页",
+      "rss": "RSS",
+      "x": "X",
+      "wechat": "公众号"
+    },
+    "configLabels": {
+      "webpage": "页面 URL",
+      "rss": "Feed URL",
+      "x": "X 账号",
+      "wechat": "公众号标识"
+    },
+    "typeDescriptions": {
+      "webpage": "单页抓取",
+      "rss": "订阅源",
+      "x": "账号时间线",
+      "wechat": "公众号推文"
+    },
+    "typeHelp": {
+      "webpage": "抓取该网页正文并转为 Markdown。",
+      "rss": "订阅 RSS / Atom 源的最新条目。",
+      "x": "尽力抓取该账号时间线，质量不保障。",
+      "wechat": "尽力抓取公众号推文，质量不保障。"
+    }
   },
   "notifications": {
     "title": "通知",
     "subtitle": "系统事件：产物产出、执行失败、通道掉线与恢复。",
     "markAllRead": "全部标为已读",
     "markRead": "标为已读",
-    "empty": "该分类下暂无通知。"
+    "empty": "该分类下暂无通知。",
+    "filterAll": "全部",
+    "filterArtifact": "产物产出",
+    "filterExecutionFailed": "执行失败",
+    "filterChannelStatus": "通道状态",
+    "unread": "未读",
+    "viewExecution": "查看执行与产物 →"
   },
   "skills": {
     "title": "技能",

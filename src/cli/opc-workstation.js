@@ -71,7 +71,7 @@ function printHelp() {
       "opc-workstation schedule create --project-id p1 --flow-id f1 --cron \"0 8 * * *\"",
       "opc-workstation task run --project-id p1 --flow-id f1",
       "opc-workstation skill install --source npm --identifier some-skill",
-      "opc-workstation settings set --language zh-CN"
+      "opc-workstation settings set --language en-US"
     ]
   };
   return help;

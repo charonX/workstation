@@ -3,12 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useNotifications } from "../hooks/useNotifications.js";
 
-const FILTER_KEYS = [
-  { key: "all", label: "全部" },
-  { key: "artifact", label: "产物产出" },
-  { key: "execution-failed", label: "执行失败" },
-  { key: "channel-status", label: "通道状态" },
-];
+function getFilterKeys(t) {
+  return [
+    { key: "all", label: t("notifications.filterAll") },
+    { key: "artifact", label: t("notifications.filterArtifact") },
+    { key: "execution-failed", label: t("notifications.filterExecutionFailed") },
+    { key: "channel-status", label: t("notifications.filterChannelStatus") },
+  ];
+}
 
 function formatTime(isoString) {
   if (!isoString) return "";
@@ -54,7 +56,7 @@ function NotificationItem({ notification, onClick, onMarkRead }) {
           <span className="ntf-title" data-testid="notification-title">
             {notification.title}
           </span>
-          {unread && <span className="ntf-unread-pill">未读</span>}
+          {unread && <span className="ntf-unread-pill">{t("notifications.unread")}</span>}
           <span className="ntf-time">{formatTime(notification.createdAt)}</span>
         </div>
         <div className="ntf-summary">{notification.body}</div>
@@ -62,7 +64,7 @@ function NotificationItem({ notification, onClick, onMarkRead }) {
           {notification.executionId && (
             <span className="ntf-exec">关联执行 {notification.executionId}</span>
           )}
-          {clickable && <span className="ntf-goto">查看执行与产物 →</span>}
+          {clickable && <span className="ntf-goto">{t("notifications.viewExecution")}</span>}
         </div>
       </div>
       <div className="ntf-actions">
@@ -85,6 +87,7 @@ export default function Notifications() {
   const navigate = useNavigate();
   const [state, loading, error, , markRead, markAllRead] = useNotifications();
   const [filter, setFilter] = useState("all");
+  const FILTER_KEYS = useMemo(() => getFilterKeys(t), [t]);
 
   const filteredNotifications = useMemo(() => {
     if (filter === "all") return state.notifications;
