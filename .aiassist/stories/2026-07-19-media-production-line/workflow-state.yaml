@@ -6,7 +6,7 @@ intention: >-
   workstation 撑不起「模板+数据→媒体产物」这类生产线工作流：调度是空壳、无产物模型、
   agent 输出无结构化契约，内容创作者无法把重复性媒体生产（如短视频日更）沉淀进系统。
 
-phase: QA        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 3        # 第几次尝试。归档重做时 +1。
 bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
@@ -43,6 +43,7 @@ history:
   - {at: 2026-07-21, from: ASSERTION-SIGNOFF, to: BUILD, note: "用户完成 attempt-3 重新签核；契约交 /implementer 重新实现 S13 及相关切片"}
   - {at: 2026-07-21, from: BUILD, to: QA, note: "S13-reflow 实现、PRD 对齐、refactor pass 完成；目标业务测试 35/35 绿；全量 test:unit 255/261 通过，6 个失败为既有问题；进入 /qa-runner"}
   - {at: 2026-07-21, from: QA, to: QA, note: "/qa-runner 完成：目标 API 测试 35/35 绿；本 story E2E 19/20 通过；1 个连续失败（feishuMessageNode.test.cjs:58 Save 按钮英文 locator 与中文 UI 不匹配）；建议 /bug 或 /test-author 修正后进入 /reflect"}
+  - {at: 2026-07-22, from: QA, to: REFLECT, note: "用户选择 B 方案：产品默认语言改为 en-US，本 story E2E locator 同步改为英文；目标 API 35/35 绿，本 story E2E 20/20 绿，language 测试 3/3 绿；全量 test:unit 256/261 通过，5 个既有失败与本次改动无关；进入 /reflect"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
