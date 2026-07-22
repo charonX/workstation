@@ -8,11 +8,11 @@
 /**
  * 通知中心 UI（E2E，UX 原型映射 ux/notifications.html）。
  * 提取的可验证项：
- *  - 侧边栏底部「通知」入口 + 未读徽标（nav-badge，0 时隐藏）。
- *  - 列表页：按时间倒序；过滤 tab（全部/产物产出/执行失败/通道状态，各带计数）；
- *    未读条目带「未读」pill 与「标为已读」按钮；空态「该分类下暂无通知」。
- *  - 「全部标为已读」按钮（无未读时 disabled）。
- *  - 「产物产出」类通知可点击 → 跳转执行详情；其余类型仅展示（不可点击跳转）。
+ *  - 侧边栏底部 "Notifications" 入口 + 未读徽标（nav-badge，0 时隐藏）。
+ *  - 列表页：按时间倒序；过滤 tab（All/Artifacts/Execution Failed/Channel Status，各带计数）；
+ *    未读条目带 "Unread" pill 与 "Mark as read" 按钮；空态 "No notifications in this category"。
+ *  - "Mark all as read" 按钮（无未读时 disabled）。
+ *  - "Artifacts" 类通知可点击 → 跳转执行详情；其余类型仅展示（不可点击跳转）。
  * 不断言像素/颜色（类型配色仅做结构级 type 标识断言）。
  *
  * 播种（签核决策）：不开放 POST 写入面，经 tests/e2e/helpers/notifications.cjs
@@ -31,9 +31,9 @@ async function getUnreadCount(apiBaseUrl) {
 }
 
 async function openNotificationsPage(firstWindow) {
-  // 签核侧边栏入口文案「通知」（UX 原型 sidebar-bottom nav-link）。
-  await firstWindow.getByRole("link", { name: "通知" }).click();
-  await expect(firstWindow.getByRole("heading", { name: "通知" })).toBeVisible();
+  // 签核侧边栏入口文案 "Notifications"（UX 原型 sidebar-bottom nav-link）。
+  await firstWindow.getByRole("link", { name: "Notifications" }).click();
+  await expect(firstWindow.getByRole("heading", { name: "Notifications" })).toBeVisible();
 }
 
 test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () => {
@@ -76,8 +76,8 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
 
     await openNotificationsPage(firstWindow);
 
-    // 签核 tab 文案（UX FILTERS）：全部 / 产物产出 / 执行失败 / 通道状态。
-    for (const tab of ["全部", "产物产出", "执行失败", "通道状态"]) {
+    // 签核 tab 文案（UX FILTERS）：All / Artifacts / Execution Failed / Channel Status。
+    for (const tab of ["All", "Artifacts", "Execution Failed", "Channel Status"]) {
       await expect(firstWindow.getByRole("tab", { name: new RegExp(tab) })).toBeVisible();
     }
 
@@ -85,15 +85,15 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
     const titles = firstWindow.locator(".ntf-title, [data-testid='notification-title']");
     await expect(titles.first()).toHaveText("第二条失败");
 
-    // 过滤：执行失败 → 只剩 1 条。
-    await firstWindow.getByRole("tab", { name: /执行失败/ }).click();
+    // 过滤：Execution Failed → 只剩 1 条。
+    await firstWindow.getByRole("tab", { name: /Execution Failed/ }).click();
     await expect(firstWindow.getByText("第二条失败")).toBeVisible();
     await expect(firstWindow.getByText("第一条产物")).toHaveCount(0);
 
     // 空态：切到无数据的分类。
-    await firstWindow.getByRole("tab", { name: /通道状态/ }).click();
-    // 签核空态文案「该分类下暂无通知」（UX list-empty）。
-    await expect(firstWindow.getByText(/该分类下暂无通知/)).toBeVisible();
+    await firstWindow.getByRole("tab", { name: /Channel Status/ }).click();
+    // 签核空态文案 "No notifications in this category"（UX list-empty）。
+    await expect(firstWindow.getByText(/No notifications in this category/)).toBeVisible();
   });
 
   test("单条与全部已读后徽标清零", async () => {
@@ -104,16 +104,16 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
 
     await openNotificationsPage(firstWindow);
 
-    // 单条已读（UX: 未读条目带「标为已读」按钮；文案签核）。
+    // 单条已读（UX: 未读条目带 "Mark as read" 按钮；文案签核）。
     const firstUnread = firstWindow.locator(".ntf-item.unread, [data-testid='notification-item'][data-read='false']").first();
-    await firstUnread.getByRole("button", { name: "标为已读" }).click();
+    await firstUnread.getByRole("button", { name: "Mark as read" }).click();
     let badge = firstWindow.locator("[data-testid='nav-notifications-badge'], .nav-badge").first();
     await expect(badge).toHaveText("1");
 
-    // 全部已读 → 徽标隐藏（UX: count=0 时 nav-badge 加 hidden；按钮文案「全部标为已读」签核）。
-    await firstWindow.getByRole("button", { name: "全部标为已读" }).click();
+    // 全部已读 → 徽标隐藏（UX: count=0 时 nav-badge 加 hidden；按钮文案 "Mark all as read" 签核）。
+    await firstWindow.getByRole("button", { name: "Mark all as read" }).click();
     await expect(badge).toBeHidden();
-    await expect(firstWindow.getByRole("button", { name: "全部标为已读" })).toBeDisabled();
+    await expect(firstWindow.getByRole("button", { name: "Mark all as read" })).toBeDisabled();
 
     // 与 API 一致。
     expect(await getUnreadCount(apiBaseUrl)).toBe(0);
