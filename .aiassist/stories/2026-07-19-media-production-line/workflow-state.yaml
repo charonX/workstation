@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 3        # 第几次尝试。归档重做时 +1。
-bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 6    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -45,6 +45,7 @@ history:
   - {at: 2026-07-21, from: QA, to: QA, note: "/qa-runner 完成：目标 API 测试 35/35 绿；本 story E2E 19/20 通过；1 个连续失败（feishuMessageNode.test.cjs:58 Save 按钮英文 locator 与中文 UI 不匹配）；建议 /bug 或 /test-author 修正后进入 /reflect"}
   - {at: 2026-07-22, from: QA, to: REFLECT, note: "用户选择 B 方案：产品默认语言改为 en-US，本 story E2E locator 同步改为英文；目标 API 35/35 绿，本 story E2E 20/20 绿，language 测试 3/3 绿；全量 test:unit 256/261 通过，5 个既有失败与本次改动无关；进入 /reflect"}
   - {at: 2026-07-22, from: REFLECT, to: BUG, note: "REFLECT 验收时发现 feishuMessage 节点变量无法被下游 Agent 选择：刚添加的 feishuMessage 节点未持久化固定 outputVariables，建 BUG-005"}
+  - {at: 2026-07-22, from: BUG, to: BUG, note: "BUG-006 用户报告飞书发消息 flow 收不到。根因：mapInboundMessage 从 eventData.event.message 取字段，但 SDK EventDispatcher.parse() 把 v2 schema 事件的 .event 展开到顶层，导致消息返回 null 被静默丢弃；测试全部经 simulateReceiveForTests 绕过该解析路径所以未覆盖。新增回归测试 simulateWsEventForTests，修复字段路径兼容 v1/v2；全量 263/263 绿。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
