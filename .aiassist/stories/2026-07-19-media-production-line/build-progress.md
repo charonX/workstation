@@ -1199,3 +1199,79 @@ node --test \
 - 新 commit：refactor commit（本记录所在 commit）；测试夹具注释更新 commit：`3349431`
 
 
+
+---
+
+## 2026-07-22 默认语言调整与 E2E 定位符更新
+
+### 背景
+
+QA attempt-3 发现 story E2E 连续失败：
+- `tests/e2e/helpers/flowEditor.cjs:63` 使用 `getByRole('button', { name: 'Save' })` 定位保存按钮，但产品默认语言为 `zh-CN`，按钮文案为「保存」。
+- 同时 `tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/language.test.js` 断言默认语言为 `en-US`。
+
+决策（option B）：将产品默认语言切换为 `en-US`，并更新本 story 相关 E2E 测试的中文文案定位符为英文等价文案。
+
+### 产品代码变更
+
+- `src/services/settingsService.js`：默认 `language` 从 `"zh-CN"` 改为 `"en-US"`。
+- `src/renderer/i18n/index.js`：`lng` 与 `fallbackLng` 从 `"zh-CN"` 改为 `"en-US"`。
+- `src/renderer/hooks/useSettings.jsx`：fallback language 从 `"zh-CN"` 改为 `"en-US"`。
+- `src/cli/opc-workstation.js`：help 示例从 `--language zh-CN` 改为 `--language en-US`。
+- `src/renderer/pages/Notifications.jsx`：硬编码中文 tab 标签（全部/产物产出/执行失败/通道状态）改为通过 i18n 读取；未读 pill 与「查看执行与产物 →」同样改为 i18n。
+- `src/renderer/pages/Sources.jsx`：硬编码中文类型标签（网页/RSS/X 账号/公众号标识等）改为通过 i18n 读取。
+- `src/renderer/i18n/en-US.json` / `zh-CN.json`：新增 notifications filter/tab 键与 sources type/config 键，保证中英文切换能力保留。
+
+未删除 `zh-CN` 翻译文件，也未移除用户手动切换到中文的能力。
+
+### E2E 测试变更（仅本 story）
+
+- `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/e2e/sourcesPage.test.cjs`
+  - 导航/标题/按钮：内容源 → Sources，新建内容源 → New Source。
+  - 表头：名称/类型/配置/标签/状态/操作 → Name/Type/Config/Tags/Status/Actions。
+  - 空态：暂无内容源 → No content sources yet。
+  - 类型与状态：网页 → Webpage，启用中 → Enabled，已停用 → Disabled。
+  - tag 编辑器：输入标签 → Enter tag，标签已存在 → Tag already exists，每个标签不超过 16 字符 → Each tag must not exceed 16 characters，删除标签 → Remove tag。
+  - 类型联动：X 账号 → X Account，页面 URL → Page URL。
+  - 校验文案：名称必填且不超过 64 字符 → Name is required and must not exceed 64 characters；请至少添加一个品类标签 → Please add at least one category tag；请提供合法 URL → Please provide a valid URL。
+  - 删除：删除 → Delete，确定删除内容源 → Are you sure you want to delete content source。
+- `tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/e2e/notificationCenter.test.cjs`
+  - 导航/标题：通知 → Notifications。
+  - tab：全部/产物产出/执行失败/通道状态 → All/Artifacts/Execution Failed/Channel Status。
+  - 空态：该分类下暂无通知 → No notifications in this category。
+  - 已读按钮：标为已读 → Mark as read，全部标为已读 → Mark all as read。
+- `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/e2e/feishuMessageNode.test.cjs` 保持原样；默认英文 UI 下 `Save` 定位符现在通过。
+- `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/e2e/settingsChannel.test.cjs` 以 `data-testid` 为主，无需修改。
+
+### 验证结果
+
+- 语言 API 测试：
+  ```bash
+  node --test tests/capabilities/internationalization-theme/language/codex-harness-desktop/api/language.test.js
+  # ℹ tests 3 / pass 3 / fail 0
+  ```
+- 受影响 story E2E（`--workers=1`）：
+  ```bash
+  npm run test:e2e -- --workers=1 \
+    tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/e2e/feishuMessageNode.test.cjs \
+    tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/e2e/sourcesPage.test.cjs \
+    tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/e2e/notificationCenter.test.cjs \
+    tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/e2e/settingsChannel.test.cjs \
+    tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/e2e/artifactsTab.test.cjs
+  # Running 20 tests / 20 passed
+  ```
+- 本 story 业务单元测试：
+  ```bash
+  node --test \
+    tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuMessageNode.test.js \
+    tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/upstreamVariables.test.js \
+    tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/imRouting.test.js \
+    tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/templates.test.js \
+    tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/linkCapture.test.js
+  # ℹ tests 35 / pass 35 / fail 0
+  ```
+
+### Commit
+
+- `[test] update story E2E locators to English` — `4ab61af`
+- `[build] default language en-US` — `b8c3513`
