@@ -217,7 +217,9 @@
     "agentPrompt": "提示词",
     "agentOutput": "输出",
     "agentModel": "模型",
-    "agentProvider": "提供商"
+    "agentProvider": "提供商",
+    "expandSubflow": "展开子流程",
+    "collapseSubflow": "收起子流程"
   },
   "workspace": {
     "title": "项目",

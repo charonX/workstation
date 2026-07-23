@@ -1,22 +1,24 @@
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { getExecution } from "../../api/executions.js";
+import { getFlow } from "../../api/flows.js";
 
 /**
  * ExecutionNodeList — renders the node-level execution log for one execution
- * (REQ-FLOW-028): one card per node record with input/output variables,
- * branch taken, error, attempt count; agent-type nodes get an extra
- * agent-call block (prompt/output/model/provider/status/durationMs).
+ * (REQ-FLOW-028 + REQ-FLOW-044): one card per node record with input/output
+ * variables, branch taken, error, attempt count; agent-type nodes get an extra
+ * agent-call block. callFlow nodes that have a __childExecutionId can be
+ * expanded to reveal the child execution's node tree recursively.
  *
  * Props:
- *   - nodes: array of execution node records (undefined while the detail
- *     fetch is still in flight)
+ *   - nodes: array of execution node records (undefined while fetching)
  *   - nodeTypes: { [nodeId]: nodeType } map derived from the flow's nodeList
- *     (used to recognise agent nodes even when the mock path recorded no
- *     agent call details)
+ *   - indent: nesting depth (0 for top-level, 1 for first child, etc.)
  */
 
 const EMPTY_VALUE = "—";
 
-// null/undefined/空字符串统一视为无值：空值占位与 agent 字段启发式共用此判定。
+// null/undefined/空字符串统一视为无值
 function hasValue(value) {
   return value !== null && value !== undefined && value !== "";
 }
@@ -35,11 +37,19 @@ function formatDurationMs(durationMs) {
   return `${durationMs} ms`;
 }
 
-// mock agent 路径不产 agent 调用详情（tech-design §5.6：prompt/model 等列为
-// NULL），因此优先用 flow 节点类型判定；flow 已删除等场景回落到记录字段启发式。
 function isAgentNode(node, nodeType) {
   if (typeof nodeType === "string" && nodeType.toLowerCase().includes("agent")) return true;
   return [node.prompt, node.output, node.model, node.provider, node.durationMs].some(hasValue);
+}
+
+// callFlow 节点：outputVariables 里含 __childExecutionId 则可展开
+function getChildExecutionId(node, nodeType) {
+  const type = (nodeType || "").toLowerCase();
+  if (type !== "callflow" && type !== "callFlow") return null;
+  const out = node.outputVariables || {};
+  // Key may be `${nodeId}.__childExecutionId` or bare `__childExecutionId`
+  const namespaced = `${node.nodeId}.__childExecutionId`;
+  return out[namespaced] || out.__childExecutionId || null;
 }
 
 function NodeField({ label, value }) {
@@ -61,8 +71,72 @@ function NodeFieldsGrid({ fields }) {
   );
 }
 
-function ExecutionNodeCard({ node, nodeType }) {
+/**
+ * Chevron icon for expand/collapse. Uses a simple CSS-only triangle.
+ */
+function ChevronIcon({ expanded }) {
+  return (
+    <span
+      className={`execution-chevron${expanded ? " expanded" : ""}`}
+      aria-hidden="true"
+    >
+      ▶
+    </span>
+  );
+}
+
+/**
+ * Single node card. For callFlow nodes with a childExecutionId, renders an
+ * expand/collapse toggle and, when expanded, a nested ExecutionNodeList for
+ * the child execution.
+ */
+function ExecutionNodeCard({ node, nodeType, indent }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const [childNodes, setChildNodes] = useState(null);
+  const [childNodeTypes, setChildNodeTypes] = useState({});
+  const [childLoading, setChildLoading] = useState(false);
+  const [childError, setChildError] = useState(null);
+
+  const childExecutionId = getChildExecutionId(node, nodeType);
+
+  // The node's persisted status is the source of truth (REQ-FLOW-037 AC1:
+  // child failure propagates to parent callFlow node's status).
+  const displayStatus = node.status;
+
+  const loadChild = useCallback(async () => {
+    if (!childExecutionId) return;
+    setChildLoading(true);
+    setChildError(null);
+    try {
+      const childExec = await getExecution(childExecutionId);
+      setChildNodes(childExec.nodes || []);
+      if (childExec.flowId) {
+        try {
+          const flow = await getFlow(childExec.flowId);
+          const typeMap = {};
+          for (const n of flow?.nodeList ?? []) {
+            if (n?.id) typeMap[n.id] = n.type;
+          }
+          setChildNodeTypes(typeMap);
+        } catch {
+          // Flow deleted or unavailable; fall back to empty type map.
+          setChildNodeTypes({});
+        }
+      }
+    } catch (err) {
+      setChildError(err.message || "Failed to load subflow");
+    } finally {
+      setChildLoading(false);
+    }
+  }, [childExecutionId]);
+
+  const toggleExpand = useCallback(() => {
+    if (!expanded && childNodes === null && !childLoading) {
+      loadChild();
+    }
+    setExpanded((prev) => !prev);
+  }, [expanded, childNodes, childLoading, loadChild]);
 
   const baseFields = [
     { label: t("execution.nodeInput"), value: formatVariables(node.inputVariables) },
@@ -81,34 +155,81 @@ function ExecutionNodeCard({ node, nodeType }) {
     { label: t("execution.duration"), value: formatDurationMs(node.durationMs) },
   ];
 
+  const isExpandable = !!childExecutionId;
+
   return (
-    <div className="execution-node" data-testid="execution-node">
-      <div className="execution-node-header">
-        <div>
-          <span className="execution-node-name">{node.nodeName || node.nodeId}</span>
-          <span className="execution-node-id">{node.nodeId}</span>
+    <div className="execution-node-row">
+      <div
+        className="execution-node"
+        data-testid={`execution-detail-node-${node.nodeId}`}
+      >
+        <div className="execution-node-header">
+          <div className="execution-node-header-left">
+            {isExpandable && (
+              <button
+                type="button"
+                className="execution-expand-btn"
+                data-testid={`execution-callflow-expand-${node.nodeId}`}
+                onClick={toggleExpand}
+                aria-label={expanded ? t("execution.collapseSubflow") : t("execution.expandSubflow")}
+                aria-expanded={expanded}
+                title={expanded ? t("execution.collapseSubflow") : t("execution.expandSubflow")}
+              >
+                <ChevronIcon expanded={expanded} />
+              </button>
+            )}
+            <span className="execution-node-name">{node.nodeName || node.nodeId}</span>
+            <span className="execution-node-id">{node.nodeId}</span>
+          </div>
+          {displayStatus && (
+            <span
+              className={`status status-${displayStatus}`}
+              data-testid={`execution-node-status-${node.nodeId}`}
+              data-status={displayStatus}
+            >
+              <span className="status-dot"></span>
+              {displayStatus}
+            </span>
+          )}
         </div>
-        {node.status && (
-          <span className={`status status-${node.status}`}>
-            <span className="status-dot"></span>
-            {node.status}
-          </span>
+
+        <NodeFieldsGrid fields={baseFields} />
+
+        {isAgentNode(node, nodeType) && (
+          <div className="execution-node-agent" data-testid="execution-node-agent">
+            <div className="execution-node-agent-title">{t("execution.agentCall")}</div>
+            <NodeFieldsGrid fields={agentFields} />
+          </div>
         )}
       </div>
 
-      <NodeFieldsGrid fields={baseFields} />
-
-      {isAgentNode(node, nodeType) && (
-        <div className="execution-node-agent" data-testid="execution-node-agent">
-          <div className="execution-node-agent-title">{t("execution.agentCall")}</div>
-          <NodeFieldsGrid fields={agentFields} />
+      {/* Nested child nodes container (lazy rendered) */}
+      {isExpandable && expanded && (
+        <div
+          className="execution-callflow-children"
+          data-testid={`execution-callflow-children-${node.nodeId}`}
+          data-indent={String(indent + 1)}
+        >
+          {childLoading && (
+            <p className="detail-placeholder">{t("common.loading")}</p>
+          )}
+          {childError && !childLoading && (
+            <p className="detail-placeholder">{childError}</p>
+          )}
+          {!childLoading && !childError && childNodes && (
+            <ExecutionNodeList
+              nodes={childNodes}
+              nodeTypes={childNodeTypes}
+              indent={indent + 1}
+            />
+          )}
         </div>
       )}
     </div>
   );
 }
 
-export default function ExecutionNodeList({ nodes, nodeTypes }) {
+export default function ExecutionNodeList({ nodes, nodeTypes, indent = 0 }) {
   const { t } = useTranslation();
 
   if (!nodes) {
@@ -119,9 +240,17 @@ export default function ExecutionNodeList({ nodes, nodeTypes }) {
   }
 
   return (
-    <div className="execution-node-list">
+    <div
+      className="execution-node-list"
+      data-indent={String(indent)}
+    >
       {nodes.map((node) => (
-        <ExecutionNodeCard key={node.id} node={node} nodeType={nodeTypes?.[node.nodeId]} />
+        <ExecutionNodeCard
+          key={node.id || node.nodeId}
+          node={node}
+          nodeType={nodeTypes?.[node.nodeId]}
+          indent={indent}
+        />
       ))}
     </div>
   );

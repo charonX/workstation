@@ -801,6 +801,58 @@ body {
   margin-bottom: var(--ch-space-2);
 }
 
+/* Nested callFlow expand/collapse (REQ-FLOW-044) */
+.execution-node-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.execution-node-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+}
+
+.execution-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+  border-radius: var(--ch-radius-sm);
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.execution-expand-btn:hover {
+  background: var(--ch-surface-hover, rgba(0, 0, 0, 0.05));
+  color: var(--ch-text);
+}
+
+.execution-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  transform: rotate(0deg);
+  font-size: 10px;
+}
+
+.execution-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.execution-callflow-children {
+  padding-left: var(--ch-space-4);
+  margin-top: var(--ch-space-2);
+  border-left: 2px solid var(--ch-border);
+}
+
 /* Skills page */
 .skill-count {
   color: var(--ch-text-secondary);

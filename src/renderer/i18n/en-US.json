@@ -217,7 +217,9 @@
     "agentPrompt": "Prompt",
     "agentOutput": "Output",
     "agentModel": "Model",
-    "agentProvider": "Provider"
+    "agentProvider": "Provider",
+    "expandSubflow": "Expand subflow",
+    "collapseSubflow": "Collapse subflow"
   },
   "workspace": {
     "title": "Projects",
