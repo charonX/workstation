@@ -46,6 +46,8 @@ function getDefaultConfig(type) {
           { name: "messageId", type: "string", defaultValue: "" },
         ],
       };
+    case "feishuSend":
+      return { msgType: "text", replyToMessage: true, content: JSON.stringify({ text: "" }, null, 2) };
     case "forEach":
       return { array: "" };
     case "while":

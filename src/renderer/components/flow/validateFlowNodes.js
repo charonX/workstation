@@ -8,7 +8,7 @@
 // Variable type allowlist (tech-design §5.4); also drives the trigger
 // variables editor dropdown in NodeConfigPanel.
 export const VARIABLE_TYPES = ["string", "number", "array", "object"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend"];
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
 function validateFeishuMessageConfig(config, base, t, errors) {
@@ -59,6 +59,17 @@ export function validateFlowNodes(nodeList, t) {
 
     if (type === "feishumessage") {
       validateFeishuMessageConfig(config, base, t, errors);
+    }
+
+    if (type === "feishusend") {
+      const content = config?.content;
+      if (typeof content === "string" && content.trim()) {
+        try {
+          JSON.parse(content);
+        } catch {
+          errors.push(`${base}.content: ${t("flowEditor.invalidJson") || "Invalid JSON"}`);
+        }
+      }
     }
 
     if (type === "trigger" && Array.isArray(config.outputVariables)) {

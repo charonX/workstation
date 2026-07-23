@@ -5,7 +5,7 @@ import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 
 // Node types refined by this story (REQ-FLOW-018~021): these render the
 // per-type config fields plus the shared retries/onError section.
-const REFINED_NODE_TYPES = ["trigger", "feishuMessage", "condition", "agent"];
+const REFINED_NODE_TYPES = ["trigger", "feishuMessage", "condition", "agent", "feishuSend"];
 
 /**
  * Node properties panel for the Flow Editor.
@@ -92,6 +92,7 @@ export default function NodeConfigPanel({
 
         {type === "trigger" && <TriggerFields config={config} onChange={onUpdateConfig} t={t} />}
         {type === "feishuMessage" && <FeishuMessageFields config={config} onChange={onUpdateConfig} t={t} />}
+        {type === "feishuSend" && <FeishuSendFields config={config} onChange={onUpdateConfig} t={t} nodes={nodes} edges={edges} nodeId={node.id} />}
         {type === "condition" && (
           <ConditionFields
             config={config}
@@ -314,6 +315,116 @@ function ConditionFields({ config, onChange, nodes, edges, nodeId, t }) {
       </div>
       <VariablePicker nodes={nodes} edges={edges} currentNodeId={nodeId} onSelect={insertVariable} />
     </div>
+  );
+}
+
+// REQ-FLOW-032: 飞书消息预设格式（content JSON 模板）。
+const FEISHU_SEND_PRESETS = [
+  {
+    label: "Text",
+    msgType: "text",
+    content: { text: "已存：{{node_id.path}}" }
+  },
+  {
+    label: "Post (富文本)",
+    msgType: "post",
+    content: {
+      zh_cn: {
+        title: "链接速存完成",
+        content: [[{ tag: "text", text: "已保存：" }], [{ tag: "a", text: "{{node_id.title}}", href: "{{node_id.url}}" }]]
+      }
+    }
+  },
+  {
+    label: "Interactive Card",
+    msgType: "interactive",
+    content: {
+      type: "template",
+      data: {
+        template_id: "",
+        template_variable: { result: "{{node_id.summary}}" }
+      }
+    }
+  }
+];
+
+function FeishuSendFields({ config, onChange, nodes, edges, nodeId, t }) {
+  // REQ-FLOW-032: feishuSend msgType + JSON content with {{var}} interpolation.
+  const { recordCaret, insertVariable } = useCaretInsertion(
+    config,
+    "content",
+    onChange,
+    (fullName) => `{{${fullName}}}`
+  );
+
+  const applyPreset = (preset) => {
+    onChange("msgType", preset.msgType);
+    onChange("content", JSON.stringify(preset.content, null, 2));
+  };
+
+  return (
+    <>
+      <div className="form-group">
+        <label className="form-label">{t("flowEditor.messageType") || "消息类型"}</label>
+        <select
+          className="form-input"
+          data-testid="feishu-send-msgtype-select"
+          value={config.msgType || "text"}
+          onChange={(e) => onChange("msgType", e.target.value)}
+        >
+          <option value="text">text（纯文本）</option>
+          <option value="post">post（富文本）</option>
+          <option value="interactive">interactive（卡片）</option>
+          <option value="image">image</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{t("flowEditor.presets") || "预设格式"}</label>
+        <div style={{ display: "flex", gap: "var(--ch-space-2)", flexWrap: "wrap" }}>
+          {FEISHU_SEND_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label" htmlFor="feishu-send-content-textarea">
+          {t("flowEditor.messageContent") || "消息内容（JSON，支持 {{nodeId.var}} 插值）"}
+        </label>
+        <textarea
+          id="feishu-send-content-textarea"
+          className="form-textarea"
+          data-testid="feishu-send-content-textarea"
+          value={config.content || ""}
+          onChange={(e) => onChange("content", e.target.value)}
+          onSelect={recordCaret}
+          onClick={recordCaret}
+          onKeyUp={recordCaret}
+          rows={8}
+          spellCheck={false}
+          style={{ fontFamily: "var(--ch-font-mono, monospace)", fontSize: "12px" }}
+        />
+        <p className="help-text">{t("flowEditor.sendContentHelp") || "飞书消息 content JSON 字段。字符串值中的 {{nodeId.var}} 会被替换为对应变量（自动转义引号/换行）。默认回复原消息线程（reply）；取消勾选则在会话里新发送。"}</p>
+        <VariablePicker nodes={nodes} edges={edges} currentNodeId={nodeId} onSelect={insertVariable} />
+      </div>
+      <div className="form-group">
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--ch-space-2)" }}>
+          <input
+            type="checkbox"
+            data-testid="feishu-send-reply-toggle"
+            checked={config.replyToMessage !== false}
+            onChange={(e) => onChange("replyToMessage", e.target.checked)}
+          />
+          {t("flowEditor.replyToOriginalMessage") || "作为原消息的线程回复（否则直接发送到会话）"}
+        </label>
+      </div>
+    </>
   );
 }
 

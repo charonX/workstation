@@ -16,6 +16,7 @@ const NODE_CATEGORIES = [
     label: "Execution",
     items: [
       { type: "agent", name: "Agent", icon: "◆" },
+      { type: "feishuSend", name: "Feishu Send Message", icon: "💬" },
     ],
   },
 ];

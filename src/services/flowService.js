@@ -14,7 +14,7 @@ const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend"];
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
 function isPlainObject(value) {
@@ -95,6 +95,18 @@ function validateFeishuMessageConfig(config, base, details) {
   }
 }
 
+function validateFeishuSendConfig(config, base, details) {
+  // REQ-FLOW-032: content is optional (skipped when empty) but if present and
+  // a non-empty string, it must parse as JSON. msgType defaults to "text".
+  if (typeof config.content === "string" && config.content.trim()) {
+    try {
+      JSON.parse(config.content);
+    } catch {
+      details.push({ path: `${base}.content`, message: "Content must be valid JSON" });
+    }
+  }
+}
+
 function validateConditionConfig(config, base, details) {
   // Expression is required (v1.1 exception to the "only present fields" rule):
   // missing, empty, or whitespace-only (after trim) are all rejected.
@@ -143,6 +155,7 @@ export function validateNodeList(nodeList) {
     validateCommonConfig(node.config, base, details);
     if (type === "trigger") validateTriggerConfig(node.config, base, details);
     else if (type === "feishumessage") validateFeishuMessageConfig(node.config, base, details);
+    else if (type === "feishusend") validateFeishuSendConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
     else if (type === "agent") validateAgentConfig(node.config, base, details);
   });

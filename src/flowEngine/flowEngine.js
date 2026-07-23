@@ -1,4 +1,4 @@
-import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor } from "./executors/index.js";
+import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor, feishuSendExecutor } from "./executors/index.js";
 
 const defaultExecutors = {
   condition: conditionExecutor,
@@ -6,7 +6,8 @@ const defaultExecutors = {
   while: whileExecutor,
   agent: agentExecutor,
   trigger: triggerExecutor,
-  feishumessage: triggerExecutor
+  feishumessage: triggerExecutor,
+  feishusend: feishuSendExecutor
 };
 
 // Trigger-like node types share the same variable seeding / override semantics

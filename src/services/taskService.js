@@ -445,10 +445,30 @@ export async function executeTask(execution, flow, project) {
       executors.agent = testAgentExecutor;
     }
 
+    // REQ-FLOW-032: inject a channel-manager shim into execution variables so
+    // feishuSend nodes can send replies via the currently resolved adapter
+    // (live channelManager adapter, startup-injected adapter, or test adapter).
+    // Production path falls back to dynamic import of channelManager module.
+    const variablesForRun = {
+      ...execution.variables,
+      _channelManager: {
+        async send(channelType, payload) {
+          const adapter = await resolveChannelAdapter();
+          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
+          return adapter.send(payload);
+        },
+        async reply(channelType, payload) {
+          const adapter = await resolveChannelAdapter();
+          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
+          return adapter.reply(payload);
+        }
+      }
+    };
+
     const result = await run(
       { flow: effectiveFlow, project },
       { maxDepth: 100, maxIterations: 1000, executors },
-      execution.variables
+      variablesForRun
     );
 
     // Generation may have changed while the engine was running (server stop /
@@ -506,7 +526,9 @@ export async function executeTask(execution, flow, project) {
       console.error("Failed to persist execution nodes:", nodesErr.message);
     }
   } finally {
-    // Best-effort terminal delivery; failures are logged but do not reverse status.
+    // REQ-SCHEDULE-009 v1.1 / REQ-FLOW-032:不再自动回复 IM 消息——最终回复由
+    // flow 中显式 feishuReply 节点控制。imRouter 在入队时仍立即回执"收到，排队中"。
+    // 仅保留通知中心写入（产物/失败通知），delivery 相关代码保留用于 schedule 场景。
     if (executionGeneration === myGeneration) {
       try {
         await deliverTerminalNotification(execution.id);
@@ -569,13 +591,10 @@ async function resolveChannelAdapter() {
 }
 
 function resolveTerminalRecipient(execution) {
-  const channelReply = execution.variables?.channelReply;
-  if (channelReply) {
-    return { chatId: channelReply.chatId, messageId: channelReply.messageId };
-  }
+  // REQ-SCHEDULE-009 v1.1 / REQ-FLOW-032: channel 触发的 execution 不再自动回复 IM
+  // 消息（由 flow 中显式 feishuReply 节点控制）。仅 schedule 触发保留自动投递——
+  // 场景 A 定时日报无显式触发方，系统主动推送。
   if (execution.trigger === "schedule") {
-    // 场景 A · 定时日报：schedule 触发无显式 channelReply 时，若当前 channel
-    // adapter 在线，仍向默认 chat 投递日报摘要/失败通知。
     return { chatId: "default", messageId: undefined };
   }
   return null;

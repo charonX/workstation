@@ -24,15 +24,22 @@ const BUILTIN_TEMPLATES = [
   {
     id: "link-capture",
     name: "链接速存",
-    description: "抓取 IM 消息中的链接正文并转为 markdown 存入素材库",
+    description: "抓取 IM 消息中的链接正文并转为 markdown 存入素材库，通过飞书发送消息回复结果",
     nodeList: [
       buildFeishuMessageNode(),
       buildAgentNode(
         "fetch-to-markdown",
-        "You are a collection agent. The user sent a raw IM message in {{n1.text}}. Extract the first http(s) URL from it and call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library."
-      )
+        "You are a collection agent. The user sent a raw IM message in {{n1.text}}. Extract the first http(s) URL from it and call the `fetch-to-markdown` skill to fetch the page and save it as markdown in the project material library. After saving, set the output variable `savedPath` to the saved file's path."
+      ),
+      buildFeishuSendNode({
+        msgType: "text",
+        content: { text: "已存：{{agent.savedPath}}" }
+      })
     ],
-    edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "agent" }],
+    edges: [
+      { id: "e1", sourceNodeId: "n1", targetNodeId: "agent" },
+      { id: "e2", sourceNodeId: "agent", targetNodeId: "send" }
+    ],
     skills: ["fetch-to-markdown"],
     createChannelBinding: true
   }
@@ -89,6 +96,18 @@ function buildAgentNode(skillName, prompt) {
       options: {
         maxTurns: 10
       }
+    }
+  };
+}
+
+function buildFeishuSendNode({ msgType = "text", content } = {}) {
+  return {
+    id: "send",
+    type: "feishuSend",
+    config: {
+      msgType,
+      replyToMessage: true,
+      content: typeof content === "string" ? content : JSON.stringify(content, null, 2)
     }
   };
 }
