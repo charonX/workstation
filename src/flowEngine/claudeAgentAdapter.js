@@ -4,6 +4,16 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 // 默认单节点最大轮数，防止失控计费（tech-design §6.4）；可经 config.options.maxTurns 覆盖。
 const DEFAULT_MAX_TURNS = 20;
 
+// 历史遗留/无效模型名——旧 flow 里存过 "codex" 等非 anthropic 模型 id，这些传给 SDK 会报错。
+// 统一视为"未指定模型"，让 SDK 用默认模型。
+const INVALID_MODEL_VALUES = new Set(["", "codex", "undefined", "null"]);
+function normalizeModel(model) {
+  if (model == null) return undefined;
+  const trimmed = String(model).trim();
+  if (trimmed === "" || INVALID_MODEL_VALUES.has(trimmed)) return undefined;
+  return trimmed;
+}
+
 // 鉴权失败指引（tech-design §6.3）：应用不存储凭证，复用本机 claude code 登录态。
 const AUTH_GUIDANCE =
   "本机 claude code 未登录或不可用，请先在本机完成 claude 登录（或自行配置 ANTHROPIC_API_KEY）";
@@ -38,8 +48,9 @@ export async function execute({ prompt, model, projectPath, options, apiKey } = 
     allowDangerouslySkipPermissions: true,
     maxTurns: options?.maxTurns ?? DEFAULT_MAX_TURNS,
   };
-  if (model) {
-    sdkOptions.model = model;
+  const effectiveModel = normalizeModel(model);
+  if (effectiveModel) {
+    sdkOptions.model = effectiveModel;
   }
   if (options?.systemPrompt !== undefined) {
     sdkOptions.systemPrompt = options.systemPrompt;
@@ -48,7 +59,7 @@ export async function execute({ prompt, model, projectPath, options, apiKey } = 
     sdkOptions.env = { ...process.env, ANTHROPIC_API_KEY: apiKey };
   }
 
-  log(`claude agent execute start (model=${model ?? "default"}, cwd=${projectPath})`);
+  log(`claude agent execute start (model=${effectiveModel ?? "default"}, cwd=${projectPath})`);
 
   let resultMessage;
   let assistantText = "";
