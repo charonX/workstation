@@ -11,7 +11,6 @@ import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
 import * as source from "./commands/source.js";
 import * as channel from "./commands/channel.js";
-import * as template from "./commands/template.js";
 
 const entities = {
   settings,
@@ -23,8 +22,7 @@ const entities = {
   dashboard,
   notify,
   source,
-  channel,
-  template
+  channel
 };
 
 function parseArgs(args) {

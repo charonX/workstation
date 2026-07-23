@@ -228,36 +228,6 @@ export function getSkillRepoByPath(repoPath) {
   return row ? rowToRepo(row) : undefined;
 }
 
-const BUILTIN_COLLECTION_SKILLS_PATH = path.resolve(
-  process.cwd(),
-  "src/assets/skill-repos/opc-collection-skills"
-);
-
-export function ensureBuiltInCollectionSkills() {
-  if (!fs.existsSync(BUILTIN_COLLECTION_SKILLS_PATH)) {
-    console.warn("Built-in collection skills path not found:", BUILTIN_COLLECTION_SKILLS_PATH);
-    return { ensured: false, reason: "path_not_found" };
-  }
-
-  const existing = getSkillRepoByPath(BUILTIN_COLLECTION_SKILLS_PATH);
-  if (existing) {
-    return { ensured: true, repoId: existing.id, existing: true };
-  }
-
-  const skills = scanRepoSkills(BUILTIN_COLLECTION_SKILLS_PATH);
-  const repo = createSkillRepo({
-    name: "opc-collection-skills",
-    repoPath: BUILTIN_COLLECTION_SKILLS_PATH,
-    installSource: "builtin"
-  });
-
-  for (const skill of skills) {
-    createSkill(skill, repo.id);
-  }
-
-  return { ensured: true, repoId: repo.id, skills: skills.length };
-}
-
 // BUG-011 fix: reconcile user-installed skill repos on disk with DB records.
 // Scans the configured skillRepoPath directory; any subdirectory that contains
 // skills/ with SKILL.md files but has no skill_repos DB row is re-registered.
@@ -368,8 +338,7 @@ export function listSkillRepos() {
   const repos = db
     .prepare("SELECT * FROM skill_repos ORDER BY createdAt DESC")
     .all()
-    .map(rowToRepo)
-    .filter((repo) => repo.installSource !== "builtin");
+    .map(rowToRepo);
   const skills = db.prepare("SELECT * FROM skills").all().map(rowToSkill);
   const byRepo = new Map(repos.map((r) => [r.id, []]));
   for (const skill of skills) {

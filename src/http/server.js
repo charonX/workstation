@@ -20,10 +20,9 @@ import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
-import { handleTemplates } from "./routes/templates.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
-import { ensureBuiltInCollectionSkills, reconcileUserSkillRepos } from "../services/skillService.js";
+import { reconcileUserSkillRepos } from "../services/skillService.js";
 
 const activeServers = new Set();
 
@@ -79,10 +78,6 @@ export function startServer(options = {}) {
     }
     settingsService.resetSettings();
   }
-  // 生产路径（reset:false）与测试路径都需要幂等播种内置 collection skill repo，
-  // 否则首次启动或新 DB 文件时 templateService 会因找不到内置技能而抛 E-TPL-SKILL-MISSING。
-  ensureBuiltInCollectionSkills();
-
   // BUG-011: 协调用户已安装的 skill repo——扫描 settings.skillRepoPath 目录，
   // 把磁盘上存在但 DB 里没登记的 repo（因之前 DB 路径错位而丢失的记录）补登记回 DB。
   reconcileUserSkillRepos();
@@ -227,8 +222,6 @@ async function handleRequest(req, res, server) {
       return handleContentSources(req, res, body, subPath);
     case "channel":
       return handleChannel(req, res, body, subPath);
-    case "templates":
-      return handleTemplates(req, res, body, subPath);
     case "server":
       return handleServer(req, res, server, subPath);
     default:
