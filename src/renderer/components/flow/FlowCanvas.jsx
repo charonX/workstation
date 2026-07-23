@@ -35,7 +35,7 @@ function getIconForType(type) {
 function getDefaultConfig(type) {
   switch (type) {
     case "agent":
-      return { model: "codex", systemPrompt: "" };
+      return { provider: "anthropic", model: "", systemPrompt: "" };
     case "condition":
       return { expression: "" };
     case "feishuMessage":
