@@ -47,22 +47,27 @@ migrateLegacyDb({
 // to userData/settings.json (because saveChannelCredentials runs after env is
 // set), but flows/bindings/projects created during that window lived in
 // ~/.opc-workstation/data.db. Detect this by checking whether the home-dir DB
-// has channel_bindings (a story-2026-07-19 table) while the canonical DB does
-// not — if so, back up the stale canonical DB and copy over the real one.
+// has actual channel_bindings ROWS while the canonical DB has none (checking
+// row count, not just table existence, because initSchema auto-creates empty
+// tables on first startup with the new code) — if so, back up the stale
+// canonical DB and copy over the real one.
 const legacyHomeDb = path.join(os.homedir(), ".opc-workstation", "data.db");
 if (fsSync.existsSync(legacyHomeDb) && fsSync.existsSync(newDbPath)) {
   try {
-    const homeHasBindings = dbHasTable(legacyHomeDb, "channel_bindings");
-    const canonicalHasBindings = dbHasTable(newDbPath, "channel_bindings");
-    if (homeHasBindings && !canonicalHasBindings) {
+    const homeBindingCount = dbTableCount(legacyHomeDb, "channel_bindings");
+    const canonicalBindingCount = dbTableCount(newDbPath, "channel_bindings");
+    if (homeBindingCount > 0 && canonicalBindingCount === 0) {
       const backupPath = `${newDbPath}.pre-bug-007.bak`;
-      fsSync.copyFileSync(newDbPath, backupPath);
+      if (!fsSync.existsSync(backupPath)) {
+        fsSync.copyFileSync(newDbPath, backupPath);
+      }
       fsSync.copyFileSync(legacyHomeDb, newDbPath);
       console.log(JSON.stringify({
         event: "bug-007-recovery-db",
         source: legacyHomeDb,
         target: newDbPath,
         backup: backupPath,
+        recoveredBindings: homeBindingCount,
         note: "recovered flows/bindings from ~/.opc-workstation/ (pre-bootstrap-env)"
       }));
     }
@@ -71,22 +76,24 @@ if (fsSync.existsSync(legacyHomeDb) && fsSync.existsSync(newDbPath)) {
   }
 }
 
-function dbHasTable(dbPath, tableName) {
+function dbTableCount(dbPath, tableName) {
   // Lazy-load better-sqlite3 so the native binding does not affect bootstrap
   // import order; this function only runs during one-time recovery after env is set.
   const Database = require("better-sqlite3");
   try {
     const db = new Database(dbPath, { readonly: true });
     try {
-      const row = db.prepare(
+      const tableExists = db.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
       ).get(tableName);
-      return !!row;
+      if (!tableExists) return 0;
+      const row = db.prepare(`SELECT COUNT(*) as c FROM "${tableName}"`).get();
+      return row?.c ?? 0;
     } finally {
       db.close();
     }
   } catch {
-    return false;
+    return 0;
   }
 }
 

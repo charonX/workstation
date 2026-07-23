@@ -247,28 +247,51 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       setStatus("offline", "stopped");
     },
 
-    async send({ chatId, text } = {}) {
-      if (!chatId || text === undefined) {
-        throw new Error("E-CHANNEL-SEND: chatId and text are required");
+    async send({ chatId, text, msgType = "text", content } = {}) {
+      if (!chatId) {
+        throw new Error("E-CHANNEL-SEND: chatId is required");
+      }
+      // Back-compat: if `text` is passed as a string, wrap as text content.
+      // Otherwise accept msgType + content (already-JSON-stringified content body).
+      let resolvedMsgType = msgType;
+      let resolvedContent;
+      if (content !== undefined) {
+        resolvedContent = typeof content === "string" ? content : JSON.stringify(content);
+      } else if (text !== undefined) {
+        resolvedMsgType = "text";
+        resolvedContent = JSON.stringify({ text });
+      } else {
+        throw new Error("E-CHANNEL-SEND: text or content is required");
       }
       const url = `${baseUrl}/open-apis/im/v1/messages?receive_id_type=chat_id`;
       const body = {
         receive_id: chatId,
-        msg_type: "text",
-        content: JSON.stringify({ text })
+        msg_type: resolvedMsgType,
+        content: resolvedContent
       };
       return sendWithRetry(async () => postJson(url, body, authorizationHeader()));
     },
 
-    async reply({ messageId, text } = {}) {
-      if (!messageId || text === undefined) {
-        throw new Error("E-CHANNEL-SEND: messageId and text are required");
+    async reply({ messageId, text, msgType = "text", content, chatId } = {}) {
+      if (!messageId) {
+        throw new Error("E-CHANNEL-SEND: messageId is required");
+      }
+      let resolvedMsgType = msgType;
+      let resolvedContent;
+      if (content !== undefined) {
+        resolvedContent = typeof content === "string" ? content : JSON.stringify(content);
+      } else if (text !== undefined) {
+        resolvedMsgType = "text";
+        resolvedContent = JSON.stringify({ text });
+      } else {
+        throw new Error("E-CHANNEL-SEND: text or content is required");
       }
       const url = `${baseUrl}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`;
       const body = {
-        msg_type: "text",
-        content: JSON.stringify({ text })
+        msg_type: resolvedMsgType,
+        content: resolvedContent
       };
+      if (chatId) body.receive_id = chatId;
       return sendWithRetry(async () => postJson(url, body, authorizationHeader()));
     },
 
