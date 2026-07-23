@@ -379,6 +379,32 @@ body {
   text-decoration: underline;
 }
 
+.project-action-secondary,
+.flow-action-secondary,
+.skill-action-secondary {
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-weight: var(--ch-weight-medium);
+  padding: 0;
+}
+
+.project-action-secondary:hover,
+.flow-action-secondary:hover,
+.skill-action-secondary:hover {
+  color: var(--ch-text);
+  text-decoration: underline;
+}
+
+.project-action-secondary:disabled,
+.flow-action-secondary:disabled,
+.skill-action-secondary:disabled {
+  color: var(--ch-text-disabled, #999);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
 /* Loading screen */
 .loading-screen {
   display: flex;
@@ -871,6 +897,12 @@ body {
   font-size: var(--ch-text-xs);
   color: var(--ch-text-tertiary);
   font-family: var(--ch-font-mono);
+}
+
+.skill-repo-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-3);
 }
 
 .skill-cell-main {

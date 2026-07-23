@@ -166,7 +166,10 @@
     "confirmDeleteTitle": "Delete Skill",
     "confirmDeleteMessage": "Are you sure you want to delete this skill? It must not be linked to any project.",
     "confirmDeleteRepoTitle": "Delete Skill Repo",
-    "confirmDeleteRepoMessage": "Are you sure you want to delete this skill repo? All contained skills and project associations will be removed."
+    "confirmDeleteRepoMessage": "Are you sure you want to delete this skill repo? All contained skills and project associations will be removed.",
+    "rescan": "Rescan",
+    "update": "Update",
+    "working": "Working..."
   },
   "topBar": {
     "searchPlaceholder": "Search projects, flows, executions...",

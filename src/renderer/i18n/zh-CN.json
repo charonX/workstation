@@ -166,7 +166,10 @@
     "confirmDeleteTitle": "删除技能",
     "confirmDeleteMessage": "确定要删除该技能吗？删除前需要先解除与所有项目的关联。",
     "confirmDeleteRepoTitle": "删除技能仓库",
-    "confirmDeleteRepoMessage": "确定要删除该技能仓库吗？仓库内所有技能及项目关联都会被移除。"
+    "confirmDeleteRepoMessage": "确定要删除该技能仓库吗？仓库内所有技能及项目关联都会被移除。",
+    "rescan": "刷新",
+    "update": "更新",
+    "working": "处理中..."
   },
   "topBar": {
     "searchPlaceholder": "搜索项目、流程、执行历史...",
