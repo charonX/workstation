@@ -8,6 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
+import { validateNodeList } from "../../../../../../src/services/flowService.js";
 
 describe("REQ-FLOW-037: 子流程失败/未达出口向父传播", () => {
   it("AC1: 子流程节点失败 invokeSubflow throw → 父 callFlow error → 父中止", async () => {
@@ -100,9 +101,12 @@ describe("REQ-FLOW-037: 子流程失败/未达出口向父传播", () => {
   });
 
   it("AC6: callFlow onError=ignore 被 validateNodeList 拒绝（固定 fail）", () => {
-    // 单元层验证：callFlow 节点配 onError='ignore' 时 validateNodeList 抛错
-    // 实现侧需在 validateNodeList 对 callflow 类型强制 onError=fail
-    // 注：此断言依赖实现；如果实现选择允许 ignore 则此测试需调整
-    // 按 PRD 稳定块 #5/tech-design D 决策，一期固定 fail
+    // callFlow 节点配 onError='ignore' 时 validateNodeList 抛错（一期固定 fail，不支持 ignore）
+    const badNodes = [
+      { id: "call", type: "callFlow", config: {
+        targetFlowId: "x", targetInputNodeId: "y", inputMappings: [], outputMappings: [], onError: "ignore"
+      }}
+    ];
+    assert.throws(() => validateNodeList(badNodes), /onError/);
   });
 });
