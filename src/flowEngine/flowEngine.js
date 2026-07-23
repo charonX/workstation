@@ -27,6 +27,8 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
   const maxDepth = options.maxDepth ?? 100;
   const maxIterations = options.maxIterations ?? 1000;
+  const services = options.services ?? {};
+  const currentDepthOption = options.currentDepth ?? 0;
 
   // Support both test-facing `nodes` and service-facing `nodeList`.
   // Service layer uses `nodeList` for the array and `nodes` for the count,
@@ -56,7 +58,15 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     incomingCount.set(edge.targetNodeId, (incomingCount.get(edge.targetNodeId) ?? 0) + 1);
   }
   const startNodes = nodeList.filter((node) => incomingCount.get(node.id) === 0);
-  let currentNodeId = startNodes.length > 0 ? startNodes[0].id : nodeList[0].id;
+  let currentNodeId;
+  if (options.startNodeId != null) {
+    if (!nodesById.has(options.startNodeId)) {
+      abortRun([], `Node ${options.startNodeId} not found`);
+    }
+    currentNodeId = options.startNodeId;
+  } else {
+    currentNodeId = startNodes.length > 0 ? startNodes[0].id : nodeList[0].id;
+  }
 
   // 变量注册表（tech-design §5.2）：单一扁平 context 为唯一事实来源，
   // fullName 键（"n1.x"）与 legacy 平铺键共存。单个可变对象贯穿整次执行——
@@ -121,7 +131,9 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
       context,
       project,
       projectPath,
-      iteration: visitIndex
+      iteration: visitIndex,
+      services,
+      currentDepth: currentDepthOption
     }, retries);
     record.attemptCount = attemptCount;
 
@@ -158,6 +170,17 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
         record.outputVariables[fullName] = result.output;
       }
       lastOutput = result.output;
+    }
+
+    // D10 多输出支持：executor 返回 result.outputVariables plain object 时，
+    // 遍历写入 namespaced key 和 legacy 裸 key 到 context 与 record.outputVariables。
+    if (result.outputVariables && isPlainObject(result.outputVariables)) {
+      for (const [varName, value] of Object.entries(result.outputVariables)) {
+        const fullName = `${node.id}.${varName}`;
+        context[fullName] = value;
+        context[varName] = value;
+        record.outputVariables[fullName] = value;
+      }
     }
 
     if (nodeType === "condition" && (result.output === "true" || result.output === "false")) {
@@ -328,4 +351,10 @@ function incrementFirstNumericContext(context) {
       return;
     }
   }
+}
+
+function isPlainObject(value) {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
