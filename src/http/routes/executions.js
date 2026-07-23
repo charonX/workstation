@@ -1,5 +1,4 @@
 import * as taskService from "../../services/taskService.js";
-import * as flowService from "../../services/flowService.js";
 
 export function handleExecutions(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -13,13 +12,7 @@ export function handleExecutions(req, res, body, pathParts) {
 
     if (req.method === "POST") {
       try {
-        // 允许调用方只传 flowId：若缺 projectId，从 flow 记录解析（嵌套执行测试与 UI 手动触发常用）。
-        const payload = { ...body };
-        if (!payload.projectId && payload.flowId) {
-          const flow = flowService.getFlow(payload.flowId);
-          if (flow) payload.projectId = flow.projectId;
-        }
-        const result = taskService.createTask(payload);
+        const result = taskService.createTask(body);
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(result));
       } catch (err) {
