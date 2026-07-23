@@ -8,7 +8,7 @@
 /**
  * 通知中心 UI（E2E，UX 原型映射 ux/notifications.html）。
  * 提取的可验证项：
- *  - 侧边栏底部 "Notifications" 入口 + 未读徽标（nav-badge，0 时隐藏）。
+ *  - 右上角通知图标按钮（topbar-notifications-button）+ 未读徽标（0 时隐藏）。
  *  - 列表页：按时间倒序；过滤 tab（All/Artifacts/Execution Failed/Channel Status，各带计数）；
  *    未读条目带 "Unread" pill 与 "Mark as read" 按钮；空态 "No notifications in this category"。
  *  - "Mark all as read" 按钮（无未读时 disabled）。
@@ -31,8 +31,8 @@ async function getUnreadCount(apiBaseUrl) {
 }
 
 async function openNotificationsPage(firstWindow) {
-  // 签核侧边栏入口文案 "Notifications"（UX 原型 sidebar-bottom nav-link）。
-  await firstWindow.getByRole("link", { name: "Notifications" }).click();
+  // 通知入口改为右上角 TopBar 图标按钮（topbar-notifications-button）。
+  await firstWindow.locator("[data-testid='topbar-notifications-button']").click();
   await expect(firstWindow.getByRole("heading", { name: "Notifications" })).toBeVisible();
 }
 
@@ -54,7 +54,7 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
     await stopElectronApp(electronApp, userDataDir);
   });
 
-  test("侧边栏入口显示未读徽标，计数与 API 一致", async () => {
+  test("TopBar 通知图标显示未读徽标，计数与 API 一致", async () => {
     await seedNotifications(electronApp, userDataDir, [
       { id: "ntf-e2e-1", type: "artifact", title: "日报已生成 A", body: "outputs/daily/a.md", createdAt: "2026-07-19T10:00:00.000Z" },
       { id: "ntf-e2e-2", type: "execution-failed", title: "执行失败 B", body: "E-AGENT-FAILED", createdAt: "2026-07-19T10:01:00.000Z" },
@@ -62,8 +62,8 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
     ]);
 
     const expected = await getUnreadCount(apiBaseUrl);
-    // UX: sidebar-bottom 通知入口的 nav-badge。
-    const badge = firstWindow.locator("[data-testid='nav-notifications-badge'], .nav-badge").first();
+    // UX: TopBar 通知图标的 badge（icon-btn-badge）。
+    const badge = firstWindow.locator("[data-testid='topbar-notifications-button-badge']").first();
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText(String(expected));
   });
@@ -107,10 +107,10 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
     // 单条已读（UX: 未读条目带 "Mark as read" 按钮；文案签核）。
     const firstUnread = firstWindow.locator(".ntf-item.unread, [data-testid='notification-item'][data-read='false']").first();
     await firstUnread.getByRole("button", { name: "Mark as read" }).click();
-    let badge = firstWindow.locator("[data-testid='nav-notifications-badge'], .nav-badge").first();
+    let badge = firstWindow.locator("[data-testid='topbar-notifications-button-badge']").first();
     await expect(badge).toHaveText("1");
 
-    // 全部已读 → 徽标隐藏（UX: count=0 时 nav-badge 加 hidden；按钮文案 "Mark all as read" 签核）。
+    // 全部已读 → 徽标隐藏（count=0 时 icon-btn-badge 不渲染）。
     await firstWindow.getByRole("button", { name: "Mark all as read" }).click();
     await expect(badge).toBeHidden();
     await expect(firstWindow.getByRole("button", { name: "Mark all as read" })).toBeDisabled();
