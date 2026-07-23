@@ -80,11 +80,25 @@
 - 优先级 P0 / 必须 / cross-module / taskService, channelAdapter / scheduling-execution / execution / 集成
 - 接口契约：tech-design「系统层投递规则」。
 - 验收标准：
-  1. execution 到终态时，若 `variables.channelReply={channelType, chatId, messageId}` 存在 → 调 `channelAdapter.send` 发送模板消息（成功：产物路径/文档链接；失败：错误摘要）。
+  1. ~~execution 到终态时，若 `variables.channelReply={channelType, chatId, messageId}` 存在 → 自动调 `channelAdapter.send` 发送模板消息~~（v1.1 移除：最终回复由显式 feishuReply 节点控制，见 REQ-FLOW-032）。
   2. 无 `channelReply` 时不投递。
   3. 投递失败不反转 execution 终态，记告警日志。
   4. agent 节点实现不参与消息发送（代码结构断言）。
+  5. v1.1：终态**不再自动回复 IM 消息**；仅写通知中心（execution notification），最终回复由 flow 中的 feishuReply 节点完成。**立即回执（"收到，排队中（第 N 位）"）仍由 imRouter 在入队时发送，不受影响。**
 - seam/测试：同上目录（mock channelAdapter）。
+
+## REQ-FLOW-032 飞书回复节点（feishuReply）
+
+- 优先级 P0 / 必须 / cross-module / renderer, flowEngine, flowService, channelManager / flow-orchestration / flow-node / 单元+E2E / UX 参照现有 Flow Editor 风格
+- 接口契约：tech-design「feishuReply 节点」。
+- 验收标准：
+  1. Flow Editor NodePalette 的 Execution 分组提供 `feishuReply` 节点；点击可添加到画布。
+  2. `feishuReply` 节点配置面板提供 `text` 文本模板字段（多行 textarea），支持 `{{nodeId.variableName}}` 插值（与 agent prompt 相同的变量替换机制）。
+  3. `flowEngine.run()` 识别 `feishuReply` 节点类型：执行时从 context 读取 `channelReply={channelType, chatId, messageId}`；用插值后的 text 调 `channelManager.reply()`（或 send()，当无 messageId 时）回复飞书消息；执行成功后把发送结果写入 outputVariables。
+  4. 当 execution 上下文中无 `channelReply`（例如手动调试、schedule 触发）时，`feishuReply` 节点执行降级：记 warning 日志、status=success（不阻断 flow）、outputVariables 记录 skipped=true。
+  5. `flowService.validateNodeList` 与前端 `validateFlowNodes` 接受 `feishuReply` 类型。
+  6. 链接速存模板在 Agent 节点后追加 `feishuReply` 节点，默认 text 模板为"已存：{{agent.outputPath}}"（或合适的产物路径变量），形成 3 节点链：feishuMessage → agent → feishuReply。
+- seam/测试：`tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/feishuReplyNode.test.js`。
 
 ## REQ-FLOW-029 trigger 注入变量覆盖
 

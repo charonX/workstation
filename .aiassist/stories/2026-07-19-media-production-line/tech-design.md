@@ -107,7 +107,7 @@ App 启动 ──→ serverRegistry 发现既有 server？──是──→ shu
 | 副作用 | 把 adapter `onMessage` 回调桥接为 `eventBus.emit('channel:message-received', payload)`；把 `onStatusChange` 桥接为 `eventBus.emit('channel:status-changed', payload)`；维护当前 adapter 实例 |
 | 幂等性 | `restart` 会先 stop 旧实例再 start 新实例，避免双连接 |
 
-**系统层投递规则（回复责任方裁决）**：触发方（通道 adapter）把标准变量 `channelReply={channelType, chatId, messageId}` 注入 execution variables；**taskService 执行终态钩子统一投递**——成功：场景 B 回复"已存：<产物路径>"，场景 A 发模板化日报摘要（日期/条数/来源数/文档链接或文件路径，数据取自 `executions.artifacts`，不依赖 agent 输出文本）；失败：模板化错误摘要（E-AGENT-FAILED / E-FETCH-FAILED 原因）。边界：taskService 只识别标准变量 `channelReply`，不感知通道语义（符合 PRD §10.1"不感知触发来源类型"）；agent 不参与消息发送，失败送达与 agent 存亡解耦。
+**系统层投递规则（v1.1 修订）**：触发方（通道 adapter）把标准变量 `channelReply={channelType, chatId, messageId}` 注入 execution variables；**taskService 执行终态钩子不再自动回复 IM 消息**——仅写通知中心（`writeExecutionNotification`）。最终回复由 flow 中的 `feishuReply` 显式节点负责（见 §5.x）。**立即回执**（imRouter 入队时"收到，排队中（第 N 位）"）保留，满足飞书 3 秒时限。边界：taskService 只识别标准变量 `channelReply`，不感知通道语义；agent 不参与消息发送。
 
 ### 通道绑定与 IM 路由
 
