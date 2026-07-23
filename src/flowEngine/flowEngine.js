@@ -381,9 +381,14 @@ function chooseNextNode(node, output, outgoing) {
   if (isControlNode && typeof output === "string") {
     const matched = outEdges.find((edge) => edge.sourcePort === output);
     if (matched) {
-      // For foreach/while body branch: route to body, but after the body sub-DAG
-      // completes we must resume the control node (set postLoopback so caller
-      // pushes a continuation). "true" branch of while is also a body-like loop.
+      // For foreach body branch: route to the body edge, and after the body
+      // sub-DAG completes we must resume the foreach node for the next iteration
+      // (set postLoopback so caller pushes a continuation onto the stack).
+      // whileExecutor returns "body"/"exit" (not "true"/"false"); its "body"
+      // path relies on the `loopBack` fallback below when no labeled body edge
+      // exists. A labeled body edge on while would need the same postLoopback
+      // treatment; the `output === "true"` guard is kept for forward-compat with
+      // executors that emit booleans-as-branch-labels (e.g. custom overrides).
       const postLoopback =
         (nodeType === "foreach" && output === "body") ||
         (nodeType === "while" && output === "true");

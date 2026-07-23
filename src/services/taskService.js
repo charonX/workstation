@@ -497,7 +497,7 @@ async function invokeSubflowImpl({
       inputVars || {}
     );
 
-    // REQ-FLOW-033 AC5 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口。
+    // REQ-FLOW-035 AC6 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口（见 FLOW-033 AC4）。
     const nodesById = new Map(childNodeList.map((n) => [n.id, n]));
     const exitRecord = childResult.nodeRecords
       .filter((r) => nodesById.get(r.nodeId)?.type?.toLowerCase() === "flowoutput")
