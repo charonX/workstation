@@ -1,0 +1,45 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-07-23-nested-flow
+intention: >-
+  当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
+  每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
+
+phase: ASSERTION-SIGNOFF # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-07-23
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-07-23, from: -, to: THINK, note: "创建 story。用户痛点：flow 不支持嵌套，通用收发逻辑无法封装复用，处理流程无法跨 flow 分发组合。"}
+  - {at: 2026-07-23, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：核心='flow 作为节点'同步调用模型；子 flow 多 trigger/多入口共存、隔离 context、显式入出参映射、失败中止、8 层上限+静态循环检测、嵌套执行记录；本期做 callFlow 底层抽象，路由/扇出是上层节点的事。"}
+  - {at: 2026-07-23, from: PRD, to: TECH-DESIGN, note: "PRD v0.1 用户审查通过。11 稳定块、complex 复杂度、11 错误码；初始决策方向：callFlow 内联递归、独立 execution 行带 parentExecutionId、引擎加 startNodeId。"}
+  - {at: 2026-07-23, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v0.1 完成：9 个关键决策（services 注入/内联递归/永远 draft/invokeSubflow 一站式/flowOutput 事后扫描/入参单引用保留类型/单 DFS 检测/独立 execution 行带 parentId/入口 override）；ADR-008 已登记；反向同步 PRD 子 flow 版本语义为'永远读当前版本（draft）'。"}
+  - {at: 2026-07-23, from: CRYSTALLIZE, to: TEST, note: "/review --stage=tech 完成（WARN，0 阻塞）；补入 D10 引擎多输出机制后通过；requirements.md v1 生成：15 REQ（FLOW-032~046），hash=12fcb37...；business-capabilities.md 已更新。"}
+  - {at: 2026-07-23, from: TEST, to: ASSERTION-SIGNOFF, note: "/test-author 完成：9 个单元/API 测试文件 + 2 个 E2E 文件；test-plan.md 已生成；所有 TODO: HUMAN ASSERTION 位置已标记待签核。进入门 1：/signoff --stage=assertion。"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
