@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
 
-export default function SkillTable({ repos, onSkillClick, onRepoDelete }) {
+export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRescan, onRepoUpdate, busyRepoId }) {
   const { t } = useTranslation();
 
   const totalSkills = repos.reduce((sum, group) => sum + group.skills.length, 0);
+  const isBusy = (id) => busyRepoId === id;
 
   return (
     <div className="skill-table" data-testid="skill-table">
@@ -19,18 +20,47 @@ export default function SkillTable({ repos, onSkillClick, onRepoDelete }) {
                   {group.repo.installSource} · {group.repo.repoPath}
                 </span>
               </div>
-              {onRepoDelete && (
-                <button
-                  className="skill-action-danger"
-                  data-testid="repo-delete-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRepoDelete(group.repo.id);
-                  }}
-                >
-                  {t("skills.deleteRepo")}
-                </button>
-              )}
+              <div className="skill-repo-actions">
+                {onRepoRescan && (
+                  <button
+                    className="skill-action-secondary"
+                    data-testid="repo-rescan-button"
+                    disabled={isBusy(group.repo.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRepoRescan(group.repo.id);
+                    }}
+                  >
+                    {isBusy(group.repo.id) ? t("skills.working") : t("skills.rescan")}
+                  </button>
+                )}
+                {onRepoUpdate && (
+                  <button
+                    className="skill-action-secondary"
+                    data-testid="repo-update-button"
+                    disabled={isBusy(group.repo.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRepoUpdate(group.repo.id);
+                    }}
+                  >
+                    {isBusy(group.repo.id) ? t("skills.working") : t("skills.update")}
+                  </button>
+                )}
+                {onRepoDelete && (
+                  <button
+                    className="skill-action-danger"
+                    data-testid="repo-delete-button"
+                    disabled={isBusy(group.repo.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRepoDelete(group.repo.id);
+                    }}
+                  >
+                    {t("skills.deleteRepo")}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="skill-table-header">

@@ -1,6 +1,6 @@
 import * as skillService from "../../services/skillService.js";
 
-export function handleSkillRepos(req, res, body, pathParts) {
+export async function handleSkillRepos(req, res, body, pathParts) {
   if (pathParts.length === 0) {
     if (req.method === "GET") {
       const repos = skillService.listSkillRepos();
@@ -18,6 +18,28 @@ export function handleSkillRepos(req, res, body, pathParts) {
       return badRequest(res, "Cannot delete skill repo");
     }
     return noContent(res);
+  }
+
+  // POST /api/skill-repos/:id/rescan — re-read SKILL.md files from disk, sync DB.
+  if (pathParts.length === 2 && pathParts[1] === "rescan" && req.method === "POST") {
+    try {
+      const result = skillService.rescanSkillRepo(repoId);
+      return ok(res, result);
+    } catch (err) {
+      if (err.status === 404) return notFound(res, err.message);
+      return badRequest(res, err.message);
+    }
+  }
+
+  // POST /api/skill-repos/:id/update — npm pull + rescan (falls back to rescan for non-npm repos).
+  if (pathParts.length === 2 && pathParts[1] === "update" && req.method === "POST") {
+    try {
+      const result = await skillService.updateSkillRepo(repoId);
+      return ok(res, result);
+    } catch (err) {
+      if (err.status === 404) return notFound(res, err.message);
+      return badRequest(res, err.message);
+    }
   }
 
   return notFound(res);

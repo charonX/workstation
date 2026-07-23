@@ -48,3 +48,11 @@ export function installSkill(body) {
 export function deleteSkillRepo(repoId) {
   return del(`/api/skill-repos/${repoId}`);
 }
+
+export function rescanSkillRepo(repoId) {
+  return post(`/api/skill-repos/${repoId}/rescan`, {});
+}
+
+export function updateSkillRepo(repoId) {
+  return post(`/api/skill-repos/${repoId}/update`, {});
+}

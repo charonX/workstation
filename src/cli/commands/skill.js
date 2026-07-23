@@ -83,6 +83,20 @@ export async function repoDelete(flags) {
   return { success: true };
 }
 
+// Rescan: re-read SKILL.md files from disk and sync DB metadata.
+export async function rescan(flags) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/skill-repos/${flags.id}/rescan`, { method: "POST" });
+  return handleResponse(res);
+}
+
+// Update: re-install npm-sourced repos (pull latest) and rescan; non-npm repos rescan only.
+export async function update(flags) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}/api/skill-repos/${flags.id}/update`, { method: "POST" });
+  return handleResponse(res);
+}
+
 async function handleResponse(res, expectedStatus) {
   const data = await res.json();
   if (!res.ok || (expectedStatus && res.status !== expectedStatus)) {

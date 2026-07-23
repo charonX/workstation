@@ -681,3 +681,117 @@ export function deleteSkillRepo(repoId) {
 
   return { deleted: true };
 }
+
+// Rescan a repo on disk: re-read SKILL.md files, add/update/remove skills in DB
+// to match what's currently on disk. Returns a summary of changes.
+export function rescanSkillRepo(repoId) {
+  const db = getDb();
+  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
+  if (!repo) {
+    const err = new Error(`Skill repo not found: ${repoId}`);
+    err.status = 404;
+    throw err;
+  }
+  if (!fs.existsSync(repo.repoPath)) {
+    const err = new Error(`Repo path not found on disk: ${repo.repoPath}`);
+    err.status = 400;
+    throw err;
+  }
+
+  const diskSkills = scanRepoSkills(repo.repoPath);
+  const existingRows = db.prepare("SELECT * FROM skills WHERE repoId = ?").all(repoId).map(rowToSkill);
+  const existingByName = new Map(existingRows.map(s => [s.name, s]));
+
+  const added = [];
+  const updated = [];
+  const removed = [];
+
+  // Add/update: for each skill on disk, insert or update DB row.
+  for (const skillData of diskSkills) {
+    const existing = existingByName.get(skillData.name);
+    if (existing) {
+      db.prepare(`
+        UPDATE skills SET description=?, repoPath=?, version=?, dependencies=?, category=?, author=?, tags=?, parameters=?, examples=?, readme=?
+        WHERE id = ?
+      `).run(
+        skillData.description ?? null,
+        skillData.repoPath,
+        skillData.version ?? null,
+        JSON.stringify(skillData.dependencies || []),
+        skillData.category ?? null,
+        skillData.author ?? null,
+        JSON.stringify(skillData.tags || []),
+        JSON.stringify(skillData.parameters || []),
+        JSON.stringify(skillData.examples || []),
+        skillData.readme ?? null,
+        existing.id
+      );
+      updated.push(skillData.name);
+    } else {
+      createSkill(skillData, repoId);
+      added.push(skillData.name);
+    }
+  }
+
+  // Remove: DB skills not present on disk.
+  const diskNames = new Set(diskSkills.map(s => s.name));
+  for (const existing of existingRows) {
+    if (!diskNames.has(existing.name)) {
+      removeSkillSymlinksForSkill(existing.id);
+      db.prepare("DELETE FROM skills WHERE id = ?").run(existing.id);
+      removed.push(existing.name);
+    }
+  }
+
+  return { repoId, repoName: repo.name, added, updated, removed, total: diskSkills.length };
+}
+
+// Update an npm-sourced skill repo by re-running npm install and rescanning.
+export async function updateSkillRepo(repoId) {
+  const db = getDb();
+  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
+  if (!repo) {
+    const err = new Error(`Skill repo not found: ${repoId}`);
+    err.status = 404;
+    throw err;
+  }
+  if (repo.installSource !== "npm" && repo.installSource !== "recovered") {
+    // Plugin/recovered/local repos don't have a package identifier to re-fetch;
+    // fall back to rescan (user can pull new files manually, then call rescan).
+    return rescanSkillRepo(repoId);
+  }
+  if (!repo.originalIdentifier) {
+    // Recovered repos have no package identifier — just rescan.
+    return rescanSkillRepo(repoId);
+  }
+
+  const settings = settingsService.loadSettings();
+  const skillRepoPath = resolveTilde(settings.skillRepoPath);
+  if (!skillRepoPath) {
+    throw new Error("Skill repository path is not configured");
+  }
+
+  const targetDir = repo.repoPath;
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  // Same install flow as runInstallJob: npm install into a temp dir, then cp over.
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-skill-update-"));
+  try {
+    await runCommand("npm", ["install", "--prefix", tempDir, repo.originalIdentifier]);
+    const tempPackageJson = JSON.parse(fs.readFileSync(path.join(tempDir, "package.json"), "utf8"));
+    const dependencies = Object.keys(tempPackageJson.dependencies || {});
+    const packageName = dependencies.includes(repo.originalIdentifier)
+      ? repo.originalIdentifier
+      : dependencies[0];
+    if (!packageName) throw new Error("npm install did not produce any dependencies");
+    const installedDir = path.join(tempDir, "node_modules", packageName);
+    if (!fs.existsSync(installedDir)) throw new Error(`Installed package directory not found: ${installedDir}`);
+    fs.cpSync(installedDir, targetDir, { recursive: true, force: true, dereference: true });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  return rescanSkillRepo(repoId);
+}

@@ -5,7 +5,7 @@ import SkillTable from "../components/skill/SkillTable.jsx";
 import SkillDetailModal from "../components/skill/SkillDetailModal.jsx";
 import InstallSkillModal from "../components/skill/InstallSkillModal.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
-import { deleteSkillRepo } from "../api/skills.js";
+import { deleteSkillRepo, rescanSkillRepo, updateSkillRepo } from "../api/skills.js";
 
 export default function Skills() {
   const { t } = useTranslation();
@@ -14,6 +14,8 @@ export default function Skills() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteRepoId, setPendingDeleteRepoId] = useState(null);
+  const [busyRepoId, setBusyRepoId] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const skillCount = repos.reduce((sum, group) => sum + group.skills.length, 0);
 
@@ -30,6 +32,32 @@ export default function Skills() {
     } finally {
       setPendingDeleteRepoId(null);
       setConfirmOpen(false);
+    }
+  }
+
+  async function handleRescan(repoId) {
+    setBusyRepoId(repoId);
+    setActionError(null);
+    try {
+      await rescanSkillRepo(repoId);
+      await refetch();
+    } catch (err) {
+      setActionError(err.message || "Rescan failed");
+    } finally {
+      setBusyRepoId(null);
+    }
+  }
+
+  async function handleUpdate(repoId) {
+    setBusyRepoId(repoId);
+    setActionError(null);
+    try {
+      await updateSkillRepo(repoId);
+      await refetch();
+    } catch (err) {
+      setActionError(err.message || "Update failed");
+    } finally {
+      setBusyRepoId(null);
     }
   }
 
@@ -52,6 +80,14 @@ export default function Skills() {
         </span>
       </div>
 
+      {actionError && (
+        <div className="card" style={{ borderColor: "var(--ch-error)" }}>
+          <div className="card-body" style={{ color: "var(--ch-error)" }}>
+            {actionError}
+          </div>
+        </div>
+      )}
+
       {loading && <p className="loading-text">{t("skills.loading")}</p>}
 
       {error && (
@@ -67,6 +103,9 @@ export default function Skills() {
           repos={repos}
           onSkillClick={setDetailSkillId}
           onRepoDelete={handleRequestDeleteRepo}
+          onRepoRescan={handleRescan}
+          onRepoUpdate={handleUpdate}
+          busyRepoId={busyRepoId}
         />
       )}
 
