@@ -28,7 +28,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   const maxDepth = options.maxDepth ?? 100;
   const maxIterations = options.maxIterations ?? 1000;
   const services = options.services ?? {};
-  const currentDepthOption = options.currentDepth ?? 0;
+  const currentDepth = options.currentDepth ?? 0;
 
   // Support both test-facing `nodes` and service-facing `nodeList`.
   // Service layer uses `nodeList` for the array and `nodes` for the count,
@@ -133,7 +133,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
       projectPath,
       iteration: visitIndex,
       services,
-      currentDepth: currentDepthOption
+      currentDepth
     }, retries);
     record.attemptCount = attemptCount;
 
@@ -162,12 +162,8 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
     if (result.output !== undefined) {
       if (node.config?.outputVariable) {
-        const fullName = `${node.id}.${node.config.outputVariable}`;
         // REQ-FLOW-023 AC2：按 nodeId.variableName 写入；fullName 天然隔离同名变量（AC4）。
-        context[fullName] = result.output;
-        // legacy 平铺键：旧 flow 下游表达式按裸标识符读取，行为不变。
-        context[node.config.outputVariable] = result.output;
-        record.outputVariables[fullName] = result.output;
+        writeOutputVariable(context, record, node.id, node.config.outputVariable, result.output);
       }
       lastOutput = result.output;
     }
@@ -176,10 +172,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     // 遍历写入 namespaced key 和 legacy 裸 key 到 context 与 record.outputVariables。
     if (result.outputVariables && isPlainObject(result.outputVariables)) {
       for (const [varName, value] of Object.entries(result.outputVariables)) {
-        const fullName = `${node.id}.${varName}`;
-        context[fullName] = value;
-        context[varName] = value;
-        record.outputVariables[fullName] = value;
+        writeOutputVariable(context, record, node.id, varName, value);
       }
     }
 
@@ -357,4 +350,15 @@ function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+// Write a named output to both namespaced ("nodeId.varName") and legacy bare ("varName")
+// keys in context, plus the node record. Single-output (config.outputVariable) and
+// multi-output (result.outputVariables) paths share this helper (D10).
+function writeOutputVariable(context, record, nodeId, varName, value) {
+  const fullName = `${nodeId}.${varName}`;
+  context[fullName] = value;
+  // Legacy flat key so downstream expressions/prompts can read bare identifiers.
+  context[varName] = value;
+  record.outputVariables[fullName] = value;
 }
