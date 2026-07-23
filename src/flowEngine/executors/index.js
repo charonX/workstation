@@ -4,3 +4,5 @@ export { whileExecutor } from "./whileExecutor.js";
 export { agentExecutor } from "./agentExecutor.js";
 export { triggerExecutor } from "./triggerExecutor.js";
 export { feishuSendExecutor } from "./feishuSendExecutor.js";
+export { flowInputExecutor } from "./flowInputExecutor.js";
+export { flowOutputExecutor } from "./flowOutputExecutor.js";

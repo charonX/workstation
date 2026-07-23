@@ -14,7 +14,8 @@ const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend", "flowinput", "flowoutput"];
+const VARIABLE_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
 function isPlainObject(value) {
@@ -107,6 +108,46 @@ function validateFeishuSendConfig(config, base, details) {
   }
 }
 
+// REQ-FLOW-032 / REQ-FLOW-033: flowInput and flowOutput share the same
+// outputVariables schema (array of { name, type?, defaultValue? }). The name
+// must be a non-empty identifier matching /^[a-zA-Z][a-zA-Z0-9_]*$/ and unique
+// within the node. `type` is a reserved field, allowed but not validated in v1.
+// `defaultValue` is optional and not validated.
+function validateFlowOutputVariables(config, base, details) {
+  if (!("outputVariables" in config) || config.outputVariables === undefined) return;
+  const variables = config.outputVariables;
+  const path = `${base}.outputVariables`;
+  if (!Array.isArray(variables)) {
+    details.push({ path, message: "Output variables must be an array" });
+    return;
+  }
+  const seen = new Set();
+  variables.forEach((variable, index) => {
+    const item = isPlainObject(variable) ? variable : {};
+    if (typeof item.name !== "string" || item.name.trim().length === 0) {
+      details.push({ path: `${path}[${index}].name`, message: "Variable name is required" });
+      return;
+    }
+    if (!VARIABLE_NAME_PATTERN.test(item.name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Variable name "${item.name}" must match pattern /^[a-zA-Z][a-zA-Z0-9_]*$/` });
+      return;
+    }
+    if (seen.has(item.name)) {
+      details.push({ path: `${path}[${index}].name`, message: `duplicate variable name: ${item.name}` });
+      return;
+    }
+    seen.add(item.name);
+  });
+}
+
+function validateFlowInputConfig(config, base, details) {
+  validateFlowOutputVariables(config, base, details);
+}
+
+function validateFlowOutputConfig(config, base, details) {
+  validateFlowOutputVariables(config, base, details);
+}
+
 function validateConditionConfig(config, base, details) {
   // Expression is required (v1.1 exception to the "only present fields" rule):
   // missing, empty, or whitespace-only (after trim) are all rejected.
@@ -158,6 +199,8 @@ export function validateNodeList(nodeList) {
     else if (type === "feishusend") validateFeishuSendConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
     else if (type === "agent") validateAgentConfig(node.config, base, details);
+    else if (type === "flowinput") validateFlowInputConfig(node.config, base, details);
+    else if (type === "flowoutput") validateFlowOutputConfig(node.config, base, details);
   });
   if (details.length > 0) {
     const err = new Error(

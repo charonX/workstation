@@ -14,9 +14,41 @@ const undefinedRef = new Proxy({}, {
   }
 });
 
+// Reserved words that are valid as property names (scope["in"]) but cannot be
+// used as bare identifiers in source (with(scope){ in.x } is a syntax error).
+// We rewrite "ident." access for these to bracket notation before compiling.
+const RESERVED_WORDS = new Set([
+  "in", "of", "if", "do", "for", "new", "try", "let", "var", "case",
+  "else", "enum", "eval", "false", "null", "this", "true", "void", "with",
+  "break", "catch", "class", "const", "super", "throw", "while", "yield",
+  "delete", "export", "import", "public", "return", "static", "switch",
+  "typeof", "default", "extends", "finally", "package", "private", "continue",
+  "debugger", "function", "arguments", "interface", "protected", "implements",
+  "instanceof"
+]);
+
+// Rewrite leading reserved-word identifiers followed by "." into bracket access
+// so `in.branch === 'a'` compiles as `scope["in"].branch === 'a'`. We only target
+// identifier-then-dot because reserved words in operator position (x in y) are
+// preceded by an operand and will not match the leading-word boundary.
+function rewriteReservedWordAccess(expression, scope) {
+  const reservedKeys = Object.keys(scope).filter(k => RESERVED_WORDS.has(k));
+  if (reservedKeys.length === 0) return expression;
+  let result = expression;
+  for (const key of reservedKeys) {
+    // Match the reserved word as a standalone identifier immediately followed by "."
+    // Use negative lookbehind to avoid matching inside a member expression (e.g. x.in.y stays x.in.y).
+    // We match: word boundary, the reserved word, ".", any identifier-continuation char.
+    const re = new RegExp(`(^|[^\\w$.])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "g");
+    result = result.replace(re, (_m, prefix) => `${prefix}context["${key}"].`);
+  }
+  return result;
+}
+
 export function evaluateExpression(expression, context = {}) {
   const scope = wrapScope(buildNestedScope(context));
-  const fn = new Function("context", "ctx", `with(context) { return (${expression}); }`);
+  const body = rewriteReservedWordAccess(expression, scope);
+  const fn = new Function("context", "ctx", `with(context) { return (${body}); }`);
   return fn(scope, scope);
 }
 

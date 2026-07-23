@@ -1,4 +1,4 @@
-import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor, feishuSendExecutor } from "./executors/index.js";
+import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor, feishuSendExecutor, flowInputExecutor, flowOutputExecutor } from "./executors/index.js";
 
 const defaultExecutors = {
   condition: conditionExecutor,
@@ -7,12 +7,16 @@ const defaultExecutors = {
   agent: agentExecutor,
   trigger: triggerExecutor,
   feishumessage: triggerExecutor,
-  feishusend: feishuSendExecutor
+  feishusend: feishuSendExecutor,
+  flowinput: flowInputExecutor,
+  flowoutput: flowOutputExecutor
 };
 
 // Trigger-like node types share the same variable seeding / override semantics
-// (REQ-FLOW-031). Keep the set explicit so future trigger variants opt in.
-const TRIGGER_LIKE_NODE_TYPES = new Set(["trigger", "feishumessage"]);
+// (REQ-FLOW-031, REQ-FLOW-032). flowInput participates; flowOutput is an exit
+// node and does NOT receive trigger-like seeding. Keep the set explicit so
+// future trigger variants opt in.
+const TRIGGER_LIKE_NODE_TYPES = new Set(["trigger", "feishumessage", "flowinput"]);
 
 // signoff 决策 3：Claude Agent prompt 使用 {{fullName}} 引用注册表变量。
 const VARIABLE_REF_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
