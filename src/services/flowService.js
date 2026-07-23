@@ -113,7 +113,7 @@ function validateFeishuSendConfig(config, base, details) {
 // must be a non-empty identifier matching /^[a-zA-Z][a-zA-Z0-9_]*$/ and unique
 // within the node. `type` is a reserved field, allowed but not validated in v1.
 // `defaultValue` is optional and not validated.
-function validateFlowOutputVariables(config, base, details) {
+function validateDeclaredOutputVariables(config, base, details) {
   if (!("outputVariables" in config) || config.outputVariables === undefined) return;
   const variables = config.outputVariables;
   const path = `${base}.outputVariables`;
@@ -138,14 +138,6 @@ function validateFlowOutputVariables(config, base, details) {
     }
     seen.add(item.name);
   });
-}
-
-function validateFlowInputConfig(config, base, details) {
-  validateFlowOutputVariables(config, base, details);
-}
-
-function validateFlowOutputConfig(config, base, details) {
-  validateFlowOutputVariables(config, base, details);
 }
 
 function validateConditionConfig(config, base, details) {
@@ -199,8 +191,8 @@ export function validateNodeList(nodeList) {
     else if (type === "feishusend") validateFeishuSendConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
     else if (type === "agent") validateAgentConfig(node.config, base, details);
-    else if (type === "flowinput") validateFlowInputConfig(node.config, base, details);
-    else if (type === "flowoutput") validateFlowOutputConfig(node.config, base, details);
+    else if (type === "flowinput") validateDeclaredOutputVariables(node.config, base, details);
+    else if (type === "flowoutput") validateDeclaredOutputVariables(node.config, base, details);
   });
   if (details.length > 0) {
     const err = new Error(

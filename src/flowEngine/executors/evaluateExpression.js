@@ -28,18 +28,18 @@ const RESERVED_WORDS = new Set([
 ]);
 
 // Rewrite leading reserved-word identifiers followed by "." into bracket access
-// so `in.branch === 'a'` compiles as `scope["in"].branch === 'a'`. We only target
+// so `in.branch === 'a'` compiles as `context["in"].branch === 'a'`. We only target
 // identifier-then-dot because reserved words in operator position (x in y) are
-// preceded by an operand and will not match the leading-word boundary.
+// not followed by "." and never match. The leading capture group (^|[^\w$.])
+// enforces a non-identifier boundary before the word so chained member access
+// like `x.in.y` is left untouched (the "." before "in" excludes the match).
 function rewriteReservedWordAccess(expression, scope) {
   const reservedKeys = Object.keys(scope).filter(k => RESERVED_WORDS.has(k));
   if (reservedKeys.length === 0) return expression;
   let result = expression;
   for (const key of reservedKeys) {
-    // Match the reserved word as a standalone identifier immediately followed by "."
-    // Use negative lookbehind to avoid matching inside a member expression (e.g. x.in.y stays x.in.y).
-    // We match: word boundary, the reserved word, ".", any identifier-continuation char.
-    const re = new RegExp(`(^|[^\\w$.])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "g");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^\\w$.])${escaped}\\.`, "g");
     result = result.replace(re, (_m, prefix) => `${prefix}context["${key}"].`);
   }
   return result;
