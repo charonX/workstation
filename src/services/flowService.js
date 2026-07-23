@@ -54,7 +54,8 @@ function validateTriggerConfig(config, base, details) {
     } else {
       seen.add(item.name);
     }
-    if (!VARIABLE_TYPES.includes(item.type)) {
+    // type is optional (reserved field, not validated in v1); only reject explicit invalid values.
+    if (item.type !== undefined && !VARIABLE_TYPES.includes(item.type)) {
       details.push({ path: `${path}[${index}].type`, message: `Invalid type: ${item.type}. Must be one of: string, number, array, object` });
     }
   });

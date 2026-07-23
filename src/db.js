@@ -225,7 +225,10 @@ function initSchema(database) {
       branchPath TEXT,
       iterations TEXT,
       logs TEXT,
-      artifacts TEXT
+      artifacts TEXT,
+      parentExecutionId TEXT,
+      parentNodeId TEXT,
+      depth INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS logs (
@@ -310,6 +313,17 @@ function migrateSchema(database) {
   if (!hasColumn(database, "executions", "artifacts")) {
     database.exec(`ALTER TABLE executions ADD COLUMN artifacts TEXT`);
   }
+  // REQ-FLOW-040: nested execution records (parentExecutionId / parentNodeId / depth).
+  if (!hasColumn(database, "executions", "parentExecutionId")) {
+    database.exec(`ALTER TABLE executions ADD COLUMN parentExecutionId TEXT`);
+  }
+  if (!hasColumn(database, "executions", "parentNodeId")) {
+    database.exec(`ALTER TABLE executions ADD COLUMN parentNodeId TEXT`);
+  }
+  if (!hasColumn(database, "executions", "depth")) {
+    database.exec(`ALTER TABLE executions ADD COLUMN depth INTEGER NOT NULL DEFAULT 0`);
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_executions_parentExecutionId ON executions(parentExecutionId)`);
   // Skill repo information architecture migration.
   database.exec(`
     CREATE TABLE IF NOT EXISTS skill_repos (

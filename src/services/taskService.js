@@ -66,8 +66,8 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
   resetDb();
   const db = getDb();
   const insertExecution = db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const execution of seed.executions || []) {
     insertExecution.run(
@@ -85,7 +85,10 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
       JSON.stringify(execution.branchPath ?? []),
       JSON.stringify(execution.iterations ?? []),
       JSON.stringify(execution.logs ?? []),
-      execution.artifacts !== undefined ? JSON.stringify(execution.artifacts) : null
+      execution.artifacts !== undefined ? JSON.stringify(execution.artifacts) : null,
+      execution.parentExecutionId ?? null,
+      execution.parentNodeId ?? null,
+      execution.depth ?? 0
     );
   }
   const insertSchedule = db.prepare(`
@@ -186,21 +189,37 @@ export function listExecutionNodes(executionId) {
   return db.prepare("SELECT * FROM execution_nodes WHERE executionId = ? ORDER BY rowid ASC").all(executionId).map(rowToExecutionNode);
 }
 
-// 过期执行的 id 子查询（cutoff 严格 <）：execution_nodes 与 logs 两条级联 DELETE 共用。
-const EXPIRED_EXECUTION_IDS_SUBQUERY = "SELECT id FROM executions WHERE startedAt < ?";
-
-// REQ-FLOW-028 AC4 / tech-design §7：滚动时间窗清理过期执行日志。
+// REQ-FLOW-028 AC4 / tech-design §7 + REQ-FLOW-040 AC6: 滚动时间窗清理过期执行日志。
 // cutoff = now - retentionDays×24h（ISO 字符串比较，startedAt 均为 toISOString 格式）。
-// 单事务内按序删 execution_nodes → logs → executions（前两者按 executionId 子查询）。
+// REQ-FLOW-040 AC6: 删除父 execution 时递归级联删除其所有后代（通过 parentExecutionId 链）。
+// 单事务内按序删 execution_nodes → logs → executions，包括通过 CTE 收集的后代 id。
 export function purgeExpiredExecutions(db, { retentionDays = 7, now = new Date() } = {}) {
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
-  const deleteNodes = db.prepare(`DELETE FROM execution_nodes WHERE executionId IN (${EXPIRED_EXECUTION_IDS_SUBQUERY})`);
-  const deleteLogs = db.prepare(`DELETE FROM logs WHERE executionId IN (${EXPIRED_EXECUTION_IDS_SUBQUERY})`);
-  const deleteExecutions = db.prepare("DELETE FROM executions WHERE startedAt < ?");
+
   const purge = db.transaction(() => {
-    const executionNodes = deleteNodes.run(cutoff).changes;
-    const logs = deleteLogs.run(cutoff).changes;
-    const executions = deleteExecutions.run(cutoff).changes;
+    // 递归收集过期根及其所有后代 execution id（CTE 递归沿 parentExecutionId 链向下）。
+    const collectIds = db.prepare(`
+      WITH RECURSIVE all_expired(id) AS (
+        SELECT id FROM executions WHERE startedAt < ?
+        UNION
+        SELECT e.id FROM executions e JOIN all_expired a ON e.parentExecutionId = a.id
+      )
+      SELECT id FROM all_expired
+    `);
+    const allIds = collectIds.all(cutoff).map((r) => r.id);
+
+    if (allIds.length === 0) {
+      return { executions: 0, executionNodes: 0, logs: 0 };
+    }
+
+    const placeholders = allIds.map(() => "?").join(",");
+    const deleteNodes = db.prepare(`DELETE FROM execution_nodes WHERE executionId IN (${placeholders})`);
+    const deleteLogs = db.prepare(`DELETE FROM logs WHERE executionId IN (${placeholders})`);
+    const deleteExecutions = db.prepare(`DELETE FROM executions WHERE id IN (${placeholders})`);
+
+    const executionNodes = deleteNodes.run(...allIds).changes;
+    const logs = deleteLogs.run(...allIds).changes;
+    const executions = deleteExecutions.run(...allIds).changes;
     return { executions, executionNodes, logs };
   });
   return purge();
@@ -231,7 +250,10 @@ function rowToExecution(row) {
     branchPath: JSON.parse(row.branchPath || "[]"),
     iterations: JSON.parse(row.iterations || "[]"),
     logs: JSON.parse(row.logs || "[]"),
-    artifacts: row.artifacts !== null ? JSON.parse(row.artifacts) : []
+    artifacts: row.artifacts !== null ? JSON.parse(row.artifacts) : [],
+    parentExecutionId: row.parentExecutionId ?? null,
+    parentNodeId: row.parentNodeId ?? null,
+    depth: row.depth ?? 0
   };
 }
 
@@ -303,8 +325,8 @@ export function createTask({ projectId, flowId, trigger, variables, scheduleId }
 
   const db = getDb();
   db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     execution.id,
     execution.projectId,
@@ -320,7 +342,10 @@ export function createTask({ projectId, flowId, trigger, variables, scheduleId }
     JSON.stringify(execution.branchPath),
     JSON.stringify(execution.iterations),
     JSON.stringify(execution.logs),
-    JSON.stringify(execution.artifacts)
+    JSON.stringify(execution.artifacts),
+    null,
+    null,
+    0
   );
 
   // Don't await the queue run here; return immediately with position.
@@ -355,9 +380,17 @@ export async function debugFlow(flowId, { variables, usePublished, nodeList, edg
 
   const inputVariables = parseVariables(variables);
 
+  const executors = testAgentExecutor ? { agent: testAgentExecutor } : {};
+  // REQ-FLOW-039 AC3: 调试路径同样注入 invokeSubflow（draft 版本），保持和生产路径行为一致。
+  // debug 模式无持久化 execution 行，用一个合成 parentExecutionId 以支持嵌套追溯。
+  const debugParentExecutionId = `debug-${crypto.randomUUID()}`;
+  const services = {
+    invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId: debugParentExecutionId })
+  };
+
   const result = await run(
     { flow: { ...flow, nodeList: effectiveNodeList, edges: effectiveEdges }, project },
-    { maxDepth: 100, maxIterations: 1000 },
+    { maxDepth: 100, maxIterations: 1000, executors, services, currentDepth: 0 },
     inputVariables
   );
 
@@ -379,6 +412,149 @@ function parseVariables(variables) {
   } catch {
     throw new Error("Invalid variables JSON");
   }
+}
+
+// REQ-FLOW-040 / D2 / D4: invokeSubflow 服务实现（同步内联递归执行子流程）。
+// 由 makeInvokeSubflow 闭包绑定 { project, executors, parentExecutionId }，在每次
+// 递归时重新绑定新的 parentExecutionId（子 execution id），形成链式可观测记录。
+const MAX_SUBFLOW_DEPTH = 8;
+
+async function invokeSubflowImpl({
+  targetFlowId,
+  entryNodeId,
+  inputVars,
+  parentNodeId,
+  parentDepth,
+  parentExecutionId,
+  project,
+  executors
+}) {
+  // REQ-FLOW-037 AC4: 运行时深度兜底（保存时静态检测已拦截，此为竞态兜底）。
+  if (parentDepth + 1 > MAX_SUBFLOW_DEPTH) {
+    throw new Error(`E-FLOW-MAX-DEPTH: nested call depth exceeds ${MAX_SUBFLOW_DEPTH}`);
+  }
+
+  // REQ-FLOW-039 AC1/AC4: 加载子流程当前版本（draft，不读 published），并检查软删除。
+  const childFlowRow = flowService.getFlow(targetFlowId);
+  if (!childFlowRow) {
+    throw new Error(`E-FLOW-REF-MISSING: subflow ${targetFlowId} not found or deleted`);
+  }
+  const childNodeList = childFlowRow.nodeList || [];
+  const childEdges = childFlowRow.edges || [];
+
+  const childExecutionId = nextExecutionId();
+  const startedAt = timestamp();
+  const childDepth = parentDepth + 1;
+
+  // REQ-FLOW-040 AC2: 子 execution 入库（status=running, trigger=subflow）。
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    childExecutionId,
+    project.id,
+    targetFlowId,
+    "subflow",
+    "running",
+    startedAt,
+    null,
+    null,
+    0,
+    JSON.stringify(inputVars || {}),
+    null,
+    JSON.stringify([]),
+    JSON.stringify([]),
+    JSON.stringify([]),
+    JSON.stringify([]),
+    parentExecutionId,
+    parentNodeId,
+    childDepth
+  );
+
+  // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId。
+  const childServices = {
+    invokeSubflow: makeInvokeSubflow({
+      project,
+      executors,
+      parentExecutionId: childExecutionId
+    })
+  };
+
+  const childFlowForEngine = { nodeList: childNodeList, edges: childEdges };
+
+  try {
+    const childResult = await run(
+      { flow: childFlowForEngine, project },
+      {
+        services: childServices,
+        startNodeId: entryNodeId,
+        currentDepth: childDepth,
+        maxDepth: 100,
+        maxIterations: 1000,
+        executors
+      },
+      inputVars || {}
+    );
+
+    // REQ-FLOW-033 AC5 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口。
+    const nodesById = new Map(childNodeList.map((n) => [n.id, n]));
+    const exitRecord = childResult.nodeRecords
+      .filter((r) => nodesById.get(r.nodeId)?.type?.toLowerCase() === "flowoutput")
+      .pop();
+
+    if (!exitRecord) {
+      // REQ-FLOW-037 AC2: 未达出口 → 子 execution 标记 error，抛错冒泡。
+      insertExecutionNodes(childExecutionId, childResult.nodeRecords);
+      completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
+      const err = new Error("E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput");
+      err.nodeRecords = childResult.nodeRecords;
+      throw err;
+    }
+
+    // 按 flowOutput 节点 config.outputVariables 从 record.outputVariables 取出子出参。
+    const exitNode = nodesById.get(exitRecord.nodeId);
+    const childOutputs = {};
+    for (const varDef of exitNode.config?.outputVariables ?? []) {
+      if (!varDef || typeof varDef.name !== "string") continue;
+      const fqKey = `${exitRecord.nodeId}.${varDef.name}`;
+      childOutputs[varDef.name] = exitRecord.outputVariables?.[fqKey];
+    }
+
+    insertExecutionNodes(childExecutionId, childResult.nodeRecords);
+    completeExecution(childExecutionId, {
+      status: "success",
+      duration: Date.now() - Date.parse(startedAt),
+      nodesRun: childResult.nodesRun ?? 0,
+      output: childOutputs,
+      branchPath: [],
+      iterations: [],
+      artifacts: []
+    });
+
+    return {
+      status: "success",
+      output: childOutputs,
+      childExecutionId,
+      logs: childResult.logs ?? []
+    };
+  } catch (err) {
+    // REQ-FLOW-037 AC1: 子流程节点失败冒泡 → 子 execution 标 error，持久化已累积节点记录。
+    completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
+    try {
+      insertExecutionNodes(childExecutionId, err.nodeRecords ?? []);
+    } catch {
+      // 写失败不掩盖主错误。
+    }
+    throw err;
+  }
+}
+
+// 闭包工厂：绑定 project / executors / parentExecutionId，返回供 engine/callFlowExecutor 调用的 invokeSubflow。
+function makeInvokeSubflow({ project, executors, parentExecutionId }) {
+  return async function invokeSubflow(args) {
+    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors });
+  };
 }
 
 function completeExecutionError(executionId, duration) {
@@ -465,9 +641,14 @@ export async function executeTask(execution, flow, project) {
       }
     };
 
+    // REQ-FLOW-035 AC7 / D1: 注入 invokeSubflow 服务，绑定当前 execution.id 作为父 executionId。
+    const services = {
+      invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId: execution.id })
+    };
+
     const result = await run(
       { flow: effectiveFlow, project },
-      { maxDepth: 100, maxIterations: 1000, executors },
+      { maxDepth: 100, maxIterations: 1000, executors, services, currentDepth: 0 },
       variablesForRun
     );
 
@@ -760,8 +941,13 @@ export function listSchedules() {
   return db.prepare("SELECT * FROM schedules").all().map(rowToSchedule);
 }
 
-export function listExecutions() {
+export function listExecutions({ parentExecutionId } = {}) {
   const db = getDb();
+  if (parentExecutionId !== undefined) {
+    return db.prepare(
+      "SELECT * FROM executions WHERE parentExecutionId = ? ORDER BY startedAt ASC, rowid ASC"
+    ).all(parentExecutionId).map(rowToExecution);
+  }
   return db.prepare("SELECT * FROM executions ORDER BY startedAt DESC, rowid DESC").all().map(rowToExecution);
 }
 
