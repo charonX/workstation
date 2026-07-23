@@ -258,6 +258,58 @@ export function ensureBuiltInCollectionSkills() {
   return { ensured: true, repoId: repo.id, skills: skills.length };
 }
 
+// BUG-011 fix: reconcile user-installed skill repos on disk with DB records.
+// Scans the configured skillRepoPath directory; any subdirectory that contains
+// skills/ with SKILL.md files but has no skill_repos DB row is re-registered.
+// This recovers from the BUG-009 split-brain where skills were installed to
+// ~/.opc-workstation/data.db but the app now reads from userData/data.db.
+export function reconcileUserSkillRepos() {
+  const settings = settingsService.loadSettings();
+  const rootPath = resolveTilde(settings.skillRepoPath);
+  if (!rootPath || !fs.existsSync(rootPath)) {
+    return { recovered: 0 };
+  }
+
+  // Collect existing repo paths from DB for quick dedup check.
+  const db = getDb();
+  const existingPaths = new Set(
+    db.prepare("SELECT repoPath FROM skill_repos").all().map((r) => r.repoPath)
+  );
+
+  let recovered = 0;
+  const recoveredNames = [];
+  for (const entry of fs.readdirSync(rootPath, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const repoPath = path.join(rootPath, entry.name);
+    if (existingPaths.has(repoPath)) continue;
+
+    // Must contain a skills/ subdirectory with SKILL.md files to be recognized
+    // as an installed skill repo (same validation as runInstallJob).
+    const skillDirs = findRepoSkillDirs(repoPath);
+    if (skillDirs.length === 0) continue;
+
+    try {
+      const repo = createSkillRepo({
+        name: entry.name,
+        repoPath,
+        installSource: "recovered"
+      });
+      for (const skill of scanRepoSkills(repoPath)) {
+        createSkill(skill, repo.id);
+      }
+      recovered++;
+      recoveredNames.push(entry.name);
+    } catch (err) {
+      console.warn(`[skillService] failed to recover repo ${entry.name}:`, err.message);
+    }
+  }
+
+  if (recovered > 0) {
+    console.log(`[skillService] recovered ${recovered} previously-installed skill repo(s): ${recoveredNames.join(", ")}`);
+  }
+  return { recovered, names: recoveredNames };
+}
+
 export function createSkill(skill, repoId) {
   const db = getDb();
   const id = skill.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

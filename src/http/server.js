@@ -23,7 +23,7 @@ import { handleChannel } from "./routes/channel.js";
 import { handleTemplates } from "./routes/templates.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
-import { ensureBuiltInCollectionSkills } from "../services/skillService.js";
+import { ensureBuiltInCollectionSkills, reconcileUserSkillRepos } from "../services/skillService.js";
 
 const activeServers = new Set();
 
@@ -82,6 +82,10 @@ export function startServer(options = {}) {
   // 生产路径（reset:false）与测试路径都需要幂等播种内置 collection skill repo，
   // 否则首次启动或新 DB 文件时 templateService 会因找不到内置技能而抛 E-TPL-SKILL-MISSING。
   ensureBuiltInCollectionSkills();
+
+  // BUG-011: 协调用户已安装的 skill repo——扫描 settings.skillRepoPath 目录，
+  // 把磁盘上存在但 DB 里没登记的 repo（因之前 DB 路径错位而丢失的记录）补登记回 DB。
+  reconcileUserSkillRepos();
 
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
