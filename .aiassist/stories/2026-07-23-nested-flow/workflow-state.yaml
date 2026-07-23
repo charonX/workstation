@@ -6,7 +6,7 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: ASSERTION-SIGNOFF # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-23
@@ -18,7 +18,8 @@ history:
   - {at: 2026-07-23, from: PRD, to: TECH-DESIGN, note: "PRD v0.1 用户审查通过。11 稳定块、complex 复杂度、11 错误码；初始决策方向：callFlow 内联递归、独立 execution 行带 parentExecutionId、引擎加 startNodeId。"}
   - {at: 2026-07-23, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v0.1 完成：9 个关键决策（services 注入/内联递归/永远 draft/invokeSubflow 一站式/flowOutput 事后扫描/入参单引用保留类型/单 DFS 检测/独立 execution 行带 parentId/入口 override）；ADR-008 已登记；反向同步 PRD 子 flow 版本语义为'永远读当前版本（draft）'。"}
   - {at: 2026-07-23, from: CRYSTALLIZE, to: TEST, note: "/review --stage=tech 完成（WARN，0 阻塞）；补入 D10 引擎多输出机制后通过；requirements.md v1 生成：15 REQ（FLOW-032~046），hash=12fcb37...；business-capabilities.md 已更新。"}
-  - {at: 2026-07-23, from: TEST, to: ASSERTION-SIGNOFF, note: "/test-author 完成：9 个单元/API 测试文件 + 2 个 E2E 文件；test-plan.md 已生成；所有 TODO: HUMAN ASSERTION 位置已标记待签核。进入门 1：/signoff --stage=assertion。"}
+  - {at: 2026-07-23, from: TEST, to: ASSERTION-SIGNOFF, note: "/test-author 完成：9 个单元/API 测试文件 + 2 个 E2E 文件；test-plan.md 已生成。"}
+  - {at: 2026-07-23, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过，[test] assertion-signoff commit 已落；契约交内层实现循环。进入 /implementer。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
