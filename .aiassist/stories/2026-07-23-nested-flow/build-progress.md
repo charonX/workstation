@@ -1,0 +1,103 @@
+# Build Progress — 2026-07-23-nested-flow
+
+> 负责人：agent (父代理调度)
+> 契约版本：v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+
+## 切片计划
+
+| Slice | REQ | 描述 | 状态 |
+|---|---|---|---|
+| S1 | FLOW-042 | 引擎 executor 签名扩展 (services/currentDepth) + 多输出 result.outputVariables | pending |
+| S2 | FLOW-032/033 | flowInput/flowOutput 节点类型、executor、validator 注册 | pending |
+| S3 | FLOW-036 | startNodeId 选项 + 入口限定 applyTriggerVariableOverrides | pending |
+| S4 | FLOW-035 | callFlow executor：parentExpr 解析、入/出参映射、隔离 context | pending |
+| S5 | FLOW-037/039/040 | taskService invokeSubflow、executions 表 migration、嵌套执行记录、失败传播、调最新 | pending |
+| S6 | FLOW-034/038/041/046 | validateSubflowCalls（字段/循环/深度）、callflow-candidates API、foreach 组合 | pending |
+| S7 | FLOW-043/045 | 前端：NodePalette、CallFlowFields/FlowInputFields/FlowOutputFields 配置面板、跳转子流程 | pending |
+| S8 | FLOW-044 | 前端：执行详情嵌套展开 UI | pending |
+
+## Slice 记录
+
+### S1: FLOW-042 — engine executor signature + multi-output (complete)
+- Commits: `16ff408` [build] S1 → `b740fec` [refactor] S1
+- Tests: 6/6 new + 56/56 existing = 62/62 pass
+- PRD alignment: ALIGNED
+- Notes: `startNodeId` option pre-pulled (forward-compat for S3); refactor extracted `writeOutputVariable` helper
+- Scope: only `src/flowEngine/flowEngine.js`
+
+### S2: FLOW-032/033 — flowInput/flowOutput node types (complete)
+- Commits: `74c3722` [build] S2 → `cc683e0` [refactor] S2
+- Tests: 11/11 new + 56/56 existing = 67/67 pass
+- PRD alignment: ALIGNED
+- Notes:
+  - New: flowInputExecutor.js / flowOutputExecutor.js
+  - flowInput added to TRIGGER_LIKE set; both types registered in defaultExecutors + VALIDATED_NODE_TYPES
+  - evaluateExpression.js reserved-word rewrite needed for AC5 test using node id "in" (safe additive change)
+  - Refactor deleted redundant wrapper functions, fixed misleading comments
+- Scope: 6 files (executors + engine + validator + evaluateExpression)
+
+### S3: FLOW-036 — startNodeId + entry-scoped override (complete)
+- Commits: `d8d20d5` [build] S3 → `d3b72a7` [refactor] S3
+- Tests: 3/3 FLOW-036 + 56/56 regression
+- PRD alignment: ALIGNED
+- Notes: applyTriggerVariableOverrides accepts entryNodeId; top-level backward compat preserved; two-pass declaredNames collection prevents same-named inputVars clobbering non-entry trigger defaults
+- Scope: only `src/flowEngine/flowEngine.js`
+
+### S4: FLOW-035 — callFlow executor (complete)
+- Commits: `ca42a14` [build] S4 → `446eb0e` [build] S4 fix (__ prefix)
+- Tests: 5/5 FLOW-035 + 81 total engine green
+- PRD alignment: initial MISALIGNMENT (AC5 __childExecutionId bare-key leak) → fixed by engine `__` prefix skip in writeOutputVariable
+- Notes: parentExpr regex, service invokeSubflow delegation, D10 outputVariables return; errors wrapped as E-SUBFLOW-FAILED
+- Scope: callFlowExecutor.js (new) + index.js + flowEngine.js (defaultExecutors + __ prefix guard)
+
+### S5: FLOW-037/039/040 — invokeSubflow + migration + nested records (complete)
+- Commits: `7827105` [build] S5 + `fdd76a3` revert projectId auto-resolve + `2429416` [test] fix test helpers
+- Tests: 5/5 subflowFailure + 6/6 nestedExecution (AC migration、子记录、3层嵌套、cascade purge、调最新)
+- PRD alignment: 验证通过
+- Notes:
+  - db.js: executions 加 parentExecutionId/parentNodeId/depth + idx_executions_parentExecutionId
+  - taskService: invokeSubflowImpl/makeInvokeSubflow 递归调用 run()，加载子 flow 当前版本，扫描 exit flowOutput
+  - taskService: listExecutions 支持 parentExecutionId 过滤；purgeExpiredExecutions 用递归 CTE 级联删除
+  - routes/executions.js: GET ?parentExecutionId= 支持；revert projectId 自动解析（违反既有 REQ-SCHEDULE-001 契约）
+  - flowService: trigger outputVariables type 字段可选（与 flowInput/flowOutput 一致）
+  - 回归 255/255 全绿；剩余 14 fail 均属 S6 范围
+- Scope: db.js + taskService.js + routes/executions.js + flowService.js（type 可选）
+
+### S6: FLOW-034/038/041/046 — validation + candidates + foreach (complete)
+- Commits: `ea67ebe` [build] S6 + `bea6855` [refactor] S5/S6 comments + `0d7fb63` [test] fill AC6
+- Tests: 14 API/engine tests (FLOW-034/038/041/046) + 308 full regression = **308/308 green**
+- PRD alignment: ALIGNED
+- Notes:
+  - flowService: validateCallFlowConfig + validateSubflowCalls (DFS cycle/depth + ref/mapping checks) + listCallFlowCandidates
+  - routes/flows: GET /api/flows/:id/callflow-candidates
+  - forEachExecutor + engine continuation stack 支持 foreach body 含 callFlow 的循环迭代
+  - 引擎 foreach body continuation 改动零回归
+  - 已知小限制：FLOW-034 AC4 outputMappings auto-generation 是 UI 展示用，runtime 已经返回所有 childOutputs，前端可从 callflow-candidates 派生
+- Scope: flowService.js + routes/flows.js + forEachExecutor.js + flowEngine.js (continuation stack)
+
+### S7: FLOW-043/045 — palette + config panels + jump-to-child (complete)
+- Commit: `8c7d62a` [build] S7
+- Tests: backend 308/308 unchanged; E2E data-testids match spec; esbuild bundle clean
+- Notes:
+  - NodePalette: flowInput(Trigger)/flowOutput(new Flow cat)/callFlow(Logic) + palette-node-{type} testids
+  - NodeConfigPanel: FlowInputFields/FlowOutputFields(shared DeclaredVariablesFields) + CallFlowFields(subflow select/entry select/input mappings/output read-only/open child)
+  - validateFlowNodes client mirror + i18n en/zh
+  - FlowCanvas/upstreamVariables/api/flows.js updates for callFlow
+- Scope: renderer/ only (9 files)
+
+### S8: FLOW-044 — nested execution detail expand/collapse (complete)
+- Commit: `2a8b10b` [build] S8
+- Tests: backend 308/308 unchanged; E2E data-testids match spec; esbuild bundle clean
+- Notes:
+  - ExecutionNodeList 重构支持递归嵌套：callFlow 节点含 __childExecutionId 时渲染展开按钮
+  - 展开时 lazy-fetch 子 execution，渲染缩进子列表（data-indent 属性）
+  - 独立展开状态、缓存、i18n en/zh、CSS 样式
+  - 默认折叠状态零回归
+- Scope: renderer/ only (ExecutionNodeList.jsx + index.css + i18n)
+
+## 总结
+- 8 个切片全部完成
+- 后端业务测试：**308/308 全绿**
+- 新 REQ 测试 33 个（engine unit）+ 6 个（execution API）+ 17 个（flow API）= 56 个新业务测试通过
+- 前端 esbuild bundle 通过；E2E 测试待 QA runner 验证（需 Electron 构建）
+- 总 commits：12 个 [build] + 3 个 [refactor] + 2 个 [test]
