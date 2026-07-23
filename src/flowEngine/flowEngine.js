@@ -399,10 +399,14 @@ function isPlainObject(value) {
 // Write a named output to both namespaced ("nodeId.varName") and legacy bare ("varName")
 // keys in context, plus the node record. Single-output (config.outputVariable) and
 // multi-output (result.outputVariables) paths share this helper (D10).
+// REQ-FLOW-035 AC5: __-prefixed bookkeeping fields (e.g. __childExecutionId) are
+// internal metadata and must NOT leak as bare keys into the parent context.
 function writeOutputVariable(context, record, nodeId, varName, value) {
   const fullName = `${nodeId}.${varName}`;
   context[fullName] = value;
-  // Legacy flat key so downstream expressions/prompts can read bare identifiers.
-  context[varName] = value;
+  if (!varName.startsWith("__")) {
+    // Legacy flat key so downstream expressions/prompts can read bare identifiers.
+    context[varName] = value;
+  }
   record.outputVariables[fullName] = value;
 }
