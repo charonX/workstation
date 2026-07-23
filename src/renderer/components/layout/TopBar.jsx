@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../../hooks/useSettings.jsx";
+import { useUnreadCount } from "../../hooks/useUnreadCount.js";
 
-function IconButton({ label, onClick, children, testid }) {
+function IconButton({ label, onClick, children, testid, badge }) {
   return (
     <button
       type="button"
@@ -11,8 +12,17 @@ function IconButton({ label, onClick, children, testid }) {
       aria-label={label}
       onClick={onClick}
       data-testid={testid}
+      style={{ position: "relative" }}
     >
       {children}
+      {badge != null && badge > 0 && (
+        <span
+          className="icon-btn-badge"
+          data-testid={`${testid}-badge`}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -22,6 +32,7 @@ export default function TopBar() {
   const navigate = useNavigate();
   const [settings, updateSettings] = useSettings();
   const [searchQuery, setSearchQuery] = useState("");
+  const unreadCount = useUnreadCount();
 
   const theme = settings?.theme || "dark";
   const language = settings?.language || "en-US";
@@ -100,8 +111,9 @@ export default function TopBar() {
         </IconButton>
         <IconButton
           label={t("topBar.notifications")}
-          onClick={() => { /* notifications panel placeholder */ }}
+          onClick={() => navigate("/notifications")}
           testid="topbar-notifications-button"
+          badge={unreadCount}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />

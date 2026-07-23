@@ -992,6 +992,23 @@ body {
   color: var(--ch-text);
 }
 
+.icon-btn-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--ch-error);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* Meta list */
 .meta-list {
   margin-bottom: var(--ch-space-4);
