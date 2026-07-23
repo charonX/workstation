@@ -79,25 +79,27 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   const context = {};
   seedTriggerVariables(nodeList, context);
 
-  // REQ-FLOW-036 AC2：当 startNodeId 指向一个 flowInput 入口节点时，
-  // applyTriggerVariableOverrides 仅对该入口节点做 override；其他 trigger-like
-  // 节点（feishumessage / 其他 flowInput / trigger）保留 defaultValue（namespaced
-  // 与 bare 键都不被覆盖），即使 inputVariables 中存在同名 key（D9）。
-  // 顶层执行（startNodeId 为空）或 startNodeId 指向非 flowInput 节点时，
-  // 保持 REQ-FLOW-031 行为：Object.assign 合入 + 遍历所有 trigger-like 节点按
-  // varDef.name 匹配覆盖。
-  const startNode = options.startNodeId != null ? nodesById.get(options.startNodeId) : null;
-  const entryNodeId = startNode && startNode.type?.toLowerCase() === "flowinput"
-    ? options.startNodeId
-    : undefined;
+  // REQ-FLOW-036 AC2 (D9): when startNodeId targets a flowInput entry node,
+  // applyTriggerVariableOverrides only overrides that single entry node's
+  // outputVariables; other trigger-like nodes (feishumessage / other flowInput /
+  // trigger) keep their seeded defaultValue at both namespaced and bare keys,
+  // even when inputVariables contains a same-named key.
+  // When startNodeId is empty (top-level) or points to a non-flowInput node,
+  // preserve REQ-FLOW-031 behavior: Object.assign merges all inputs as bare keys,
+  // then every trigger-like node is overridden by matching varDef.name.
+  const isFlowInputEntry =
+    options.startNodeId != null &&
+    nodesById.get(options.startNodeId).type?.toLowerCase() === "flowinput";
+  const entryNodeId = isFlowInputEntry ? options.startNodeId : undefined;
   const inputs = inputVariables ?? {};
 
   if (entryNodeId != null) {
     // Entry-scoped override: only the designated flowInput node receives overrides.
-    // Collect every declared trigger-like var name so that undeclared keys can still
-    // pass through as bare keys (legacy compat) without clobbering non-entry defaults.
+    // Pre-collect every declared trigger-like var name so that undeclared input keys
+    // still pass through as bare keys (legacy compat) without clobbering non-entry
+    // defaults (which were written as bare keys during seedTriggerVariables).
     const declaredNames = new Set();
-    forEachTriggerVariable(nodeList, (node, varDef) => {
+    forEachTriggerVariable(nodeList, (_node, varDef) => {
       declaredNames.add(varDef.name);
     });
     applyTriggerVariableOverrides(nodeList, context, inputs, entryNodeId);
@@ -107,7 +109,6 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
       }
     }
   } else {
-    // Top-level / non-flowInput start: REQ-FLOW-031 backward-compatible behavior.
     Object.assign(context, inputs);
     applyTriggerVariableOverrides(nodeList, context, inputs);
   }
