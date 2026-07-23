@@ -164,7 +164,9 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
     assert.ok("artifacts" in data, "CLI 执行详情应包含 artifacts 字段");
   });
 
-  it("REQ-SCHEDULE-009 AC1: 终态时带 channelReply 的执行经 channelAdapter.send 投递产物信息", async () => {
+  it("REQ-SCHEDULE-009 AC1 / REQ-FLOW-032: channel 触发不再自动回复；由 feishuSend 节点控制", async () => {
+    // v1.1 契约修订（REQ-FLOW-032）：channel 触发的 execution 终态**不**自动回复 IM 消息；
+    // 最终回复由 flow 中的 feishuSend 显式节点负责。仅保留 imRouter 入队回执"收到，排队中"。
     taskService = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
@@ -186,11 +188,9 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
     const detail = await waitForTerminalStatus(serverCtx.baseUrl, created.id || created.executionId);
     assert.equal(detail.status, "success");
 
-    assert.equal(adapter.sent.length + adapter.replies.length, 1, "终态应恰好投递一次");
-    const delivered = adapter.sent[0]?.text ?? adapter.replies[0]?.text;
-    // 签核成功投递模板：含「已存：<产物路径>」。
-    assert.ok(delivered.includes("已存"), `成功投递消息应含「已存」，实际: ${delivered}`);
-    assert.ok(delivered.includes(relative), `成功投递消息应含产物路径，实际: ${delivered}`);
+    // 终态钩子对 channel 触发不再自动投递（imRouter 的回执在入队时发送，不计入终态钩子）。
+    assert.equal(adapter.sent.length + adapter.replies.length, 0,
+      "channel 触发的终态钩子不应自动回复（最终回复由 feishuSend 节点负责）");
   });
 
   it("REQ-SCHEDULE-009 AC2: 无 channelReply 时不投递", async () => {
@@ -241,7 +241,8 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
     // TODO(BUILD)：告警日志断言（结构化日志捕获 seam 就绪后补）。
   });
 
-  it("REQ-SCHEDULE-009 AC1: 失败执行投递模板化错误摘要", async () => {
+  it("REQ-SCHEDULE-009 AC1 / REQ-FLOW-032: channel 触发失败执行也不再自动回复", async () => {
+    // v1.1 契约修订：channel 触发不自动回复（成功/失败皆然）；失败通知走通知中心。
     taskService = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
@@ -263,10 +264,8 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
     const detail = await waitForTerminalStatus(serverCtx.baseUrl, created.id || created.executionId);
     assert.equal(detail.status, "error");
 
-    assert.equal(adapter.sent.length + adapter.replies.length, 1, "失败终态也应投递一次（错误摘要）");
-    const delivered = adapter.sent[0]?.text ?? adapter.replies[0]?.text;
-    // 签核失败摘要模板：含错误码（E-AGENT-FAILED / E-FETCH-FAILED 原因之一）。
-    assert.match(delivered, /E-AGENT-FAILED|E-FETCH-FAILED/, `失败投递应含错误码摘要，实际: ${delivered}`);
+    assert.equal(adapter.sent.length + adapter.replies.length, 0,
+      "channel 触发失败也不自动回复（错误通知由通知中心承载）");
   });
 
   it("REQ-SCHEDULE-009 AC4: agent 节点实现不参与消息发送（代码结构断言）", async () => {

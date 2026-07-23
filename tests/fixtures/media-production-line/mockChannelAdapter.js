@@ -41,8 +41,8 @@ export function createMockChannelAdapter() {
       status = "online";
     },
 
-    async send({ chatId, text } = {}) {
-      sent.push({ chatId, text });
+    async send({ chatId, text, msgType, content } = {}) {
+      sent.push({ chatId, text, msgType, content });
       if (sendFailuresRemaining > 0) {
         sendFailuresRemaining -= 1;
         throw new Error("E-CHANNEL-SEND: mock channel adapter injected send failure");
@@ -51,8 +51,8 @@ export function createMockChannelAdapter() {
       return { messageId: `om_mock_${seq}` };
     },
 
-    async reply({ messageId, text } = {}) {
-      replies.push({ messageId, text });
+    async reply({ messageId, text, msgType, content } = {}) {
+      replies.push({ messageId, text, msgType, content });
       if (sendFailuresRemaining > 0) {
         sendFailuresRemaining -= 1;
         throw new Error("E-CHANNEL-SEND: mock channel adapter injected reply failure");

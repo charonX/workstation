@@ -99,9 +99,12 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
               ]
             }
           },
-          { id: "n2", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "out", prompt: "使用 {{n1.text}} 转 Markdown 存素材库" } }
+          // REQ-FLOW-032: 最终回复由 feishuSend 节点完成，taskService 不再自动回复。
+          // mock agent 返回 outputVariable=out = materialRel；feishuSend text 模板引用 {{n2.out}}。
+          { id: "n2", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "out", prompt: "使用 {{n1.text}} 转 Markdown 存素材库" } },
+          { id: "n3", type: "feishuSend", config: { msgType: "text", replyToMessage: true, content: JSON.stringify({ text: "已存：{{n2.out}}" }) } }
         ],
-        edges: [{ sourceNodeId: "n1", targetNodeId: "n2" }]
+        edges: [{ sourceNodeId: "n1", targetNodeId: "n2" }, { sourceNodeId: "n2", targetNodeId: "n3" }]
       })
     })).json();
     await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
@@ -163,10 +166,14 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
     assert.equal(indexLines.length, 1, "索引应恰好追加一行");
     assert.ok(indexLines[0].includes(materialRel));
 
-    // AC3：完成回复「已存：<路径>」；artifacts 登记；通知落「产物产出」。
+    // AC3：完成回复「已存：<路径>」——REQ-FLOW-032：终态回复由 feishuSend 节点发送（reply API），
+    // 不再由 taskService 自动回复。mock agent 的 outputVariable=out → materialRel，feishuSend
+    // content 模板 `{"text":"已存：{{n2.out}}"}` 插值后回复原线程。
     const completion = adapter.replies.filter((r) => r.messageId === "om_cap_1");
-    assert.ok(completion.some((r) => r.text.includes("已存") && r.text.includes(materialRel)),
-      `完成回复应含「已存：<路径>」，实际: ${JSON.stringify(completion.map((r) => r.text))}`);
+    assert.ok(completion.some((r) => {
+      const content = typeof r.content === "string" ? JSON.parse(r.content) : {};
+      return content.text && content.text.includes("已存") && content.text.includes(materialRel);
+    }), `完成回复应含「已存：<路径>」，实际 replies: ${JSON.stringify(completion.map((r) => ({ text: r.text, content: r.content })))}`);
 
     const detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${execution.id}`)).json();
     const artifacts = typeof detail.artifacts === "string" ? JSON.parse(detail.artifacts) : detail.artifacts;
@@ -179,7 +186,9 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
     assert.ok(items.some((n) => n.type === "artifact"), "通知列表应含「产物产出」");
   });
 
-  it("抓取失败（fake 源 404）→ 无落盘、无索引追加，飞书收到 E-FETCH-FAILED 原因回复", async () => {
+  it("抓取失败（fake 源 404）→ 无落盘、无索引追加；REQ-FLOW-032：终态自动回复已移除，仅 imRouter 入队回执", async () => {
+    // v1.1 契约修订（REQ-FLOW-032）：channel 触发失败终态不再自动回复 IM 消息；
+    // 最终回复由 flow 作者通过 feishuSend 节点显式控制。仅 imRouter 的"收到，排队中"回执保留。
     seams.taskService.setAgentExecutorForTests(createFailingAgentExecutor("E-FETCH-FAILED: 目标链接返回 404"));
     const deadUrl = contentServer.urlFor("/missing-page");
 
@@ -192,9 +201,9 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
     const files = fs.existsSync(materialsDir) ? fs.readdirSync(materialsDir) : [];
     assert.equal(files.length, 0, "抓取失败不应有任何素材/索引落盘");
 
-    // 飞书收到含 E-FETCH-FAILED 原因的回复。
+    // 仅排队回执，无失败终态自动回复。
     const replies = adapter.replies.filter((r) => r.messageId === "om_cap_404");
-    assert.ok(replies.some((r) => /E-FETCH-FAILED/.test(r.text)),
-      `失败回复应含 E-FETCH-FAILED，实际: ${JSON.stringify(replies.map((r) => r.text))}`);
+    assert.equal(replies.length, 1, "失败场景仅应有入队回执一条 reply");
+    assert.match(replies[0].text, /收到，排队中/, `唯一 reply 应为排队回执，实际: ${replies[0].text}`);
   });
 });
