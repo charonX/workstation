@@ -297,7 +297,49 @@
     "outputVariablesRequired": "Output variables are required",
     "feishuMessageVariableRequired": "Missing required feishuMessage output variable: {{name}}",
     "feishuMessageVariableType": "feishuMessage variable \"{{name}}\" must be string",
-    "feishuMessageUnexpectedVariable": "Unexpected feishuMessage output variable: {{name}}"
+    "feishuMessageUnexpectedVariable": "Unexpected feishuMessage output variable: {{name}}",
+    "nodes": "Nodes",
+    "variableNameInvalid": "Invalid variable name: {{name}} (must start with a letter and contain only letters/digits/underscore)",
+    "flowInputDescription": "Variables received from a parent flow when this flow is invoked as a subflow.",
+    "flowOutputDescription": "Variables returned to the parent flow when this flow exits through this node.",
+    "callFlowSubflow": "Subflow",
+    "callFlowSelectSubflow": "Select a subflow...",
+    "callFlowEntry": "Entry node",
+    "callFlowSelectEntry": "Select an entry...",
+    "callFlowInputMappings": "Input mappings",
+    "callFlowOutputMappings": "Output mappings (read-only)",
+    "callFlowNoInputVars": "This entry declares no input variables.",
+    "callFlowNoOutputVars": "This subflow declares no output variables yet.",
+    "callFlowOutputsHelp": "Outputs are populated automatically from the child flow's flowOutput nodes.",
+    "callFlowOpenChild": "Open subflow canvas",
+    "callFlowSelectParentVar": "Select parent variable...",
+    "callFlowTargetRequired": "Subflow selection is required",
+    "callFlowEntryRequired": "Entry node selection is required",
+    "callFlowMappingsRequired": "Input mappings must be an array",
+    "callFlowMappingInvalid": "Input mapping must be an object",
+    "callFlowChildVarRequired": "childVar is required",
+    "callFlowParentExprInvalid": "parentExpr must be a single {{nodeId.var}} reference",
+    "callFlowOnErrorFail": "callFlow nodes must fail on error"
+  },
+  "palette": {
+    "categories": {
+      "trigger": "Trigger",
+      "logic": "Logic",
+      "flow": "Flow",
+      "execution": "Execution"
+    }
+  },
+  "nodeTypes": {
+    "manual": "Manual Start",
+    "feishuMessage": "Feishu Message",
+    "flowInput": "Flow Input",
+    "condition": "Condition",
+    "forEach": "For Each",
+    "while": "While",
+    "callFlow": "Call Flow",
+    "flowOutput": "Flow Output",
+    "agent": "Agent",
+    "feishuSend": "Feishu Send"
   },
   "projectForm": {
     "title": "Add Project",

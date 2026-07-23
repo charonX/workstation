@@ -1,18 +1,29 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import VariablePicker from "./VariablePicker.jsx";
 import { VARIABLE_TYPES } from "./validateFlowNodes.js";
+import { getUpstreamVariableGroups } from "./upstreamVariables.js";
+import { listCallFlowCandidates } from "../../api/flows.js";
+import { get } from "../../api/client.js";
 
-// Node types refined by this story (REQ-FLOW-018~021): these render the
-// per-type config fields plus the shared retries/onError section.
-const REFINED_NODE_TYPES = ["trigger", "feishuMessage", "condition", "agent", "feishuSend"];
+// Node types that ship a refined config panel. New entries in this story:
+// flowInput, flowOutput, callFlow (REQ-FLOW-043).
+const REFINED_NODE_TYPES = [
+  "trigger",
+  "feishuMessage",
+  "condition",
+  "agent",
+  "feishuSend",
+  "flowInput",
+  "flowOutput",
+  "callFlow",
+];
 
 /**
  * Node properties panel for the Flow Editor.
- * Covers the three refined node types (trigger / condition / agent,
- * REQ-FLOW-018~021) and keeps the legacy field sets for the other types.
- * Edits are applied to canvas state immediately; persistence happens via
- * the editor-level Save button.
+ * Covers the refined node types and keeps the legacy field sets for the rest.
+ * Edits are applied to canvas state immediately; persistence happens via the
+ * editor-level Save button.
  */
 export default function NodeConfigPanel({
   node,
@@ -21,6 +32,8 @@ export default function NodeConfigPanel({
   onUpdateData,
   onUpdateConfig,
   onDelete,
+  currentFlowId,
+  onOpenSubflow,
 }) {
   const { t } = useTranslation();
 
@@ -66,7 +79,7 @@ export default function NodeConfigPanel({
             readOnly
           />
         </div>
-        {type !== "trigger" && (
+        {type !== "trigger" && type !== "flowInput" && type !== "flowOutput" && (
           <div className="form-group">
             <label className="form-label" htmlFor="node-output-variable-input">
               {t("flowEditor.outputVariable")}
@@ -117,7 +130,38 @@ export default function NodeConfigPanel({
         {type === "while" && <WhileFields config={config} onChange={onUpdateConfig} t={t} />}
         {type === "output" && <OutputFields config={config} onChange={onUpdateConfig} t={t} />}
 
-        {isRefinedType && <ErrorHandlingFields config={config} onChange={onUpdateConfig} t={t} />}
+        {type === "flowInput" && (
+          <DeclaredVariablesFields
+            config={config}
+            onChange={onUpdateConfig}
+            t={t}
+            testid="flowinput-variables-editor"
+            description={t("flowEditor.flowInputDescription")}
+          />
+        )}
+        {type === "flowOutput" && (
+          <DeclaredVariablesFields
+            config={config}
+            onChange={onUpdateConfig}
+            t={t}
+            testid="flowoutput-variables-editor"
+            description={t("flowEditor.flowOutputDescription")}
+          />
+        )}
+        {type === "callFlow" && (
+          <CallFlowFields
+            config={config}
+            onChange={onUpdateConfig}
+            t={t}
+            nodeId={node.id}
+            nodes={nodes}
+            edges={edges}
+            currentFlowId={currentFlowId}
+            onOpenSubflow={onOpenSubflow}
+          />
+        )}
+
+        {isRefinedType && type !== "callFlow" && <ErrorHandlingFields config={config} onChange={onUpdateConfig} t={t} />}
 
         <button
           className="btn btn-danger"
@@ -131,33 +175,36 @@ export default function NodeConfigPanel({
   );
 }
 
-function TriggerFields({ config, onChange, t }) {
+// Shared outputVariables editor used by trigger / flowInput / flowOutput.
+// Same add/remove/rename affordances as the original TriggerFields.
+function DeclaredVariablesFields({ config, onChange, t, testid, description }) {
   const variables = Array.isArray(config.outputVariables) ? config.outputVariables : [];
   const setVariables = (next) => onChange("outputVariables", next);
   const updateVariable = (index, patch) =>
     setVariables(variables.map((v, i) => (i === index ? { ...v, ...patch } : v)));
 
   return (
-    <div className="form-group variables-editor" data-testid="trigger-variables-editor">
+    <div className="form-group variables-editor" data-testid={testid}>
       <span className="form-label">{t("flowEditor.variables")}</span>
+      {description && <div className="help-text">{description}</div>}
       {variables.map((variable, index) => (
         <div className="variable-row" data-testid="variable-row" key={index}>
-          <label className="form-label" htmlFor={`variable-name-${index}`}>
+          <label className="form-label" htmlFor={`variable-name-${testid}-${index}`}>
             {t("flowEditor.variableName")}
           </label>
           <input
-            id={`variable-name-${index}`}
+            id={`variable-name-${testid}-${index}`}
             type="text"
             className="form-input"
             data-testid="variable-name-input"
             value={variable.name || ""}
             onChange={(e) => updateVariable(index, { name: e.target.value })}
           />
-          <label className="form-label" htmlFor={`variable-type-${index}`}>
+          <label className="form-label" htmlFor={`variable-type-${testid}-${index}`}>
             {t("flowEditor.variableType")}
           </label>
           <select
-            id={`variable-type-${index}`}
+            id={`variable-type-${testid}-${index}`}
             className="form-input"
             data-testid="variable-type-select"
             value={variable.type || "string"}
@@ -169,11 +216,11 @@ function TriggerFields({ config, onChange, t }) {
               </option>
             ))}
           </select>
-          <label className="form-label" htmlFor={`variable-default-${index}`}>
+          <label className="form-label" htmlFor={`variable-default-${testid}-${index}`}>
             {t("flowEditor.defaultValue")}
           </label>
           <input
-            id={`variable-default-${index}`}
+            id={`variable-default-${testid}-${index}`}
             type="text"
             className="form-input"
             data-testid="variable-default-input"
@@ -201,6 +248,17 @@ function TriggerFields({ config, onChange, t }) {
         {t("flowEditor.addVariable")}
       </button>
     </div>
+  );
+}
+
+function TriggerFields({ config, onChange, t }) {
+  return (
+    <DeclaredVariablesFields
+      config={config}
+      onChange={onChange}
+      t={t}
+      testid="trigger-variables-editor"
+    />
   );
 }
 
@@ -586,3 +644,296 @@ function OutputFields({ config, onChange, t }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// callFlow configuration (REQ-FLOW-043 AC4 / REQ-FLOW-045)
+// ---------------------------------------------------------------------------
+
+// Fetch candidates once when the panel mounts and whenever the current flow id
+// changes. Each candidate: {id, name, inputNodes: [{id, name, variables}]}.
+function useCallFlowCandidates(currentFlowId) {
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentFlowId) {
+      setCandidates([]);
+      return undefined;
+    }
+    setLoading(true);
+    setError(null);
+    listCallFlowCandidates(currentFlowId)
+      .then((list) => {
+        if (!cancelled) setCandidates(Array.isArray(list) ? list : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || "Failed to load subflows");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFlowId]);
+
+  return { candidates, loading, error };
+}
+
+// Fetch the selected child flow (to read its flowOutput nodes for the
+// read-only output-mappings table).
+function useChildOutputs(targetFlowId) {
+  const [outputs, setOutputs] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!targetFlowId) {
+      setOutputs([]);
+      return undefined;
+    }
+    get(`/api/flows/${targetFlowId}`)
+      .then((flow) => {
+        if (cancelled) return;
+        const nodeList = Array.isArray(flow?.nodeList) ? flow.nodeList : [];
+        const collected = [];
+        for (const n of nodeList) {
+          if (String(n?.type || "").toLowerCase() !== "flowoutput") continue;
+          for (const v of Array.isArray(n.config?.outputVariables) ? n.config.outputVariables : []) {
+            if (typeof v?.name === "string" && v.name) {
+              collected.push({ nodeId: n.id, varName: v.name, type: v.type || "string" });
+            }
+          }
+        }
+        setOutputs(collected);
+      })
+      .catch(() => {
+        if (!cancelled) setOutputs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetFlowId]);
+  return outputs;
+}
+
+function CallFlowFields({
+  config,
+  onChange,
+  t,
+  nodeId,
+  nodes,
+  edges,
+  currentFlowId,
+  onOpenSubflow,
+}) {
+  const { candidates, loading, error } = useCallFlowCandidates(currentFlowId);
+  const targetFlowId = config.targetFlowId || "";
+  const selectedCandidate = candidates.find((c) => c.id === targetFlowId) || null;
+  const inputNodes = Array.isArray(selectedCandidate?.inputNodes)
+    ? selectedCandidate.inputNodes
+    : [];
+
+  // Auto-pick single-entry child on candidate change.
+  useEffect(() => {
+    if (!selectedCandidate) return;
+    if (inputNodes.length === 1 && !config.targetInputNodeId) {
+      onChange("targetInputNodeId", inputNodes[0].id);
+    }
+  }, [selectedCandidate, inputNodes, config.targetInputNodeId, onChange]);
+
+  const entryNode =
+    inputNodes.find((n) => n.id === config.targetInputNodeId) ||
+    (inputNodes.length === 1 ? inputNodes[0] : null);
+
+  const childOutputs = useChildOutputs(targetFlowId);
+
+  // Derive output mappings (parentKey = `${callFlowNodeId}.${childVar}`). We
+  // write this into node config so downstream upstreamVariables / canvas chips
+  // see them (and the server regenerates them authoritatively on save).
+  useEffect(() => {
+    if (!targetFlowId) {
+      if (Array.isArray(config.outputMappings) && config.outputMappings.length > 0) {
+        onChange("outputMappings", []);
+      }
+      return;
+    }
+    const next = childOutputs.map((o) => ({
+      childVar: o.varName,
+      childNodeId: o.nodeId,
+      parentKey: `${nodeId}.${o.varName}`,
+      childType: o.type,
+    }));
+    // Only update when materially different to avoid infinite loops.
+    const existing = Array.isArray(config.outputMappings) ? config.outputMappings : [];
+    const same =
+      existing.length === next.length &&
+      next.every((m, i) => existing[i] && existing[i].parentKey === m.parentKey);
+    if (!same) onChange("outputMappings", next);
+  }, [targetFlowId, childOutputs, nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const inputVars = Array.isArray(entryNode?.variables) ? entryNode.variables : [];
+  const mappingsByChild = new Map(
+    (Array.isArray(config.inputMappings) ? config.inputMappings : []).map((m) => [m.childVar, m])
+  );
+
+  const setMapping = (childVar, parentExpr) => {
+    const existing = Array.isArray(config.inputMappings) ? config.inputMappings : [];
+    const idx = existing.findIndex((m) => m.childVar === childVar);
+    const nextMapping = { childVar, parentExpr };
+    const next = idx >= 0
+      ? existing.map((m, i) => (i === idx ? nextMapping : m))
+      : [...existing, nextMapping];
+    onChange("inputMappings", next);
+  };
+
+  const handleSubflowChange = (e) => {
+    const id = e.target.value;
+    onChange("targetFlowId", id);
+    onChange("targetInputNodeId", "");
+    onChange("inputMappings", []);
+    onChange("outputMappings", []);
+  };
+
+  const handleEntryChange = (e) => {
+    onChange("targetInputNodeId", e.target.value);
+    onChange("inputMappings", []);
+  };
+
+  const handleOpenChild = () => {
+    if (targetFlowId && onOpenSubflow) onOpenSubflow(targetFlowId);
+  };
+
+  return (
+    <div className="form-group callflow-fields">
+      <label className="form-label" htmlFor="callflow-subflow-select">
+        {t("flowEditor.callFlowSubflow")}
+      </label>
+      <select
+        id="callflow-subflow-select"
+        className="form-input"
+        data-testid="callflow-config-subflow-select"
+        value={targetFlowId}
+        onChange={handleSubflowChange}
+      >
+        <option value="">{loading ? t("flowEditor.loading") : t("flowEditor.callFlowSelectSubflow")}</option>
+        {candidates.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+      {error && <div className="help-text" style={{ color: "var(--ch-error)" }}>{error}</div>}
+
+      {inputNodes.length > 1 && (
+        <>
+          <label className="form-label" htmlFor="callflow-entry-select" style={{ marginTop: "var(--ch-space-2)" }}>
+            {t("flowEditor.callFlowEntry")}
+          </label>
+          <select
+            id="callflow-entry-select"
+            className="form-input"
+            data-testid="callflow-config-entry-select"
+            value={config.targetInputNodeId || ""}
+            onChange={handleEntryChange}
+          >
+            {inputNodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.name || n.id}</option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {entryNode && (
+        <div className="form-group" style={{ marginTop: "var(--ch-space-3)" }}>
+          <span className="form-label">{t("flowEditor.callFlowInputMappings")}</span>
+          <div className="callflow-mappings" data-testid="callflow-input-mappings">
+            {inputVars.length === 0 && (
+              <div className="help-text">{t("flowEditor.callFlowNoInputVars")}</div>
+            )}
+            {inputVars.map((v) => {
+              const mapping = mappingsByChild.get(v.name) || {};
+              return (
+                <div
+                  key={v.name}
+                  className="callflow-mapping-row"
+                  data-testid={`callflow-input-row-${v.name}`}
+                >
+                  <label className="form-label">{v.name}</label>
+                  <ParentVariableSelect
+                    nodes={nodes}
+                    edges={edges}
+                    currentNodeId={nodeId}
+                    value={mapping.parentExpr || ""}
+                    onChange={(parentExpr) => setMapping(v.name, parentExpr)}
+                    t={t}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {entryNode && (
+        <div className="form-group" style={{ marginTop: "var(--ch-space-3)" }}>
+          <span className="form-label">{t("flowEditor.callFlowOutputMappings")}</span>
+          <div className="callflow-mappings" data-testid="callflow-output-mappings">
+            {childOutputs.length === 0 && (
+              <div className="help-text">{t("flowEditor.callFlowNoOutputVars")}</div>
+            )}
+            {childOutputs.map((o) => (
+              <div className="callflow-mapping-row" key={`${o.nodeId}.${o.varName}`}>
+                <label className="form-label">{o.varName}</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={`${nodeId}.${o.varName}`}
+                  readOnly
+                  disabled
+                />
+              </div>
+            ))}
+          </div>
+          <div className="help-text">{t("flowEditor.callFlowOutputsHelp")}</div>
+        </div>
+      )}
+
+      {targetFlowId && (
+        <button
+          type="button"
+          className="btn btn-link"
+          data-testid="callflow-open-child"
+          onClick={handleOpenChild}
+          style={{ marginTop: "var(--ch-space-2)" }}
+        >
+          {t("flowEditor.callFlowOpenChild")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Dropdown listing upstream variables for a single child input mapping row.
+function ParentVariableSelect({ nodes, edges, currentNodeId, value, onChange, t }) {
+  const groups = getUpstreamVariableGroups(nodes, edges, currentNodeId);
+  const selected = value ? value.replace(/^\{\{\s*/, "").replace(/\s*\}\}$/, "") : "";
+  return (
+    <select
+      className="form-input"
+      value={selected}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v ? `{{${v}}}` : "");
+      }}
+    >
+      <option value="">{t("flowEditor.callFlowSelectParentVar")}</option>
+      {groups.map((g) => (
+        <optgroup key={g.nodeId} label={g.nodeName}>
+          {g.variables.map((v) => (
+            <option key={v.fullName} value={v.fullName}>{v.fullName}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+

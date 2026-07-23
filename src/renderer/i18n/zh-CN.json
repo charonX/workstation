@@ -297,7 +297,49 @@
     "outputVariablesRequired": "输出变量必填",
     "feishuMessageVariableRequired": "缺少必需的飞书消息输出变量：{{name}}",
     "feishuMessageVariableType": "飞书消息变量 \"{{name}}\" 必须是字符串",
-    "feishuMessageUnexpectedVariable": "飞书消息输出变量中不允许：{{name}}"
+    "feishuMessageUnexpectedVariable": "飞书消息输出变量中不允许：{{name}}",
+    "nodes": "节点",
+    "variableNameInvalid": "变量名非法：{{name}}（必须字母开头，仅含字母/数字/下划线）",
+    "flowInputDescription": "当本流程作为子流程被调用时，从父流程接收的变量。",
+    "flowOutputDescription": "本流程通过该节点退出时，返回给父流程的变量。",
+    "callFlowSubflow": "子流程",
+    "callFlowSelectSubflow": "选择子流程……",
+    "callFlowEntry": "入口节点",
+    "callFlowSelectEntry": "选择入口……",
+    "callFlowInputMappings": "入参映射",
+    "callFlowOutputMappings": "出参映射（只读）",
+    "callFlowNoInputVars": "该入口未声明入参。",
+    "callFlowNoOutputVars": "该子流程尚未声明出参。",
+    "callFlowOutputsHelp": "出参根据子流程的 flowOutput 节点自动生成。",
+    "callFlowOpenChild": "打开子流程画布",
+    "callFlowSelectParentVar": "选择父流程变量……",
+    "callFlowTargetRequired": "必须选择子流程",
+    "callFlowEntryRequired": "必须选择入口节点",
+    "callFlowMappingsRequired": "入参映射必须是数组",
+    "callFlowMappingInvalid": "入参映射必须是对象",
+    "callFlowChildVarRequired": "childVar 必填",
+    "callFlowParentExprInvalid": "parentExpr 必须是单个 {{节点ID.变量名}} 引用",
+    "callFlowOnErrorFail": "callFlow 节点失败时必须终止流程"
+  },
+  "palette": {
+    "categories": {
+      "trigger": "触发器",
+      "logic": "逻辑",
+      "flow": "流程",
+      "execution": "执行"
+    }
+  },
+  "nodeTypes": {
+    "manual": "手动启动",
+    "feishuMessage": "飞书消息",
+    "flowInput": "流程输入",
+    "condition": "条件",
+    "forEach": "循环遍历",
+    "while": "条件循环",
+    "callFlow": "调用子流程",
+    "flowOutput": "流程输出",
+    "agent": "智能体",
+    "feishuSend": "飞书发送"
   },
   "projectForm": {
     "title": "添加项目",

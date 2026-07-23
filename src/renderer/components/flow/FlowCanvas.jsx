@@ -28,6 +28,9 @@ function getIconForType(type) {
     skill: "◈",
     data: "{}",
     output: "▢",
+    flowInput: "⤵",
+    flowOutput: "⤴",
+    callFlow: "⎘",
   };
   return icons[type] || "◆";
 }
@@ -54,6 +57,12 @@ function getDefaultConfig(type) {
       return { expression: "" };
     case "output":
       return { path: "" };
+    case "flowInput":
+      return { outputVariables: [] };
+    case "flowOutput":
+      return { outputVariables: [] };
+    case "callFlow":
+      return { targetFlowId: "", targetInputNodeId: "", inputMappings: [], outputMappings: [] };
     default:
       return {};
   }
@@ -142,16 +151,29 @@ function CustomNode({ id, data, selected }) {
 }
 
 // Declared output variables shown as chips on the node body (REQ-FLOW-018/020):
-// trigger contributes its outputVariables list, other types their single
-// declared output variable (config first, legacy top-level fallback).
+// trigger-like types (trigger / feishuMessage / flowInput / flowOutput)
+// contribute their outputVariables list, other types their single declared
+// output variable (config first, legacy top-level fallback). callFlow nodes
+// contribute outputMappings synthesized from the selected child.
 function getNodeOutputVariables(data) {
-  if (data.type === "trigger") {
+  const triggerLike =
+    data.type === "trigger" ||
+    data.type === "flowInput" ||
+    data.type === "flowOutput";
+  if (triggerLike) {
     const declared = Array.isArray(data.config?.outputVariables)
       ? data.config.outputVariables
       : [];
     return declared
       .map((variable) =>
         typeof variable?.name === "string" ? variable.name.trim() : ""
+      )
+      .filter(Boolean);
+  }
+  if (data.type === "callFlow" && Array.isArray(data.config?.outputMappings)) {
+    return data.config.outputMappings
+      .map((mapping) =>
+        typeof mapping?.parentKey === "string" ? mapping.parentKey : ""
       )
       .filter(Boolean);
   }

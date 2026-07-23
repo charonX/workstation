@@ -192,6 +192,16 @@ export default function FlowEditor() {
     setHasUnsavedChanges(true);
   }, [selectedNode]);
 
+  // REQ-FLOW-045: jump from a callFlow node to the selected child flow's
+  // canvas. Browser back returns to the parent (HashRouter history).
+  const handleOpenSubflow = useCallback(
+    (subflowId) => {
+      if (!subflowId) return;
+      navigate(`/flows/${subflowId}`);
+    },
+    [navigate]
+  );
+
   // Keyboard Delete to remove selected node. Guard against editable
   // targets: pressing Delete inside a form field must not delete the
   // node (BUG-class defect exposed by S5a E2E fill).
@@ -271,7 +281,7 @@ export default function FlowEditor() {
           {(saveSuccess || saveError) && (
             <div
               className={`save-feedback ${saveSuccess ? "save-success" : "save-error"}`}
-              data-testid={saveSuccess ? "flow-save-success" : "flow-save-error"}
+              data-testid={saveSuccess ? "flow-save-success" : "save-error-banner"}
             >
               {saveSuccess ? t("flowEditor.saveSuccess") : saveError}
             </div>
@@ -340,6 +350,8 @@ export default function FlowEditor() {
             onUpdateData={handleUpdateNodeData}
             onUpdateConfig={handleUpdateConfig}
             onDelete={handleDeleteNode}
+            currentFlowId={id}
+            onOpenSubflow={handleOpenSubflow}
           />
         </aside>
       </div>

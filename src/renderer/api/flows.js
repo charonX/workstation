@@ -23,3 +23,7 @@ export function deleteFlow(flowId) {
 export function debugFlow(flowId, body) {
   return post(`/api/flows/${flowId}/debug`, body);
 }
+
+export function listCallFlowCandidates(flowId) {
+  return get(`/api/flows/${flowId}/callflow-candidates`);
+}
