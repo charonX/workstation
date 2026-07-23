@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 3        # 第几次尝试。归档重做时 +1。
-bug-counter: 10    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 11    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-19
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -51,6 +51,7 @@ history:
   - {at: 2026-07-23, from: BUG, to: BUG, note: "req-gap 就地补全：用户反馈硬编码的终态自动回复（已存/执行失败）不合理，应由 flow 作者通过显式节点控制回复内容；排队回执保留。新增 REQ-FLOW-032 feishuSend 节点（msgType=text/post/interactive/image，JSON content 支持 {{var}} 插值，replyToMessage 开关，无 channelReply 上下文时 skipped）；更新 REQ-SCHEDULE-009 v1.1：channel 触发终态不再自动回复，仅 schedule 触发保留自动投递；feishuChannelAdapter.send/reply 扩展支持 msgType+content；link-capture 模板改为 3 节点链 feishuMessage→agent→feishuSend；全量 270/270 绿。"}
   - {at: 2026-07-23, from: BUG, to: BUG, note: "BUG-009 用户报告重启后飞书凭证+技能列表都丢失，BUG-007 bootstrap-env 修复无效。根因：vite/rollup 打包把 bootstrap-env 内联到 bundle 末尾，其他 chunk 的静态 import 被提升到 bundle 顶部并深度优先执行 → settingsService 顶层 let settings=readSettings() 在 env 就绪前运行，读 ~/.opc-workstation/（无凭据）；saveChannelCredentials 写到 userData/（env 已就绪），导致跨重启分裂。修复：settingsService 改为惰性初始化（settings=null sentinel，首次 load/save 才 readSettings），不依赖模块加载顺序。DB 打开本身已是惰性的（getDb 只在 handler/startServer 内调用），顺手解决技能列表（DB 路径错位）丢失。全量 272/272 绿。"}
   - {at: 2026-07-23, from: BUG, to: BUG, note: "BUG-010 用户报告项目技能配置里看到 3 个技能，但全局技能列表页显示空。根因：GET /api/skills 路径 parts.length=0 时 handleSkills 返回 404，缺 listSkills() 路由处理。修复：补 GET / 列表路由返回 skillService.listSkills()；272/272 绿。"}
+  - {at: 2026-07-23, from: BUG, to: BUG, note: "BUG-011 用户反馈磁盘上有之前安装的 mattpocock-skills，但 DB 里没登记，技能列表状态不同步。根因：BUG-009 路径分裂期间安装写入 ~/.opc-workstation/data.db，重启后读 userData/data.db，用户技能记录丢失。修复：启动时 reconcileUserSkillRepos() 扫描 settings.skillRepoPath 目录，把含 skills/*/SKILL.md 但 DB 没登记的 repo 补登记（installSource=recovered）；用户实测 mattpocock-skills 恢复为 40 个技能。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
