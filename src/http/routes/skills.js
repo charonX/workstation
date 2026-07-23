@@ -1,7 +1,11 @@
 import * as skillService from "../../services/skillService.js";
 
 export function handleSkills(req, res, body, pathParts) {
+  // BUG-010 fix: GET /api/skills lists all installed skills (was returning 404).
   if (pathParts.length === 0) {
+    if (req.method === "GET") {
+      return ok(res, skillService.listSkills());
+    }
     return notFound(res);
   }
 
