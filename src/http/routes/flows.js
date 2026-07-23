@@ -66,6 +66,16 @@ export async function handleFlows(req, res, body, pathParts) {
     return notFound(res);
   }
 
+  if (pathParts.length === 2 && pathParts[1] === "callflow-candidates") {
+    if (req.method === "GET") {
+      const flow = flowService.getFlow(flowId);
+      if (!flow) return notFound(res, "Flow not found");
+      const candidates = flowService.listCallFlowCandidates(flowId, flow.projectId);
+      return ok(res, candidates);
+    }
+    return notFound(res);
+  }
+
   if (pathParts.length === 1 && req.url.endsWith("/import")) {
     // handled at length 0 via url check in server
   }

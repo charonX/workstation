@@ -14,9 +14,12 @@ const VARIABLE_TYPES = ["string", "number", "array", "object"];
 const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend", "flowinput", "flowoutput"];
+const CALLFLOW_ON_ERROR_VALUES = ["fail"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend", "flowinput", "flowoutput", "callflow"];
 const VARIABLE_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
+// REQ-FLOW-034 AC3: parentExpr must be a single {{var}} reference.
+const PARENT_EXPR_PATTERN = /^\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}$/;
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -150,6 +153,70 @@ function validateConditionConfig(config, base, details) {
   }
 }
 
+// REQ-FLOW-034: callFlow 节点字段校验
+// - targetFlowId / targetInputNodeId 必填非空字符串
+// - inputMappings: 数组；每项 childVar（合法标识符）+ parentExpr（单 {{var}} 引用）
+// - onError: 仅允许 "fail"（REQ-FLOW-037 AC6：callFlow 不支持 ignore）
+// - outputMappings: 可选；若存在需为数组且每项含 childVar/parentKey（非空字符串）
+function validateCallFlowConfig(config, base, details, nodeId) {
+  const pushField = (path, message, code) => {
+    details.push({ path: `${base}.${path}`, message, code, nodeId });
+  };
+
+  // targetFlowId
+  if (typeof config.targetFlowId !== "string" || config.targetFlowId.trim() === "") {
+    pushField("targetFlowId", "targetFlowId is required", "E-CALLFLOW-TARGET");
+  }
+  // targetInputNodeId
+  if (typeof config.targetInputNodeId !== "string" || config.targetInputNodeId.trim() === "") {
+    pushField("targetInputNodeId", "targetInputNodeId is required", "E-CALLFLOW-INPUT");
+  }
+  // inputMappings
+  if ("inputMappings" in config && config.inputMappings !== undefined) {
+    if (!Array.isArray(config.inputMappings)) {
+      pushField("inputMappings", "inputMappings must be an array", "E-CALLFLOW-MAP");
+    } else {
+      config.inputMappings.forEach((mapping, index) => {
+        const item = isPlainObject(mapping) ? mapping : {};
+        const p = `${base}.inputMappings[${index}]`;
+        if (typeof item.childVar !== "string" || item.childVar.trim() === "") {
+          details.push({ path: `${p}.childVar`, message: "childVar is required and must be a non-empty string", code: "E-CALLFLOW-MAP", nodeId });
+        } else if (!VARIABLE_NAME_PATTERN.test(item.childVar)) {
+          details.push({ path: `${p}.childVar`, message: `childVar "${item.childVar}" is not a valid identifier`, code: "E-CALLFLOW-MAP", nodeId });
+        }
+        if (typeof item.parentExpr !== "string") {
+          details.push({ path: `${p}.parentExpr`, message: "parentExpr must be a string", code: "E-CALLFLOW-MAP", nodeId });
+        } else if (!PARENT_EXPR_PATTERN.test(item.parentExpr)) {
+          details.push({ path: `${p}.parentExpr`, message: `parentExpr "${item.parentExpr}" must be a single {{var}} reference`, code: "E-CALLFLOW-MAP", nodeId });
+        }
+      });
+    }
+  }
+  // onError override: callFlow only supports "fail"
+  if ("onError" in config && config.onError !== undefined) {
+    if (!CALLFLOW_ON_ERROR_VALUES.includes(config.onError)) {
+      pushField("onError", `Invalid onError: ${config.onError}. callFlow only supports "fail"`, "E-CALLFLOW-ON-ERROR");
+    }
+  }
+  // outputMappings (optional)
+  if ("outputMappings" in config && config.outputMappings !== undefined) {
+    if (!Array.isArray(config.outputMappings)) {
+      pushField("outputMappings", "outputMappings must be an array", "E-CALLFLOW-OUT");
+    } else {
+      config.outputMappings.forEach((mapping, index) => {
+        const item = isPlainObject(mapping) ? mapping : {};
+        const p = `${base}.outputMappings[${index}]`;
+        if (typeof item.childVar !== "string" || item.childVar.trim() === "") {
+          details.push({ path: `${p}.childVar`, message: "childVar is required", code: "E-CALLFLOW-OUT", nodeId });
+        }
+        if (typeof item.parentKey !== "string" || item.parentKey.trim() === "") {
+          details.push({ path: `${p}.parentKey`, message: "parentKey is required", code: "E-CALLFLOW-OUT", nodeId });
+        }
+      });
+    }
+  }
+}
+
 function validateAgentConfig(config, base, details) {
   if ("provider" in config && config.provider !== undefined) {
     if (!AGENT_PROVIDERS.includes(config.provider)) {
@@ -194,6 +261,7 @@ export function validateNodeList(nodeList) {
     else if (type === "agent") validateAgentConfig(node.config, base, details);
     else if (type === "flowinput") validateDeclaredOutputVariables(node.config, base, details);
     else if (type === "flowoutput") validateDeclaredOutputVariables(node.config, base, details);
+    else if (type === "callflow") validateCallFlowConfig(node.config, base, details, node.id);
   });
   if (details.length > 0) {
     const err = new Error(
@@ -202,6 +270,172 @@ export function validateNodeList(nodeList) {
     err.details = details;
     throw err;
   }
+}
+
+// REQ-FLOW-038 / REQ-FLOW-034 AC5: save-time cross-flow validation.
+// For each callFlow node in the flow being saved:
+//   1. Target flow exists, not soft-deleted, same project
+//   2. Target flow has at least one flowInput node
+//   3. targetInputNodeId exists and is a flowInput in the target flow
+//   4. Every outputVariable declared by the entry flowInput node must be covered by
+//      inputMappings OR have a defaultValue; each mapping's childVar must be declared
+//   5. DFS from the current flow along callFlow.targetFlowId:
+//      - cycle => E-FLOW-CIRCULAR (with readable chain)
+//      - depth > 8 => E-FLOW-MAX-DEPTH
+//
+// `rootNodeList` is the incoming (to-be-saved) nodeList of the current flow; child
+// flows are loaded from DB via getFlow.
+export function validateSubflowCalls(rootFlowId, rootNodeList, projectId) {
+  const details = [];
+
+  const loadNodes = (flowId) => {
+    if (flowId === rootFlowId) return Array.isArray(rootNodeList) ? rootNodeList : [];
+    const f = getFlow(flowId);
+    if (!f) return null;
+    return f.nodeList || [];
+  };
+
+  const callFlowNodes = (Array.isArray(rootNodeList) ? rootNodeList : [])
+    .filter((n) => isPlainObject(n) && n.type?.toLowerCase() === "callflow");
+
+  for (const node of callFlowNodes) {
+    const cfg = node.config || {};
+    const targetFlowId = cfg.targetFlowId;
+    const targetInputNodeId = cfg.targetInputNodeId;
+
+    // 1. Target existence / project match / not deleted
+    let childNodes;
+    if (typeof targetFlowId !== "string" || targetFlowId.trim() === "") {
+      // Missing targetFlowId already reported by validateCallFlowConfig; skip cross-check.
+      continue;
+    }
+    const childFlow = getFlow(targetFlowId);
+    if (!childFlow) {
+      details.push({ code: "E-FLOW-REF-MISSING", message: `Target flow "${targetFlowId}" not found`, nodeId: node.id });
+      continue;
+    }
+    if (childFlow.projectId !== projectId) {
+      details.push({ code: "E-FLOW-REF-MISSING", message: `Target flow "${targetFlowId}" belongs to a different project`, nodeId: node.id });
+      continue;
+    }
+    childNodes = childFlow.nodeList || [];
+
+    // 2. Child has flowInput nodes? If not, allow the save (incremental building):
+    //    skip entry/mapping checks but DFS cycle/depth detection still runs below.
+    const childFlowInputs = childNodes.filter((n) => n.type?.toLowerCase() === "flowinput");
+    if (childFlowInputs.length === 0) {
+      continue;
+    }
+
+    // 3. targetInputNodeId must exist and be a flowInput (only enforced once the
+    //    child has at least one flowInput; if targetInputNodeId is empty the field
+    //    validator already reports it).
+    if (typeof targetInputNodeId !== "string" || targetInputNodeId.trim() === "") {
+      continue;
+    }
+    const entryNode = childNodes.find((n) => n.id === targetInputNodeId);
+    if (!entryNode || entryNode.type?.toLowerCase() !== "flowinput") {
+      details.push({ code: "E-CALLFLOW-INPUT", message: `targetInputNodeId "${targetInputNodeId}" is not a flowInput node in flow "${targetFlowId}"`, nodeId: node.id });
+      continue;
+    }
+
+    // 4. Mapping completeness: declared entry vars must be mapped OR have defaultValue.
+    //    Also every mapping's childVar must be declared by the entry node.
+    const declaredVars = entryNode.config?.outputVariables || [];
+    const declaredByName = new Map();
+    for (const v of declaredVars) {
+      if (v && typeof v.name === "string") declaredByName.set(v.name, v);
+    }
+    const mappedChildVars = new Set();
+    for (const mapping of Array.isArray(cfg.inputMappings) ? cfg.inputMappings : []) {
+      if (mapping && typeof mapping.childVar === "string") {
+        mappedChildVars.add(mapping.childVar);
+        if (!declaredByName.has(mapping.childVar)) {
+          details.push({ code: "E-CALLFLOW-MAP", message: `Input mapping references '${mapping.childVar}' which is not declared by entry flowInput "${entryNode.id}" of flow "${targetFlowId}"`, nodeId: node.id });
+        }
+      }
+    }
+    for (const [name, varDef] of declaredByName.entries()) {
+      if (!mappedChildVars.has(name) && !("defaultValue" in varDef && varDef.defaultValue !== undefined)) {
+        details.push({ code: "E-CALLFLOW-MAP-MISSING", message: `Input '${name}' of flow "${targetFlowId}" is not mapped and has no defaultValue`, nodeId: node.id });
+      }
+    }
+  }
+
+  // 5. DFS for circular references and depth limit (REQ-FLOW-038 AC1/AC2).
+  //    Start from the root flow being saved; traverse all callFlow.targetFlowId edges.
+  const MAX_DEPTH = 8;
+  const visited = new Set();
+  const path = [];
+
+  function dfs(flowId, depth, triggeringNodeId) {
+    if (depth > MAX_DEPTH) {
+      details.push({
+        code: "E-FLOW-MAX-DEPTH",
+        message: `Subflow nesting depth exceeds ${MAX_DEPTH} (${depth})`,
+        nodeId: triggeringNodeId
+      });
+      return;
+    }
+    if (visited.has(flowId)) {
+      if (path.includes(flowId)) {
+        const cycle = [...path.slice(path.indexOf(flowId)), flowId].join(" -> ");
+        details.push({
+          code: "E-FLOW-CIRCULAR",
+          message: `Circular subflow reference detected: ${cycle}`,
+          nodeId: triggeringNodeId
+        });
+      }
+      return;
+    }
+    visited.add(flowId);
+    path.push(flowId);
+    const nodes = loadNodes(flowId);
+    if (Array.isArray(nodes)) {
+      for (const n of nodes) {
+        if (!isPlainObject(n)) continue;
+        if (n.type?.toLowerCase() !== "callflow") continue;
+        const tid = n.config?.targetFlowId;
+        if (typeof tid !== "string" || tid.trim() === "") continue;
+        dfs(tid, depth + 1, n.id);
+      }
+    }
+    path.pop();
+  }
+
+  dfs(rootFlowId, 0, null);
+
+  if (details.length > 0) {
+    const err = new Error("Subflow validation failed: " + details.map((d) => `${d.code || ""}: ${d.message}`).join("; "));
+    err.details = details;
+    throw err;
+  }
+}
+
+// REQ-FLOW-041: returns flows in the same project (excluding self) that contain
+// at least one flowInput node, with each flowInput's declared variables.
+export function listCallFlowCandidates(flowId, projectId) {
+  const flows = listFlows().filter((f) => f.projectId === projectId && f.id !== flowId);
+  const result = [];
+  for (const f of flows) {
+    const nodes = Array.isArray(f.nodeList) ? f.nodeList : [];
+    const inputNodes = nodes.filter((n) => n.type?.toLowerCase() === "flowinput");
+    if (inputNodes.length === 0) continue;
+    result.push({
+      id: f.id,
+      name: f.name,
+      inputNodes: inputNodes.map((n) => ({
+        id: n.id,
+        name: n.name ?? n.data?.label ?? null,
+        variables: (n.config?.outputVariables || []).map((v) => ({
+          name: v.name,
+          type: v.type,
+          defaultValue: v.defaultValue
+        }))
+      }))
+    });
+  }
+  return result;
 }
 
 export function resetFlows(seed = []) {
@@ -268,8 +502,12 @@ export function createFlow({ name, projectId, description, nodes, nodeList, edge
   if (!projectId) throw new Error("Project is required");
   const effectiveNodeList = nodeList || nodes || [];
   validateNodeList(effectiveNodeList);
+  const flowId = nextFlowId();
+  // Cross-flow validation: DFS needs the root id, but the flow row is not in DB yet.
+  // validateSubflowCalls loads the root's nodeList from the in-memory argument.
+  validateSubflowCalls(flowId, effectiveNodeList, projectId);
   const flow = {
-    id: nextFlowId(),
+    id: flowId,
     projectId,
     name,
     description,
@@ -315,8 +553,10 @@ export function importFlow(data) {
   const publishedNodeList = data.publishedNodeList || (status === "published" ? nodeList : []);
   const publishedEdges = data.publishedEdges || (status === "published" ? edges : []);
   const publishedAt = data.publishedAt || (status === "published" ? timestamp() : null);
+  const flowId = data.id || nextFlowId();
+  validateSubflowCalls(flowId, nodeList, data.projectId);
   const flow = {
-    id: data.id || nextFlowId(),
+    id: flowId,
     projectId: data.projectId,
     name: data.name,
     description: data.description ?? null,
@@ -436,7 +676,11 @@ export function updateFlow(flowId, patch) {
   const currentEdges = safeJson(row.edges, []);
   const nodeList = patch.nodeList !== undefined ? patch.nodeList : currentNodeList;
   const edges = patch.edges !== undefined ? patch.edges : currentEdges;
-  if (patch.nodeList !== undefined) validateNodeList(nodeList);
+  if (patch.nodeList !== undefined) {
+    validateNodeList(nodeList);
+    // Cross-flow validation runs against the to-be-saved nodeList.
+    validateSubflowCalls(flowId, nodeList, row.projectId);
+  }
   const name = patch.name !== undefined ? patch.name : row.name;
   const description = patch.description !== undefined ? patch.description : row.description;
 

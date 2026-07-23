@@ -122,6 +122,11 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
   let controlType = null;
   const logs = [];
   const nodeRecords = [];
+  // Continuation stack for control-node body branches (foreach/while).
+  // When a control node routes to a body edge, we push the control node's id
+  // here; after the body sub-DAG terminates (no outgoing edge), we resume the
+  // control node for the next iteration instead of ending the flow.
+  const continuationStack = [];
 
   while (currentNodeId) {
     iterationCount++;
@@ -232,7 +237,21 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
     if (next.edge) {
       depth = incrementDepthOrAbort(nodeRecords, depth, maxDepth);
+      // For foreach/while body edges, after the body sub-DAG completes we must
+      // resume the control node for the next iteration.
+      if (next.postLoopback) {
+        continuationStack.push({ nodeId: node.id, nodeType });
+      }
       currentNodeId = next.edge.targetNodeId;
+    } else if (continuationStack.length > 0) {
+      // Body sub-DAG exhausted: pop the continuation and resume the control node.
+      const cont = continuationStack.pop();
+      depth = incrementDepthOrAbort(nodeRecords, depth, maxDepth);
+      loopBodyCount++;
+      if (cont.nodeType === "while") {
+        incrementFirstNumericContext(context);
+      }
+      currentNodeId = cont.nodeId;
     } else {
       currentNodeId = null;
     }
@@ -357,14 +376,27 @@ async function executeWithRetry(executor, input, retries) {
 function chooseNextNode(node, output, outgoing) {
   const outEdges = outgoing.get(node.id) ?? [];
 
-  const isControlNode = ["condition", "foreach", "while"].includes(node.type?.toLowerCase());
+  const nodeType = node.type?.toLowerCase();
+  const isControlNode = ["condition", "foreach", "while"].includes(nodeType);
   if (isControlNode && typeof output === "string") {
     const matched = outEdges.find((edge) => edge.sourcePort === output);
     if (matched) {
-      return { edge: matched };
+      // For foreach/while body branch: route to body, but after the body sub-DAG
+      // completes we must resume the control node (set postLoopback so caller
+      // pushes a continuation). "true" branch of while is also a body-like loop.
+      const postLoopback =
+        (nodeType === "foreach" && output === "body") ||
+        (nodeType === "while" && output === "true");
+      return { edge: matched, postLoopback };
     }
 
-    if (output === "body" && node.type?.toLowerCase() !== "condition") {
+    // No matching labeled edge: for foreach/while body output, loop back to self
+    // (used when the node has no body edge — iterates without a body sub-DAG).
+    if (output === "body" && nodeType !== "condition") {
+      return { loopBack: true };
+    }
+    // while "true" with no labeled edge: also loop back directly.
+    if (output === "true" && nodeType === "while") {
       return { loopBack: true };
     }
 
