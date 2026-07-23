@@ -43,6 +43,11 @@ function normalizeSettings(settings) {
 }
 
 function readSettings() {
+  // BUG-009 fix: readSettings is now called lazily on first access (not at module
+  // top-level), so OPC_WORKSTATION_CONFIG_DIR is guaranteed to be set by the time
+  // any caller invokes loadSettings/saveSettings. This makes settingsService
+  // resilient to ESM import hoisting and bundler reordering (vite/rollup may place
+  // import statements before inline bootstrap code in the output bundle).
   const file = settingsFile();
   try {
     const data = fs.readFileSync(file, "utf8");
@@ -63,7 +68,18 @@ function writeSettings(settings) {
   }
 }
 
-let settings = readSettings();
+// BUG-009: lazy init — null sentinel; populated on first loadSettings()/saveSettings().
+// Previously this was `let settings = readSettings()` which ran at module load time,
+// before the Electron main process had a chance to set OPC_WORKSTATION_CONFIG_DIR
+// (ESM imports are hoisted, and vite bundles the bootstrap-env inline AFTER other
+// static imports, so env was unset when readSettings ran).
+let settings = null;
+
+function ensureLoaded() {
+  if (settings === null) {
+    settings = readSettings();
+  }
+}
 
 export function resetSettings() {
   settings = { ...defaults };
@@ -72,10 +88,12 @@ export function resetSettings() {
 }
 
 export function loadSettings() {
+  ensureLoaded();
   return normalizeSettings({ ...settings });
 }
 
 export function saveSettings(partial) {
+  ensureLoaded();
   if (partial && Object.prototype.hasOwnProperty.call(partial, "workspaceRoot") && partial.workspaceRoot === "") {
     throw new Error("Workspace root is required");
   }
@@ -85,6 +103,7 @@ export function saveSettings(partial) {
 }
 
 export function saveChannelCredentials({ appId, appSecret } = {}) {
+  ensureLoaded();
   if (!appId || !appSecret) {
     throw new Error("E-CHANNEL-CRED: App ID and App Secret are required");
   }
