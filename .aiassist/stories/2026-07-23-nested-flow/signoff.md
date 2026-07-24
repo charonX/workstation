@@ -22,9 +22,9 @@
 | FLOW-040 嵌套执行记录 | nestedExecution.test.js | API 集成 | 骨架（端到端断言待实现落地） |
 | FLOW-041 候选列表 API | callflowCandidates.test.js | API 集成 | 已签 |
 | FLOW-042 executor 签名/多输出 | executorSignature.test.js | 单元 | 已签 |
-| FLOW-043 节点面板/配置 UI | subflowConfig.spec.cjs | E2E | 骨架（locator 文案待 UI 落地） |
-| FLOW-044 执行详情展开 | nestedExecutionDetail.spec.cjs | E2E | 骨架（locator 文案待 UI 落地） |
-| FLOW-045 跳转子流程 | subflowConfig.spec.cjs | E2E | 骨架（locator 文案待 UI 落地） |
+| FLOW-043 节点面板/配置 UI | subflowConfig.test.cjs | E2E | 骨架（locator 文案待 UI 落地） |
+| FLOW-044 执行详情展开 | nestedExecutionDetail.test.cjs | E2E | 骨架（locator 文案待 UI 落地） |
+| FLOW-045 跳转子流程 | subflowConfig.test.cjs | E2E | 骨架（locator 文案待 UI 落地） |
 | FLOW-046 foreach + callFlow | foreachCallflow.test.js | 单元 | 已签 |
 
 ### Capability / Entity 覆盖

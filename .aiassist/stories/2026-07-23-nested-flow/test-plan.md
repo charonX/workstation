@@ -17,8 +17,8 @@
 | FLOW-040 | API integration | `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/api/nestedExecution.test.js` | 集成(API) |
 | FLOW-041 | API integration | `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/api/callflowCandidates.test.js` | 集成(API) |
 | FLOW-042 | engine unit | `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/executorSignature.test.js` | 单元 |
-| FLOW-043 | E2E | `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/e2e/subflowConfig.spec.cjs` | E2E (Playwright Electron) |
-| FLOW-044 | E2E | `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/e2e/nestedExecutionDetail.spec.cjs` | E2E (Playwright Electron) |
+| FLOW-043 | E2E | `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/e2e/subflowConfig.test.cjs` | E2E (Playwright Electron) |
+| FLOW-044 | E2E | `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/e2e/nestedExecutionDetail.test.cjs` | E2E (Playwright Electron) |
 | FLOW-045 | E2E | same as FLOW-043 | E2E |
 | FLOW-046 | engine unit | `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/foreachCallflow.test.js` | 单元 |
 
