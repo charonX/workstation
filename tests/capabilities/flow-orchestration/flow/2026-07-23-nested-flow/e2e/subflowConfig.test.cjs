@@ -41,7 +41,7 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
 
   test("REQ-FLOW-043 AC1: Node Palette shows flowInput, flowOutput, callFlow entries", async () => {
     const project = await createProject(apiBaseUrl, { name: "Palette", localPath: `${userDataDir}/ws/palette` });
-    await createFlow(apiBaseUrl, project.id, "Palette Flow", [], []);
+    await createFlow(apiBaseUrl, { name: "Palette Flow", projectId: project.id, nodeList: [], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Palette Flow" }).click();
@@ -54,7 +54,7 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
 
   test("REQ-FLOW-043 AC1: Click palette flowInput adds a node to canvas", async () => {
     const project = await createProject(apiBaseUrl, { name: "Add", localPath: `${userDataDir}/ws/add` });
-    await createFlow(apiBaseUrl, project.id, "Add Flow", [], []);
+    await createFlow(apiBaseUrl, { name: "Add Flow", projectId: project.id, nodeList: [], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Add Flow" }).click();
@@ -67,14 +67,14 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
   test("REQ-FLOW-043 AC4: callFlow config cascades subflow -> entry -> input mappings", async () => {
     // seed 子流程含 flowInput 声明 msg/messageId 两个入参
     const project = await createProject(apiBaseUrl, { name: "Cfg", localPath: `${userDataDir}/ws/cfg` });
-    const child = await createFlow(apiBaseUrl, project.id, "link-saver", [
+    const child = await createFlow(apiBaseUrl, { name: "link-saver", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", name: "fromFeishu", config: { outputVariables: [{ name: "msg" }, { name: "messageId" }] } }
-    ], []);
-    await createFlow(apiBaseUrl, project.id, "parent", [
+    ], edges: [] });
+    await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [
       { id: "fm", type: "feishuMessage", name: "feishu", config: { outputVariables: [
         { name: "text", type: "string" }, { name: "sender", type: "string" }, { name: "messageId", type: "string" }
       ]}}
-    ], []);
+    ], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
@@ -101,11 +101,11 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
   test("REQ-FLOW-043 AC4: output mappings shown read-only with namespaced keys", async () => {
     const project = await createProject(apiBaseUrl, { name: "Out", localPath: `${userDataDir}/ws/out` });
     // 子流程含 flowOutput 声明 savedUrl/title
-    await createFlow(apiBaseUrl, project.id, "child", [
+    await createFlow(apiBaseUrl, { name: "child", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
       { id: "out", type: "flowOutput", config: { outputVariables: [{ name: "savedUrl" }, { name: "title" }] } }
-    ], []);
-    await createFlow(apiBaseUrl, project.id, "parent", [], []);
+    ], edges: [] });
+    await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
@@ -128,11 +128,11 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
 
   test("REQ-FLOW-043 AC4: multi-input child requires user to pick entry", async () => {
     const project = await createProject(apiBaseUrl, { name: "Multi", localPath: `${userDataDir}/ws/multi` });
-    await createFlow(apiBaseUrl, project.id, "child", [
+    await createFlow(apiBaseUrl, { name: "child", projectId: project.id, nodeList: [
       { id: "fromFeishu", type: "flowInput", config: { outputVariables: [{ name: "msg" }] } },
       { id: "fromSchedule", type: "flowInput", config: { outputVariables: [{ name: "topic" }] } }
-    ], []);
-    await createFlow(apiBaseUrl, project.id, "parent", [], []);
+    ], edges: [] });
+    await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
@@ -149,10 +149,10 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
 
   test("REQ-FLOW-045: 'open subflow' navigates to child flow canvas; back returns", async () => {
     const project = await createProject(apiBaseUrl, { name: "Jump", localPath: `${userDataDir}/ws/jump` });
-    const child = await createFlow(apiBaseUrl, project.id, "child", [
+    const child = await createFlow(apiBaseUrl, { name: "child", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } }
-    ], []);
-    await createFlow(apiBaseUrl, project.id, "parent", [], []);
+    ], edges: [] });
+    await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
@@ -174,10 +174,10 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
   test("REQ-FLOW-043: saving parent with circular reference shows inline error", async () => {
     const project = await createProject(apiBaseUrl, { name: "Circ", localPath: `${userDataDir}/ws/circ` });
     // seed A→B via API，然后打开 B 在画布上配 B→A 闭合
-    const a = await createFlow(apiBaseUrl, project.id, "A", [], []);
-    const b = await createFlow(apiBaseUrl, project.id, "B", [
+    const a = await createFlow(apiBaseUrl, { name: "A", projectId: project.id, nodeList: [], edges: [] });
+    const b = await createFlow(apiBaseUrl, { name: "B", projectId: project.id, nodeList: [
       { id: "bin", type: "flowInput", config: { outputVariables: [] } }
-    ], []);
+    ], edges: [] });
     // A→B
     await fetch(`${apiBaseUrl}/api/flows/${a.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -207,7 +207,7 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     // 切 zh: palette 按钮中文；切 en: 英文
     // 依赖现有语言切换机制（locators.LANG_TOGGLE 或 settings）
     const project = await createProject(apiBaseUrl, { name: "I18n", localPath: `${userDataDir}/ws/i18n` });
-    await createFlow(apiBaseUrl, project.id, "F", [], []);
+    await createFlow(apiBaseUrl, { name: "F", projectId: project.id, nodeList: [], edges: [] });
     await firstWindow.click(locators.FLOWS_LINK);
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "F" }).click();
 
