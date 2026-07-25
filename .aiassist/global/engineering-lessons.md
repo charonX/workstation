@@ -71,6 +71,35 @@
 - **根因**：前端只渲染了部分返回字段。
 - **结论**：当后端已返回用于调试/排查的日志、trace、迭代信息时，前端应提供合理的展示面，避免数据"沉睡"；同步更新 i18n 与样式。
 
+## ESM 模块顶层不要读 env/磁盘——惰性初始化才对 bundler 鲁棒
+
+- **现象**：飞书凭据和技能数据每次重启就"消失"，bootstrap-env.js 作为第一个 import 仍无效。
+- **根因**：ESM static import 被 hoist，vite/rollup 打包后其他 chunk 的静态 import 被提升到 bundle 顶部深度优先执行，bootstrap-env 的内联代码反而在后面执行。`settingsService` 顶层 `let settings = readSettings()` 跑在 env 设置之前，读到默认目录。
+- **结论**：模块顶层只定义常量和函数，**不要**在顶层读 `process.env`、读文件、开 DB 连接；改用惰性初始化（`let cache = null; ensureLoaded() { if (!cache) cache = ... }`），在第一次导出函数被调用时才读。这样与 import 顺序、bundler 重排、dev/prod 打包都无关。
+
+## SDK 集成测试必须覆盖"原始 payload 形态"，不能 mock 掉解析层
+
+- **现象**：`mapInboundMessage` 读 `eventData.event.message` 返回 null，飞书消息全部静默丢弃，测试全绿。
+- **根因**：所有测试经 `simulateReceiveForTests` 注入已经 parse 过的数据，绕过了真实 SDK EventDispatcher 把 v2 schema `.event` 展开到顶层的步骤。
+- **结论**：测第三方 SDK 集成时，至少要有一个测试从 SDK 交付的**原始事件结构**喂入（而不是直接调业务 handler）；优先用真实 SDK client + fake transport，其次保留一层薄的 parse/adapter 并针对它写"原始 payload → 业务对象"的测试。
+
+## 硬编码的自动行为要在 PRD/REQ 里明确"谁控制"
+
+- **现象**：taskService 终态自动回复"已存：…"/"执行失败：…"，用户发现无法控制回复内容、也无法选择不回复。
+- **根因**：设计时把"链接速存回执"和"执行终态回复"都做成系统层硬编码；后续场景扩展（自定义文案、卡片、不回复、多个发送动作）无法表达。
+- **结论**：凡涉及**对外副作用**（发消息、写文件、调用外部 API）的动作，优先做成**显式 flow 节点**而不是系统层隐式行为；入队回执等有强时限/SLA 要求的可保留为系统行为，其余交给 flow 作者控制。
+
+## 删除死代码/未用功能比留着更安全
+
+- **现象**：内置技能 opc-collection-skills、链接速存模板等"开箱即用"资产没人用，反而增加状态面（builtin installSource、自动播种、模板实例化路径）和测试负担。
+- **结论**：演示用/样板代码若没有真实用户路径，果断删除；比留着"将来可能用"的代码更安全——代码越少，状态越少，bug 面越小。需要时从 git 历史取回。
+
+## 数据路径分裂恢复：启发式要按"行数"而不是"表存在"
+
+- **现象**：BUG-007 一次性数据迁移检查"canonical DB 是否有 channel_bindings 表"，但 initSchema 启动时已自动建空表，检查永远为 true，迁移永远不跑。
+- **根因**：检查表存在 vs 检查有数据是两回事——幂等 DDL 会让存在性检查失真。
+- **结论**：跨路径/跨版本数据恢复，用"行数 > 0"或"标志性记录存在"判断，不要用表/列存在性。
+
 ---
 
-来源：codex-harness-desktop /reflect（2026-07-16）、2026-07-16-flow-refinement /reflect（2026-07-19）
+来源：codex-harness-desktop /reflect（2026-07-16）、2026-07-16-flow-refinement /reflect（2026-07-19）、2026-07-19-media-production-line /reflect（2026-07-24）

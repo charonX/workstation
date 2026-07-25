@@ -18,3 +18,4 @@
 | ADR-006 | 单 server 运行时与统一本地存储 | 已接受 | 2026-07-19 | 待结晶（2026-07-19-media-production-line） |
 | ADR-007 | 飞书通道采用官方 SDK WSClient 与独立 channelManager | 已接受 | 2026-07-19 | REQ-CHANNEL-001 ~ REQ-CHANNEL-005 |
 | ADR-008 | 子流程内联同步执行 + services 注入模式 | 已接受 | 2026-07-23 | 待结晶（2026-07-23-nested-flow） |
+| ADR-009 | 模块惰性初始化，禁止顶层读 env/磁盘 | 已接受 | 2026-07-24 | BUG-007/009 教训（2026-07-19-media-production-line） |

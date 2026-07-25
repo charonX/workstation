@@ -13,7 +13,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `themeLanguage.spec.js` (E2E) |
+| settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `bootstrapEnv.test.js`, `settingsServiceLazy.test.js`, `themeLanguage.spec.js` (E2E) |
 | project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/` | REQ-WORKSPACE-003~006 | `project.test.js`, `onboarding.spec.js` (E2E) |
 | server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/` | REQ-WORKSPACE-008~010 | `server.test.js` |
 
@@ -23,7 +23,7 @@
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/api/` | REQ-FLOW-001~006, REQ-FLOW-011~022, REQ-FLOW-028（调试弹窗） | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs`, `triggerConfig.test.cjs`, `conditionConfig.test.cjs`, `agentConfig.test.cjs`, `nodeErrorHandling.test.cjs`, `variablePicker.test.cjs`, `debugModal.test.cjs`, `triggerConfig.test.js`, `conditionConfig.test.js`, `agentConfig.test.js` |
-| flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-16-flow-refinement/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/` | REQ-FLOW-007~010, REQ-FLOW-023~027, REQ-FLOW-029, REQ-FLOW-035~037, REQ-FLOW-039, REQ-FLOW-042, REQ-FLOW-046 | `flowEngine.test.js`, `variableRegistry.test.js`, `variableSubstitution.test.js`, `errorHandling.test.js`, `danglingReference.test.js`, `projectPathInjection.test.js`, `claudeAgentAdapter.test.js`, `triggerVariables.test.js`, `subflowNodeTypes.test.js`, `subflowIsolation.test.js`, `subflowFailure.test.js`, `subflowLatestVersion.test.js`, `executorSignature.test.js`, `foreachCallflow.test.js` |
+| flow-engine | `tests/capabilities/flow-orchestration/flow-engine/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-16-flow-refinement/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-19-media-production-line/api/`, `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/` | REQ-FLOW-007~010, REQ-FLOW-023~027, REQ-FLOW-029, REQ-FLOW-031~032, REQ-FLOW-035~037, REQ-FLOW-039, REQ-FLOW-042, REQ-FLOW-046 | `flowEngine.test.js`, `variableRegistry.test.js`, `variableSubstitution.test.js`, `errorHandling.test.js`, `danglingReference.test.js`, `projectPathInjection.test.js`, `claudeAgentAdapter.test.js`, `triggerVariables.test.js`, `feishuMessageNode.test.js`, `feishuSendNode.test.js`, `upstreamVariables.test.js`, `subflowNodeTypes.test.js`, `subflowIsolation.test.js`, `subflowFailure.test.js`, `subflowLatestVersion.test.js`, `executorSignature.test.js`, `foreachCallflow.test.js` |
 | flow | `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/e2e/`, `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/api/`, `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/api/`, `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/e2e/` | REQ-FLOW-001~006, REQ-FLOW-011~022, REQ-FLOW-028（调试弹窗）, REQ-FLOW-032~034, REQ-FLOW-038, REQ-FLOW-041, REQ-FLOW-043, REQ-FLOW-045 | `flow.test.js`, `flowRun.test.cjs`, `flowEditor.test.cjs`, `triggerConfig.test.cjs`, `conditionConfig.test.cjs`, `agentConfig.test.cjs`, `nodeErrorHandling.test.cjs`, `variablePicker.test.cjs`, `debugModal.test.cjs`, `triggerConfig.test.js`, `conditionConfig.test.js`, `agentConfig.test.js`, `callFlowValidation.test.js`, `circularReference.test.js`, `callflowCandidates.test.js`, `subflowConfig.spec.js` |
 | execution | `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/api/`, `tests/capabilities/flow-orchestration/execution/2026-07-16-flow-refinement/e2e/`, `tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/api/`, `tests/capabilities/flow-orchestration/execution/2026-07-19-media-production-line/e2e/`, `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/api/`, `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/e2e/` | REQ-FLOW-028, REQ-FLOW-030, REQ-FLOW-040, REQ-FLOW-044 | `executionLog.test.js`, `executionLog.test.cjs`, `artifactOpenPath.test.js`, `artifactsTab.test.cjs`, `nestedExecution.test.js`, `nestedExecutionDetail.spec.js` |
 
@@ -41,7 +41,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
+| skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004 | `skill.test.js`, `skillInstall.test.cjs` (E2E); rescan/update via HTTP API |
 | skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-002 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
 
 ### channel-integration
@@ -49,16 +49,15 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| channel | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/` | REQ-CHANNEL-001~005 | `feishuChannel.test.js`, `imRouting.test.js`, `docSync.test.js` |
+| channel | `tests/capabilities/channel-integration/channel/2026-07-19-media-production-line/api/` | REQ-CHANNEL-001~005 | `feishuChannel.test.js`, `imRouting.test.js` |
 
 ### collection-pipeline
-> 内容源管理、按主题/tag 的定时与 IM 触发收集、产物落素材库、收集 skill 包与 flow 模板。
+> 内容源管理、按主题/tag 的定时与 IM 触发收集、产物落素材库。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | content-source | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/`, `.../cli/`, `.../e2e/` | REQ-SRC-001~003 | `contentSources.test.js` (api), `contentSources.test.js` (cli), `sourcesPage.test.cjs` |
-| collection | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-COLL-001~003 | `dailyDigest.test.js`, `linkCapture.test.js`, `collectionSkills.test.js` |
-| template | `tests/capabilities/collection-pipeline/template/2026-07-19-media-production-line/api/` | REQ-TPL-001 | `templates.test.js` |
+| collection | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-COLL-001~002 | `dailyDigest.test.js`, `linkCapture.test.js` |
 
 ### information-aggregation
 > Dashboard 展示关键指标与最近活动；应用内通知中心。

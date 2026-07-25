@@ -71,6 +71,7 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 滥用 snapshot | 没人 review diff | 断言具体值 |
 | 共享可变状态 | 测试互相污染 | 每个测试独立 setup/teardown |
 | 全 mock | 测试通过但生产崩溃 | 优先真实实现/Fake |
+| mock 掉解析/适配层 | SDK/协议变更时漏过真实路径 bug（BUG-006 教训：EventDispatcher.parse() 展开路径从未被端到端测到） | 至少一个测试用 SDK 交付的原始 payload 形态喂入，而不是手动构造"已 parse"数据 |
 | 跳过测试让 CI 通过 | 隐藏真实 bug | 修复或删除 |
 
 ---
