@@ -6,11 +6,10 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: BUG        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
-# 当前 bug: 多入口场景下子 flow 各 trigger/flowInput 输出变量名异构，下游无法统一引用。
-# 分类: req-gap（就地补全）。方案: 新增 setVariables 通用变量赋值节点做入口归一化。
+# req-gap 已补全并完成门 1 补签（FLOW-047 setVariables），回到 BUILD 阶段。
 created: 2026-07-23
 
 # 阶段流转历史。正常前进和回流都记一条。
