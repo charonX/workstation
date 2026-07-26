@@ -97,9 +97,9 @@
 - Scope: renderer/ only (ExecutionNodeList.jsx + index.css + i18n)
 
 ### S9: FLOW-047 — setVariables 通用变量赋值节点 (complete)
-- Commit: (see git log)
-- Tests: 14/14 setVariables business tests (7 engine + 7 validation) + 94 engine unit tests green; TDD 5/5 green
-- PRD alignment: ALIGNED
+- Commits: `8f10b2f` [build] S9 初版 → `dce4ccf` [test] TDD 单元 → `0a682a6` [test] 移除业务测试 stub 跑真实 executor + D11 模板拼接用例 → `1af671f` [build] 移除无消费者的 context[nodeId][varName] 嵌套写入 → `128b2f1` [refactor] 提取 writeContextEntries helper
+- Tests: 15/15 setVariables business tests (8 engine + 7 validation) + 97 engine unit tests green; TDD 5/5 green; total 102/102
+- PRD alignment: 首轮 MISALIGNMENT_FOUND（业务测试 stub 覆盖真实 executor + 引擎 triple-write 第二段反向污染），fix 后 ALIGNED
 
 #### PRD→代码 可追溯性表
 
@@ -107,16 +107,18 @@
 |---|---|---|---|
 | AC1 节点注册 (defaultExecutors + VALIDATED_NODE_TYPES + NodePalette) | `src/flowEngine/flowEngine.js`, `src/flowEngine/executors/index.js`, `src/services/flowService.js`, `src/renderer/components/flow/NodePalette.jsx` | setVariablesValidation.test.js (AC1) | COVERED |
 | AC2 字段校验 (assignments 数组、variableName 格式/唯一、expression 非空) | `src/services/flowService.js` (validateSetVariablesConfig), `src/renderer/components/flow/validateFlowNodes.js` | setVariablesValidation.test.js (AC2) | COVERED |
-| AC3 执行语义：赋值写入 context/record (D10 多输出) | `src/flowEngine/executors/setVariablesExecutor.js`, engine writeOutputVariable | setVariables.test.js (AC3), TDD unit | COVERED |
-| AC4 单 {{var}} 引用保留原类型 | setVariablesExecutor.js (evaluateSingleRef via evaluateExpression) | setVariables.test.js (AC4), TDD unit | COVERED |
-| AC5 多入口归一化 | setVariablesExecutor.js | setVariables.test.js (AC5) | COVERED |
-| AC6 常量 + 嵌套字段 ({{a.b.c}}) | setVariablesExecutor.js | setVariables.test.js (AC6), TDD unit | COVERED |
-| AC7 pass-through 语义 | setVariablesExecutor.js (returns status:success) | setVariables.test.js (AC7) | COVERED |
+| AC3 执行语义：赋值写入 context/record (D10 多输出) | `src/flowEngine/executors/setVariablesExecutor.js`, engine writeContextEntries/writeOutputVariable | setVariables.test.js (AC3, 真实 executor), TDD unit | COVERED |
+| AC4 单 {{var}} 引用保留原类型 | setVariablesExecutor.js (evaluateExpression 单引用路径保留类型) | setVariables.test.js (AC4, 真实 executor), TDD unit | COVERED |
+| AC5 多入口归一化 | setVariablesExecutor.js | setVariables.test.js (AC5, 真实 executor) | COVERED |
+| AC6 常量 + 嵌套字段 ({{a.b.c}}) + 模板字符串拼接 | setVariablesExecutor.js | setVariables.test.js (AC6 含新增 D11 拼接用例, 真实 executor), TDD unit | COVERED |
+| AC7 pass-through 语义 | setVariablesExecutor.js (returns status:success) | setVariables.test.js (AC7, 真实 executor) | COVERED |
 | AC8 UI 配置面板 (SetVariablesFields) | NodeConfigPanel.jsx + i18n | SetVariablesFields.test.jsx (skeleton) | COVERED (skeleton) |
 
 - Notes:
-  - setVariablesExecutor.js: 新增；三态 expression 求值（单 {{var}} 引用保留类型 / 模板拼接 / 纯字面量）
-  - engine writeOutputVariable/seedTriggerVariables 同步维护 context 嵌套对象 (`context[nodeId][varName]`)，使点路径遍历与 evaluateExpression buildNestedScope 语义一致；纯附加改动，不破坏扁平 key 访问
+  - setVariablesExecutor.js: 新增；三态 expression 求值（单 {{var}} 引用保留类型 / 模板拼接 / 纯字面量），走引擎 evaluateExpression
+  - engine flowEngine.js: 初版为配合 stub 维护了 `context[nodeId][varName]` 嵌套对象（triple-write 第二段），PRD 对齐发现无生产消费者后移除；refactor 提取 writeContextEntries helper 统一 namespaced key + bare key 双写逻辑，避免 writeOutputVariable/setContextVariable 内联重复
+  - evaluateExpression.buildNestedScope 独立负责从 flat key 构造嵌套 scope，单一事实源，executor 无需感知嵌套形式
+  - 业务测试 stub 移除后直接跑真实 setVariablesExecutor，新增 D11 模板字符串拼接用例覆盖原 stub 不支持的场景
   - validateSetVariablesConfig: assignments 数组 + variableName (VARIABLE_NAME_PATTERN 复用) + expression 非空校验
   - SetVariablesFields: 行级编辑器，每行 variableName 输入 + expression 输入 + VariablePicker 插入 {{var}} + 增删按钮
   - i18n: zh/en nodeTypes.setVariables + assignments/addAssignment/setVariablesHelp
@@ -124,8 +126,8 @@
 
 ## 总结
 - 9 个切片全部完成（S1–S9）
-- 后端业务测试：setVariables 14/14 全绿；engine 单元测试 94/94 全绿
-- 新 REQ 测试 33 个（engine unit）+ 6 个（execution API）+ 17 个（flow API）+ 14 个（setVariables）= 70 个新业务测试通过
+- 后端业务测试：setVariables 15/15 全绿；engine 单元测试 97/97 全绿
+- 新 REQ 测试 33 个（engine unit）+ 6 个（execution API）+ 17 个（flow API）+ 15 个（setVariables）= 71 个新业务测试通过
 - 前端 esbuild bundle 通过；E2E 测试待 QA runner 验证（需 Electron 构建）
 - DB 集成测试（circularReference/callflowCandidates/nestedExecution/codex-harness）因环境 better-sqlite3 原生模块版本不匹配未能在本次验证，属预先存在问题
 - 总 commits：12 个 [build] + 3 个 [refactor] + 2 个 [test] + 1 个 [build] S9
