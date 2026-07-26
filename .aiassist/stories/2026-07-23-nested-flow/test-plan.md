@@ -21,11 +21,16 @@
 | FLOW-044 | E2E | `tests/capabilities/flow-orchestration/execution/2026-07-23-nested-flow/e2e/nestedExecutionDetail.test.cjs` | E2E (Playwright Electron) |
 | FLOW-045 | E2E | same as FLOW-043 | E2E |
 | FLOW-046 | engine unit | `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/foreachCallflow.test.js` | 单元 |
+| FLOW-047 AC3-AC7 | engine unit | `tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/setVariables.test.js` | 单元 |
+| FLOW-047 AC1-AC2 | API validation | `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/api/setVariablesValidation.test.js` | 单元 |
+| FLOW-047 AC8 | component | `tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/component/SetVariablesFields.test.jsx` | 组件（骨架，占位待实现） |
 
 ## 测试类型分布
 
-- **单元 (engine 层)**：6 个文件 — FLOW-032/033/035/036/037/042/046
+- **单元 (engine 层)**：7 个文件 — FLOW-032/033/035/036/037/042/046/047
+- **单元 (flowService 校验层)**：1 个文件 — FLOW-047 validation
 - **集成 (API/server 层)**：4 个文件 — FLOW-034/038/040/041
+- **组件**：1 个文件（骨架占位） — FLOW-047 AC8
 - **E2E (Playwright Electron)**：2 个文件 — FLOW-043/044/045
 - **FLOW-039 注**：调最新语义的验证放在 FLOW-040 嵌套执行集成测试里（构造执行-修改子-再执行的场景），或由 implementer 在 taskService 层添加
 
@@ -59,4 +64,5 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v1.1 | 2026-07-26 | 新增 FLOW-047 setVariables 节点测试（单元 + 校验 + 组件骨架） | agent |
 | v1 | 2026-07-23 | 初版，覆盖 FLOW-032~046 全部 REQ | agent |

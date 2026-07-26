@@ -26,6 +26,9 @@
 | FLOW-044 执行详情展开 | nestedExecutionDetail.test.cjs | E2E | 骨架（locator 文案待 UI 落地） |
 | FLOW-045 跳转子流程 | subflowConfig.test.cjs | E2E | 骨架（locator 文案待 UI 落地） |
 | FLOW-046 foreach + callFlow | foreachCallflow.test.js | 单元 | 已签 |
+| FLOW-047 setVariables AC3-AC7（引擎语义） | setVariables.test.js | 单元 | 已签（2026-07-26 补签） |
+| FLOW-047 setVariables AC1-AC2（字段校验） | setVariablesValidation.test.js | 单元 | 已签（2026-07-26 补签） |
+| FLOW-047 setVariables AC8（配置 UI） | SetVariablesFields.test.jsx | 组件 | 骨架（待 UI 落地后补断言） |
 
 ### Capability / Entity 覆盖
 
@@ -43,6 +46,8 @@
 6. **变量隔离**：子流程空 context 起跑；入参映射保留类型（number/object/array 不字符串化）。
 7. **多输出机制**：引擎消费 `result.outputVariables`，同时写 `${nodeId}.var` 和 bare `var`（callFlow 的 __childExecutionId 例外）。
 8. **顶层向后兼容**：不传 startNodeId/currentDepth/services 时，现有 REQ-FLOW-031 行为不变。
+9. **setVariables 变量归一化（D11）**：单 `{{var}}` 引用保留原类型；多输出按 D10 规则写 `${nodeId}.var` + bare key；表达式求值走引擎统一 evaluateExpression（支持点路径 `{{a.b.c}}` 和字符串拼接）；常量直接字面量赋值。多入口场景每个入口后连 setVariables 做归一化，下游统一引用裸 key。
+10. **setVariables 校验**：assignments 数组校验同 flowInput/flowOutput 的 outputVariables 规则（name 格式/唯一性），expression 非空校验 E-EXPR。
 
 ### 剩余 HUMAN ASSERTION 位置（13 处，均为依赖 UI/端到端实现的占位）
 
