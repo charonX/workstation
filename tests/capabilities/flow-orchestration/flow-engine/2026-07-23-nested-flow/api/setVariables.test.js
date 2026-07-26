@@ -9,30 +9,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 
-// setVariables 是普通 pass-through 节点，用真实 executor 跑端到端；
-// 引擎 defaultExecutors 注册 setvariables 后本文件无需 mock。
-// 骨架阶段通过 options.executors 注入最小 stub；实现后移除 stub 直接用真实 executor 即可。
-// 签核说明：stub 行为按 D10/D11 契约模拟（遍历 assignments → 单 {{var}} 引用按点路径从 context 读原值、否则按字面量）；
-// 真实 setVariablesExecutor 必须使用引擎统一 evaluateExpression，行为与本 stub 一致。
-
-const setvariablesStub = async ({ node, context }) => {
-  const outputVariables = {};
-  for (const a of node.config.assignments || []) {
-    const match = a.expression.match(/^\{\{\s*([\w.]+)\s*\}\}$/);
-    if (match) {
-      // 单引用：沿点路径取值，保留原类型
-      const path = match[1].split(".");
-      let v = context;
-      for (const p of path) v = v == null ? undefined : v[p];
-      outputVariables[a.variableName] = v;
-    } else {
-      outputVariables[a.variableName] = a.expression;
-    }
-  }
-  return { status: "success", outputVariables };
-};
-
-const stubExecutors = { setvariables: setvariablesStub };
+// setVariables 是普通 pass-through 节点，用真实 executor 跑端到端。
+// 引擎 defaultExecutors 注册 setvariables 后本文件无需 mock；
+// 仅在需要拦截 agent/trigger 行为观察时传入对应 executor。
 
 describe("REQ-FLOW-047 AC3: setVariables 基本赋值写入 context 和 record", () => {
   it("将 assignments 声明的变量写入 namespaced key 和裸 key", async () => {
@@ -47,7 +26,7 @@ describe("REQ-FLOW-047 AC3: setVariables 基本赋值写入 context 和 record",
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
     };
-    const result = await run({ flow }, { executors: stubExecutors }, {});
+    const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     assert.ok(rec, "setVariables 节点应在 nodeRecords 中");
     // 签核：D10 多输出机制写入 namespaced key `${nodeId}.${varName}`
@@ -76,7 +55,7 @@ describe("REQ-FLOW-047 AC4: 单 {{var}} 引用保留原值类型（不字符串�
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
     };
-    const result = await run({ flow }, { executors: stubExecutors }, {});
+    const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     // 签核：类型保留契约与 REQ-FLOW-035 AC3 入参映射一致
     assert.strictEqual(rec.outputVariables["sv.n"], 42);
@@ -136,7 +115,7 @@ describe("REQ-FLOW-047 AC5: 多入口归一化——不同入口变量名异构�
       { flow: buildChildFlow() },
       {
         startNodeId: "fm",
-        executors: { ...stubExecutors, agent: async ({ node }) => { prompts.push(node.config.prompt); return { status: "success", output: "ok" }; } }
+        executors: { agent: async ({ node }) => { prompts.push(node.config.prompt); return { status: "success", output: "ok" }; } }
       },
       // 飞书入口的 inputVars：模拟真实飞书触发
       { text: "from-feishu", messageId: "m-feishu-123" }
@@ -153,7 +132,7 @@ describe("REQ-FLOW-047 AC5: 多入口归一化——不同入口变量名异构�
       { flow: buildChildFlow() },
       {
         startNodeId: "fin",
-        executors: { ...stubExecutors, agent: async ({ node }) => { prompts.push(node.config.prompt); return { status: "success", output: "ok" }; } }
+        executors: { agent: async ({ node }) => { prompts.push(node.config.prompt); return { status: "success", output: "ok" }; } }
       },
       // 父 flow 通过 callFlow 传入的 inputVars（key 是 flowInput 声明的 messageText/messageId）
       { messageText: "from-parent", messageId: "m-parent-456" }
@@ -176,7 +155,7 @@ describe("REQ-FLOW-047 AC6: 常量注入与嵌套字段提取", () => {
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
     };
-    const result = await run({ flow }, { executors: stubExecutors }, {});
+    const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     // 签核：字符串字面量原样写入
     assert.equal(rec.outputVariables["sv.apiVersion"], "v2");
@@ -194,10 +173,29 @@ describe("REQ-FLOW-047 AC6: 常量注入与嵌套字段提取", () => {
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
     };
-    const result = await run({ flow }, { executors: stubExecutors }, {});
+    const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     // 签核：点路径 {{a.b.c}} 由引擎 evaluateExpression 支持，setVariables 复用
     assert.equal(rec.outputVariables["sv.url"], "http://x.test/path");
+  });
+
+  it("模板字符串拼接多变量 (D11)", async () => {
+    const flow = {
+      nodeList: [
+        { id: "trig", type: "trigger", config: { outputVariables: [
+          { name: "first", defaultValue: "John" },
+          { name: "last", defaultValue: "Doe" }
+        ]}},
+        { id: "sv", type: "setVariables", config: {
+          assignments: [{ variableName: "fullName", expression: "{{trig.first}} {{trig.last}}" }]
+        }}
+      ],
+      edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
+    };
+    const result = await run({ flow }, {}, {});
+    const rec = result.nodeRecords.find(r => r.nodeId === "sv");
+    // 签核：D11 模板拼接——模板字符串中多个 {{var}} 被插值拼接为一个字符串
+    assert.equal(rec.outputVariables["sv.fullName"], "John Doe");
   });
 });
 
@@ -219,7 +217,6 @@ describe("REQ-FLOW-047 AC7: setVariables 是 pass-through，执行完正常按�
     };
     await run({ flow }, {
       executors: {
-        ...stubExecutors,
         trigger: async () => { order.push("trig"); return { status: "success", output: {} }; },
         agent: async ({ node, context }) => {
           order.push("after");
