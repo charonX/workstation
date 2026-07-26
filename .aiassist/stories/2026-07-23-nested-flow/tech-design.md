@@ -18,13 +18,14 @@
 | `src/flowEngine/executors/flowInputExecutor.js` | flowInput 节点执行器（pass-through，复用 triggerExecutor 逻辑，但单独导出以便未来扩展语义） | 是 |
 | `src/flowEngine/executors/flowOutputExecutor.js` | flowOutput 节点执行器（pass-through，把 config.outputVariables 声明的变量写进 context，供 invokeSubflow 事后收集） | 是 |
 | `src/flowEngine/executors/callFlowExecutor.js` | callFlow 节点执行器：校验入参映射格式 → 调 services.invokeSubflow → 拿到出参后按 outputMappings 写父 context | 是 |
+| `src/flowEngine/executors/setVariablesExecutor.js` | setVariables 节点执行器：按配置赋值/重命名变量，把表达式求值结果写入指定变量名（做入口归一化、常量注入、中间值命名） | 是 |
 | `src/flowEngine/executors/index.js` | 导出新 executor，注册到 defaultExecutors | 否（改造） |
-| `src/services/flowService.js` | 1. 节点类型白名单加 flowinput/flowoutput/callflow；2. 新保存校验：子 flow 存在性 / flowInput 存在 / 映射完整性 / 循环引用 DFS / 深度 ≤8；3. listCallFlowCandidates() 返回同项目内含 flowInput 节点的 flow；4. getFlowInputNodes(flowId) 返回指定 flow 的 flowInput 节点列表供 UI 选入口 | 否（改造） |
+| `src/services/flowService.js` | 1. 节点类型白名单加 flowinput/flowoutput/callflow/setvariables；2. 新保存校验：子 flow 存在性 / flowInput 存在 / 映射完整性 / 循环引用 DFS / 深度 ≤8；3. listCallFlowCandidates() 返回同项目内含 flowInput 节点的 flow；4. getFlowInputNodes(flowId) 返回指定 flow 的 flowInput 节点列表供 UI 选入口；5. setVariables 节点 assignments 字段校验 | 否（改造） |
 | `src/services/taskService.js` | 1. 构造 services.invokeSubflow 注入 engine；2. 实现 invokeSubflow：插子 execution 行 → 加载子 flow 当前定义 → 递归 run(startNodeId, depth+1, services) → 跑完扫 nodeRecords 找 flowOutput → 更新子 execution → 返回出参；3. executeTask 给顶层 run 传 services + depth=0 | 否（改造） |
 | `src/db.js` | migrations：executions 表加 `parentExecutionId TEXT NULL`、`parentNodeId TEXT NULL`、`depth INTEGER NOT NULL DEFAULT 0`；新增 `idx_executions_parent` 索引 | 否（改造） |
 | `src/services/debugService.js`（或 debugFlow 现有实现） | 调试路径同样注入 services.invokeSubflow（draft 模式），保持和生产路径行为一致 | 否（改造） |
 | `src/renderer/components/flow/NodePalette.jsx` | 节点面板加 flowInput（Trigger 分类）/ flowOutput（新分类"Flow"或 Output）/ callFlow（Logic 或新分类） | 否（改造） |
-| `src/renderer/components/flow/NodeConfigPanel.jsx` | 加 FlowInputFields / FlowOutputFields / CallFlowFields 配置子组件；callFlow 配置含子 flow 下拉、入口下拉、入参映射表、出参只读展示 | 否（改造） |
+| `src/renderer/components/flow/NodeConfigPanel.jsx` | 加 FlowInputFields / FlowOutputFields / CallFlowFields / SetVariablesFields 配置子组件；callFlow 配置含子 flow 下拉、入口下拉、入参映射表、出参只读展示；setVariables 配置含变量赋值表（变量名 + 表达式） | 否（改造） |
 | `src/renderer/components/flow/upstreamVariables.js` | callFlow 节点的出参（从 outputMappings 推导出的 `${nodeId}.{var}`）作为上游变量暴露给下游节点引用 | 否（改造） |
 | `src/renderer/components/flow/validateFlowNodes.js` | 客户端校验镜像：单节点配置校验；循环/深度校验只在服务端做（客户端不持有全量 flow 图） | 否（改造） |
 | Execution detail UI（新组件或现有组件扩展） | 父执行详情里 callFlow 节点可展开，查询 childExecutionId 对应的 execution + execution_nodes 嵌套展示 | 否（改造） |
@@ -231,6 +232,7 @@
 | 多层嵌套执行 | taskService.executeTask 跑 3 层嵌套 flow，查询 executions 表断言 parentExecutionId 链/depth 正确/节点记录完整 | 集成（API/CLI 层）| 内存 DB + 真实 services |
 | 运行时调最新（改子 flow 后执行）| executeTask 两次：先建父调子，更新子 flow，再跑父，断言看到新行为 | 集成 | 内存 DB |
 | foreach 内 callFlow | flowEngine.run fixture（foreach body 含 callFlow），断言 invokeSubflow 被调 N 次 | 单元 | invokeSubflow stub |
+| setVariables 赋值/重命名/常量 | flowEngine.run fixture（含 setVariables 节点，从不同入口启动），断言 context 中变量被正确归一化 | 单元 | 无 |
 | 执行记录 parentExecutionId | taskService 嵌套跑 → 查 execution_nodes 父 callFlow 节点有 __childExecutionId 字段；GET /api/executions/:childId 返回带 parentExecutionId 的记录 | 集成 | 内存 DB |
 | 画布配置 + 保存校验 + 触发 | E2E Playwright：建子 flow（加 flowInput/flowOutput）→ 建父 flow（加 callFlow 映射）→ 保存（含故意配错看错误提示）→ 发布 → 手动触发 → 看执行详情展开子 flow | E2E | 真实 Electron app |
 
@@ -250,6 +252,7 @@ CLI 优先：上述大部分行为可以通过 `opc-workstation flow validate`�
 | **D8：子 flow 执行产生独立 executions 行，带 parentExecutionId/parentNodeId/depth** | 独立行+parentId / 节点混在父 nodeRecords | 数据模型清晰；UI 展开查子表即可；清理逻辑共用 purgeExpiredExecutions | executions 表多一类行；查询子 execution 是额外一跳 |
 | **D9：applyTriggerVariableOverrides 仅对启动入口节点做 override** | 全 trigger-like 节点按 varDef.name 匹配 / 仅入口节点 | 多入口共存时，inputVars 不应污染子 flow 其他 trigger/flowInput 节点的变量；用户选定入口就是契约 | 引擎需要知道 startNodeId 对应的节点是"本次入口" |
 | **D10：引擎支持 executor 返回多输出 result.outputVariables** | 引擎消费 result.outputVariables map / executor 手动 mutate context | 现有 feishuSendExecutor 已经返回 outputVariables 但引擎未消费（死代码）；flowOutput 和 callFlow 都需要一次写多个变量；统一机制避免各 executor 自己 mutate context 破坏 record 跟踪；所有节点统一写 fullName + bare key（和现有单变量行为一致），callFlow 不特判 | 所有 executor 现在可选择性返回多值；单值 output/outputVariable 行为保持不变（向后兼容）；feishuSend 的 outputVariables 死代码顺势活过来 |
+| **D11：多入口变量归一化用通用 setVariables 节点，不在 flowInput 内置映射** | A flowInput 内置 outputMapping / B 通用 setVariables 节点 / C 约定命名 | 方案 B 更通用：不仅解决"多入口变量名异构"，还能做常量注入、中间值重命名、简单表达式计算；每个入口后连一个 setVariables 做归一化，职责单一；和现有 code 节点比更轻量（无 JS 沙箱），表达式复用引擎现有 evaluateExpression（{{var}} 引用 + 简单字符串拼接）；未来如果要支持更复杂转换再升级 code 节点即可 | 多了一个节点类型，用户需要多拖一步配置；但语义清晰、适用场景更广，避免给 flowInput 加额外职责 |
 
 ## 引擎多输出机制（D10 细节）
 
@@ -289,7 +292,17 @@ if (result.outputVariables && isPlainObject(result.outputVariables)) {
 ```
 引擎 D10 通用路径自动把子出参写入父 context，后续节点通过 `${callFlowNodeId}.savedUrl` 或 `savedUrl` 引用（推荐 fullName）。invokeSubflow 读 record.outputVariables 用的也是通用路径，不需要特殊逻辑。
 
-**D1-D4 满足 ADR 三条件（难逆转、不说明令人困惑、有真实取舍），写入 ADR-008。**
+**setVariablesExecutor 行为**（D11）：通用变量赋值/重命名节点，用来在入口后做归一化、或在流程中注入常量/命名中间值。
+1. 节点配置 `config.assignments`：数组，每项形如 `{ variableName, expression }`
+2. 执行时遍历 assignments：对每条 expression 调用引擎现有 `evaluateExpression(expression, context)` 求值（复用现有 {{var}} 引用、字符串拼接逻辑），得到 value
+3. 返回 `{status:"success", outputVariables: { [variableName]: value }}`——通过 D10 多输出机制写入 `${nodeId}.${variableName}` 和裸 `${variableName}` 到 context/record
+4. 典型用法（多入口归一化）：
+   - feishuMessage 入口 → setVariables 配 `{text: "{{feishuMsg.text}}", messageId: "{{feishuMsg.messageId}}"}`
+   - flowInput 入口 → setVariables 配 `{text: "{{flowInput.messageText}}", messageId: "{{flowInput.messageId}}"}`
+   - 下游 agent 统一引用 `{{text}}` / `{{messageId}}`，不关心从哪个入口进来
+5. 也可用于常量注入：`{apiVersion: "v2"}`、中间结果重命名、提取嵌套字段：`{url: "{{response.data.url}}"}`
+
+**D1-D4、D11 满足 ADR 三条件（难逆转、不说明令人困惑、有真实取舍），写入 ADR-008。**
 
 ## 风险与回流点
 
@@ -326,4 +339,5 @@ if (result.outputVariables && isPlainObject(result.outputVariables)) {
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v0.2 | 2026-07-26 | req-gap 补全：新增 setVariables 节点设计（D11），解决多入口变量归一化问题 | AI + 人 |
 | v0.1 | 2026-07-23 | 初稿 | AI + 人 |

@@ -25,6 +25,7 @@
 | REQ-FLOW-044 | 执行详情嵌套展开 UI | P1 | 应该 | cross-module | E2E | flow-orchestration | execution |
 | REQ-FLOW-045 | 从 callFlow 节点跳转到子流程画布 | P2 | 可以 | intra-module | E2E | flow-orchestration | flow |
 | REQ-FLOW-046 | foreach 内 callFlow 批量调用 | P1 | 应该 | intra-module | 单元 | flow-orchestration | flow-engine |
+| REQ-FLOW-047 | setVariables 节点：变量赋值/重命名/归一化 | P0 | 必须 | intra-module | 单元+组件 | flow-orchestration | flow |
 
 ---
 
@@ -479,6 +480,44 @@
 
 ---
 
+## REQ-FLOW-047：setVariables 节点：变量赋值/重命名/归一化
+
+**稳定块**：新增 #12（通用变量赋值节点，支撑多入口归一化）
+
+- **优先级**：P0
+- **必须性**：必须
+- **scope**：intra-module（setVariablesExecutor + flowService 校验 + NodeConfigPanel UI）
+- **capability/entity**：flow-orchestration / flow
+- **modules**：setVariablesExecutor、flowService、NodePalette、NodeConfigPanel
+
+### 验收标准
+
+1. **AC1（节点注册）**：`setVariables`（引擎小写 `setvariables`）加入 defaultExecutors、VALIDATED_NODE_TYPES、NodePalette Logic 分类；保存含 type:"setVariables" 节点的流程时不被拒绝。
+2. **AC2（字段校验）**：节点配置 `config.assignments` 必须是数组；每项：
+   - `variableName`：非空字符串，同节点内唯一，符合 `/^[a-zA-Z][a-zA-Z0-9_]*$/`，违规返回 `E-VAR-NAME`
+   - `expression`：非空字符串，支持现有 evaluateExpression 语法（`{{var}}` 单引用、`{{a}} {{b}}` 字符串拼接、字符串字面量），违规返回 `E-EXPR`
+3. **AC3（执行语义：赋值）**：执行到 setVariables 节点时，遍历 assignments 对每条 expression 调用 evaluateExpression 求值，通过 D10 多输出机制返回 `outputVariables: { [variableName]: value }`，引擎自动写入 `${nodeId}.${variableName}` 和裸 `${variableName}` 到 context 和 nodeRecord.outputVariables。
+4. **AC4（执行语义：保留类型）**：expression 是单 `{{var}}` 引用时，原值类型保留（string/number/object/array/boolean 原样传递），不做字符串化。
+5. **AC5（典型场景：多入口归一化）**：子 flow 含 feishuMessage 入口（输出 `{{feishuMsg.text}}`）和 flowInput 入口（声明 `messageText`），每个入口后连一个 setVariables 节点分别配置：
+   - feishuMessage 后：`{text: "{{feishuMsg.text}}", messageId: "{{feishuMsg.messageId}}"}`
+   - flowInput 后：`{text: "{{flowInput.messageText}}", messageId: "{{flowInput.messageId}}"}`
+   从任一入口启动后，下游节点统一引用裸 `{{text}}` / `{{messageId}}` 都能拿到正确值，两个入口路径下游行为一致。
+6. **AC6（典型场景：常量/嵌套字段）**：assignments 支持常量（`{apiVersion: "v2"}`）和嵌套字段提取（`{url: "{{response.data.url}}"}`），求值结果正确写入 context。
+7. **AC7（pass-through）**：setVariables 节点不中断流程，执行完正常按出边继续下一节点（普通 pass-through 节点语义）。
+8. **AC8（UI 配置面板）**：点击 setVariables 节点，配置面板显示 assignments 编辑器：可添加/删除行，每行有变量名输入框 + 表达式输入框（表达式输入支持插入上游变量引用，同现有其他节点表达式输入）。
+
+### 测试
+
+- Seam: flowService.validateNodeList 单元覆盖 AC1/AC2 字段校验
+- Seam: flowEngine.run() 单元覆盖 AC3/AC4/AC5/AC6/AC7：
+  - 构造双入口 + 双 setVariables fixture，从两个入口分别启动，断言下游 `context.text` 值一致
+  - 断言单变量引用类型保留（传 object 不被字符串化）
+  - 断言常量/嵌套字段求值正确
+- Seam: 组件测试覆盖 AC8 UI 交互
+- 文件：`tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/setVariables.test.js`
+
+---
+
 ## 跨 REQ 约束与系统级约束
 
 - **术语同步**：CONTEXT.md "触发来源"枚举新增 `subflow`——"被父流程通过 callFlow 节点调用启动"。由实现阶段顺手更新。
@@ -500,6 +539,7 @@
 | #9 可选列表过滤 | FLOW-041 |
 | #10 画布跳转 | FLOW-045 |
 | #11 foreach 组合 | FLOW-046 |
+| #12 通用变量赋值节点 setVariables | FLOW-047 |
 | 支撑：executor 签名扩展 | FLOW-042 |
 
 ---
@@ -508,4 +548,5 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v1.1 | 2026-07-26 | req-gap 补全：新增 REQ-FLOW-047 setVariables 通用变量赋值节点，解决多入口场景下变量名异构归一化问题 | AI + 人 |
 | v1 | 2026-07-23 | 初版，15 REQ（FLOW-032 ~ FLOW-046） | AI + 人 |
