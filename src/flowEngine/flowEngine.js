@@ -431,9 +431,9 @@ function isPlainObject(value) {
   return proto === Object.prototype || proto === null;
 }
 
-// Write a named output to both namespaced ("nodeId.varName") and legacy bare ("varName")
-// keys in context, plus the node record. Single-output (config.outputVariable) and
-// multi-output (result.outputVariables) paths share this helper (D10).
+// Write to both namespaced ("nodeId.varName") and legacy bare ("varName") keys in
+// context. The two-write is shared by output writes (D10) and trigger/input
+// variable seeding/override — factored here so the two call sites can't diverge.
 //
 // 注：不再维护 context[nodeId][varName] 嵌套对象。evaluateExpression.buildNestedScope
 // 已经从 flat fullName key（"nodeId.varName"）构造嵌套 scope，真实 executor 无消费者读
@@ -442,7 +442,7 @@ function isPlainObject(value) {
 //
 // REQ-FLOW-035 AC5: __-prefixed bookkeeping fields (e.g. __childExecutionId) are
 // internal metadata and must NOT leak as bare keys into the parent context.
-function writeOutputVariable(context, record, nodeId, varName, value) {
+function writeContextEntries(context, nodeId, varName, value) {
   const fullName = `${nodeId}.${varName}`;
   // Flat namespaced key.
   context[fullName] = value;
@@ -450,15 +450,19 @@ function writeOutputVariable(context, record, nodeId, varName, value) {
   if (!varName.startsWith("__")) {
     context[varName] = value;
   }
+  return fullName;
+}
+
+// Write a named output to context (via writeContextEntries) plus the node record.
+// Single-output (config.outputVariable) and multi-output (result.outputVariables)
+// paths share this helper (D10).
+function writeOutputVariable(context, record, nodeId, varName, value) {
+  const fullName = writeContextEntries(context, nodeId, varName, value);
   record.outputVariables[fullName] = value;
 }
 
 // Set a trigger/input variable in context (same two-write as writeOutputVariable
 // but without touching node records). Used by seeding and input variable override.
 function setContextVariable(context, nodeId, varName, value) {
-  const fullName = `${nodeId}.${varName}`;
-  context[fullName] = value;
-  if (!varName.startsWith("__")) {
-    context[varName] = value;
-  }
+  writeContextEntries(context, nodeId, varName, value);
 }
