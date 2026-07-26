@@ -17,6 +17,7 @@ const REFINED_NODE_TYPES = [
   "flowInput",
   "flowOutput",
   "callFlow",
+  "setVariables",
 ];
 
 /**
@@ -79,7 +80,7 @@ export default function NodeConfigPanel({
             readOnly
           />
         </div>
-        {type !== "trigger" && type !== "flowInput" && type !== "flowOutput" && (
+        {type !== "trigger" && type !== "flowInput" && type !== "flowOutput" && type !== "setVariables" && (
           <div className="form-group">
             <label className="form-label" htmlFor="node-output-variable-input">
               {t("flowEditor.outputVariable")}
@@ -158,6 +159,16 @@ export default function NodeConfigPanel({
             edges={edges}
             currentFlowId={currentFlowId}
             onOpenSubflow={onOpenSubflow}
+          />
+        )}
+        {type === "setVariables" && (
+          <SetVariablesFields
+            config={config}
+            onChange={onUpdateConfig}
+            t={t}
+            nodeId={node.id}
+            nodes={nodes}
+            edges={edges}
           />
         )}
 
@@ -259,6 +270,89 @@ function TriggerFields({ config, onChange, t }) {
       t={t}
       testid="trigger-variables-editor"
     />
+  );
+}
+
+// REQ-FLOW-047 AC8: setVariables assignments editor.
+// Rows of {variableName, expression}; expression supports {{var}} insertion via VariablePicker.
+function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
+  const assignments = Array.isArray(config.assignments) ? config.assignments : [];
+  const setAssignments = (next) => onChange("assignments", next);
+  const updateAssignment = (index, patch) =>
+    setAssignments(assignments.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+
+  // Caret-tracked insertion for expression fields (shared with FeishuSend/Condition).
+  const caretRefs = useRef({});
+  const recordCaret = (index) => (e) => {
+    caretRefs.current[index] = e.target.selectionStart;
+  };
+  const makeInsertVariable = (index) => (fullName) => {
+    const current = assignments[index]?.expression || "";
+    const caret = caretRefs.current[index] ?? current.length;
+    const insertion = `{{${fullName}}}`;
+    updateAssignment(index, {
+      expression: current.slice(0, caret) + insertion + current.slice(caret)
+    });
+  };
+
+  return (
+    <div className="form-group variables-editor" data-testid="setvariables-assignments-editor">
+      <span className="form-label">{t("flowEditor.assignments") || "Assignments"}</span>
+      <div className="help-text">{t("flowEditor.setVariablesHelp") || "Assign values to variables. Use {{nodeId.varName}} to reference upstream variables."}</div>
+      {assignments.map((assignment, index) => (
+        <div className="variable-row" data-testid="assignment-row" key={index}>
+          <label className="form-label" htmlFor={`setvar-name-${index}`}>
+            {t("flowEditor.variableName")}
+          </label>
+          <input
+            id={`setvar-name-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="assignment-variable-name-input"
+            value={assignment.variableName || ""}
+            onChange={(e) => updateAssignment(index, { variableName: e.target.value })}
+          />
+          <label className="form-label" htmlFor={`setvar-expr-${index}`}>
+            {t("flowEditor.expression")}
+          </label>
+          <input
+            id={`setvar-expr-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="assignment-expression-input"
+            value={assignment.expression || ""}
+            onChange={(e) => updateAssignment(index, { expression: e.target.value })}
+            onSelect={recordCaret(index)}
+            onClick={recordCaret(index)}
+            onKeyUp={recordCaret(index)}
+          />
+          <VariablePicker
+            nodes={nodes}
+            edges={edges}
+            currentNodeId={nodeId}
+            onSelect={makeInsertVariable(index)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary variable-remove-button"
+            data-testid="remove-assignment-button"
+            onClick={() => setAssignments(assignments.filter((_, i) => i !== index))}
+          >
+            {t("flowEditor.removeVariable")}
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn btn-secondary"
+        data-testid="add-assignment-button"
+        onClick={() =>
+          setAssignments([...assignments, { variableName: "", expression: "" }])
+        }
+      >
+        {t("flowEditor.addAssignment") || "Add assignment"}
+      </button>
+    </div>
   );
 }
 

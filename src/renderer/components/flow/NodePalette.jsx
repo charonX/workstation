@@ -18,6 +18,7 @@ const NODE_CATEGORIES = [
       { type: "forEach", nameKey: "nodeTypes.forEach", icon: "↻" },
       { type: "while", nameKey: "nodeTypes.while", icon: "⟳" },
       { type: "callFlow", nameKey: "nodeTypes.callFlow", icon: "⎘" },
+      { type: "setVariables", nameKey: "nodeTypes.setVariables", icon: "=" },
     ],
   },
   {

@@ -7,3 +7,4 @@ export { feishuSendExecutor } from "./feishuSendExecutor.js";
 export { flowInputExecutor } from "./flowInputExecutor.js";
 export { flowOutputExecutor } from "./flowOutputExecutor.js";
 export { callFlowExecutor } from "./callFlowExecutor.js";
+export { setVariablesExecutor } from "./setVariablesExecutor.js";

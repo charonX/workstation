@@ -321,7 +321,10 @@
     "callFlowMappingInvalid": "入参映射必须是对象",
     "callFlowChildVarRequired": "childVar 必填",
     "callFlowParentExprInvalid": "parentExpr 必须是单个 {{节点ID.变量名}} 引用",
-    "callFlowOnErrorFail": "callFlow 节点失败时必须终止流程"
+    "callFlowOnErrorFail": "callFlow 节点失败时必须终止流程",
+    "assignments": "变量赋值",
+    "addAssignment": "添加赋值",
+    "setVariablesHelp": "为变量赋值或重命名。使用 {{节点ID.变量名}} 引用上游变量，支持点路径 {{a.b.c}} 和字符串拼接。"
   },
   "palette": {
     "categories": {
@@ -341,7 +344,8 @@
     "callFlow": "调用子流程",
     "flowOutput": "流程输出",
     "agent": "智能体",
-    "feishuSend": "飞书发送"
+    "feishuSend": "飞书发送",
+    "setVariables": "变量赋值"
   },
   "projectForm": {
     "title": "添加项目",

@@ -1,4 +1,4 @@
-import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor, feishuSendExecutor, flowInputExecutor, flowOutputExecutor, callFlowExecutor } from "./executors/index.js";
+import { conditionExecutor, forEachExecutor, whileExecutor, agentExecutor, triggerExecutor, feishuSendExecutor, flowInputExecutor, flowOutputExecutor, callFlowExecutor, setVariablesExecutor } from "./executors/index.js";
 
 const defaultExecutors = {
   condition: conditionExecutor,
@@ -10,7 +10,8 @@ const defaultExecutors = {
   feishusend: feishuSendExecutor,
   flowinput: flowInputExecutor,
   flowoutput: flowOutputExecutor,
-  callflow: callFlowExecutor
+  callflow: callFlowExecutor,
+  setvariables: setVariablesExecutor
 };
 
 // Trigger-like node types share the same variable seeding / override semantics
@@ -282,9 +283,7 @@ function forEachTriggerVariable(nodeList, callback) {
 function seedTriggerVariables(nodeList, context) {
   forEachTriggerVariable(nodeList, (node, varDef) => {
     if ("defaultValue" in varDef) {
-      context[`${node.id}.${varDef.name}`] = varDef.defaultValue;
-      // Legacy flat key so downstream expressions/prompts can read bare identifiers too.
-      context[varDef.name] = varDef.defaultValue;
+      setContextVariable(context, node.id, varDef.name, varDef.defaultValue);
     }
   });
 }
@@ -304,8 +303,7 @@ function applyTriggerVariableOverrides(nodeList, context, inputVariables, entryN
     }
     if (Object.prototype.hasOwnProperty.call(inputVariables, varDef.name)) {
       const value = inputVariables[varDef.name];
-      context[`${node.id}.${varDef.name}`] = value;
-      context[varDef.name] = value;
+      setContextVariable(context, node.id, varDef.name, value);
     }
   });
 }
@@ -436,14 +434,36 @@ function isPlainObject(value) {
 // Write a named output to both namespaced ("nodeId.varName") and legacy bare ("varName")
 // keys in context, plus the node record. Single-output (config.outputVariable) and
 // multi-output (result.outputVariables) paths share this helper (D10).
+// Also maintains a nested object (context[nodeId][varName]) so that executors doing
+// direct dot-path traversal (e.g. setVariables stub) resolve references correctly.
 // REQ-FLOW-035 AC5: __-prefixed bookkeeping fields (e.g. __childExecutionId) are
 // internal metadata and must NOT leak as bare keys into the parent context.
 function writeOutputVariable(context, record, nodeId, varName, value) {
   const fullName = `${nodeId}.${varName}`;
+  // Flat namespaced key.
   context[fullName] = value;
+  // Nested object for dot-path traversal: context[nodeId][varName]
+  if (context[nodeId] === null || typeof context[nodeId] !== "object" || Array.isArray(context[nodeId])) {
+    context[nodeId] = {};
+  }
+  context[nodeId][varName] = value;
+  // Legacy bare key (skip __-prefixed).
   if (!varName.startsWith("__")) {
-    // Legacy flat key so downstream expressions/prompts can read bare identifiers.
     context[varName] = value;
   }
   record.outputVariables[fullName] = value;
+}
+
+// Set a trigger/input variable in context (same triple-write as writeOutputVariable
+// but without touching node records). Used by seeding and input variable override.
+function setContextVariable(context, nodeId, varName, value) {
+  const fullName = `${nodeId}.${varName}`;
+  context[fullName] = value;
+  if (context[nodeId] === null || typeof context[nodeId] !== "object" || Array.isArray(context[nodeId])) {
+    context[nodeId] = {};
+  }
+  context[nodeId][varName] = value;
+  if (!varName.startsWith("__")) {
+    context[varName] = value;
+  }
 }

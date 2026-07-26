@@ -321,7 +321,10 @@
     "callFlowMappingInvalid": "Input mapping must be an object",
     "callFlowChildVarRequired": "childVar is required",
     "callFlowParentExprInvalid": "parentExpr must be a single {{nodeId.var}} reference",
-    "callFlowOnErrorFail": "callFlow nodes must fail on error"
+    "callFlowOnErrorFail": "callFlow nodes must fail on error",
+    "assignments": "Assignments",
+    "addAssignment": "Add assignment",
+    "setVariablesHelp": "Assign or rename variables. Use {{nodeId.varName}} to reference upstream variables; supports dot paths {{a.b.c}} and string concatenation."
   },
   "palette": {
     "categories": {
@@ -341,7 +344,8 @@
     "callFlow": "Call Flow",
     "flowOutput": "Flow Output",
     "agent": "Agent",
-    "feishuSend": "Feishu Send"
+    "feishuSend": "Feishu Send",
+    "setVariables": "Set Variables"
   },
   "projectForm": {
     "title": "Add Project",

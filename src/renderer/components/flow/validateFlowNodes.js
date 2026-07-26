@@ -23,6 +23,7 @@ const VALIDATED_NODE_TYPES = [
   "flowinput",
   "flowoutput",
   "callflow",
+  "setvariables",
 ];
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 
@@ -75,6 +76,32 @@ function validateDeclaredOutputVariables(config, base, t, errors, opts = {}) {
     }
     if (variable?.type && !VARIABLE_TYPES.includes(variable.type)) {
       errors.push(`${path}[${index}].type: ${t("flowEditor.invalidVariableType", { type: variable.type })}`);
+    }
+  });
+}
+
+// REQ-FLOW-047 AC2 mirror: setVariables assignments validation.
+function validateSetVariablesConfig(config, base, t, errors) {
+  const path = `${base}.assignments`;
+  if (!Array.isArray(config.assignments)) {
+    errors.push(`${path}: Assignments must be an array`);
+    return;
+  }
+  const seen = new Set();
+  config.assignments.forEach((assignment, index) => {
+    const name = typeof assignment?.variableName === "string" ? assignment.variableName.trim() : "";
+    if (name.length === 0) {
+      errors.push(`${path}[${index}].variableName: ${t("flowEditor.variableNameRequired")}`);
+    } else if (!VAR_NAME_RE.test(name)) {
+      errors.push(`${path}[${index}].variableName: ${t("flowEditor.variableNameInvalid", { name })}`);
+    } else if (seen.has(name)) {
+      errors.push(`${path}[${index}].variableName: ${t("flowEditor.duplicateVariableName", { name })}`);
+    } else {
+      seen.add(name);
+    }
+    const expr = typeof assignment?.expression === "string" ? assignment.expression.trim() : "";
+    if (expr.length === 0) {
+      errors.push(`${path}[${index}].expression: ${t("flowEditor.expressionRequired")}`);
     }
   });
 }
@@ -154,6 +181,10 @@ export function validateFlowNodes(nodeList, t) {
 
     if (type === "callflow") {
       validateCallFlowConfig(config, base, t, errors);
+    }
+
+    if (type === "setvariables") {
+      validateSetVariablesConfig(config, base, t, errors);
     }
 
     if ("retries" in config && config.retries !== undefined) {

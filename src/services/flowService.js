@@ -15,7 +15,7 @@ const AGENT_PROVIDERS = ["anthropic"];
 const AGENT_OPTION_KEYS = ["systemPrompt", "maxTurns"];
 const ON_ERROR_VALUES = ["fail", "ignore"];
 const CALLFLOW_ON_ERROR_VALUES = ["fail"];
-const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend", "flowinput", "flowoutput", "callflow"];
+const VALIDATED_NODE_TYPES = ["trigger", "condition", "agent", "feishumessage", "feishusend", "flowinput", "flowoutput", "callflow", "setvariables"];
 const VARIABLE_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const FEISHU_MESSAGE_REQUIRED_OUTPUTS = ["text", "sender", "messageId"];
 // REQ-FLOW-034 AC3: parentExpr must be a single {{var}} reference.
@@ -217,6 +217,38 @@ function validateCallFlowConfig(config, base, details, nodeId) {
   }
 }
 
+// REQ-FLOW-047 AC2: setVariables assignments 校验
+// - assignments 必须是数组
+// - 每项 variableName：非空字符串、匹配 VARIABLE_NAME_PATTERN、同节点唯一
+// - 每项 expression：非空字符串（trim 后非空）
+function validateSetVariablesConfig(config, base, details) {
+  if (!("assignments" in config) || config.assignments === undefined) return;
+  const assignments = config.assignments;
+  const path = `${base}.assignments`;
+  if (!Array.isArray(assignments)) {
+    details.push({ path, message: "Assignments must be an array" });
+    return;
+  }
+  const seen = new Set();
+  assignments.forEach((assignment, index) => {
+    const item = isPlainObject(assignment) ? assignment : {};
+    const varName = typeof item.variableName === "string" ? item.variableName.trim() : "";
+    if (varName.length === 0) {
+      details.push({ path: `${path}[${index}].variableName`, message: "Variable name is required" });
+    } else if (!VARIABLE_NAME_PATTERN.test(varName)) {
+      details.push({ path: `${path}[${index}].variableName`, message: `Variable name "${varName}" must match pattern /^[a-zA-Z][a-zA-Z0-9_]*$/` });
+    } else if (seen.has(varName)) {
+      details.push({ path: `${path}[${index}].variableName`, message: `duplicate variable name: ${varName}` });
+    } else {
+      seen.add(varName);
+    }
+    const expr = typeof item.expression === "string" ? item.expression.trim() : "";
+    if (expr.length === 0) {
+      details.push({ path: `${path}[${index}].expression`, message: "Expression is required" });
+    }
+  });
+}
+
 function validateAgentConfig(config, base, details) {
   if ("provider" in config && config.provider !== undefined) {
     if (!AGENT_PROVIDERS.includes(config.provider)) {
@@ -262,6 +294,7 @@ export function validateNodeList(nodeList) {
     else if (type === "flowinput") validateDeclaredOutputVariables(node.config, base, details);
     else if (type === "flowoutput") validateDeclaredOutputVariables(node.config, base, details);
     else if (type === "callflow") validateCallFlowConfig(node.config, base, details, node.id);
+    else if (type === "setvariables") validateSetVariablesConfig(node.config, base, details);
   });
   if (details.length > 0) {
     const err = new Error(
