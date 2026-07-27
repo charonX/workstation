@@ -397,10 +397,16 @@ export function validateSubflowCalls(rootFlowId, rootNodeList, projectId) {
     }
     childNodes = childFlow.nodeList || [];
 
-    // 2. Child has flowInput nodes? If not, allow the save (incremental building):
-    //    skip entry/mapping checks but DFS cycle/depth detection still runs below.
+    // 2. Child must expose at least one flowInput entry (REQ-FLOW-034 / PRD #6).
+    //    Saving a callFlow that references a flow with no callable entry fails with
+    //    E-FLOW-NO-INPUT instead of being accepted as incremental building.
     const childFlowInputs = childNodes.filter((n) => n.type?.toLowerCase() === "flowinput");
     if (childFlowInputs.length === 0) {
+      details.push({
+        code: "E-FLOW-NO-INPUT",
+        message: `flow "${childFlow.name || targetFlowId}" 未声明可被调用的入口（缺少 flowInput 节点）`,
+        nodeId: node.id
+      });
       continue;
     }
 

@@ -10,6 +10,23 @@ import { NODE_REGISTRY } from "./nodeRegistry.js";
 // Refined node types are the ones registered in the node registry.
 const REFINED_NODE_TYPES = Object.keys(NODE_REGISTRY);
 
+// Unified output model helper: the single-output shortcut edits the first entry
+// of config.outputVariables. It reads legacy config.outputVariable as a fallback
+// so existing canvases keep working, but writes always go into outputVariables.
+function getSingleOutputVariableName(config) {
+  const fromArray = config?.outputVariables?.[0]?.name;
+  if (typeof fromArray === "string") return fromArray;
+  return config?.outputVariable || "";
+}
+
+function setSingleOutputVariableName(config, nextName) {
+  const variables = Array.isArray(config?.outputVariables) ? config.outputVariables : [];
+  if (variables.length === 0) {
+    return [{ name: nextName, type: "string" }];
+  }
+  return variables.map((v, i) => (i === 0 ? { ...v, name: nextName } : v));
+}
+
 /**
  * Node properties panel for the Flow Editor.
  * Covers the refined node types and keeps the legacy field sets for the rest.
@@ -80,15 +97,9 @@ export default function NodeConfigPanel({
               type="text"
               className="form-input"
               data-testid="node-output-variable-input"
-              value={
-                type === "agent"
-                  ? config.outputVariable || ""
-                  : node.data?.outputVariable || ""
-              }
+              value={getSingleOutputVariableName(config)}
               onChange={(e) =>
-                type === "agent"
-                  ? onUpdateConfig("outputVariable", e.target.value)
-                  : onUpdateData("outputVariable", e.target.value)
+                onUpdateConfig("outputVariables", setSingleOutputVariableName(config, e.target.value))
               }
             />
           </div>

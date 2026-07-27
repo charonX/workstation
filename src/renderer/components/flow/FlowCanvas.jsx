@@ -38,7 +38,12 @@ function getIconForType(type) {
 function getDefaultConfig(type) {
   switch (type) {
     case "agent":
-      return { provider: "anthropic", model: "", systemPrompt: "" };
+      return {
+        provider: "anthropic",
+        model: "",
+        systemPrompt: "",
+        outputVariables: [{ name: "output", type: "string" }],
+      };
     case "condition":
       return { expression: "" };
     case "feishuMessage":
@@ -177,7 +182,10 @@ function getNodeOutputVariables(data) {
       )
       .filter(Boolean);
   }
-  const single = data.config?.outputVariable || data.outputVariable;
+  const single =
+    data.config?.outputVariables?.[0]?.name ||
+    data.config?.outputVariable ||
+    data.outputVariable;
   return single ? [single] : [];
 }
 
@@ -235,7 +243,6 @@ function toStoredNode(node) {
     id: node.id,
     type: node.data?.type,
     name: node.data?.label,
-    outputVariable: node.data?.outputVariable,
     config: node.data?.config,
     position: node.position,
   };
@@ -261,7 +268,6 @@ const FlowCanvas = forwardRef(function FlowCanvas(
         label: n.name || n.type,
         type: n.type,
         icon: n.icon || getIconForType(n.type),
-        outputVariable: n.outputVariable || "",
         config: n.config || getDefaultConfig(n.type),
       },
     }))
@@ -288,7 +294,6 @@ const FlowCanvas = forwardRef(function FlowCanvas(
             label: name || type,
             type,
             icon,
-            outputVariable: "",
             config: getDefaultConfig(type),
           },
         };
@@ -303,7 +308,6 @@ const FlowCanvas = forwardRef(function FlowCanvas(
           label: name || type,
           type,
           icon,
-          outputVariable: "",
           config: getDefaultConfig(type),
         },
       };

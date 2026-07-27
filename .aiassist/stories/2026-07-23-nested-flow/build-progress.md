@@ -78,9 +78,20 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 | S1 | `7e19e989` | [build] S1: unified output model infrastructure |
 | S1 refactor | `cf994ab` | [refactor] S1: unified output model infrastructure |
 | S2 | `648cf35` | [build] S2: node config migration to unified output model |
+| S2 fix | pending | E-FLOW-NO-INPUT enforcement + agent outputVariable migration |
+
+---
+
+## S2 修复记录（PRD 对齐后发现）
+
+| 缺陷 | 根因 | 修复文件 | 状态 |
+|---|---|---|---|
+| E-FLOW-NO-INPUT 未在 `flowService.validateSubflowCalls` 中强制执行 | S2 实现漏了 PRD #6.2 / 7.4 的入口存在性校验，子 flow 无 flowInput 时仍允许保存 | `src/services/flowService.js` | fixed |
+| agent 配置面板仍写旧 `config.outputVariable` | NodeConfigPanel 单输出快捷框未随统一输出模型迁移；FlowCanvas 保存/初始化也保留 legacy `outputVariable` 字段 | `src/renderer/components/flow/NodeConfigPanel.jsx`, `src/renderer/components/flow/FlowCanvas.jsx` | fixed |
 
 ---
 
 ## 阻塞项
 
-无。
+- `circularReference.test.js` 仍跟踪 REQ v1 hash，其测试用例使用无 flowInput 的子 flow 构造环，与 PRD v2 / requirements-v2.0 的 `E-FLOW-NO-INPUT` 强制检查冲突。需 `/test-author` 将该测试更新到 v2.0 契约。
+- `setVariables.test.js` 失败属于 S3 运行时引擎迁移范畴（下游读不到 setVariables 写入变量），不在 S2 范围内。
