@@ -37,7 +37,8 @@ function makeNodeTypeRegistration(
   icon,
   defaultConfig,
   deriveOutputVariables = deriveDeclaredVariables,
-  configPanel = PlaceholderConfigPanel
+  configPanel = PlaceholderConfigPanel,
+  labelKey = `nodeTypes.${type}`
 ) {
   return {
     type,
@@ -46,11 +47,12 @@ function makeNodeTypeRegistration(
     defaultConfig,
     configPanel,
     deriveOutputVariables,
+    labelKey,
   };
 }
 
 export const NODE_REGISTRY = {
-  trigger: makeNodeTypeRegistration("trigger", "trigger", "⏱", { outputVariables: [] }),
+  trigger: makeNodeTypeRegistration("trigger", "trigger", "⏱", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, "nodeTypes.manual"),
   feishuMessage: makeNodeTypeRegistration(
     "feishuMessage",
     "trigger",

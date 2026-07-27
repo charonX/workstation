@@ -80,26 +80,33 @@ function validateDeclaredOutputVariables(config, base, t, errors, opts = {}) {
   });
 }
 
-// REQ-FLOW-047 AC2 mirror: setVariables assignments validation.
+// REQ-FLOW-047 AC2 mirror: setVariables outputVariables / expressions validation.
+// outputVariables naming rules are already validated by validateDeclaredOutputVariables.
 function validateSetVariablesConfig(config, base, t, errors) {
-  const path = `${base}.assignments`;
-  if (!Array.isArray(config.assignments)) {
-    errors.push(`${path}: Assignments must be an array`);
+  const path = `${base}.expressions`;
+  if (!Array.isArray(config.expressions)) {
+    errors.push(`${path}: ${t("flowEditor.expressionsRequired") || "Expressions must be an array"}`);
     return;
   }
+  const declared = new Set();
+  if (Array.isArray(config.outputVariables)) {
+    for (const v of config.outputVariables) {
+      if (v && typeof v.name === "string") declared.add(v.name);
+    }
+  }
   const seen = new Set();
-  config.assignments.forEach((assignment, index) => {
-    const name = typeof assignment?.variableName === "string" ? assignment.variableName.trim() : "";
+  config.expressions.forEach((expression, index) => {
+    const name = typeof expression?.name === "string" ? expression.name.trim() : "";
     if (name.length === 0) {
-      errors.push(`${path}[${index}].variableName: ${t("flowEditor.variableNameRequired")}`);
-    } else if (!VAR_NAME_RE.test(name)) {
-      errors.push(`${path}[${index}].variableName: ${t("flowEditor.variableNameInvalid", { name })}`);
+      errors.push(`${path}[${index}].name: ${t("flowEditor.variableNameRequired")}`);
+    } else if (!declared.has(name)) {
+      errors.push(`${path}[${index}].name: ${t("flowEditor.expressionNameNotDeclared", { name }) || `Expression name "${name}" is not declared in outputVariables`}`);
     } else if (seen.has(name)) {
-      errors.push(`${path}[${index}].variableName: ${t("flowEditor.duplicateVariableName", { name })}`);
+      errors.push(`${path}[${index}].name: ${t("flowEditor.duplicateVariableName", { name })}`);
     } else {
       seen.add(name);
     }
-    const expr = typeof assignment?.expression === "string" ? assignment.expression.trim() : "";
+    const expr = typeof expression?.expression === "string" ? expression.expression.trim() : "";
     if (expr.length === 0) {
       errors.push(`${path}[${index}].expression: ${t("flowEditor.expressionRequired")}`);
     }

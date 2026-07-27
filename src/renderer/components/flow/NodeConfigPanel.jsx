@@ -5,20 +5,10 @@ import { VARIABLE_TYPES } from "./validateFlowNodes.js";
 import { getUpstreamVariableGroups } from "./upstreamVariables.js";
 import { listCallFlowCandidates } from "../../api/flows.js";
 import { get } from "../../api/client.js";
+import { NODE_REGISTRY } from "./nodeRegistry.js";
 
-// Node types that ship a refined config panel. New entries in this story:
-// flowInput, flowOutput, callFlow (REQ-FLOW-043).
-const REFINED_NODE_TYPES = [
-  "trigger",
-  "feishuMessage",
-  "condition",
-  "agent",
-  "feishuSend",
-  "flowInput",
-  "flowOutput",
-  "callFlow",
-  "setVariables",
-];
+// Refined node types are the ones registered in the node registry.
+const REFINED_NODE_TYPES = Object.keys(NODE_REGISTRY);
 
 /**
  * Node properties panel for the Flow Editor.
@@ -104,73 +94,22 @@ export default function NodeConfigPanel({
           </div>
         )}
 
-        {type === "trigger" && <TriggerFields config={config} onChange={onUpdateConfig} t={t} />}
-        {type === "feishuMessage" && <FeishuMessageFields config={config} onChange={onUpdateConfig} t={t} />}
-        {type === "feishuSend" && <FeishuSendFields config={config} onChange={onUpdateConfig} t={t} nodes={nodes} edges={edges} nodeId={node.id} />}
-        {type === "condition" && (
-          <ConditionFields
-            config={config}
-            onChange={onUpdateConfig}
-            nodes={nodes}
-            edges={edges}
-            nodeId={node.id}
-            t={t}
-          />
-        )}
-        {type === "agent" && (
-          <AgentFields
-            config={config}
-            onChange={onUpdateConfig}
-            nodes={nodes}
-            edges={edges}
-            nodeId={node.id}
-            t={t}
-          />
-        )}
-        {type === "forEach" && <ForEachFields config={config} onChange={onUpdateConfig} t={t} />}
-        {type === "while" && <WhileFields config={config} onChange={onUpdateConfig} t={t} />}
-        {type === "output" && <OutputFields config={config} onChange={onUpdateConfig} t={t} />}
-
-        {type === "flowInput" && (
-          <DeclaredVariablesFields
-            config={config}
-            onChange={onUpdateConfig}
-            t={t}
-            testid="flowinput-variables-editor"
-            description={t("flowEditor.flowInputDescription")}
-          />
-        )}
-        {type === "flowOutput" && (
-          <DeclaredVariablesFields
-            config={config}
-            onChange={onUpdateConfig}
-            t={t}
-            testid="flowoutput-variables-editor"
-            description={t("flowEditor.flowOutputDescription")}
-          />
-        )}
-        {type === "callFlow" && (
-          <CallFlowFields
-            config={config}
-            onChange={onUpdateConfig}
-            t={t}
-            nodeId={node.id}
-            nodes={nodes}
-            edges={edges}
-            currentFlowId={currentFlowId}
-            onOpenSubflow={onOpenSubflow}
-          />
-        )}
-        {type === "setVariables" && (
-          <SetVariablesFields
-            config={config}
-            onChange={onUpdateConfig}
-            t={t}
-            nodeId={node.id}
-            nodes={nodes}
-            edges={edges}
-          />
-        )}
+        {(() => {
+          const ConfigPanel = NODE_REGISTRY[type]?.configPanel || (type === "output" ? OutputFields : null);
+          if (!ConfigPanel) return null;
+          return (
+            <ConfigPanel
+              config={config}
+              onChange={onUpdateConfig}
+              t={t}
+              nodeId={node.id}
+              nodes={nodes}
+              edges={edges}
+              currentFlowId={currentFlowId}
+              onOpenSubflow={onOpenSubflow}
+            />
+          );
+        })()}
 
         {isRefinedType && type !== "callFlow" && <ErrorHandlingFields config={config} onChange={onUpdateConfig} t={t} />}
 
@@ -262,24 +201,45 @@ function DeclaredVariablesFields({ config, onChange, t, testid, description }) {
   );
 }
 
-function TriggerFields({ config, onChange, t }) {
-  return (
-    <DeclaredVariablesFields
-      config={config}
-      onChange={onChange}
-      t={t}
-      testid="trigger-variables-editor"
-    />
-  );
-}
-
-// REQ-FLOW-047 AC8: setVariables assignments editor.
-// Rows of {variableName, expression}; expression supports {{var}} insertion via VariablePicker.
+// REQ-FLOW-047 AC8: setVariables unified editor.
+// Each row represents one output variable and its expression. Adding/removing a
+// variable keeps outputVariables and expressions in sync; renaming a variable
+// updates the matching expression name.
 function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
-  const assignments = Array.isArray(config.assignments) ? config.assignments : [];
-  const setAssignments = (next) => onChange("assignments", next);
-  const updateAssignment = (index, patch) =>
-    setAssignments(assignments.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+  const outputVariables = Array.isArray(config.outputVariables) ? config.outputVariables : [];
+  const expressions = Array.isArray(config.expressions) ? config.expressions : [];
+
+  const setOutputVariables = (next) => onChange("outputVariables", next);
+  const setExpressions = (next) => onChange("expressions", next);
+
+  const updateVariable = (index, patch) => {
+    const oldName = outputVariables[index]?.name;
+    const nextVars = outputVariables.map((v, i) => (i === index ? { ...v, ...patch } : v));
+    setOutputVariables(nextVars);
+    if ("name" in patch && oldName !== undefined) {
+      const nextExprs = expressions.map((e) =>
+        e.name === oldName ? { ...e, name: patch.name } : e
+      );
+      setExpressions(nextExprs);
+    }
+  };
+
+  const addVariable = () => {
+    setOutputVariables([...outputVariables, { name: "", type: "string" }]);
+    setExpressions([...expressions, { name: "", expression: "" }]);
+  };
+
+  const removeVariable = (index) => {
+    const removedName = outputVariables[index]?.name;
+    setOutputVariables(outputVariables.filter((_, i) => i !== index));
+    setExpressions(expressions.filter((e) => e.name !== removedName));
+  };
+
+  const updateExpression = (index, patch) => {
+    setExpressions(
+      expressions.map((e, i) => (i === index ? { ...(e || {}), ...patch } : e))
+    );
+  };
 
   // Caret-tracked insertion for expression fields (shared with FeishuSend/Condition).
   const caretRefs = useRef({});
@@ -287,20 +247,23 @@ function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
     caretRefs.current[index] = e.target.selectionStart;
   };
   const makeInsertVariable = (index) => (fullName) => {
-    const current = assignments[index]?.expression || "";
+    const current = expressions[index]?.expression || "";
     const caret = caretRefs.current[index] ?? current.length;
     const insertion = `{{${fullName}}}`;
-    updateAssignment(index, {
-      expression: current.slice(0, caret) + insertion + current.slice(caret)
+    updateExpression(index, {
+      expression: current.slice(0, caret) + insertion + current.slice(caret),
     });
   };
 
   return (
-    <div className="form-group variables-editor" data-testid="setvariables-assignments-editor">
-      <span className="form-label">{t("flowEditor.assignments") || "Assignments"}</span>
-      <div className="help-text">{t("flowEditor.setVariablesHelp") || "Assign values to variables. Use {{nodeId.varName}} to reference upstream variables."}</div>
-      {assignments.map((assignment, index) => (
-        <div className="variable-row" data-testid="assignment-row" key={index}>
+    <div className="form-group variables-editor" data-testid="setvariables-output-variables-editor">
+      <span className="form-label">{t("flowEditor.variables") || "Variables"}</span>
+      <div className="help-text">
+        {t("flowEditor.setVariablesHelp") ||
+          "Assign values to variables. Use {{nodeId.varName}} to reference upstream variables."}
+      </div>
+      {outputVariables.map((variable, index) => (
+        <div className="variable-row" data-testid="setvariable-row" key={index}>
           <label className="form-label" htmlFor={`setvar-name-${index}`}>
             {t("flowEditor.variableName")}
           </label>
@@ -308,10 +271,26 @@ function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
             id={`setvar-name-${index}`}
             type="text"
             className="form-input"
-            data-testid="assignment-variable-name-input"
-            value={assignment.variableName || ""}
-            onChange={(e) => updateAssignment(index, { variableName: e.target.value })}
+            data-testid="setvariable-name-input"
+            value={variable.name || ""}
+            onChange={(e) => updateVariable(index, { name: e.target.value })}
           />
+          <label className="form-label" htmlFor={`setvar-type-${index}`}>
+            {t("flowEditor.variableType")}
+          </label>
+          <select
+            id={`setvar-type-${index}`}
+            className="form-input"
+            data-testid="setvariable-type-select"
+            value={variable.type || "string"}
+            onChange={(e) => updateVariable(index, { type: e.target.value })}
+          >
+            {VARIABLE_TYPES.map((variableType) => (
+              <option key={variableType} value={variableType}>
+                {variableType}
+              </option>
+            ))}
+          </select>
           <label className="form-label" htmlFor={`setvar-expr-${index}`}>
             {t("flowEditor.expression")}
           </label>
@@ -319,9 +298,9 @@ function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
             id={`setvar-expr-${index}`}
             type="text"
             className="form-input"
-            data-testid="assignment-expression-input"
-            value={assignment.expression || ""}
-            onChange={(e) => updateAssignment(index, { expression: e.target.value })}
+            data-testid="setvariable-expression-input"
+            value={expressions[index]?.expression || ""}
+            onChange={(e) => updateExpression(index, { expression: e.target.value })}
             onSelect={recordCaret(index)}
             onClick={recordCaret(index)}
             onKeyUp={recordCaret(index)}
@@ -335,8 +314,8 @@ function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
           <button
             type="button"
             className="btn btn-secondary variable-remove-button"
-            data-testid="remove-assignment-button"
-            onClick={() => setAssignments(assignments.filter((_, i) => i !== index))}
+            data-testid="remove-setvariable-button"
+            onClick={() => removeVariable(index)}
           >
             {t("flowEditor.removeVariable")}
           </button>
@@ -345,14 +324,43 @@ function SetVariablesFields({ config, onChange, t, nodeId, nodes, edges }) {
       <button
         type="button"
         className="btn btn-secondary"
-        data-testid="add-assignment-button"
-        onClick={() =>
-          setAssignments([...assignments, { variableName: "", expression: "" }])
-        }
+        data-testid="add-setvariable-button"
+        onClick={addVariable}
       >
-        {t("flowEditor.addAssignment") || "Add assignment"}
+        {t("flowEditor.addVariable")}
       </button>
     </div>
+  );
+}
+
+function TriggerFields({ config, onChange, t }) {
+  return (
+    <DeclaredVariablesFields
+      config={config}
+      onChange={onChange}
+      t={t}
+      testid="trigger-variables-editor"
+    />
+  );
+}
+
+function FlowInputFields(props) {
+  return (
+    <DeclaredVariablesFields
+      {...props}
+      testid="flowinput-variables-editor"
+      description={props.t("flowEditor.flowInputDescription")}
+    />
+  );
+}
+
+function FlowOutputFields(props) {
+  return (
+    <DeclaredVariablesFields
+      {...props}
+      testid="flowoutput-variables-editor"
+      description={props.t("flowEditor.flowOutputDescription")}
+    />
   );
 }
 
@@ -842,29 +850,23 @@ function CallFlowFields({
 
   const childOutputs = useChildOutputs(targetFlowId);
 
-  // Derive output mappings (parentKey = `${callFlowNodeId}.${childVar}`). We
-  // write this into node config so downstream upstreamVariables / canvas chips
-  // see them (and the server regenerates them authoritatively on save).
+  // Derive output variables from the child flow's flowOutput nodes and write them
+  // into config.outputVariables. The server regenerates them authoritatively on save.
   useEffect(() => {
     if (!targetFlowId) {
-      if (Array.isArray(config.outputMappings) && config.outputMappings.length > 0) {
-        onChange("outputMappings", []);
+      if (Array.isArray(config.outputVariables) && config.outputVariables.length > 0) {
+        onChange("outputVariables", []);
       }
       return;
     }
-    const next = childOutputs.map((o) => ({
-      childVar: o.varName,
-      childNodeId: o.nodeId,
-      parentKey: `${nodeId}.${o.varName}`,
-      childType: o.type,
-    }));
+    const next = childOutputs.map((o) => ({ name: o.varName, type: o.type || "string" }));
     // Only update when materially different to avoid infinite loops.
-    const existing = Array.isArray(config.outputMappings) ? config.outputMappings : [];
+    const existing = Array.isArray(config.outputVariables) ? config.outputVariables : [];
     const same =
       existing.length === next.length &&
-      next.every((m, i) => existing[i] && existing[i].parentKey === m.parentKey);
-    if (!same) onChange("outputMappings", next);
-  }, [targetFlowId, childOutputs, nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+      next.every((m, i) => existing[i] && existing[i].name === m.name && existing[i].type === m.type);
+    if (!same) onChange("outputVariables", next);
+  }, [targetFlowId, childOutputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inputVars = Array.isArray(entryNode?.variables) ? entryNode.variables : [];
   const mappingsByChild = new Map(
@@ -886,7 +888,7 @@ function CallFlowFields({
     onChange("targetFlowId", id);
     onChange("targetInputNodeId", "");
     onChange("inputMappings", []);
-    onChange("outputMappings", []);
+    onChange("outputVariables", []);
   };
 
   const handleEntryChange = (e) => {
@@ -971,16 +973,16 @@ function CallFlowFields({
         <div className="form-group" style={{ marginTop: "var(--ch-space-3)" }}>
           <span className="form-label">{t("flowEditor.callFlowOutputMappings")}</span>
           <div className="callflow-mappings" data-testid="callflow-output-mappings">
-            {childOutputs.length === 0 && (
+            {config.outputVariables?.length === 0 && (
               <div className="help-text">{t("flowEditor.callFlowNoOutputVars")}</div>
             )}
-            {childOutputs.map((o) => (
-              <div className="callflow-mapping-row" key={`${o.nodeId}.${o.varName}`}>
-                <label className="form-label">{o.varName}</label>
+            {(config.outputVariables || []).map((o) => (
+              <div className="callflow-mapping-row" key={o.name}>
+                <label className="form-label">{o.name}</label>
                 <input
                   type="text"
                   className="form-input"
-                  value={`${nodeId}.${o.varName}`}
+                  value={`${nodeId}.${o.name}`}
                   readOnly
                   disabled
                 />
@@ -1029,5 +1031,22 @@ function ParentVariableSelect({ nodes, edges, currentNodeId, value, onChange, t 
       ))}
     </select>
   );
+}
+
+// Bind the concrete config panel components into the node registry so that
+// NodePalette and NodeConfigPanel share a single source of truth for node types
+// (ADR-010, REQ-FLOW-043 AC8).
+if (NODE_REGISTRY) {
+  NODE_REGISTRY.trigger.configPanel = TriggerFields;
+  NODE_REGISTRY.feishuMessage.configPanel = FeishuMessageFields;
+  NODE_REGISTRY.flowInput.configPanel = FlowInputFields;
+  NODE_REGISTRY.flowOutput.configPanel = FlowOutputFields;
+  NODE_REGISTRY.agent.configPanel = AgentFields;
+  NODE_REGISTRY.feishuSend.configPanel = FeishuSendFields;
+  NODE_REGISTRY.condition.configPanel = ConditionFields;
+  NODE_REGISTRY.forEach.configPanel = ForEachFields;
+  NODE_REGISTRY.while.configPanel = WhileFields;
+  NODE_REGISTRY.callFlow.configPanel = CallFlowFields;
+  NODE_REGISTRY.setVariables.configPanel = SetVariablesFields;
 }
 

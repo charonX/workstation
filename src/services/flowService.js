@@ -217,30 +217,37 @@ function validateCallFlowConfig(config, base, details, nodeId) {
   }
 }
 
-// REQ-FLOW-047 AC2: setVariables assignments 校验
-// - assignments 必须是数组
-// - 每项 variableName：非空字符串、匹配 VARIABLE_NAME_PATTERN、同节点唯一
-// - 每项 expression：非空字符串（trim 后非空）
+// REQ-FLOW-047 AC2: setVariables outputVariables / expressions 校验
+// - outputVariables  naming rules are validated by validateDeclaredOutputVariables (ADR-010).
+// - expressions 必须是数组
+// - 每项 name 必须在同节点 outputVariables 中声明
+// - 每项 expression 非空字符串（trim 后非空）
 function validateSetVariablesConfig(config, base, details) {
-  if (!("assignments" in config) || config.assignments === undefined) return;
-  const assignments = config.assignments;
-  const path = `${base}.assignments`;
-  if (!Array.isArray(assignments)) {
-    details.push({ path, message: "Assignments must be an array" });
+  if (!("expressions" in config) || config.expressions === undefined) return;
+  const expressions = config.expressions;
+  const path = `${base}.expressions`;
+  if (!Array.isArray(expressions)) {
+    details.push({ path, message: "Expressions must be an array" });
     return;
   }
+  const declared = new Set();
+  if (Array.isArray(config.outputVariables)) {
+    for (const v of config.outputVariables) {
+      if (v && typeof v.name === "string") declared.add(v.name);
+    }
+  }
   const seen = new Set();
-  assignments.forEach((assignment, index) => {
-    const item = isPlainObject(assignment) ? assignment : {};
-    const varName = typeof item.variableName === "string" ? item.variableName.trim() : "";
-    if (varName.length === 0) {
-      details.push({ path: `${path}[${index}].variableName`, message: "Variable name is required" });
-    } else if (!VARIABLE_NAME_PATTERN.test(varName)) {
-      details.push({ path: `${path}[${index}].variableName`, message: `Variable name "${varName}" must match pattern /^[a-zA-Z][a-zA-Z0-9_]*$/` });
-    } else if (seen.has(varName)) {
-      details.push({ path: `${path}[${index}].variableName`, message: `duplicate variable name: ${varName}` });
+  expressions.forEach((expression, index) => {
+    const item = isPlainObject(expression) ? expression : {};
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    if (name.length === 0) {
+      details.push({ path: `${path}[${index}].name`, message: "Expression name is required" });
+    } else if (!declared.has(name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Expression name "${name}" is not declared in outputVariables` });
+    } else if (seen.has(name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Duplicate expression name: ${name}` });
     } else {
-      seen.add(varName);
+      seen.add(name);
     }
     const expr = typeof item.expression === "string" ? item.expression.trim() : "";
     if (expr.length === 0) {
@@ -302,6 +309,43 @@ export function validateNodeList(nodeList) {
     );
     err.details = details;
     throw err;
+  }
+}
+
+// REQ-FLOW-034 AC4: auto-fill callFlow.config.outputVariables with the union of
+// all flowOutput node outputVariables in the target child flow.
+function collectFlowOutputVariables(nodeList) {
+  const byName = new Map();
+  for (const node of Array.isArray(nodeList) ? nodeList : []) {
+    if (String(node?.type || "").toLowerCase() !== "flowoutput") continue;
+    for (const v of Array.isArray(node.config?.outputVariables) ? node.config.outputVariables : []) {
+      if (v && typeof v.name === "string" && v.name) {
+        if (!byName.has(v.name)) {
+          byName.set(v.name, v.type || "string");
+        }
+      }
+    }
+  }
+  return Array.from(byName.entries()).map(([name, type]) => ({ name, type }));
+}
+
+export function fillCallFlowOutputVariables(rootFlowId, nodeList, projectId) {
+  for (const node of Array.isArray(nodeList) ? nodeList : []) {
+    if (!isPlainObject(node)) continue;
+    if (String(node.type || "").toLowerCase() !== "callflow") continue;
+    const cfg = node.config || {};
+    const targetFlowId = cfg.targetFlowId;
+    if (typeof targetFlowId !== "string" || targetFlowId.trim() === "") continue;
+
+    let childNodeList;
+    if (targetFlowId === rootFlowId) {
+      childNodeList = nodeList;
+    } else {
+      const childFlow = getFlow(targetFlowId);
+      if (!childFlow || childFlow.projectId !== projectId) continue;
+      childNodeList = childFlow.nodeList || [];
+    }
+    cfg.outputVariables = collectFlowOutputVariables(childNodeList);
   }
 }
 
@@ -538,6 +582,7 @@ export function createFlow({ name, projectId, description, nodes, nodeList, edge
   const flowId = nextFlowId();
   // Cross-flow validation: DFS needs the root id, but the flow row is not in DB yet.
   // validateSubflowCalls loads the root's nodeList from the in-memory argument.
+  fillCallFlowOutputVariables(flowId, effectiveNodeList, projectId);
   validateSubflowCalls(flowId, effectiveNodeList, projectId);
   const flow = {
     id: flowId,
@@ -587,6 +632,7 @@ export function importFlow(data) {
   const publishedEdges = data.publishedEdges || (status === "published" ? edges : []);
   const publishedAt = data.publishedAt || (status === "published" ? timestamp() : null);
   const flowId = data.id || nextFlowId();
+  fillCallFlowOutputVariables(flowId, nodeList, data.projectId);
   validateSubflowCalls(flowId, nodeList, data.projectId);
   const flow = {
     id: flowId,
@@ -712,6 +758,7 @@ export function updateFlow(flowId, patch) {
   if (patch.nodeList !== undefined) {
     validateNodeList(nodeList);
     // Cross-flow validation runs against the to-be-saved nodeList.
+    fillCallFlowOutputVariables(flowId, nodeList, row.projectId);
     validateSubflowCalls(flowId, nodeList, row.projectId);
   }
   const name = patch.name !== undefined ? patch.name : row.name;

@@ -1,45 +1,9 @@
 import { useTranslation } from "react-i18next";
+import { NODE_REGISTRY } from "./nodeRegistry.js";
 
-const NODE_CATEGORIES = [
-  {
-    label: "Trigger",
-    key: "trigger",
-    items: [
-      { type: "trigger", nameKey: "nodeTypes.manual", icon: "⏱" },
-      { type: "feishuMessage", nameKey: "nodeTypes.feishuMessage", icon: "✉️" },
-      { type: "flowInput", nameKey: "nodeTypes.flowInput", icon: "⤵" },
-    ],
-  },
-  {
-    label: "logic",
-    key: "logic",
-    items: [
-      { type: "condition", nameKey: "nodeTypes.condition", icon: "◈" },
-      { type: "forEach", nameKey: "nodeTypes.forEach", icon: "↻" },
-      { type: "while", nameKey: "nodeTypes.while", icon: "⟳" },
-      { type: "callFlow", nameKey: "nodeTypes.callFlow", icon: "⎘" },
-      { type: "setVariables", nameKey: "nodeTypes.setVariables", icon: "=" },
-    ],
-  },
-  {
-    label: "Flow",
-    key: "flow",
-    items: [
-      { type: "flowOutput", nameKey: "nodeTypes.flowOutput", icon: "⤴" },
-    ],
-  },
-  {
-    label: "Execution",
-    key: "execution",
-    items: [
-      { type: "agent", nameKey: "nodeTypes.agent", icon: "◆" },
-      { type: "feishuSend", nameKey: "nodeTypes.feishuSend", icon: "💬" },
-    ],
-  },
-];
+// Presentation order of palette categories (matches the legacy layout).
+const CATEGORY_ORDER = ["trigger", "logic", "flow", "execution"];
 
-// i18n label fallback used when a translation key is missing (defensive; the
-// canonical labels come from locale files per REQ-FLOW-043 AC6).
 const FALLBACK_LABELS = {
   trigger: "Trigger",
   logic: "Logic",
@@ -47,16 +11,39 @@ const FALLBACK_LABELS = {
   execution: "Execution",
 };
 
+function buildCategories(registry) {
+  const groups = new Map();
+  for (const entry of Object.values(registry)) {
+    if (!entry?.type) continue;
+    if (!groups.has(entry.category)) {
+      groups.set(entry.category, {
+        key: entry.category,
+        items: [],
+      });
+    }
+    groups.get(entry.category).items.push({
+      type: entry.type,
+      labelKey: entry.labelKey || `nodeTypes.${entry.type}`,
+      icon: entry.icon,
+    });
+  }
+  return CATEGORY_ORDER.map((key) => groups.get(key)).filter(Boolean);
+}
+
 export default function NodePalette({ onAddNode }) {
   const { t } = useTranslation();
+  const categories = buildCategories(NODE_REGISTRY);
+
   return (
     <aside className="node-palette" data-testid="node-palette">
       <h2 className="palette-title">{t("flowEditor.nodes")}</h2>
-      {NODE_CATEGORIES.map((category) => (
+      {categories.map((category) => (
         <div className="palette-group" key={category.key}>
-          <div className="palette-label">{t(`palette.categories.${category.key}`, FALLBACK_LABELS[category.key])}</div>
+          <div className="palette-label">
+            {t(`palette.categories.${category.key}`, FALLBACK_LABELS[category.key])}
+          </div>
           {category.items.map((item) => {
-            const label = t(item.nameKey, item.nameKey.split(".").pop());
+            const label = t(item.labelKey, item.type);
             return (
               <div
                 key={item.type}
