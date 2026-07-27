@@ -286,13 +286,13 @@ export function validateNodeList(nodeList) {
       return;
     }
     validateCommonConfig(node.config, base, details);
+    // ADR-010: all node types share the same outputVariables naming rules.
+    validateDeclaredOutputVariables(node.config, base, details);
     if (type === "trigger") validateTriggerConfig(node.config, base, details);
     else if (type === "feishumessage") validateFeishuMessageConfig(node.config, base, details);
     else if (type === "feishusend") validateFeishuSendConfig(node.config, base, details);
     else if (type === "condition") validateConditionConfig(node.config, base, details);
     else if (type === "agent") validateAgentConfig(node.config, base, details);
-    else if (type === "flowinput") validateDeclaredOutputVariables(node.config, base, details);
-    else if (type === "flowoutput") validateDeclaredOutputVariables(node.config, base, details);
     else if (type === "callflow") validateCallFlowConfig(node.config, base, details, node.id);
     else if (type === "setvariables") validateSetVariablesConfig(node.config, base, details);
   });

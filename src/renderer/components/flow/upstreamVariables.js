@@ -6,22 +6,17 @@
  * - the node is a Trigger (entry variables are flow-wide), or
  * - a directed edge path leads from that node to the current node.
  *
- * Trigger-like nodes (trigger / feishuMessage / flowInput / flowOutput)
- * contribute their declared `config.outputVariables` (name + declared
- * type). callFlow nodes contribute each outputMapping.parentKey (sourced
- * from the child flow's flowOutput variables). Other nodes contribute
- * their single declared output variable (`config.outputVariable`,
- * falling back to the legacy top-level `outputVariable`); agent outputs
- * are strings by contract.
+ * All node types expose their downstream-visible variables through
+ * `nodeRegistry[type].deriveOutputVariables(config)`. The registry is the
+ * single source of truth for output variable names (ADR-010).
+ *
+ * Trigger-like nodes (trigger / feishuMessage / flowInput / flowOutput) are
+ * always visible regardless of edges. Other nodes require an upstream path.
  *
  * Groups are derived from live canvas state, so deleting or renaming an
  * upstream variable refreshes the picker immediately (REQ-FLOW-022 AC4).
  */
-const FEISHU_MESSAGE_FIXED_OUTPUTS = [
-  { name: "text", type: "string" },
-  { name: "sender", type: "string" },
-  { name: "messageId", type: "string" },
-];
+import { NODE_REGISTRY } from "./nodeRegistry.js";
 
 const TRIGGER_LIKE_TYPES = new Set(["trigger", "feishuMessage", "flowInput", "flowOutput"]);
 
@@ -46,57 +41,26 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
     if (!isTriggerLike && !upstream.has(node.id)) continue;
 
     const variables = [];
-    if (isTriggerLike) {
-      let declared = node.data?.config?.outputVariables;
-      // BUG-016: feishuMessage nodes always expose text/sender/messageId even
-      // if the config has not been persisted yet (e.g. just added from palette).
-      if (type === "feishuMessage" && !Array.isArray(declared)) {
-        declared = FEISHU_MESSAGE_FIXED_OUTPUTS;
-      }
-      for (const variable of Array.isArray(declared) ? declared : []) {
-        const name = typeof variable?.name === "string" ? variable.name.trim() : "";
-        if (name) {
-          variables.push({
-            name,
-            type: variable.type || "string",
-            fullName: `${node.id}.${name}`,
-          });
-        }
-      }
-    } else if (type === "callFlow") {
-      const mappings = Array.isArray(node.data?.config?.outputMappings)
-        ? node.data.config.outputMappings
-        : [];
-      for (const mapping of mappings) {
-        const parentKey = typeof mapping?.parentKey === "string" ? mapping.parentKey.trim() : "";
-        if (parentKey) {
-          // parentKey is already `${callFlowNodeId}.${childVar}` (the form
-          // downstream nodes reference). Expose it verbatim as fullName.
-          const shortName = parentKey.includes(".") ? parentKey.slice(parentKey.indexOf(".") + 1) : parentKey;
-          variables.push({ name: shortName, type: mapping.childType || "string", fullName: parentKey });
-        }
-      }
-    } else if (type === "setVariables") {
-      // REQ-FLOW-047 AC3/AC5/AC8: setVariables exposes each assignment.variableName
-      // as a downstream variable via the D10 multi-output mechanism. Bare key and
-      // namespaced key (`${nodeId}.${varName}`) are both written at runtime.
-      const assignments = Array.isArray(node.data?.config?.assignments)
-        ? node.data.config.assignments
-        : [];
-      for (const assignment of assignments) {
-        const varName = typeof assignment?.variableName === "string" ? assignment.variableName.trim() : "";
-        if (varName) {
-          variables.push({
-            name: varName,
-            type: assignment.type || "string",
-            fullName: `${node.id}.${varName}`,
-          });
-        }
-      }
-    } else {
-      const name = node.data?.config?.outputVariable || node.data?.outputVariable;
+    const registryEntry = NODE_REGISTRY[type];
+    const derived = registryEntry?.deriveOutputVariables?.(node.data?.config) || [];
+    for (const variable of derived) {
+      const name = typeof variable?.name === "string" ? variable.name.trim() : "";
       if (name) {
-        variables.push({ name, type: "string", fullName: `${node.id}.${name}` });
+        variables.push({
+          name,
+          type: variable.type || "string",
+          fullName: `${node.id}.${name}`,
+        });
+      }
+    }
+
+    // Legacy fallback for non-trigger-like nodes that still use the singular
+    // `outputVariable` field. This keeps the pre-unified-model canvas working
+    // until S3 migrates all executors to `outputVariables`.
+    if (!isTriggerLike && variables.length === 0) {
+      const legacyName = node.data?.config?.outputVariable || node.data?.outputVariable;
+      if (legacyName) {
+        variables.push({ name: legacyName, type: "string", fullName: `${node.id}.${legacyName}` });
       }
     }
 
