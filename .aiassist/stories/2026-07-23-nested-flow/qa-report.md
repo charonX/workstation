@@ -60,3 +60,43 @@
 - ADR-008 services 注入模式落地
 - DB migration (parentExecutionId/parentNodeId/depth) + recursive CTE 级联清理
 - Continuation stack 支持 foreach body 含 callFlow
+
+---
+
+## QA 回归（2026-07-27，req-gap 补全 FLOW-047 setVariables）
+
+### 单元/API 测试（重跑）
+- 命令：`node --test tests/capabilities/flow-orchestration/**/*.test.js src/flowEngine/executors/*.test.js`
+- 结果：✅ **PASS (172/172)**
+  - 新增 FLOW-047 setVariables：8 engine 业务 + 7 validation + 5 TDD = 20/20 绿
+  - FLOW-032~046 既有 152 个测试全绿，无回归
+  - better-sqlite3 初次跑 NODE_MODULE_VERSION 不匹配，`npm rebuild better-sqlite3` 后恢复（环境问题）
+- setVariables 关键验证点：
+  - AC3 基本赋值 + D10 namespaced/bare key 写入 ✅
+  - AC4 单 {{var}} 引用类型保留（object/number/array/boolean）✅
+  - AC5 多入口归一化（feishu 入口/flowInput 入口两路径下游 text/messageId 一致）✅
+  - AC6 常量 + 嵌套字段 {{a.b.c}} + 模板字符串拼接 "{{first}} {{last}}"（D11）✅
+  - AC7 pass-through（下游节点在 setVariables 后执行并读到赋值）✅
+  - AC1/AC2 字段校验（E-VAR-NAME / E-EXPR / 非数组 / 合法通过）✅
+
+### E2E（重跑）
+- 命令：`npx playwright test tests/capabilities/flow-orchestration/**/2026-07-23-nested-flow/e2e/*.test.cjs`
+- 结果：⚠️ **BLOCKED（13/13 失败在 beforeEach startElectronApp 超时 30s）**
+- 诊断：Electron 进程未在 30s 内启动并返回 firstWindow；与 2026-07-25 QA 时 2/8 通过相比退化明显，疑为 dist/ renderer bundle 过期或 Electron 环境状态问题（dist/ 中 channelManager/server 有多个 hash chunk 表明上次 build 后未重建）
+- 与本次变更关系：FLOW-047 setVariables 无专属 E2E 用例；UI 层扩展只是在 NodePalette/NodeConfigPanel 加节点，不改变 Electron 启动路径
+- 建议：`npm run build`（或 electron-forge start 的 vite/esbuild 监听）后重跑；非业务逻辑 blocker
+
+### 浏览器验证 / Coverage
+- SKIPPED（无 UX HTML 原型，无 c8）
+
+### req-gap 补全追溯
+- PRD 对齐发现的"业务测试 stub 覆盖真实 executor"问题已修复：删除 stub、真实 executor 跑 7 条引擎用例 + 新增 D11 模板拼接用例
+- 引擎 triple-write 第二段（context[nodeId][varName] 嵌套对象）无生产消费者已移除，evaluateExpression.buildNestedScope 单一事实源
+- refactor: writeContextEntries helper 消除 writeOutputVariable/setContextVariable 双写重复
+- Commits: `8f10b2f`[build] `dce4ccf`[test] `0a682a6`[test] `1af671f`[build] `128b2f1`[refactor] `8741762`[build-meta]
+
+### 结论（回归）
+- [x] 后端业务测试 172/172 全绿，FLOW-047 行为契约满足
+- [x] 无回归
+- [ ] E2E Electron 环境问题（非本次引入），建议 `/reflect` 记录为已知限制或后续修 E2E timing/build
+- [x] 可进入 `/reflect` 最终验收
