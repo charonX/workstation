@@ -6,7 +6,7 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: ASSERTION-SIGNOFF    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 2        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 # QA 回归完成：后端 172/172 全绿，FLOW-047 setVariables 行为契约满足，无回归；
@@ -28,6 +28,7 @@ history:
   - {at: 2026-07-27, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v0.3 完成：统一节点输出模型 + renderer 侧节点类型注册表（nodeRegistry.js）+ callFlow outputVariables 由 main 侧保存时补全；开发阶段不保留历史数据。ADR-010 已登记。PRD v0.2 已反向同步。"}
   - {at: 2026-07-27, from: CRYSTALLIZE, to: TEST, note: "requirements.md v2.0 生成：16 REQ（FLOW-032~047），hash=908d0d51...；business-capabilities.md 已更新；所有 REQ 均有自动化测试 seam。"}
   - {at: 2026-07-27, from: TEST, to: ASSERTION-SIGNOFF, note: "/test-author 完成：更新 test-plan.md v2.0；setVariables/callFlow/executorSignature 测试契约迁到 outputVariables；新增 nodeRegistry.test.js；所有测试 ASSERTIONS-SIGNED: false，等待人签核。"}
+  - {at: 2026-07-27, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：[test] assertion-signoff commit 已落；契约交内层实现循环。进入 /implementer。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
