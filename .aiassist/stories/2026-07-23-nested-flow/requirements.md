@@ -1,8 +1,8 @@
 # 契约式需求 — 嵌套子流程调用（Nested Subflow）
 
 > 故事 ID：`2026-07-23-nested-flow`
-> 版本：v1
-> 最后更新：2026-07-23
+> 版本：v2.0
+> 最后更新：2026-07-27
 
 ---
 
@@ -37,19 +37,21 @@
 - **必须性**：必须
 - **scope**：intra-module（flowService 校验 + flowEngine TRIGGER_LIKE 集）
 - **capability/entity**：flow-orchestration / flow
-- **modules**：flowService、flowEngine、NodePalette、NodeConfigPanel
+- **modules**：flowService、flowEngine、NodePalette、NodeConfigPanel、nodeRegistry
 
 ### 验收标准
 
-1. **AC1（节点注册）**：`flowInput`（引擎小写 `flowinput`）加入引擎 `defaultExecutors` 注册、`TRIGGER_LIKE_NODE_TYPES` 集合、flowService `VALIDATED_NODE_TYPES` 白名单；保存含 `type:"flowInput"` 节点的流程时不被拒绝。
+1. **AC1（节点注册）**：`flowInput`（引擎小写 `flowinput`）加入引擎 `defaultExecutors` 注册、`TRIGGER_LIKE_NODE_TYPES` 集合、flowService `VALIDATED_NODE_TYPES` 白名单、renderer 侧 `nodeRegistry`；保存含 `type:"flowInput"` 节点的流程时不被拒绝。
 2. **AC2（字段校验）**：节点配置 `config.outputVariables` 必须是数组；每项 `name` 非空字符串、同节点内唯一、符合 `/^[a-zA-Z][a-zA-Z0-9_]*$/`；违规时保存失败并返回 `details[]` 含路径 `nodes[i].config.outputVariables[j].name` 和错误码 `E-VAR-NAME`。
 3. **AC3（执行语义）**：执行到 flowInput 节点时按 trigger-like 语义 pass-through，节点的 outputVariables 通过 seedTriggerVariables 播种 defaultValue，通过 applyTriggerVariableOverrides 接收父流程传入的 inputVars 覆盖（覆盖范围受 REQ-FLOW-036 限制）。
 4. **AC4（单流程内多 flowInput）**：同一流程可有多个 flowInput 节点（代表多个被调用入口），引擎不拒绝；节点之间按 DAG 边自然不可达（从任一个 flowInput 启动时其他 flowInput 不会被执行）。
+5. **AC5（注册表默认配置）**：拖入 flowInput 节点时，`nodeRegistry` 提供 `defaultConfig.outputVariables: []`。
 
 ### 测试
 
 - Seam: `flowService.validateNodeList` 单元测试传含 flowInput 节点的 nodeList
 - Seam: `flowEngine.run()` 单元测试从 flowInput 入口启动，断言 outputVariables 被正确注入 context
+- Seam: `nodeRegistry.flowInput.defaultConfig` 和 `deriveOutputVariables`
 - 文件：`tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/subflowNodeTypes.test.js`
 
 ---
@@ -62,11 +64,11 @@
 - **必须性**：必须
 - **scope**：intra-module（flowService + 新增 executor）
 - **capability/entity**：flow-orchestration / flow
-- **modules**：flowService、flowOutputExecutor、NodePalette、NodeConfigPanel
+- **modules**：flowService、flowOutputExecutor、NodePalette、NodeConfigPanel、nodeRegistry
 
 ### 验收标准
 
-1. **AC1（节点注册）**：`flowOutput`（引擎小写 `flowoutput`）加入 defaultExecutors、VALIDATED_NODE_TYPES；保存不被拒绝。
+1. **AC1（节点注册）**：`flowOutput`（引擎小写 `flowoutput`）加入 defaultExecutors、VALIDATED_NODE_TYPES、nodeRegistry；保存不被拒绝。
 2. **AC2（字段校验）**：`config.outputVariables` 数组的 `name` 规则同 REQ-FLOW-032 AC2；违规返回 `E-VAR-NAME`。
 3. **AC3（执行语义）**：flowOutput 节点执行时：
    - 遍历自身 config.outputVariables，从当前 context 读同名 bare key 作为返回值
@@ -74,10 +76,12 @@
    - 引擎自动把每个输出写入 `${nodeId}.${varName}` 和裸 `${varName}` 到 context 和 nodeRecord.outputVariables
 4. **AC4（叶子语义）**：flowOutput 节点无出边时执行完流程终止（与其他叶子节点一致）；有出边时按普通节点继续（允许编排者把 flowOutput 放在中间——但 invokeSubflow 仍然取"最后一个 flowOutput"作为出口，见 REQ-FLOW-035）。
 5. **AC5（多 flowOutput）**：同一流程可有多个 flowOutput 节点（不同分支出口）；流程结束时 invokeSubflow 取 nodeRecords 中最后一个 type=flowoutput 的记录作为返回值来源。
+6. **AC6（注册表默认配置）**：拖入 flowOutput 节点时，`nodeRegistry` 提供 `defaultConfig.outputVariables: []`。
 
 ### 测试
 
 - Seam: validateNodeList 单元 + flowEngine.run() 单元（构造含 flowOutput 的流程，断言 outputVariables 被写入 record）
+- Seam: `nodeRegistry.flowOutput.defaultConfig` 和 `deriveOutputVariables`
 - 文件：同 REQ-FLOW-032
 
 ---
@@ -90,29 +94,30 @@
 - **必须性**：必须
 - **scope**：cross-module（flowService 校验 + callFlowExecutor 解析）
 - **capability/entity**：flow-orchestration / flow
-- **modules**：flowService、callFlowExecutor、NodeConfigPanel
+- **modules**：flowService、callFlowExecutor、NodeConfigPanel、nodeRegistry
 
 ### 验收标准
 
-1. **AC1（节点注册）**：`callFlow`（引擎小写 `callflow`）加入 defaultExecutors、VALIDATED_NODE_TYPES。
+1. **AC1（节点注册）**：`callFlow`（引擎小写 `callflow`）加入 defaultExecutors、VALIDATED_NODE_TYPES、nodeRegistry。
 2. **AC2（必填字段）**：
    - `config.targetFlowId`（字符串）：必填，否则保存失败 `E-CALLFLOW-TARGET`
    - `config.targetInputNodeId`（字符串）：必填，指向子流程内 flowInput 节点 id，否则 `E-CALLFLOW-INPUT`
    - `config.inputMappings`（数组）：每项形如 `{childVar, parentExpr}`，否则 `E-CALLFLOW-MAP`
    - `config.retries`：非负整数（沿用通用校验）
 3. **AC3（parentExpr 格式）**：每条 inputMapping.parentExpr 必须匹配 `/^\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}$/`（单变量引用），不匹配时保存失败 `E-CALLFLOW-MAP`。
-4. **AC4（出参映射自动生成）**：callFlow 节点保存时 outputMappings 由后端根据目标子流程所有 flowOutput 节点声明的 outputVariables 并集自动生成（parentKey = `${callFlowNodeId}.${childVar}`），用户不可改；返回给前端时包含完整映射表供只读展示。
+4. **AC4（出参变量自动填充）**：callFlow 节点保存时 `config.outputVariables` 由后端根据目标子流程所有 flowOutput 节点声明的 outputVariables 并集自动生成（name = childVar，type 继承），用户不可改；返回给前端时包含完整 outputVariables 供只读展示。
 5. **AC5（映射完整性）**：目标 flowInput 节点声明的每个 outputVariable 必须被 inputMappings 覆盖 或 该变量有 defaultValue；缺失时保存失败 `E-CALLFLOW-MAP-MISSING`，details 包含具体 var 名。
 
 ### 接口契约（flowService 校验）
 
 - 输入：`(flow, projectId)`
 - 输出：void；失败 throw Error，`err.details = [{code, message, nodeId?, path?}]`
-- 副作用：无
+- 副作用：无；保存时自动补全 callFlow.config.outputVariables
 
 ### 测试
 
-- Seam: validateNodeList 单元覆盖 AC2/AC3；validateSubflowCalls 单元覆盖 AC5（需内存 DB fixture）
+- Seam: validateNodeList 单元覆盖 AC2/AC3；validateSubflowCalls 单元覆盖 AC4/AC5（需内存 DB fixture）
+- Seam: `nodeRegistry.callFlow.defaultConfig` 和 `deriveOutputVariables`
 - 文件：`tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/api/callFlowValidation.test.js`
 
 ---
@@ -130,15 +135,15 @@
 ### 验收标准
 
 1. **AC1（同步阻塞）**：父流程执行到 callFlow 节点时阻塞等待子流程完成；callFlowExecutor 返回后父流程后续节点才能看到子流程返回值；不经过任务队列。
-2. **AC2（隔离 context）**：子流程在全新空 context 起跑；父流程 context 中除 inputMappings 映射的变量外，其他变量（包括父流程节点写入的 fullName/bare key、_channelManager 等 services shim）**不**对子流程可见；子流程内部节点写入的变量**不**回写到父 context（outputMappings 声明的除外）。
+2. **AC2（隔离 context）**：子流程在全新空 context 起跑；父流程 context 中除 inputMappings 映射的变量外，其他变量（包括父流程节点写入的 fullName/bare key、_channelManager 等 services shim）**不**对子流程可见；子流程内部节点写入的变量**不**回写到父 context（outputVariables 声明的除外）。
 3. **AC3（入参映射求值）**：对每条 inputMapping：
    - 解析 parentExpr 抓出 fullName（单变量引用）
    - 从父 context 读原值（保留类型：string/number/object/array 原样传递）
    - 按 childVar 名注入子流程 inputVars（子流程的 applyTriggerVariableOverrides 按 REQ-FLOW-036 规则覆盖到目标入口 flowInput 节点）
 4. **AC4（出参写回）**：invokeSubflow 返回 `childOutputs`（子流程最后一个 flowOutput 节点的 outputVariables 集合）后，callFlowExecutor 通过 D10 多输出机制返回 `{status:"success", outputVariables: childOutputs, __childExecutionId}`，引擎自动把每个 childVar 写成 `${callFlowNodeId}.${childVar}` 和裸 `${childVar}` 到父 context；父下游节点通过 `{{callFlowNodeId.savedUrl}}` 引用。
-4. **AC5（__childExecutionId 特殊字段）**：callFlowExecutor 的 outputVariables 包含 `__childExecutionId`（字符串 UUID），供执行详情 UI 识别可展开；该字段以 `${callFlowNodeId}.__childExecutionId` 写入父 context 和 nodeRecord.outputVariables，但不泄漏为裸 `__childExecutionId`（引擎对 `__` 前缀不写 bare key——实现上 callFlowExecutor 自行只写 namespaced key，不依赖引擎特判）。
-5. **AC6（子流程出口识别）**：invokeSubflow 在子流程 run() 返回后扫描 `childResult.nodeRecords`，取最后一个 `node.type?.toLowerCase()==='flowoutput'` 的记录；其 record.outputVariables 的 fullName key（`${outNodeId}.${varName}`）剥离前缀后得到 childOutputs。如果没有 flowOutput 记录，按 REQ-FLOW-037 AC2 处理。
-6. **AC7（services 注入）**：engine run() options 接受 `services` 对象，executor 入参包含 `services`、`currentDepth`；测试可传 stub `{invokeSubflow: async () => ({...})}` 不依赖 DB。
+5. **AC5（__childExecutionId 特殊字段）**：callFlowExecutor 的 outputVariables 包含 `__childExecutionId`（字符串 UUID），供执行详情 UI 识别可展开；该字段以 `${callFlowNodeId}.__childExecutionId` 写入父 context 和 nodeRecord.outputVariables，但不泄漏为裸 `__childExecutionId`（引擎对 `__` 前缀不写 bare key——实现上 callFlowExecutor 自行只写 namespaced key，不依赖引擎特判）。
+6. **AC6（子流程出口识别）**：invokeSubflow 在子流程 run() 返回后扫描 `childResult.nodeRecords`，取最后一个 `node.type?.toLowerCase()==='flowoutput'` 的记录；其 record.outputVariables 的 fullName key（`${outNodeId}.${varName}`）剥离前缀后得到 childOutputs。如果没有 flowOutput 记录，按 REQ-FLOW-037 AC2 处理。
+7. **AC7（services 注入）**：engine run() options 接受 `services` 对象，executor 入参包含 `services`、`currentDepth`；测试可传 stub `{invokeSubflow: async () => ({...})}` 不依赖 DB。
 
 ### 测试
 
@@ -352,7 +357,7 @@
 2. **AC2（services 透传）**：options.services 非空时传给所有 executor；为空时 services={} 不报错。
 3. **AC3（多输出写入 context）**：executor 返回 `result.outputVariables` 是 plain object 时，引擎遍历其 entries 写入 `${nodeId}.${varName}` 和裸 `${varName}` 到 context，并同步写入 record.outputVariables（record.outputVariables 是现有字段，扩展为可容纳多值）。
 4. **AC4（单输出行为不变）**：现有 result.output + config.outputVariable 单变量写入逻辑不变；多输出和单输出可共存（同一 executor 返回两者时按各自规则写）。
-5. **AC5（feishuSend 顺势受益）**：现有 feishuSendExecutor 返回的 `outputVariables: {sent, msgType, content}`（当前是死代码）经 AC3 后正确写入 context 和 record；不破坏现有测试。
+5. **AC5（统一输出模型兼容）**：单输出节点（如 agent）使用 `config.outputVariables[0].name` 作为写入目标；`config.outputVariable` 旧字段不再识别。
 6. **AC6（currentDepth 透传）**：options.currentDepth 透传给 executor；顶层默认为 0；invokeSubflow 递归 run() 时传 currentDepth: parentDepth+1。
 
 ### 测试
@@ -371,23 +376,21 @@
 - **必须性**：应该
 - **scope**：cross-module（renderer 组件）
 - **capability/entity**：flow-orchestration / flow
-- **modules**：NodePalette、NodeConfigPanel、validateFlowNodes（客户端镜像校验）
+- **modules**：NodePalette、NodeConfigPanel、nodeRegistry、validateFlowNodes（客户端镜像校验）
 
 ### 验收标准
 
-1. **AC1（NodePalette）**：面板新增三个节点：
-   - flowInput（Trigger 分类，和 feishuMessage/trigger 并列）
-   - flowOutput（新增分类"Flow"或 Output 分类）
-   - callFlow（Logic 分类或 Flow 分类）
-   拖到画布即创建对应 type 的节点。
+1. **AC1（NodePalette 从注册表渲染）**：`NodePalette` 读取 `nodeRegistry` 中的节点类型列表，按 category 分组渲染；新增 `flowInput`（Trigger 分类）、`flowOutput`（Flow 分类）、`callFlow`（Logic 分类）、`setVariables`（Logic 分类）。拖到画布即创建对应 type 的节点。
 2. **AC2（FlowInputFields 配置）**：点 flowInput 节点，配置面板显示 outputVariables 编辑器（同 trigger 节点），可添加/删除/重命名变量。
 3. **AC3（FlowOutputFields 配置）**：点 flowOutput 节点，配置面板显示 outputVariables 编辑器（同 flowInput）。
 4. **AC4（CallFlowFields 配置）**：点 callFlow 节点，配置面板：
    - 子流程下拉：加载 `/api/flows/:currentId/callflow-candidates`，显示 name；选子流程后入口下拉展示该子流程 inputNodes；只有一个 inputNode 时自动选中
    - 入参映射表：每行 = 子入参名（只读，从选定入口的 variables 读）+ 父变量下拉（读 upstreamVariables 当前节点可用的上游变量，插入 `{{fullName}}`）
-   - 出参只读展示：列出子所有 flowOutput 变量 → `${callFlowNodeId}.${childVar}`（不可编辑）
-5. **AC5（客户端校验）**：validateFlowNodes 镜像：flowInput/flowOutput 的 outputVariables name 规则；callFlow 的 targetFlowId/targetInputNodeId 必填；循环/深度校验**不**做（纯服务端）。
-6. **AC6（i18n）**：所有新 UI 文案走 i18n（现有机制），支持中/英。
+   - 出参只读展示：列出子所有 flowOutput 变量 → 自动写入 `config.outputVariables`
+5. **AC5（SetVariablesFields 配置）**：点 setVariables 节点，配置面板显示 outputVariables 编辑器 + expressions 编辑器：每行有变量名（同步到 outputVariables）+ 表达式输入框（支持插入上游变量引用）。
+6. **AC6（客户端校验）**：validateFlowNodes 镜像：flowInput/flowOutput/setVariables 的 outputVariables name 规则；callFlow 的 targetFlowId/targetInputNodeId 必填；循环/深度校验**不**做（纯服务端）。
+7. **AC7（i18n）**：所有新 UI 文案走 i18n（现有机制），支持中/英。
+8. **AC8（注册表接入）**：新增节点类型时，NodePalette 和 NodeConfigPanel 不需要硬编码修改，只需在 nodeRegistry 注册。
 
 ### UX 自动验证检查
 
@@ -398,7 +401,7 @@
 
 ### 测试
 
-- Seam: 组件测试（React Testing Library）覆盖 AC1-AC5；E2E Playwright 覆盖拖拽+保存+发布
+- Seam: 组件测试（React Testing Library）覆盖 AC1-AC6；E2E Playwright 覆盖拖拽+保存+发布
 - 文件：`tests/capabilities/flow-orchestration/flow/2026-07-23-nested-flow/e2e/subflowConfig.spec.js`、`.../components/`（组件测试）
 
 ---
@@ -482,34 +485,36 @@
 
 ## REQ-FLOW-047：setVariables 节点：变量赋值/重命名/归一化
 
-**稳定块**：新增 #12（通用变量赋值节点，支撑多入口归一化）
+**稳定块**：#12（通用变量赋值节点，支撑多入口归一化）
 
 - **优先级**：P0
 - **必须性**：必须
 - **scope**：intra-module（setVariablesExecutor + flowService 校验 + NodeConfigPanel UI）
 - **capability/entity**：flow-orchestration / flow
-- **modules**：setVariablesExecutor、flowService、NodePalette、NodeConfigPanel
+- **modules**：setVariablesExecutor、flowService、NodePalette、NodeConfigPanel、nodeRegistry
 
 ### 验收标准
 
-1. **AC1（节点注册）**：`setVariables`（引擎小写 `setvariables`）加入 defaultExecutors、VALIDATED_NODE_TYPES、NodePalette Logic 分类；保存含 type:"setVariables" 节点的流程时不被拒绝。
-2. **AC2（字段校验）**：节点配置 `config.assignments` 必须是数组；每项：
-   - `variableName`：非空字符串，同节点内唯一，符合 `/^[a-zA-Z][a-zA-Z0-9_]*$/`，违规返回 `E-VAR-NAME`
-   - `expression`：非空字符串，支持现有 evaluateExpression 语法（`{{var}}` 单引用、`{{a}} {{b}}` 字符串拼接、字符串字面量），违规返回 `E-EXPR`
-3. **AC3（执行语义：赋值）**：执行到 setVariables 节点时，遍历 assignments 对每条 expression 调用 evaluateExpression 求值，通过 D10 多输出机制返回 `outputVariables: { [variableName]: value }`，引擎自动写入 `${nodeId}.${variableName}` 和裸 `${variableName}` 到 context 和 nodeRecord.outputVariables。
-4. **AC4（执行语义：保留类型）**：expression 是单 `{{var}}` 引用时，原值类型保留（string/number/object/array/boolean 原样传递），不做字符串化。
+1. **AC1（节点注册）**：`setVariables`（引擎小写 `setvariables`）加入 defaultExecutors、VALIDATED_NODE_TYPES、NodePalette Logic 分类、`nodeRegistry`；保存含 type:"setVariables" 节点的流程时不被拒绝。
+2. **AC2（字段校验）**：
+   - `config.outputVariables` 必须是数组；每项 `name` 非空字符串、同节点内唯一、符合 `/^[a-zA-Z][a-zA-Z0-9_]*$/`，违规返回 `E-VAR-NAME`
+   - `config.expressions` 必须是数组；每项 `name` 必须在同节点的 `outputVariables` 中存在，`expression` 非空字符串，违规返回 `E-EXPR`
+3. **AC3（执行语义：赋值）**：执行到 setVariables 节点时，遍历 `config.expressions`，对每条 `expression` 调用 `evaluateExpression` 求值，结果写入 `outputVariables` 中对应 `name` 的变量；通过 D10 多输出机制返回 `outputVariables: { [name]: value }`，引擎自动写入 `${nodeId}.${name}` 和裸 `${name}` 到 context 和 nodeRecord.outputVariables。
+4. **AC4（执行语义：保留类型）**：expression 是单 `{{var}}` 引用时，原值类型保留（string/number/object/array/boolean 原样传递）。
 5. **AC5（典型场景：多入口归一化）**：子 flow 含 feishuMessage 入口（输出 `{{feishuMsg.text}}`）和 flowInput 入口（声明 `messageText`），每个入口后连一个 setVariables 节点分别配置：
-   - feishuMessage 后：`{text: "{{feishuMsg.text}}", messageId: "{{feishuMsg.messageId}}"}`
-   - flowInput 后：`{text: "{{flowInput.messageText}}", messageId: "{{flowInput.messageId}}"}`
+   - outputVariables: `[{name:"text"}, {name:"messageId"}]`
+   - expressions: `[{name:"text", expression:"{{feishuMsg.text}}"}, {name:"messageId", expression:"{{feishuMsg.messageId}}"}]`
+   - outputVariables: `[{name:"text"}, {name:"messageId"}]`
+   - expressions: `[{name:"text", expression:"{{flowInput.messageText}}"}, {name:"messageId", expression:"{{flowInput.messageId}}"}]`
    从任一入口启动后，下游节点统一引用裸 `{{text}}` / `{{messageId}}` 都能拿到正确值，两个入口路径下游行为一致。
-6. **AC6（典型场景：常量/嵌套字段）**：assignments 支持常量（`{apiVersion: "v2"}`）和嵌套字段提取（`{url: "{{response.data.url}}"}`），求值结果正确写入 context。
+6. **AC6（典型场景：常量/嵌套字段）**：expressions 支持常量（`{name:"apiVersion", expression:"v2"}`）和嵌套字段提取（`{name:"url", expression:"{{response.data.url}}"}`），求值结果正确写入 context。
 7. **AC7（pass-through）**：setVariables 节点不中断流程，执行完正常按出边继续下一节点（普通 pass-through 节点语义）。
-8. **AC8（UI 配置面板）**：点击 setVariables 节点，配置面板显示 assignments 编辑器：可添加/删除行，每行有变量名输入框 + 表达式输入框（表达式输入支持插入上游变量引用，同现有其他节点表达式输入）。
+8. **AC8（UI 配置面板）**：点击 setVariables 节点，配置面板显示 outputVariables 编辑器 + expressions 编辑器：可添加/删除行，每行有变量名输入框 + 表达式输入框（表达式输入支持插入上游变量引用，同现有其他节点表达式输入）；变量名变更同步到 outputVariables。
 
 ### 测试
 
-- Seam: flowService.validateNodeList 单元覆盖 AC1/AC2 字段校验
-- Seam: flowEngine.run() 单元覆盖 AC3/AC4/AC5/AC6/AC7：
+- Seam: `flowService.validateNodeList` 单元覆盖 AC1/AC2 字段校验
+- Seam: `flowEngine.run()` 单元覆盖 AC3/AC4/AC5/AC6/AC7：
   - 构造双入口 + 双 setVariables fixture，从两个入口分别启动，断言下游 `context.text` 值一致
   - 断言单变量引用类型保留（传 object 不被字符串化）
   - 断言常量/嵌套字段求值正确
@@ -520,6 +525,9 @@
 
 ## 跨 REQ 约束与系统级约束
 
+- **统一节点输出模型（ADR-010）**：所有节点类型必须使用 `config.outputVariables` 作为唯一下游可见变量声明。`agent.outputVariable`、`callFlow.outputMappings`、`setVariables.assignments` 等旧字段不再识别。renderer 侧通过 `nodeRegistry.deriveOutputVariables(type, config)` 统一推导。
+- **节点类型注册表（ADR-010）**：新增节点类型必须在 `nodeRegistry.js` 注册类型元数据、默认配置、配置面板组件、`deriveOutputVariables`；`NodePalette`、`NodeConfigPanel`、`upstreamVariables.js` 均从注册表读取。
+- **开发阶段无历史数据迁移**：旧 flow / execution 数据可清空，不保证向后兼容。
 - **术语同步**：CONTEXT.md "触发来源"枚举新增 `subflow`——"被父流程通过 callFlow 节点调用启动"。由实现阶段顺手更新。
 - **channelReply 透传方式**：父 context.channelReply 不自动透传（隔离语义）。子流程要发飞书必须在 flowInput 声明 channelReply 入参、父 callFlow 显式映射 `{{channelReply}}` → 子 channelReply。文档 + 飞书壳 flow 示例说明。
 - **orphaned 引用已知限制**：子流程删/改 flowInput 不反向扫描引用方，运行时/保存父时 E-FLOW-NO-INPUT/E-CALLFLOW-MAP-MISSING 兜底。
@@ -540,6 +548,7 @@
 | #10 画布跳转 | FLOW-045 |
 | #11 foreach 组合 | FLOW-046 |
 | #12 通用变量赋值节点 setVariables | FLOW-047 |
+| 支撑：统一输出模型 + 节点注册表 | 跨所有 REQ（ADR-010） |
 | 支撑：executor 签名扩展 | FLOW-042 |
 
 ---
@@ -548,5 +557,6 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
-| v1.1 | 2026-07-26 | req-gap 补全：新增 REQ-FLOW-047 setVariables 通用变量赋值节点，解决多入口场景下变量名异构归一化问题 | AI + 人 |
+| v2.0 | 2026-07-27 | Attempt 2：统一节点输出模型；setVariables 改用 outputVariables + expressions；callFlow 改用 outputVariables 自动填充；agent 改用 outputVariables；新增系统级约束 | AI + 人 |
+| v1.1 | 2026-07-26 | req-gap 补全：新增 REQ-FLOW-047 setVariables 通用变量赋值节点 | AI + 人 |
 | v1 | 2026-07-23 | 初版，15 REQ（FLOW-032 ~ FLOW-046） | AI + 人 |
