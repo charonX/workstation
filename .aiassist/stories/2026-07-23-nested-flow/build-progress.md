@@ -14,7 +14,7 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 | Slice | 目标 | 覆盖 REQ | 主要文件 | 状态 |
 |---|---|---|---|---|
 | S1 | 统一输出模型基础设施：创建 `nodeRegistry.js`，改造 `upstreamVariables.js`，统一 `flowService` outputVariables 校验 | ADR-010, FLOW-032 AC5, FLOW-033 AC6, FLOW-042 AC5 | `nodeRegistry.js`, `upstreamVariables.js`, `flowService.js` | COVERED |
-| S2 | 节点类型配置迁移：agent/setVariables/callFlow 配置面板适配新契约，callFlow 保存时自动填充 outputVariables | FLOW-032~034, FLOW-043, FLOW-047 | `NodePalette.jsx`, `NodeConfigPanel.jsx`, `validateFlowNodes.js`, `flowService.js` | pending |
+| S2 | 节点类型配置迁移：agent/setVariables/callFlow 配置面板适配新契约，callFlow 保存时自动填充 outputVariables | FLOW-032~034, FLOW-043, FLOW-047 | `NodePalette.jsx`, `NodeConfigPanel.jsx`, `validateFlowNodes.js`, `flowService.js` | COVERED (`648cf35`) |
 | S3 | 运行时引擎迁移：单输出按 `outputVariables[0].name` 写入；setVariablesExecutor 用 expressions；callFlowExecutor/invokeSubflow 用 outputVariables | FLOW-035~037, FLOW-039, FLOW-042, FLOW-046, FLOW-047 | `flowEngine.js`, `setVariablesExecutor.js`, `agentExecutor.js`, `callFlowExecutor.js`, `flowOutputExecutor.js`, `taskService.js` | pending |
 | S4 | 回归验证：嵌套执行记录与执行详情 UI 在统一输出模型下无回归 | FLOW-040, FLOW-044, FLOW-045 | `db.js`, `taskService.js`, `ExecutionDetail.jsx` | pending |
 
@@ -38,11 +38,11 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 
 | PRD/REQ 意图 | 实现文件 | 测试文件 | 状态 |
 |---|---|---|---|
-| NodePalette 从注册表读取节点类型 | `NodePalette.jsx` | `subflowConfig.spec.js` | pending |
-| NodeConfigPanel 从注册表读取配置面板 | `NodeConfigPanel.jsx` | `NodeConfigPanel.test.jsx` | pending |
-| setVariables 配置面板维护 outputVariables + expressions | `NodeConfigPanel.jsx` | `SetVariablesFields.test.jsx` | pending |
-| callFlow 保存时自动填充 outputVariables | `flowService.js` | `callFlowValidation.test.js` | pending |
-| 客户端校验镜像 outputVariables 规则 | `validateFlowNodes.js` | `setVariablesValidation.test.js` | pending |
+| NodePalette 从注册表读取节点类型 | `NodePalette.jsx` | `subflowConfig.spec.js` | COVERED |
+| NodeConfigPanel 从注册表读取配置面板 | `NodeConfigPanel.jsx` | `NodeConfigPanel.test.jsx` | COVERED |
+| setVariables 配置面板维护 outputVariables + expressions | `NodeConfigPanel.jsx` | `SetVariablesFields.test.jsx` | COVERED |
+| callFlow 保存时自动填充 outputVariables | `flowService.js` | `callFlowValidation.test.js` | COVERED |
+| 客户端校验镜像 outputVariables 规则 | `validateFlowNodes.js` | `setVariablesValidation.test.js` | COVERED |
 
 ---
 
@@ -77,6 +77,7 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 |---|---|---|
 | S1 | `7e19e989` | [build] S1: unified output model infrastructure |
 | S1 refactor | `cf994ab` | [refactor] S1: unified output model infrastructure |
+| S2 | `648cf35` | [build] S2: node config migration to unified output model |
 
 ---
 
