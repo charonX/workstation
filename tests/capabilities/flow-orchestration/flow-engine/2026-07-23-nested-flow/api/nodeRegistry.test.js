@@ -5,11 +5,12 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-import { describe, it } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 
-// TODO: HUMAN ASSERTION — 确认 nodeRegistry 导出名称和路径
-import { NODE_REGISTRY } from "../../../../../../src/renderer/components/flow/nodeRegistry.js";
+// nodeRegistry.js 由实现阶段创建；测试使用 dynamic import，模块缺失时测试会红但不会崩溃。
+let NODE_REGISTRY = null;
+let registryLoadError = null;
 
 const KNOWN_NODE_TYPES = [
   "trigger",
@@ -25,8 +26,23 @@ const KNOWN_NODE_TYPES = [
   "setVariables"
 ];
 
+before(async () => {
+  try {
+    const mod = await import("../../../../../../src/renderer/components/flow/nodeRegistry.js");
+    NODE_REGISTRY = mod.NODE_REGISTRY;
+  } catch (err) {
+    registryLoadError = err;
+  }
+});
+
 describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
+  it("nodeRegistry 模块可加载", () => {
+    assert.ok(!registryLoadError, `nodeRegistry 模块加载失败: ${registryLoadError?.message}`);
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 必须被导出");
+  });
+
   it("所有已知节点类型已在 nodeRegistry 注册", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     for (const type of KNOWN_NODE_TYPES) {
       assert.ok(NODE_REGISTRY[type], `节点类型 ${type} 必须在 nodeRegistry 中注册`);
       assert.equal(NODE_REGISTRY[type].type, type, `注册项 type 必须等于 ${type}`);
@@ -34,6 +50,7 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("每个注册项包含必需的元数据字段", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     for (const type of KNOWN_NODE_TYPES) {
       const entry = NODE_REGISTRY[type];
       assert.ok(typeof entry.category === "string", `${type}: category 必须是字符串`);
@@ -46,6 +63,7 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("每个节点类型的 defaultConfig 必须包含 outputVariables 数组", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     for (const type of KNOWN_NODE_TYPES) {
       const entry = NODE_REGISTRY[type];
       assert.ok(Array.isArray(entry.defaultConfig.outputVariables), `${type}: defaultConfig.outputVariables 必须是数组`);
@@ -53,6 +71,7 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("trigger / feishuMessage / flowInput / flowOutput deriveOutputVariables 返回 config.outputVariables", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     const vars = [
       { name: "x", type: "string" },
       { name: "y", type: "number" }
@@ -64,11 +83,13 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("agent deriveOutputVariables 返回 config.outputVariables（默认 [output]）", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     const result = NODE_REGISTRY.agent.deriveOutputVariables({ outputVariables: [{ name: "out", type: "string" }] });
     assert.deepEqual(result, [{ name: "out", type: "string" }]);
   });
 
   it("setVariables deriveOutputVariables 返回 config.outputVariables", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     const vars = [{ name: "text", type: "string" }, { name: "messageId", type: "string" }];
     const result = NODE_REGISTRY.setVariables.deriveOutputVariables({
       outputVariables: vars,
@@ -78,6 +99,7 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("callFlow deriveOutputVariables 返回 config.outputVariables（由保存时补全）", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     const vars = [{ name: "savedUrl", type: "string" }];
     const result = NODE_REGISTRY.callFlow.deriveOutputVariables({
       outputVariables: vars,
@@ -88,6 +110,7 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
   });
 
   it("deriveOutputVariables 对缺失/异常 config 不抛异常", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     for (const type of KNOWN_NODE_TYPES) {
       assert.doesNotThrow(() => {
         const result = NODE_REGISTRY[type].deriveOutputVariables({});
