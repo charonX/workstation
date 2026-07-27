@@ -76,6 +76,23 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
           variables.push({ name: shortName, type: mapping.childType || "string", fullName: parentKey });
         }
       }
+    } else if (type === "setVariables") {
+      // REQ-FLOW-047 AC3/AC5/AC8: setVariables exposes each assignment.variableName
+      // as a downstream variable via the D10 multi-output mechanism. Bare key and
+      // namespaced key (`${nodeId}.${varName}`) are both written at runtime.
+      const assignments = Array.isArray(node.data?.config?.assignments)
+        ? node.data.config.assignments
+        : [];
+      for (const assignment of assignments) {
+        const varName = typeof assignment?.variableName === "string" ? assignment.variableName.trim() : "";
+        if (varName) {
+          variables.push({
+            name: varName,
+            type: assignment.type || "string",
+            fullName: `${node.id}.${varName}`,
+          });
+        }
+      }
     } else {
       const name = node.data?.config?.outputVariable || node.data?.outputVariable;
       if (name) {
