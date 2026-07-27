@@ -40,28 +40,15 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
     const isTriggerLike = TRIGGER_LIKE_TYPES.has(type);
     if (!isTriggerLike && !upstream.has(node.id)) continue;
 
-    const variables = [];
     const registryEntry = NODE_REGISTRY[type];
     const derived = registryEntry?.deriveOutputVariables?.(node.data?.config) || [];
-    for (const variable of derived) {
-      const name = typeof variable?.name === "string" ? variable.name.trim() : "";
-      if (name) {
-        variables.push({
-          name,
-          type: variable.type || "string",
-          fullName: `${node.id}.${name}`,
-        });
-      }
-    }
+    const variables = buildVariables(node, derived);
 
     // Legacy fallback for non-trigger-like nodes that still use the singular
     // `outputVariable` field. This keeps the pre-unified-model canvas working
     // until S3 migrates all executors to `outputVariables`.
     if (!isTriggerLike && variables.length === 0) {
-      const legacyName = node.data?.config?.outputVariable || node.data?.outputVariable;
-      if (legacyName) {
-        variables.push({ name: legacyName, type: "string", fullName: `${node.id}.${legacyName}` });
-      }
+      addLegacyOutputVariable(node, variables);
     }
 
     if (variables.length > 0) {
@@ -73,4 +60,26 @@ export function getUpstreamVariableGroups(nodes, edges, currentNodeId) {
     }
   }
   return groups;
+}
+
+function buildVariables(node, derived) {
+  const variables = [];
+  for (const variable of derived) {
+    const name = typeof variable?.name === "string" ? variable.name.trim() : "";
+    if (name) {
+      variables.push({
+        name,
+        type: variable.type || "string",
+        fullName: `${node.id}.${name}`,
+      });
+    }
+  }
+  return variables;
+}
+
+function addLegacyOutputVariable(node, variables) {
+  const legacyName = node.data?.config?.outputVariable || node.data?.outputVariable;
+  if (legacyName) {
+    variables.push({ name: legacyName, type: "string", fullName: `${node.id}.${legacyName}` });
+  }
 }
