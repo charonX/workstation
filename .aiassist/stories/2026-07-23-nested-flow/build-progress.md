@@ -76,6 +76,7 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 | Slice | Commit | 说明 |
 |---|---|---|
 | S1 | `7e19e989` | [build] S1: unified output model infrastructure |
+| S1 refactor | `cf994ab` | [refactor] S1: unified output model infrastructure |
 
 ---
 
