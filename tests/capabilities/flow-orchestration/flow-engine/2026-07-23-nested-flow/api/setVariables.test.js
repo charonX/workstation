@@ -1,9 +1,9 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-047
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2-hash:908d0d519cd9d8d668fa99c1f665649cb12e62697b3d29bb7561297e253d46f8
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true
+// ASSERTIONS-SIGNED: false
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -14,14 +14,13 @@ import { run } from "../../../../../../src/flowEngine/flowEngine.js";
 // 仅在需要拦截 agent/trigger 行为观察时传入对应 executor。
 
 describe("REQ-FLOW-047 AC3: setVariables 基本赋值写入 context 和 record", () => {
-  it("将 assignments 声明的变量写入 namespaced key 和裸 key", async () => {
+  it("将 outputVariables 声明的变量写入 namespaced key 和裸 key", async () => {
     const flow = {
       nodeList: [
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "sv", type: "setVariables", config: {
-          assignments: [
-            { variableName: "greeting", expression: "hello" }
-          ]
+          outputVariables: [{ name: "greeting", type: "string" }],
+          expressions: [{ name: "greeting", expression: "hello" }]
         }}
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
@@ -29,7 +28,7 @@ describe("REQ-FLOW-047 AC3: setVariables 基本赋值写入 context 和 record",
     const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     assert.ok(rec, "setVariables 节点应在 nodeRecords 中");
-    // 签核：D10 多输出机制写入 namespaced key `${nodeId}.${varName}`
+    // TODO: HUMAN ASSERTION — 确认 D10 多输出机制写入 namespaced key `${nodeId}.${varName}`
     assert.equal(rec.outputVariables["sv.greeting"], "hello");
   });
 });
@@ -45,11 +44,17 @@ describe("REQ-FLOW-047 AC4: 单 {{var}} 引用保留原值类型（不字符串�
           { name: "flag", defaultValue: true }
         ]}},
         { id: "sv", type: "setVariables", config: {
-          assignments: [
-            { variableName: "n", expression: "{{trig.num}}" },
-            { variableName: "o", expression: "{{trig.obj}}" },
-            { variableName: "a", expression: "{{trig.arr}}" },
-            { variableName: "f", expression: "{{trig.flag}}" }
+          outputVariables: [
+            { name: "n", type: "number" },
+            { name: "o", type: "object" },
+            { name: "a", type: "array" },
+            { name: "f", type: "boolean" }
+          ],
+          expressions: [
+            { name: "n", expression: "{{trig.num}}" },
+            { name: "o", expression: "{{trig.obj}}" },
+            { name: "a", expression: "{{trig.arr}}" },
+            { name: "f", expression: "{{trig.flag}}" }
           ]
         }}
       ],
@@ -81,9 +86,13 @@ describe("REQ-FLOW-047 AC5: 多入口归一化——不同入口变量名异构�
           { name: "messageId", defaultValue: "m-fm" }
         ]}},
         { id: "svA", type: "setVariables", config: {
-          assignments: [
-            { variableName: "text", expression: "{{fm.text}}" },
-            { variableName: "messageId", expression: "{{fm.messageId}}" }
+          outputVariables: [
+            { name: "text", type: "string" },
+            { name: "messageId", type: "string" }
+          ],
+          expressions: [
+            { name: "text", expression: "{{fm.text}}" },
+            { name: "messageId", expression: "{{fm.messageId}}" }
           ]
         }},
         // 入口 B：被父 flow 调用
@@ -92,13 +101,17 @@ describe("REQ-FLOW-047 AC5: 多入口归一化——不同入口变量名异构�
           { name: "messageId", defaultValue: "m-fin" }
         ]}},
         { id: "svB", type: "setVariables", config: {
-          assignments: [
-            { variableName: "text", expression: "{{fin.messageText}}" },
-            { variableName: "messageId", expression: "{{fin.messageId}}" }
+          outputVariables: [
+            { name: "text", type: "string" },
+            { name: "messageId", type: "string" }
+          ],
+          expressions: [
+            { name: "text", expression: "{{fin.messageText}}" },
+            { name: "messageId", expression: "{{fin.messageId}}" }
           ]
         }},
         // 下游：统一引用裸 text/messageId
-        { id: "agt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "o", prompt: "{{text}}|{{messageId}}" } }
+        { id: "agt", type: "agent", config: { outputVariables: [{ name: "o", type: "string" }], provider: "anthropic", model: "claude", prompt: "{{text}}|{{messageId}}" } }
       ],
       edges: [
         { sourceNodeId: "fm", targetNodeId: "svA" },
@@ -150,7 +163,8 @@ describe("REQ-FLOW-047 AC6: 常量注入与嵌套字段提取", () => {
       nodeList: [
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "sv", type: "setVariables", config: {
-          assignments: [{ variableName: "apiVersion", expression: "v2" }]
+          outputVariables: [{ name: "apiVersion", type: "string" }],
+          expressions: [{ name: "apiVersion", expression: "v2" }]
         }}
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
@@ -168,7 +182,8 @@ describe("REQ-FLOW-047 AC6: 常量注入与嵌套字段提取", () => {
           { name: "response", defaultValue: { data: { url: "http://x.test/path", title: "T" } } }
         ]}},
         { id: "sv", type: "setVariables", config: {
-          assignments: [{ variableName: "url", expression: "{{trig.response.data.url}}" }]
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "{{trig.response.data.url}}" }]
         }}
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
@@ -187,7 +202,8 @@ describe("REQ-FLOW-047 AC6: 常量注入与嵌套字段提取", () => {
           { name: "last", defaultValue: "Doe" }
         ]}},
         { id: "sv", type: "setVariables", config: {
-          assignments: [{ variableName: "fullName", expression: "{{trig.first}} {{trig.last}}" }]
+          outputVariables: [{ name: "fullName", type: "string" }],
+          expressions: [{ name: "fullName", expression: "{{trig.first}} {{trig.last}}" }]
         }}
       ],
       edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
@@ -206,9 +222,10 @@ describe("REQ-FLOW-047 AC7: setVariables 是 pass-through，执行完正常按�
       nodeList: [
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "sv", type: "setVariables", config: {
-          assignments: [{ variableName: "x", expression: "computed" }]
+          outputVariables: [{ name: "x", type: "string" }],
+          expressions: [{ name: "x", expression: "computed" }]
         }},
-        { id: "after", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "o", prompt: "{{x}}" } }
+        { id: "after", type: "agent", config: { outputVariables: [{ name: "o", type: "string" }], provider: "anthropic", model: "claude", prompt: "{{x}}" } }
       ],
       edges: [
         { sourceNodeId: "trig", targetNodeId: "sv" },

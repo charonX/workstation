@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-034
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2-hash:908d0d519cd9d8d668fa99c1f665649cb12e62697b3d29bb7561297e253d46f8
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -59,8 +59,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "call", type: "callFlow", config: {
           targetFlowId: child.body.id, targetInputNodeId: "cin",
-          inputMappings: [{ childVar: "x", parentExpr: "{{trig.x}}" }],
-          outputMappings: []
+          inputMappings: [{ childVar: "x", parentExpr: "{{trig.x}}" }]
         }}
       ],
       [{ sourceNodeId: "trig", targetNodeId: "call" }]
@@ -73,7 +72,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
     const r = await patchFlow(parent.body.id,
       [
         { id: "trig", type: "trigger", config: {} },
-        { id: "call", type: "callFlow", config: { targetInputNodeId: "cin", inputMappings: [], outputMappings: [] } }
+        { id: "call", type: "callFlow", config: { targetInputNodeId: "cin", inputMappings: [] } }
       ],
       []
     );
@@ -90,7 +89,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
     const r = await patchFlow(parent.body.id,
       [
         { id: "trig", type: "trigger", config: {} },
-        { id: "call", type: "callFlow", config: { targetFlowId: child.body.id, inputMappings: [], outputMappings: [] } }
+        { id: "call", type: "callFlow", config: { targetFlowId: child.body.id, inputMappings: [] } }
       ],
       []
     );
@@ -108,8 +107,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "call", type: "callFlow", config: {
           targetFlowId: child.body.id, targetInputNodeId: "cin",
-          inputMappings: [{ childVar: "x", parentExpr: "hello {{trig.x}}" }],
-          outputMappings: []
+          inputMappings: [{ childVar: "x", parentExpr: "hello {{trig.x}}" }]
         }}
       ],
       []
@@ -117,6 +115,34 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
     assert.equal(r.status, 400);
     assert.ok(r.body.details?.some(d => /parentExpr|E-CALLFLOW-MAP|single/i.test(d.message)),
       `expected parentExpr error, got: ${JSON.stringify(r.body)}`);
+  });
+
+  it("AC4: 保存后 callFlow.config.outputVariables 自动填充子 flowOutput 并集", async () => {
+    const child = await createFlow(childFlow(
+      [
+        { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
+        { id: "out1", type: "flowOutput", config: { outputVariables: [{ name: "savedUrl" }, { name: "title" }] } }
+      ],
+      [{ sourceNodeId: "cin", targetNodeId: "out1" }]
+    ));
+    const parent = await createFlow({ name: "parent" });
+    const r = await patchFlow(parent.body.id,
+      [
+        { id: "trig", type: "trigger", config: { outputVariables: [] } },
+        { id: "call", type: "callFlow", config: {
+          targetFlowId: child.body.id, targetInputNodeId: "cin",
+          inputMappings: [{ childVar: "x", parentExpr: "{{trig.x}}" }]
+        }}
+      ],
+      [{ sourceNodeId: "trig", targetNodeId: "call" }]
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    // TODO: HUMAN ASSERTION — 确认后端返回的 callFlow 节点 outputVariables 已自动填充
+    const callNode = r.body.nodeList.find(n => n.id === "call");
+    assert.ok(callNode);
+    const outVars = callNode.config.outputVariables || [];
+    const names = outVars.map(v => v.name).sort();
+    assert.deepEqual(names, ["savedUrl", "title"], "callFlow outputVariables 应自动收集子 flowOutput 变量");
   });
 
   it("AC5: 子入口声明的入参未映射且无 defaultValue 返回 400 (E-CALLFLOW-MAP-MISSING)", async () => {
@@ -129,8 +155,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "call", type: "callFlow", config: {
           targetFlowId: child.body.id, targetInputNodeId: "cin",
-          inputMappings: [{ childVar: "required1", parentExpr: "{{trig.a}}" }],
-          outputMappings: []
+          inputMappings: [{ childVar: "required1", parentExpr: "{{trig.a}}" }]
         }}
       ],
       []
@@ -150,8 +175,7 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
         { id: "trig", type: "trigger", config: { outputVariables: [] } },
         { id: "call", type: "callFlow", config: {
           targetFlowId: child.body.id, targetInputNodeId: "cin",
-          inputMappings: [],  // withDefault 有 defaultValue，不映射也通过
-          outputMappings: []
+          inputMappings: []  // withDefault 有 defaultValue，不映射也通过
         }}
       ],
       [{ sourceNodeId: "trig", targetNodeId: "call" }]

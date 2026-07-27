@@ -1,9 +1,9 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-047
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2-hash:908d0d519cd9d8d668fa99c1f665649cb12e62697b3d29bb7561297e253d46f8
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true
+// ASSERTIONS-SIGNED: false
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -14,15 +14,19 @@ function makeNode(id, type, config) {
 }
 
 describe("REQ-FLOW-047 AC3/AC5/AC8: setVariables 节点输出应对下游变量选择器可见", () => {
-  it("setVariables 的 assignments 对直连下游 agent 可见", () => {
+  it("setVariables 的 outputVariables 对直连下游 agent 可见", () => {
     const nodes = [
       makeNode("sv", "setVariables", {
-        assignments: [
-          { variableName: "text", expression: "{{fm.text}}" },
-          { variableName: "messageId", expression: "{{fm.messageId}}" }
+        outputVariables: [
+          { name: "text", type: "string" },
+          { name: "messageId", type: "string" }
+        ],
+        expressions: [
+          { name: "text", expression: "{{fm.text}}" },
+          { name: "messageId", expression: "{{fm.messageId}}" }
         ]
       }),
-      makeNode("agt", "agent", { outputVariable: "out" })
+      makeNode("agt", "agent", { outputVariables: [{ name: "out", type: "string" }] })
     ];
     const edges = [{ source: "sv", target: "agt" }];
 
@@ -34,16 +38,17 @@ describe("REQ-FLOW-047 AC3/AC5/AC8: setVariables 节点输出应对下游变量�
     assert.deepEqual(
       names,
       ["sv.messageId", "sv.text"],
-      "应暴露 assignments 中声明的每个 variableName"
+      "应暴露 outputVariables 中声明的每个 name"
     );
   });
 
   it("setVariables 非 trigger-like，无边连接时不应出现在选择器", () => {
     const nodes = [
       makeNode("sv", "setVariables", {
-        assignments: [{ variableName: "x", expression: "1" }]
+        outputVariables: [{ name: "x", type: "string" }],
+        expressions: [{ name: "x", expression: "1" }]
       }),
-      makeNode("agt", "agent", { outputVariable: "out" })
+      makeNode("agt", "agent", { outputVariables: [{ name: "out", type: "string" }] })
     ];
     const edges = [];
 
@@ -61,9 +66,13 @@ describe("REQ-FLOW-047 AC3/AC5/AC8: setVariables 节点输出应对下游变量�
         ]
       }),
       makeNode("svA", "setVariables", {
-        assignments: [
-          { variableName: "text", expression: "{{fm.text}}" },
-          { variableName: "messageId", expression: "{{fm.messageId}}" }
+        outputVariables: [
+          { name: "text", type: "string" },
+          { name: "messageId", type: "string" }
+        ],
+        expressions: [
+          { name: "text", expression: "{{fm.text}}" },
+          { name: "messageId", expression: "{{fm.messageId}}" }
         ]
       }),
       makeNode("fin", "flowInput", {
@@ -73,12 +82,16 @@ describe("REQ-FLOW-047 AC3/AC5/AC8: setVariables 节点输出应对下游变量�
         ]
       }),
       makeNode("svB", "setVariables", {
-        assignments: [
-          { variableName: "text", expression: "{{fin.messageText}}" },
-          { variableName: "messageId", expression: "{{fin.messageId}}" }
+        outputVariables: [
+          { name: "text", type: "string" },
+          { name: "messageId", type: "string" }
+        ],
+        expressions: [
+          { name: "text", expression: "{{fin.messageText}}" },
+          { name: "messageId", expression: "{{fin.messageId}}" }
         ]
       }),
-      makeNode("agt", "agent", { outputVariable: "out" })
+      makeNode("agt", "agent", { outputVariables: [{ name: "out", type: "string" }] })
     ];
     const edges = [
       { source: "svA", target: "agt" },

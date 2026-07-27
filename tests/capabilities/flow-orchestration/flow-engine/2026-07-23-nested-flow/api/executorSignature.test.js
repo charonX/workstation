@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-042
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2-hash:908d0d519cd9d8d668fa99c1f665649cb12e62697b3d29bb7561297e253d46f8
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
@@ -14,7 +14,7 @@ describe("REQ-FLOW-042: 引擎 executor 签名扩展与多输出支持", () => {
     let received = null;
     const flow = {
       nodeList: [
-        { id: "n1", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "o", prompt: "x" } }
+        { id: "n1", type: "agent", config: { provider: "anthropic", model: "claude", outputVariables: [{ name: "o", type: "string" }], prompt: "x" } }
       ],
       edges: []
     };
@@ -46,11 +46,11 @@ describe("REQ-FLOW-042: 引擎 executor 签名扩展与多输出支持", () => {
     await assert.doesNotReject(() => run({ flow }, { services: {} }, {}));
   });
 
-  it("AC3: executor 返回 result.outputVariables 时，多值写入 context 和 record", async () => {
+  it("AC3/AC5: executor 返回 result.outputVariables 时，多值写入 context 和 record；agent 单输出按 outputVariables[0].name", async () => {
     const flow = {
       nodeList: [
         { id: "n1", type: "trigger", config: { outputVariables: [] } },
-        { id: "multi", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "primary", prompt: "x" } }
+        { id: "multi", type: "agent", config: { provider: "anthropic", model: "claude", outputVariables: [{ name: "primary", type: "string" }], prompt: "x" } }
       ],
       edges: [{ sourceNodeId: "n1", targetNodeId: "multi" }]
     };
@@ -67,7 +67,7 @@ describe("REQ-FLOW-042: 引擎 executor 签名扩展与多输出支持", () => {
     );
     const rec = result.nodeRecords.find(r => r.nodeId === "multi");
     assert.ok(rec);
-    // 单变量路径
+    // 单变量路径按 outputVariables[0].name
     assert.equal(rec.outputVariables["multi.primary"], "PRIMARY");
     // 多输出路径
     assert.equal(rec.outputVariables["multi.a"], 1);
