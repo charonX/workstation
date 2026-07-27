@@ -45,7 +45,7 @@
 | 9 | 只有含 flowInput 节点的 flow 出现在 callFlow 可选列表 | 用户选 (y) |
 | 10 | 点击 callFlow 节点可跳转到子 flow 画布 | UX 增值功能，低成本 |
 | 11 | foreach 里可以放 callFlow 自然支持批量调用 | 引擎组合性自然支持，无需特殊处理 |
-| 12 | 新增 `setVariables` 通用变量赋值节点（2026-07-26 req-gap 补全） | 解决多入口场景下各 trigger/flowInput 输出变量名异构、下游无法统一引用的问题；支持变量重命名、常量注入、嵌套字段提取，每个入口后连一个做归一化 |
+| 12 | 新增 `setVariables` 通用变量赋值节点（2026-07-27 tech-design v0.3） | 解决多入口场景下各 trigger/flowInput 输出变量名异构、下游无法统一引用的问题；统一使用 `config.outputVariables` 声明下游可见变量名，用 `config.expressions` 描述求值逻辑；支持变量重命名、常量注入、嵌套字段提取，每个入口后连一个做归一化 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
@@ -181,7 +181,7 @@
 - **栈式执行**：引擎 `run()` 需要接受"起始节点 ID"参数（当前硬编码为入度 0 节点），以便子 flow 从指定 flowInput 节点启动；其他 trigger/flowInput 节点在该次执行中按普通节点处理（到达才执行），但由于图是 DAG 且从 flowInput 出发，其他 trigger 节点自然不可达、不会跑到。
 - **flowService 注入**：当前 executor 签名里没有 flowService，callFlow executor 需要加载子 flow 定义。通过 options 注入 `loadFlow(flowId)` 回调（和现有 `_channelManager` 通过 variables 注入的模式类似，但更干净的方式是走 options.executors 或 options.services）。
 - **published vs draft**：**永远用子 flow 的当前版本**（nodeList/edges，即 draft）——父 flow 无论是 draft 调试还是 published 生产触发，调用子 flow 时都读子 flow 的当前定义。这与用户"调最新、子 flow 改了自动生效"的本意一致；也和现有飞书/manual 触发都跑当前版本的行为一致。schedule 触发仍走父 flow 的 published 快照（父快照里的 callFlow 节点本身记录了 targetFlowId，但加载子 flow 时仍读子的当前定义）。
-- **上游变量发现**：callFlow 节点在父 flow 中作为普通非 trigger 节点，其输出通过 outputMappings 生成 `${nodeId}.{var}` 暴露给下游；`upstreamVariables.js` 已能处理。子 flow 内部，flowInput 节点按 TRIGGER_LIKE 处理（它的 outputVariables 对整个子 flow 可见），flowOutput 节点是叶子、不产生下游引用。
+- **上游变量发现**：所有节点类型统一通过 `config.outputVariables` 声明对下游可见的变量名；`upstreamVariables.js` 从节点类型注册表读取推导函数，不再按类型硬编码 switch。callFlow 节点的 outputVariables 在保存时由 flowService 根据目标子 flow 的 flowOutput 并集自动补全，对下游暴露为 `${nodeId}.${var}`。子 flow 内部，flowInput 节点按 TRIGGER_LIKE 处理（它的 outputVariables 对整个子 flow 可见），flowOutput 节点是叶子、不产生下游引用。
 - **多出口**：一个子 flow 可含多个 flowOutput 节点（不同分支走不同出口）；callFlow 节点的 outputMappings 覆盖"所有 flowOutput 的出参并集"——子 flow 最终走到哪个出口，该出口声明的出参就有值，未到达出口的出参为 undefined。这与"未到出口算失败"不冲突（未到达任何出口才失败，到达任一个出口算成功）。
 
 ## 11. 测试决策
@@ -242,4 +242,5 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v0.2 | 2026-07-27 | Attempt 2 反向同步：统一节点输出模型，setVariables 改用 outputVariables + expressions；更新上游变量发现描述 | AI + 人 |
 | v0.1 | 2026-07-23 | 初稿，基于访谈笔记合成 | AI + 人 |

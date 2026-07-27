@@ -6,8 +6,8 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: REFLECT    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
-attempt: 1        # 第几次尝试。归档重做时 +1。
+phase: CRYSTALLIZE    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 2        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 # QA 回归完成：后端 172/172 全绿，FLOW-047 setVariables 行为契约满足，无回归；
 # E2E Electron 启动超时为环境预存问题（非本次引入），记录为已知限制。
@@ -24,9 +24,12 @@ history:
   - {at: 2026-07-23, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过，[test] assertion-signoff commit 已落；契约交内层实现循环。进入 /implementer。"}
   - {at: 2026-07-26, from: REFLECT, to: BUG, note: "req-gap 就地补全：多入口场景变量名异构问题。新增 REQ-FLOW-047 setVariables 通用变量赋值节点（D11），支持变量重命名/常量注入/嵌套字段提取，每个入口后做归一化。更新 tech-design v0.2 / requirements v1.1 / PRD 稳定块 #12。phase 保持 BUG，未回流。"}
   - {at: 2026-07-27, from: BUG, to: BUG, note: "BUG-001 code-defect 修复：setVariables 节点 assignments 未暴露给下游变量选择器（upstreamVariables.js）。补回归测试，测试红->绿。"}
+  - {at: 2026-07-27, from: BUG, to: TECH-DESIGN, note: "回流 attempt 2：BUG-001 暴露 upstreamVariables.js 集中式 switch 易漏。用户决定全量推进统一节点输出模型（严格 D）：所有节点类型强制使用 config.outputVariables，移除/合并 agent.outputVariable、callFlow.outputMappings、setVariables.assignments。初衷不变，技术方案推翻。已归档 attempt-1。"}
+  - {at: 2026-07-27, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v0.3 完成：统一节点输出模型 + renderer 侧节点类型注册表（nodeRegistry.js）+ callFlow outputVariables 由 main 侧保存时补全；开发阶段不保留历史数据。ADR-010 已登记。PRD v0.2 已反向同步。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
-archive: []
+archive:
+  - {attempt: 1, date: 2026-07-27, reason_file: archive/attempt-1/reason.md, root_layer: TECH-DESIGN}
 #  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
 #    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
 
