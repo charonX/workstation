@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -88,7 +88,6 @@ describe("REQ-FLOW-047 AC2: outputVariables / expressions 字段校验", () => {
         expressions: [{ name: "y", expression: "hello" }]
       }}
     ];
-    // TODO: HUMAN ASSERTION — 确认错误文案/错误码
     assert.throws(() => validateNodeList(badNodes));
   });
 

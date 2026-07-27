@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 const { test, expect } = require("@playwright/test");
 const assert = require("node:assert/strict");

@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -137,7 +137,6 @@ describe("REQ-FLOW-034: callFlow 节点配置与字段校验", () => {
       [{ sourceNodeId: "trig", targetNodeId: "call" }]
     );
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    // TODO: HUMAN ASSERTION — 确认后端返回的 callFlow 节点 outputVariables 已自动填充
     const callNode = r.body.nodeList.find(n => n.id === "call");
     assert.ok(callNode);
     const outVars = callNode.config.outputVariables || [];

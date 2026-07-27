@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine, flow
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

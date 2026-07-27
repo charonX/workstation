@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +28,6 @@ describe("REQ-FLOW-047 AC3: setVariables 基本赋值写入 context 和 record",
     const result = await run({ flow }, {}, {});
     const rec = result.nodeRecords.find(r => r.nodeId === "sv");
     assert.ok(rec, "setVariables 节点应在 nodeRecords 中");
-    // TODO: HUMAN ASSERTION — 确认 D10 多输出机制写入 namespaced key `${nodeId}.${varName}`
     assert.equal(rec.outputVariables["sv.greeting"], "hello");
   });
 });
