@@ -38,7 +38,8 @@ function makeNodeTypeRegistration(
   defaultConfig,
   deriveOutputVariables = deriveDeclaredVariables,
   configPanel = PlaceholderConfigPanel,
-  labelKey = `nodeTypes.${type}`
+  labelKey = `nodeTypes.${type}`,
+  palette = false
 ) {
   return {
     type,
@@ -48,33 +49,37 @@ function makeNodeTypeRegistration(
     configPanel,
     deriveOutputVariables,
     labelKey,
+    palette,
   };
 }
 
 export const NODE_REGISTRY = {
-  trigger: makeNodeTypeRegistration("trigger", "trigger", "⏱", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, "nodeTypes.manual"),
+  trigger: makeNodeTypeRegistration("trigger", "trigger", "⏱", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, "nodeTypes.manual", true),
   feishuMessage: makeNodeTypeRegistration(
     "feishuMessage",
     "trigger",
     "✉️",
     { outputVariables: FEISHU_MESSAGE_FIXED_OUTPUTS.map((v) => ({ ...v })) },
-    deriveFeishuMessageVariables
+    deriveFeishuMessageVariables,
+    PlaceholderConfigPanel,
+    `nodeTypes.feishuMessage`,
+    true
   ),
-  flowInput: makeNodeTypeRegistration("flowInput", "trigger", "⤵", { outputVariables: [] }),
-  flowOutput: makeNodeTypeRegistration("flowOutput", "flow", "⤴", { outputVariables: [] }),
+  flowInput: makeNodeTypeRegistration("flowInput", "trigger", "⤵", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.flowInput`, true),
+  flowOutput: makeNodeTypeRegistration("flowOutput", "flow", "⤴", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.flowOutput`, true),
   agent: makeNodeTypeRegistration("agent", "execution", "◆", {
     outputVariables: [{ name: "output", type: "string" }],
-  }),
+  }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.agent`, true),
   feishuSend: makeNodeTypeRegistration("feishuSend", "execution", "💬", { outputVariables: [] }),
-  condition: makeNodeTypeRegistration("condition", "logic", "◈", { outputVariables: [] }),
+  condition: makeNodeTypeRegistration("condition", "logic", "◈", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.condition`, true),
   forEach: makeNodeTypeRegistration("forEach", "logic", "↻", { outputVariables: [] }),
   while: makeNodeTypeRegistration("while", "logic", "⟳", { outputVariables: [] }),
   callFlow: makeNodeTypeRegistration("callFlow", "logic", "⎘", {
     outputVariables: [],
     inputMappings: [],
-  }),
+  }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.callFlow`, true),
   setVariables: makeNodeTypeRegistration("setVariables", "logic", "=", {
     outputVariables: [],
     expressions: [],
-  }),
+  }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.setVariables`, true),
 };

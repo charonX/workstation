@@ -6,9 +6,9 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: QA    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 2        # 第几次尝试。归档重做时 +1。
-bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 # QA 回归完成：后端 181/181 全绿，FLOW-047 setVariables 行为契约满足，无回归；
 # E2E Electron 启动超时为环境预存问题（非本次引入），记录为已知限制。
 created: 2026-07-23
