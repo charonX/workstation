@@ -95,4 +95,4 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 
 ## 阻塞项
 
-- `circularReference.test.js` 仍跟踪 REQ v1 hash，其测试用例使用无 flowInput 的子 flow 构造环，与 PRD v2 / requirements-v2.0 的 `E-FLOW-NO-INPUT` 强制检查冲突。需 `/test-author` 将该测试更新到 v2.0 契约。
+无。`circularReference.test.js` 已更新到 REQ v2.0，flow-orchestration API 回归 181/181 全绿。E2E 因 Electron 启动超时的环境预存问题未跑。
