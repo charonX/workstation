@@ -122,22 +122,26 @@ test.describe("REQ-FLOW-020 Claude Agent 节点配置面板", () => {
     await expect(firstWindow.getByTestId("agent-model-select")).not.toBeVisible();
   });
 
-  test("BUG-005: 节点面板只保留已实现的 Manual/Condition/Agent", async () => {
-    // 行为：未实现或无 executor 的节点（ForEach/While/Output/Data/Skill）不显示在面板
+  test("BUG-005: 节点面板只保留已实现节点", async () => {
+    // 行为：未实现或无 executor 的节点（ForEach/While/Data/Skill/Feishu Send）不显示在面板；
+    // 已实现节点包括 Manual/Condition/Agent 以及 nested-flow 新增的 Flow Input/Flow Output/Call Flow / Set Variables。
     await openFlowInEditor(firstWindow, apiBaseUrl, {
       projectId: project.id,
       name: "Palette Cleanup Flow",
     });
 
     const palette = firstWindow.getByTestId("node-palette");
-    await expect(palette.getByRole("button", { name: "Manual" })).toBeVisible();
-    await expect(palette.getByRole("button", { name: "Condition" })).toBeVisible();
-    await expect(palette.getByRole("button", { name: "Agent" })).toBeVisible();
+    await expect(palette.getByTestId("palette-node-trigger")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-feishuMessage")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-condition")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-agent")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-flowInput")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-flowOutput")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-callFlow")).toBeVisible();
+    await expect(palette.getByTestId("palette-node-setVariables")).toBeVisible();
 
-    await expect(palette.getByRole("button", { name: "ForEach" })).not.toBeVisible();
-    await expect(palette.getByRole("button", { name: "While" })).not.toBeVisible();
-    await expect(palette.getByRole("button", { name: "Output" })).not.toBeVisible();
-    await expect(palette.getByRole("button", { name: "Data" })).not.toBeVisible();
-    await expect(palette.getByRole("button", { name: "Skill" })).not.toBeVisible();
+    await expect(palette.getByTestId("palette-node-forEach")).not.toBeVisible();
+    await expect(palette.getByTestId("palette-node-while")).not.toBeVisible();
+    await expect(palette.getByTestId("palette-node-feishuSend")).not.toBeVisible();
   });
 });
