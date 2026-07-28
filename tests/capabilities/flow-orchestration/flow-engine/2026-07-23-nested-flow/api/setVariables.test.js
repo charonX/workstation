@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-047
-// REQ-VERSION: v2-hash:908d0d519cd9d8d668fa99c1f665649cb12e62697b3d29bb7561297e253d46f8
+// REQ-VERSION: v2.1-hash:67e76a43e5b18a1b015c972d774d3fe12769a99b66fdc639d5a0046d8e446699
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
@@ -243,5 +243,74 @@ describe("REQ-FLOW-047 AC7: setVariables 是 pass-through，执行完正常按�
       }
     }, {});
     assert.deepEqual(order, ["trig", "after"]);
+  });
+});
+
+describe("REQ-FLOW-047 AC9: 表达式支持任意 JS 表达式与多来源聚合", () => {
+  it("{{a || b}} 在 a 为空时回退到 b", async () => {
+    const flow = {
+      nodeList: [
+        { id: "trig", type: "trigger", config: { outputVariables: [
+          { name: "a", defaultValue: "" },
+          { name: "b", defaultValue: "fallback-url" }
+        ]}},
+        { id: "sv", type: "setVariables", config: {
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "{{trig.a || trig.b}}" }]
+        }}
+      ],
+      edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
+    };
+    const result = await run({ flow }, {}, {});
+    const rec = result.nodeRecords.find(r => r.nodeId === "sv");
+    assert.equal(rec.outputVariables["sv.url"], "fallback-url");
+  });
+
+  it("{{svA.url || svB.url}} 在单 setVariables 节点内聚合多个上游来源", async () => {
+    const flow = {
+      nodeList: [
+        { id: "trig", type: "trigger", config: { outputVariables: [] } },
+        { id: "svA", type: "setVariables", config: {
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "http://from-a.test" }]
+        }},
+        { id: "svB", type: "setVariables", config: {
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "http://from-b.test" }]
+        }},
+        { id: "svAgg", type: "setVariables", config: {
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "{{svA.url || svB.url}}" }]
+        }}
+      ],
+      edges: [
+        { sourceNodeId: "trig", targetNodeId: "svA" },
+        { sourceNodeId: "trig", targetNodeId: "svB" },
+        { sourceNodeId: "svA", targetNodeId: "svAgg" },
+        { sourceNodeId: "svB", targetNodeId: "svAgg" }
+      ]
+    };
+    const result = await run({ flow }, {}, {});
+    const rec = result.nodeRecords.find(r => r.nodeId === "svAgg");
+    assert.equal(rec.outputVariables["svAgg.url"], "http://from-a.test");
+  });
+
+  it("{{a ?? b}} 在 a 为 null/undefined 时回退到 b", async () => {
+    const flow = {
+      nodeList: [
+        { id: "trig", type: "trigger", config: { outputVariables: [
+          { name: "a", defaultValue: null },
+          { name: "b", defaultValue: "fallback-url" }
+        ]}},
+        { id: "sv", type: "setVariables", config: {
+          outputVariables: [{ name: "url", type: "string" }],
+          expressions: [{ name: "url", expression: "{{trig.a ?? trig.b}}" }]
+        }}
+      ],
+      edges: [{ sourceNodeId: "trig", targetNodeId: "sv" }]
+    };
+    const result = await run({ flow }, {}, {});
+    const rec = result.nodeRecords.find(r => r.nodeId === "sv");
+    assert.equal(rec.outputVariables["sv.url"], "fallback-url");
   });
 });
