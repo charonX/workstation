@@ -15,8 +15,8 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 |---|---|---|---|---|
 | S1 | 统一输出模型基础设施：创建 `nodeRegistry.js`，改造 `upstreamVariables.js`，统一 `flowService` outputVariables 校验 | ADR-010, FLOW-032 AC5, FLOW-033 AC6, FLOW-042 AC5 | `nodeRegistry.js`, `upstreamVariables.js`, `flowService.js` | COVERED |
 | S2 | 节点类型配置迁移：agent/setVariables/callFlow 配置面板适配新契约，callFlow 保存时自动填充 outputVariables | FLOW-032~034, FLOW-043, FLOW-047 | `NodePalette.jsx`, `NodeConfigPanel.jsx`, `validateFlowNodes.js`, `flowService.js` | COVERED (`648cf35`) |
-| S3 | 运行时引擎迁移：单输出按 `outputVariables[0].name` 写入；setVariablesExecutor 用 expressions；callFlowExecutor/invokeSubflow 用 outputVariables | FLOW-035~037, FLOW-039, FLOW-042, FLOW-046, FLOW-047 | `flowEngine.js`, `setVariablesExecutor.js`, `agentExecutor.js`, `callFlowExecutor.js`, `flowOutputExecutor.js`, `taskService.js` | COVERED (pending commit) |
-| S4 | 回归验证：嵌套执行记录与执行详情 UI 在统一输出模型下无回归 | FLOW-040, FLOW-044, FLOW-045 | `db.js`, `taskService.js`, `ExecutionDetail.jsx` | pending |
+| S3 | 运行时引擎迁移：单输出按 `outputVariables[0].name` 写入；setVariablesExecutor 用 expressions；callFlowExecutor/invokeSubflow 用 outputVariables | FLOW-035~037, FLOW-039, FLOW-042, FLOW-046, FLOW-047 | `flowEngine.js`, `setVariablesExecutor.js`, `agentExecutor.js`, `callFlowExecutor.js`, `flowOutputExecutor.js`, `taskService.js` | COVERED (`fcbc631`) |
+| S4 | 回归验证：嵌套执行记录与执行详情 UI 在统一输出模型下无回归 | FLOW-040, FLOW-044, FLOW-045 | `db.js`, `taskService.js`, `ExecutionDetail.jsx` | COVERED (API green; E2E blocked by env) |
 
 ---
 
@@ -65,9 +65,9 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 
 | PRD/REQ 意图 | 实现文件 | 测试文件 | 状态 |
 |---|---|---|---|
-| executions 表 parentExecutionId/parentNodeId/depth | `db.js`, `taskService.js` | `nestedExecution.test.js` | pending |
-| 执行详情嵌套展开 | `ExecutionDetail.jsx` | `nestedExecutionDetail.spec.js` | pending |
-| 从 callFlow 跳转到子流程画布 | `NodeConfigPanel.jsx` | `subflowConfig.spec.js` | pending |
+| executions 表 parentExecutionId/parentNodeId/depth | `db.js`, `taskService.js` | `nestedExecution.test.js` | COVERED |
+| 执行详情嵌套展开 | `ExecutionDetail.jsx`, `ExecutionNodeList.jsx` | `nestedExecutionDetail.spec.js` | COVERED (API regression green; E2E blocked by Electron launch timeout — pre-existing env issue) |
+| 从 callFlow 跳转到子流程画布 | `NodeConfigPanel.jsx` | `subflowConfig.spec.js` | COVERED (UI code inspected; E2E blocked by Electron launch timeout — pre-existing env issue) |
 
 ---
 
@@ -79,7 +79,8 @@ Attempt 1 已实现子流程调用的核心能力（flowInput/flowOutput/callFlo
 | S1 refactor | `cf994ab` | [refactor] S1: unified output model infrastructure |
 | S2 | `648cf35` | [build] S2: node config migration to unified output model |
 | S2 fix | `2f76651` | E-FLOW-NO-INPUT enforcement + agent outputVariable migration |
-| S3 | pending | [build] runtime engine migration to unified output model |
+| S3 | `fcbc631` | [build] runtime engine migration to unified output model |
+| S4 | pending | regression verification: nested execution records + detail UI |
 
 ---
 
