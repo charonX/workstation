@@ -30,6 +30,7 @@ history:
   - {at: 2026-07-27, from: TEST, to: ASSERTION-SIGNOFF, note: "/test-author 完成：更新 test-plan.md v2.0；setVariables/callFlow/executorSignature 测试契约迁到 outputVariables；新增 nodeRegistry.test.js；所有测试 ASSERTIONS-SIGNED: false，等待人签核。"}
   - {at: 2026-07-27, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：[test] assertion-signoff commit 已落；契约交内层实现循环。进入 /implementer。"}
   - {at: 2026-07-28, from: BUILD, to: QA, note: "BUILD 完成：S1~S4 统一输出模型落地；flow-orchestration API 回归 181/181 全绿；circularReference.test.js 已更新到 REQ v2.0；E2E 因 Electron 启动超时环境预存问题未跑。"}
+  - {at: 2026-07-28, from: QA, to: BUG, note: "BUG-002 code-defect：NodePalette 缺少 setVariables 节点；根因为 nodeRegistry.js 注册时 palette 参数默认为 false。补回归测试并修复。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:
