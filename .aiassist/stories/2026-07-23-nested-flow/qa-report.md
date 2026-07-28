@@ -41,21 +41,17 @@
 ## 2. E2E / UI 测试
 
 - **命令**：`npm run test:e2e`（`npm run rebuild:electron && playwright test`）
-- **结果**：**FAIL（101/102 pass，1 连续失败）**
+- **结果**：**PASS（102/102 pass）**
 - **统计**：
   - 总测试数：102
-  - 通过：101
-  - 失败：1
+  - 通过：102
+  - 失败：0
   - flaky：0
-- **Playwright 产物**：
-  - 失败截图：`test-results/capabilities-flow-orchestr-9365c-节点配置面板-BUG-005-节点面板只保留已实现节点-electron/test-failed-1.png`
-  - 错误上下文：`test-results/capabilities-flow-orchestr-9365c-节点配置面板-BUG-005-节点面板只保留已实现节点-electron/error-context.md`
+- **Playwright 产物**：无失败产物
 
 ### 失败测试列表
 
-| 测试文件 | 失败用例 | 根因分析 |
-|---|---|---|
-| `tests/capabilities/flow-orchestration/flow/2026-07-16-flow-refinement/e2e/agentConfig.test.cjs:125:3` | `BUG-005: 节点面板只保留已实现节点` | 该回归测试（来自 2026-07-16-flow-refinement story）当前期望 `setVariables` 节点**不可见**，但本 story（2026-07-23-nested-flow）已将 `setVariables` 实现为合法节点并加入面板，导致断言失败。属于前置 story 的回归测试契约与当前产品行为不一致。 |
+无。前置 story 回归测试 `agentConfig.test.cjs:125` 经 BUG-005 修复后已通过。
 
 ### 本 story E2E 验证结果
 
@@ -81,8 +77,8 @@
 
 ## 5. 手动验证
 
-- **状态**：**NOT RUN**
-- 单元/API 全绿、本 story E2E 全绿；唯一失败为前置 story 回归测试契约问题，待 `/bug` 分类后决定是否需要手动验证。
+- **状态**：**SKIPPED**
+- 单元/API 全绿、E2E 全绿；未配置 Chrome DevTools MCP，跳过运行时浏览器验证。
 
 ---
 
@@ -96,17 +92,13 @@
 ## 7. 结论
 
 - [x] 单元/API 测试全绿（344/344）
-- [x] 本 story E2E 全绿（14/14）
-- [ ] 前置 story 回归测试 `2026-07-16-flow-refinement/e2e/agentConfig.test.cjs` 出现 1 处连续失败
-- [ ] 不满足 `/reflect` 前置条件「最近一次 QA 全绿（单元 + E2E）」
+- [x] E2E 测试全绿（102/102）
+- [x] BUG-005 test-gap 已修复并验证
+- [x] 满足 `/reflect` 前置条件「最近一次 QA 全绿（单元 + E2E）」
 
 ### 建议下一步
 
-1. **调用 `/bug`** 诊断并分类该失败：
-   - 最可能为 **test-gap**：前置 story 的回归测试未随当前 story 新增的 `setVariables` 节点同步更新，应将该测试中的 `setVariables` 从「不应可见」改为「应可见」。
-   - 若用户确认 `setVariables` 不应在面板出现，则转 **code-defect**，需修改 `NodePalette.jsx` / `nodeRegistry.js`。
-2. 修复后重新运行 `npm run test:e2e` 验证全绿。
-3. 全绿后再进入 `/reflect`。
+进入 `/reflect` 最终验收门。
 
 ---
 
