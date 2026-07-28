@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-043, 2026-07-23-nested-flow/REQ-FLOW-045
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2.2-hash:b496ef72731fba3105a49d3185d3ca6f430dae96b9cf22e358cf2a2fd589f104
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow
 // TEST-AUTHOR: agent
@@ -95,7 +95,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     // 每行父变量下拉包含 feishuMessage 的输出变量（text/sender/messageId）
     // msg 行的父变量下拉选择 "fm.text"
     const msgRow = firstWindow.getByTestId("callflow-input-row-msg");
-    await msgRow.getByRole("combobox").selectOption({ label: /fm\.text|feishu\.text/ });
+    // 选项 value/label 均为上游变量 fullName（`${nodeId}.${varName}`，见 NodeConfigPanel.ParentVariableSelect）
+    await msgRow.getByRole("combobox").selectOption("fm.text");
   });
 
   test("REQ-FLOW-043 AC4: output mappings shown read-only with namespaced keys", async () => {
@@ -113,11 +114,11 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     await firstWindow.locator(locators.FLOW_NODE).last().click();
     await firstWindow.getByTestId("callflow-config-subflow-select").selectOption({ label: "child" });
 
-    // 出参只读表展示 `${callNodeId}.savedUrl` / `${callNodeId}.title`，不可编辑
+    // 出参只读表展示子流程变量名（unified output model 下为裸变量名，无 callFlow 节点 id 前缀），不可编辑
     const outTable = firstWindow.getByTestId("callflow-output-mappings");
     await expect(outTable).toBeVisible();
-    await expect(outTable).toContainText(/\.savedUrl/);
-    await expect(outTable).toContainText(/\.title/);
+    await expect(outTable).toContainText("savedUrl");
+    await expect(outTable).toContainText("title");
     // 只读：所有 input/select 被 disabled
     const inputs = outTable.locator("input, select");
     const count = await inputs.count();
@@ -174,15 +175,19 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
   test("REQ-FLOW-043: saving parent with circular reference shows inline error", async () => {
     const project = await createProject(apiBaseUrl, { name: "Circ", localPath: `${userDataDir}/ws/circ` });
     // seed A→B via API，然后打开 B 在画布上配 B→A 闭合
-    const a = await createFlow(apiBaseUrl, { name: "A", projectId: project.id, nodeList: [], edges: [] });
+    // A 必须含 flowInput 节点，否则 listCallFlowCandidates 会跳过它（无入口不可作为子流程）
+    const a = await createFlow(apiBaseUrl, { name: "A", projectId: project.id, nodeList: [
+      { id: "ain", type: "flowInput", config: { outputVariables: [] } }
+    ], edges: [] });
     const b = await createFlow(apiBaseUrl, { name: "B", projectId: project.id, nodeList: [
       { id: "bin", type: "flowInput", config: { outputVariables: [] } }
     ], edges: [] });
-    // A→B
+    // A→B（PATCH 整体替换 nodeList，flowInput 必须一并写入，否则 A 无入口不会出现在候选列表）
     await fetch(`${apiBaseUrl}/api/flows/${a.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         nodeList: [
+          { id: "ain", type: "flowInput", config: { outputVariables: [] } },
           { id: "t", type: "trigger", config: {} },
           { id: "c", type: "callFlow", config: { targetFlowId: b.id, targetInputNodeId: "bin", inputMappings: [], outputMappings: [] } }
         ],
@@ -195,8 +200,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     await firstWindow.getByTestId("palette-node-callFlow").click();
     await firstWindow.locator(locators.FLOW_NODE).last().click();
     await firstWindow.getByTestId("callflow-config-subflow-select").selectOption({ label: "A" });
-    // 入口未自动选中（A 可能没有 flowInput）— 本场景用于测试保存错误
-    await firstWindow.click(locators.SAVE_BUTTON || "[data-testid=save-flow]");
+    // 单入口 → 入口自动选中（targetInputNodeId = "ain"）；保存时服务端 DFS 检测 B->A->B 循环
+    await firstWindow.click("[data-testid=save-flow-button]");
 
     // 断言错误 banner/inline error 出现，含循环提示
     await expect(firstWindow.getByTestId("save-error-banner")).toBeVisible();
@@ -214,7 +219,7 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     // 默认 en
     await expect(firstWindow.getByTestId("palette-node-flowInput")).toContainText(/input/i);
     // 切 zh
-    await firstWindow.click(locators.LANG_TOGGLE || "[data-testid=lang-toggle]");
+    await firstWindow.click(locators.TOPBAR_LANGUAGE_BUTTON);
     await expect(firstWindow.getByTestId("palette-node-flowInput")).toContainText(/输入|入口/);
   });
 });

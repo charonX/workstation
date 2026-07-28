@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-044
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2.2-hash:b496ef72731fba3105a49d3185d3ca6f430dae96b9cf22e358cf2a2fd589f104
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
@@ -23,7 +23,7 @@ const locators = require("../../../../../e2e/helpers/locators.cjs");
 async function seedNestedFlow(apiBaseUrl, projectId, name = "parent", childName = "child") {
   const child = await createFlow(apiBaseUrl, { name: childName, projectId, nodeList: [
     { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "msg" }] } },
-    { id: "agt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "echo", prompt: "{{cin.msg}}" } },
+    { id: "agt", type: "agent", config: { outputVariable: "echo", prompt: "{{cin.msg}}" } },
     { id: "out", type: "flowOutput", config: { outputVariables: [{ name: "echo" }] } }
   ], edges: [
     { sourceNodeId: "cin", targetNodeId: "agt" },
@@ -54,6 +54,8 @@ async function openExecutionDetail(firstWindow, executionId) {
   await firstWindow.click(locators.EXECUTIONS_LINK);
   await firstWindow.locator(locators.EXECUTION_ROW).filter({ hasText: executionId }).first().click();
   await expect(firstWindow.locator(locators.EXECUTION_DETAIL_PANEL)).toBeVisible();
+  // 成功执行默认落在产物 tab（ExecutionDetail 行为）；节点行在节点 tab 下
+  await firstWindow.getByTestId("nodes-tab").click();
 }
 
 async function waitForStatus(apiBaseUrl, executionId, targetStatus, timeoutMs = 15000) {
@@ -112,28 +114,28 @@ test.describe("Nested Execution Detail", () => {
 
   test("REQ-FLOW-044 AC3: three levels of nesting all expandable (depth 0/1/2)", async () => {
     const project = await createProject(apiBaseUrl, { name: "Detail3", localPath: `${userDataDir}/ws/detail3` });
-    const gc = await createFlow(apiBaseUrl, { name: "gc", projectId, nodeList: [
+    const gc = await createFlow(apiBaseUrl, { name: "gc", projectId: project.id, nodeList: [
       { id: "gin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "gagt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "x", prompt: "{{gin.x}}" } },
+      { id: "gagt", type: "agent", config: { outputVariable: "x", prompt: "{{gin.x}}" } },
       { id: "gout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [
       { sourceNodeId: "gin", targetNodeId: "gagt" }, { sourceNodeId: "gagt", targetNodeId: "gout" }
     ]});
-    const p = await createFlow(apiBaseUrl, { name: "p", projectId, nodeList: [
+    const p = await createFlow(apiBaseUrl, { name: "p", projectId: project.id, nodeList: [
       { id: "pin", type: "flowInput", config: { outputVariables: [{ name: "msg" }] } },
       { id: "pcall", type: "callFlow", config: {
         targetFlowId: gc.id, targetInputNodeId: "gin",
         inputMappings: [{ childVar: "x", parentExpr: "{{pin.msg}}" }],
         outputMappings: [{ childVar: "x", parentKey: "pcall.x" }]
       }},
-      { id: "pagt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "echo", prompt: "{{pcall.x}}" } },
+      { id: "pagt", type: "agent", config: { outputVariable: "echo", prompt: "{{pcall.x}}" } },
       { id: "pout", type: "flowOutput", config: { outputVariables: [{ name: "echo" }] } }
     ], edges: [
       { sourceNodeId: "pin", targetNodeId: "pcall" },
       { sourceNodeId: "pcall", targetNodeId: "pagt" },
       { sourceNodeId: "pagt", targetNodeId: "pout" }
     ]});
-    const gp = await createFlow(apiBaseUrl, { name: "gp", projectId, nodeList: [
+    const gp = await createFlow(apiBaseUrl, { name: "gp", projectId: project.id, nodeList: [
       { id: "t", type: "trigger", config: { outputVariables: [{ name: "msg", defaultValue: "deep" }] } },
       { id: "call", type: "callFlow", config: {
         targetFlowId: p.id, targetInputNodeId: "pin",
@@ -164,11 +166,14 @@ test.describe("Nested Execution Detail", () => {
 
   test("REQ-FLOW-044 AC4: failed child surfaces error state on parent callFlow", async () => {
     const project = await createProject(apiBaseUrl, { name: "Detail4", localPath: `${userDataDir}/ws/detail4` });
-    const child = await createFlow(apiBaseUrl, { name: "badchild", projectId, nodeList: [
+    const child = await createFlow(apiBaseUrl, { name: "badchild", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "msg" }] } },
-      { id: "bad", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "echo", prompt: "{{cin.msg}}", retries: 0 } }
+      // provider=anthropic 走 claudeAgentAdapter；项目 localPath 在磁盘上不存在（seed 不落盘），
+      // validateProjectPath 在调用 SDK 前返回确定性 error（离线可复现）。未知 provider 会被
+      // 服务端 validateAgentConfig 400 拒绝，无法经 API 落库，故用 anthropic 路径制造失败。
+      { id: "bad", type: "agent", config: { provider: "anthropic", outputVariable: "echo", prompt: "{{cin.msg}}", retries: 0 } }
     ], edges: [{ sourceNodeId: "cin", targetNodeId: "bad" }]});
-    const parent = await createFlow(apiBaseUrl, { name: "errparent", projectId, nodeList: [
+    const parent = await createFlow(apiBaseUrl, { name: "errparent", projectId: project.id, nodeList: [
       { id: "t", type: "trigger", config: { outputVariables: [{ name: "msg", defaultValue: "x" }] } },
       { id: "call", type: "callFlow", config: {
         targetFlowId: child.id, targetInputNodeId: "cin",
@@ -191,17 +196,17 @@ test.describe("Nested Execution Detail", () => {
 
   test("REQ-FLOW-044 AC5: multiple callFlow nodes expand independently", async () => {
     const project = await createProject(apiBaseUrl, { name: "Detail5", localPath: `${userDataDir}/ws/detail5` });
-    const c1 = await createFlow(apiBaseUrl, { name: "c1", projectId, nodeList: [
+    const c1 = await createFlow(apiBaseUrl, { name: "c1", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "cagt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "x", prompt: "{{cin.x}}" } },
+      { id: "cagt", type: "agent", config: { outputVariable: "x", prompt: "{{cin.x}}" } },
       { id: "cout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [{ sourceNodeId: "cin", targetNodeId: "cagt" }, { sourceNodeId: "cagt", targetNodeId: "cout" }]});
-    const c2 = await createFlow(apiBaseUrl, { name: "c2", projectId, nodeList: [
+    const c2 = await createFlow(apiBaseUrl, { name: "c2", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "cagt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "x", prompt: "{{cin.x}}" } },
+      { id: "cagt", type: "agent", config: { outputVariable: "x", prompt: "{{cin.x}}" } },
       { id: "cout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [{ sourceNodeId: "cin", targetNodeId: "cagt" }, { sourceNodeId: "cagt", targetNodeId: "cout" }]});
-    const parent = await createFlow(apiBaseUrl, { name: "parent2", projectId, nodeList: [
+    const parent = await createFlow(apiBaseUrl, { name: "parent2", projectId: project.id, nodeList: [
       { id: "t", type: "trigger", config: { outputVariables: [{ name: "branch", defaultValue: "a" }] } },
       { id: "call1", type: "callFlow", config: {
         targetFlowId: c1.id, targetInputNodeId: "cin",

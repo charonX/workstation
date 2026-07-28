@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-032, 2026-07-23-nested-flow/REQ-FLOW-033
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2.2-hash:b496ef72731fba3105a49d3185d3ca6f430dae96b9cf22e358cf2a2fd589f104
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine, flow
 // TEST-AUTHOR: agent
@@ -121,30 +121,77 @@ describe("REQ-FLOW-033: flowOutput 节点类型", () => {
     assert.equal(result.nodesRun, 2);
   });
 
-  it("AC5: 多个 flowOutput（不同分支），跑到的那个作为出口", async () => {
+  it("AC7: flowOutput 可通过 expression 显式映射上游变量作为输出", async () => {
     const flow = {
       nodeList: [
-        { id: "in", type: "flowInput", config: { outputVariables: [{ name: "branch", defaultValue: "a" }] } },
-        { id: "cond", type: "condition", config: { expression: "in.branch === 'a'" } },
-        { id: "outA", type: "flowOutput", config: { outputVariables: [{ name: "result" }] } },
-        { id: "outB", type: "flowOutput", config: { outputVariables: [{ name: "result" }] } },
-        { id: "a", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "result", prompt: "a" } },
-        { id: "b", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "result", prompt: "b" } }
+        { id: "in", type: "flowInput", config: { outputVariables: [{ name: "url", defaultValue: "http://default" }] } },
+        { id: "agt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "raw", prompt: "go" } },
+        { id: "out", type: "flowOutput", config: {
+          outputVariables: [{ name: "savedUrl" }],
+          expressions: [{ name: "savedUrl", expression: "{{agt.raw}}" }]
+        }}
       ],
       edges: [
-        { sourceNodeId: "in", targetNodeId: "cond" },
-        { sourceNodeId: "cond", targetNodeId: "a", sourcePort: "true" },
-        { sourceNodeId: "cond", targetNodeId: "b", sourcePort: "false" },
-        { sourceNodeId: "a", targetNodeId: "outA" },
-        { sourceNodeId: "b", targetNodeId: "outB" }
+        { sourceNodeId: "in", targetNodeId: "agt" },
+        { sourceNodeId: "agt", targetNodeId: "out" }
       ]
     };
-    const result = await run({ flow }, {
-      executors: { agent: async ({ node }) => ({ status: "success", output: node.id === "a" ? "A-result" : "B-result" }) }
-    }, { branch: "a" });
-    const exitRecords = result.nodeRecords.filter(r => r.nodeId === "outA" || r.nodeId === "outB");
-    assert.equal(exitRecords.length, 1);
-    assert.equal(exitRecords[0].nodeId, "outA");
-    assert.equal(exitRecords[0].outputVariables["outA.result"], "A-result");
+    const result = await run(
+      { flow },
+      { executors: { agent: async () => ({ status: "success", output: "http://mapped" }) } },
+      {}
+    );
+    assert.equal(result.status, "success");
+    const outRecord = result.nodeRecords.find(r => r.nodeId === "out");
+    assert.ok(outRecord, "flowOutput node record present");
+    assert.equal(outRecord.outputVariables["out.savedUrl"], "http://mapped");
+  });
+
+  it("AC7: flowOutput 无 expression 时保持原行为（读同名 bare key）", async () => {
+    const flow = {
+      nodeList: [
+        { id: "in", type: "flowInput", config: { outputVariables: [{ name: "url", defaultValue: "http://x" }] } },
+        { id: "out", type: "flowOutput", config: { outputVariables: [{ name: "url" }] } }
+      ],
+      edges: [{ sourceNodeId: "in", targetNodeId: "out" }]
+    };
+    const result = await run({ flow }, {}, {});
+    assert.equal(result.status, "success");
+    const outRecord = result.nodeRecords.find(r => r.nodeId === "out");
+    assert.equal(outRecord.outputVariables["out.url"], "http://x");
+  });
+
+  it("AC7: flowOutput expression 支持多来源回退 {{a || b}}", async () => {
+    const flow = {
+      nodeList: [
+        { id: "in", type: "flowInput", config: { outputVariables: [{ name: "url", defaultValue: "" }] } },
+        { id: "agt", type: "agent", config: { provider: "anthropic", model: "claude", outputVariable: "raw", prompt: "go" } },
+        { id: "out", type: "flowOutput", config: {
+          outputVariables: [{ name: "savedUrl" }],
+          expressions: [{ name: "savedUrl", expression: "{{agt.raw || in.url}}" }]
+        }}
+      ],
+      edges: [
+        { sourceNodeId: "in", targetNodeId: "agt" },
+        { sourceNodeId: "agt", targetNodeId: "out" }
+      ]
+    };
+    const result = await run(
+      { flow },
+      { executors: { agent: async () => ({ status: "success", output: "http://from-agent" }) } },
+      {}
+    );
+    assert.equal(result.status, "success");
+    const outRecord = result.nodeRecords.find(r => r.nodeId === "out");
+    assert.equal(outRecord.outputVariables["out.savedUrl"], "http://from-agent");
+  });
+
+  it("AC7: flowOutput expression 引用未声明的输出变量名时保存失败", () => {
+    assert.throws(() => validateNodeList([
+      { id: "out", type: "flowOutput", config: {
+        outputVariables: [{ name: "savedUrl" }],
+        expressions: [{ name: "notDeclared", expression: "{{agt.raw}}" }]
+      }}
+    ]));
   });
 });

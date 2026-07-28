@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-23-nested-flow/REQ-FLOW-046
-// REQ-VERSION: v1-hash:12fcb37250dd27d709796ef80459b1e5fca506df2f2ae756b1537eeb3501c8e4
+// REQ-VERSION: v2.2-hash:b496ef72731fba3105a49d3185d3ca6f430dae96b9cf22e358cf2a2fd589f104
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // TEST-AUTHOR: agent
