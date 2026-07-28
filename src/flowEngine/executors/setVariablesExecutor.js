@@ -35,7 +35,7 @@ function evaluateExpressionWrapped(expression, context) {
   return evaluateExpression(expression, context);
 }
 
-function evaluate(expression, context) {
+export function evaluate(expression, context) {
   if (typeof expression !== "string") return expression;
 
   // Case 1: single {{var}} reference — evaluate as JS expression, preserve type.

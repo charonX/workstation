@@ -256,6 +256,45 @@ function validateSetVariablesConfig(config, base, details) {
   });
 }
 
+// REQ-FLOW-033 AC7: flowOutput outputVariables / expressions 校验
+// - outputVariables naming rules are validated by validateDeclaredOutputVariables (ADR-010).
+// - expressions 必须是数组（若存在）
+// - 每项 name 必须在同节点 outputVariables 中声明
+// - 每项 expression 非空字符串（trim 后非空）
+function validateFlowOutputConfig(config, base, details) {
+  if (!("expressions" in config) || config.expressions === undefined) return;
+  const expressions = config.expressions;
+  const path = `${base}.expressions`;
+  if (!Array.isArray(expressions)) {
+    details.push({ path, message: "Expressions must be an array" });
+    return;
+  }
+  const declared = new Set();
+  if (Array.isArray(config.outputVariables)) {
+    for (const v of config.outputVariables) {
+      if (v && typeof v.name === "string") declared.add(v.name);
+    }
+  }
+  const seen = new Set();
+  expressions.forEach((expression, index) => {
+    const item = isPlainObject(expression) ? expression : {};
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    if (name.length === 0) {
+      details.push({ path: `${path}[${index}].name`, message: "Expression name is required" });
+    } else if (!declared.has(name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Expression name "${name}" is not declared in outputVariables` });
+    } else if (seen.has(name)) {
+      details.push({ path: `${path}[${index}].name`, message: `Duplicate expression name: ${name}` });
+    } else {
+      seen.add(name);
+    }
+    const expr = typeof item.expression === "string" ? item.expression.trim() : "";
+    if (expr.length === 0) {
+      details.push({ path: `${path}[${index}].expression`, message: "Expression is required" });
+    }
+  });
+}
+
 function validateAgentConfig(config, base, details) {
   if ("provider" in config && config.provider !== undefined) {
     if (!AGENT_PROVIDERS.includes(config.provider)) {
@@ -302,6 +341,7 @@ export function validateNodeList(nodeList) {
     else if (type === "agent") validateAgentConfig(node.config, base, details);
     else if (type === "callflow") validateCallFlowConfig(node.config, base, details, node.id);
     else if (type === "setvariables") validateSetVariablesConfig(node.config, base, details);
+    else if (type === "flowoutput") validateFlowOutputConfig(node.config, base, details);
   });
   if (details.length > 0) {
     const err = new Error(

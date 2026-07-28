@@ -365,13 +365,153 @@ function FlowInputFields(props) {
   );
 }
 
-function FlowOutputFields(props) {
+function FlowOutputFields({ config, onChange, t, nodeId, nodes, edges }) {
+  // REQ-FLOW-033 AC7: flowOutput supports an optional expressions array to map
+  // upstream variables into each declared output. Same syntax as setVariables.
+  const variables = Array.isArray(config.outputVariables) ? config.outputVariables : [];
+  const expressions = Array.isArray(config.expressions) ? config.expressions : [];
+
+  const setVariables = (next) => onChange("outputVariables", next);
+  const setExpressions = (next) => onChange("expressions", next);
+
+  const updateVariable = (index, patch) => {
+    const oldName = variables[index]?.name;
+    const nextVars = variables.map((v, i) => (i === index ? { ...v, ...patch } : v));
+    setVariables(nextVars);
+    if ("name" in patch && oldName !== undefined) {
+      const nextExprs = expressions.map((e) =>
+        e.name === oldName ? { ...e, name: patch.name } : e
+      );
+      setExpressions(nextExprs);
+    }
+  };
+
+  const addVariable = () => {
+    setVariables([...variables, { name: "", type: "string", defaultValue: "" }]);
+    setExpressions([...expressions, { name: "", expression: "" }]);
+  };
+
+  const removeVariable = (index) => {
+    const removedName = variables[index]?.name;
+    setVariables(variables.filter((_, i) => i !== index));
+    setExpressions(expressions.filter((e) => e.name !== removedName));
+  };
+
+  const getExpression = (name) => expressions.find((e) => e.name === name)?.expression || "";
+
+  const updateExpression = (name, value) => {
+    const idx = expressions.findIndex((e) => e.name === name);
+    if (idx >= 0) {
+      setExpressions(expressions.map((e, i) => (i === idx ? { ...e, expression: value } : e)));
+    } else if (name) {
+      setExpressions([...expressions, { name, expression: value }]);
+    }
+  };
+
   return (
-    <DeclaredVariablesFields
-      {...props}
-      testid="flowoutput-variables-editor"
-      description={props.t("flowEditor.flowOutputDescription")}
-    />
+    <div className="form-group variables-editor" data-testid="flowoutput-variables-editor">
+      <span className="form-label">{t("flowEditor.variables")}</span>
+      {variables.length === 0 && (
+        <div className="help-text">{t("flowEditor.flowOutputDescription")}</div>
+      )}
+      {variables.map((variable, index) => (
+        <div className="variable-row" data-testid="variable-row" key={index}>
+          <label className="form-label" htmlFor={`flowout-name-${index}`}>
+            {t("flowEditor.variableName")}
+          </label>
+          <input
+            id={`flowout-name-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="variable-name-input"
+            value={variable.name || ""}
+            onChange={(e) => updateVariable(index, { name: e.target.value })}
+          />
+          <label className="form-label" htmlFor={`flowout-type-${index}`}>
+            {t("flowEditor.variableType")}
+          </label>
+          <select
+            id={`flowout-type-${index}`}
+            className="form-input"
+            data-testid="variable-type-select"
+            value={variable.type || "string"}
+            onChange={(e) => updateVariable(index, { type: e.target.value })}
+          >
+            {VARIABLE_TYPES.map((variableType) => (
+              <option key={variableType} value={variableType}>
+                {variableType}
+              </option>
+            ))}
+          </select>
+          <label className="form-label" htmlFor={`flowout-default-${index}`}>
+            {t("flowEditor.defaultValue")}
+          </label>
+          <input
+            id={`flowout-default-${index}`}
+            type="text"
+            className="form-input"
+            data-testid="variable-default-input"
+            value={variable.defaultValue ?? ""}
+            onChange={(e) => updateVariable(index, { defaultValue: e.target.value })}
+          />
+          <label className="form-label" htmlFor={`flowout-expr-${index}`}>
+            {t("flowEditor.expression")}
+          </label>
+          <ExpressionInput
+            id={`flowout-expr-${index}`}
+            value={getExpression(variable.name)}
+            onChange={(value) => updateExpression(variable.name, value)}
+            nodes={nodes}
+            edges={edges}
+            nodeId={nodeId}
+            placeholder={t("flowEditor.expressionPlaceholder")}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary variable-remove-button"
+            data-testid="remove-variable-button"
+            onClick={() => removeVariable(index)}
+          >
+            {t("flowEditor.removeVariable")}
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn btn-secondary"
+        data-testid="add-variable-button"
+        onClick={addVariable}
+      >
+        {t("flowEditor.addVariable")}
+      </button>
+    </div>
+  );
+}
+
+function ExpressionInput({ id, value, onChange, nodes, edges, nodeId, placeholder }) {
+  const { recordCaret, insertVariable } = useCaretInsertion(
+    { expression: value },
+    "expression",
+    (_field, next) => onChange(next),
+    (fullName) => `{{${fullName}}}`
+  );
+
+  return (
+    <>
+      <input
+        id={id}
+        type="text"
+        className="form-input"
+        data-testid="flowoutput-expression-input"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onSelect={recordCaret}
+        onClick={recordCaret}
+        onKeyUp={recordCaret}
+      />
+      <VariablePicker nodes={nodes} edges={edges} currentNodeId={nodeId} onSelect={insertVariable} />
+    </>
   );
 }
 

@@ -66,7 +66,7 @@ export const NODE_REGISTRY = {
     true
   ),
   flowInput: makeNodeTypeRegistration("flowInput", "trigger", "⤵", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.flowInput`, true),
-  flowOutput: makeNodeTypeRegistration("flowOutput", "flow", "⤴", { outputVariables: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.flowOutput`, true),
+  flowOutput: makeNodeTypeRegistration("flowOutput", "flow", "⤴", { outputVariables: [], expressions: [] }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.flowOutput`, true),
   agent: makeNodeTypeRegistration("agent", "execution", "◆", {
     outputVariables: [{ name: "output", type: "string" }],
   }, deriveDeclaredVariables, PlaceholderConfigPanel, `nodeTypes.agent`, true),
