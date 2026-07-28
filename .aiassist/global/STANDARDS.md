@@ -34,6 +34,14 @@
 - REQ ID: `REQ-<AREA>-<NNN>`，如 `REQ-DESIGN-001`
 - CSS 变量前缀: `--ch-`
 
+## Flow 节点类型开发约定
+
+- 新增节点类型必须在 `src/renderer/components/flow/nodeRegistry.js` 注册，包括：`type`、`category`、`icon`、`defaultConfig`、`deriveOutputVariables`、`configPanel`、`labelKey`、`palette`。
+- 所有节点类型统一使用 `config.outputVariables: [{ name, type?, defaultValue? }]` 声明下游可见变量名。
+- 节点特定行为字段（如 `setVariables.expressions`、`callFlow.inputMappings`）与 `outputVariables` 分离：前者描述"怎么算"，后者描述"暴露什么"。
+- 不要新增集中式 `switch` 分支来推导变量或渲染配置面板；统一通过 `nodeRegistry[type].deriveOutputVariables(config)` 和注册表中的 `configPanel` 组件处理。
+- 节点 executor 返回结果优先使用 `outputVariables` plain object，由引擎统一写入 context 和 nodeRecord。
+
 ## Electron 开发约定
 
 - 服务层代码（`src/services/`、`src/http/`、`src/cli/`）运行在 Electron main 进程，修改后必须重启应用或重新运行 `npm run dev`，renderer HMR 不会重载主进程。

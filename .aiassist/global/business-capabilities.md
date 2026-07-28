@@ -102,7 +102,7 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
 | workspace-management | 3 | 36 | 2026-07-19 |
-| flow-orchestration | 3 | 55 | 2026-07-27 |
+| flow-orchestration | 3 | 58 | 2026-07-28 |
 | scheduling-execution | 3 | 16 | 2026-07-19 |
 | skill-management | 2 | 16 | 2026-07-16 |
 | channel-integration | 1 | 0 | 2026-07-19 |

@@ -72,7 +72,9 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 共享可变状态 | 测试互相污染 | 每个测试独立 setup/teardown |
 | 全 mock | 测试通过但生产崩溃 | 优先真实实现/Fake |
 | mock 掉解析/适配层 | SDK/协议变更时漏过真实路径 bug（BUG-006 教训：EventDispatcher.parse() 展开路径从未被端到端测到） | 至少一个测试用 SDK 交付的原始 payload 形态喂入，而不是手动构造"已 parse"数据 |
-| 跳过测试让 CI 通过 | 隐藏真实 bug | 修复或删除 |
+| 新增节点类型只改实现不改注册表 | 变量选择器/面板/校验漏识别（BUG-001 教训：upstreamVariables switch 漏 setVariables） | 新增节点类型统一在 nodeRegistry.js 注册，输出变量推导用 deriveOutputVariables |
+| 前置 story 回归测试未随当前行为更新 | 当前 story 改变已有节点/UI 后旧断言失败（BUG-005 教训） | 变更已有节点/UI 时同步搜索并更新所有引用该类型/文案的回归测试 |
+| 集中式 switch 推导变量 | 每新增类型要改多处，易遗漏 | 用注册表 + deriveOutputVariables 通用化，新增类型只改一处 |
 
 ---
 

@@ -72,3 +72,16 @@
   - `skillService.linkSkill`/`unlinkSkill` 需要 `projectService` 与文件系统操作协同。
   - 测试必须断言符号链接存在性与清理行为。
   - 删除 skill repo 的级联逻辑需先清理 symlink 再删 DB 记录。
+
+---
+
+## 后续架构决策
+
+ADR-005 ~ ADR-010 见 `.aiassist/global/adr/README.md`，包括：
+
+- ADR-005: Claude Agent 节点采用 Claude Agent SDK 并复用本机凭证
+- ADR-006: 单 server 运行时与统一本地存储
+- ADR-007: 飞书通道采用官方 SDK WSClient 与独立 channelManager
+- ADR-008: 子流程内联同步执行 + services 注入模式
+- ADR-009: 模块惰性初始化，禁止顶层读 env/磁盘
+- ADR-010: 统一节点输出模型与节点类型注册表

@@ -7,6 +7,48 @@
 
 ---
 
+## 新增节点类型不要走集中式 switch，走注册表
+
+- **现象**：`upstreamVariables.js` 用 switch 按节点类型推导下游变量，新增 `setVariables` 节点时漏补分支，导致下游变量选择器选不到它的输出（BUG-001）。
+- **根因**：每新增一种节点就要改一处集中式代码，属于"遗忘型错误"高发结构。
+- **结论**：节点类型元数据、默认配置、输出变量推导、面板渲染统一走 `nodeRegistry.js` 注册；新增节点类型只改一处，变量选择器/配置面板/节点面板自动识别。
+
+## 声明与行为要分离：outputVariables 是契约，expressions/inputMappings 是实现
+
+- **现象**：Attempt 1 里 `agent.outputVariable`、`callFlow.outputMappings`、`setVariables.assignments` 各自为政，保存校验、变量选择器、运行时写入都要特殊处理。
+- **根因**：输出变量"叫什么名字"和"怎么算出来"被混在同一层字段里。
+- **结论**：统一用 `config.outputVariables` 声明下游可见变量名；节点类型保留私有字段描述求值逻辑（如 `setVariables.expressions`、`callFlow.inputMappings`）。这样变量选择器和保存校验可以通用化。
+
+## tech-design 阶段要识别"新增类型时容易遗漏的集中式分支"
+
+- **现象**：Attempt 1 到 BUILD 后才发现 `upstreamVariables.js` 的 switch 会漏新节点，被迫回流到 TECH-DESIGN 做统一输出模型（ADR-010）。
+- **结论**：方案评审时主动问"新增一种 X 要改几处代码？"如果答案是"到处改"，应在设计阶段就改成注册表/插件化/通用推导，不要等到 BUILD 阶段用 bug 发现。
+
+## 当前 story 改变已有行为时，要主动检查前置 story 的回归测试
+
+- **现象**：BUG-005 是 2026-07-16-flow-refinement 的回归测试仍期望 `setVariables` 不可见，但本 story 已把它实现为合法节点。
+- **根因**：实现推进中只关注本 story 测试，没同步更新前置 story 中依赖旧行为的断言。
+- **结论**：当新增/变更已有节点类型、UI 文案、面板结构时，除了本 story 测试，还要搜索所有引用该类型/文案的 E2E 回归测试并更新；最好在实现改动同期就改，不要留给 QA 暴露。
+
+## 多入口/多输出归一化需求要在 PRD/REQ 阶段多问一层
+
+- **现象**：BUG-003/004 都是 req-gap 就地补全——`setVariables` 需要多来源聚合表达式、`flowOutput` 需要显式映射上游变量。
+- **根因**：初始 REQ 只考虑了"变量赋值"和"flowOutput 返回值"的最简场景，没追问"多个入口变量名不同怎么办""子流程出参想显式挑上游变量怎么办"。
+- **结论**：遇到"入口多样"或"输出契约"类需求，必须穷举入口组合和输出映射场景；归一化节点（setVariables）应在需求阶段就作为一等公民提出。
+
+## Electron E2E 启动超时先检查 native binding
+
+- **现象**：E2E 启动报 30s 超时，BrowserWindow 未创建。
+- **根因**：`better-sqlite3` 未针对 Electron ABI 重建，`startServer` 中 `getDb` 抛 `E-DB-UNWRITABLE`，主进程启动失败。
+- **结论**：Electron 测试启动异常时，先跑 `npm run rebuild:electron`；main 进程启动日志比 renderer 超时更关键。
+
+## 有副作用的节点通过 services 注入，保持引擎可测
+
+- **现象**：`callFlow` 节点需要读 DB、建 execution、递归执行子 flow，这些不是纯函数能做的事。
+- **结论**：采用 ADR-008 的 `options.services` 注入模式：`flowEngine.run()` 把 `services` 和 `currentDepth` 传给 executor，具体副作用由调用方（taskService 或测试 mock）提供。引擎保持纯函数，新节点类型可复用该模式。
+
+---
+
 ## Electron 主进程代码变更必须重启
 
 - **现象**：renderer 热更新后 UI 已显示 skill 关联成功，但项目目录下没有生成 `.opc/skills` 软连接。
@@ -102,4 +144,4 @@
 
 ---
 
-来源：codex-harness-desktop /reflect（2026-07-16）、2026-07-16-flow-refinement /reflect（2026-07-19）、2026-07-19-media-production-line /reflect（2026-07-24）
+来源：codex-harness-desktop /reflect（2026-07-16）、2026-07-16-flow-refinement /reflect（2026-07-19）、2026-07-19-media-production-line /reflect（2026-07-24）、2026-07-23-nested-flow /reflect（2026-07-28）

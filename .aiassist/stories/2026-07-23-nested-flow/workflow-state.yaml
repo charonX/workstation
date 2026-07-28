@@ -6,9 +6,11 @@ intention: >-
   当前 flow 引擎不支持嵌套/子流程调用，无法将通用的通道收发逻辑（如飞书接收/发送）封装为可复用流程，
   每个业务 flow 都必须重复配置相同的接收/发送节点，中间处理逻辑也无法独立抽象和跨 flow 组合复用。
 
-phase: QA    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 2        # 第几次尝试。归档重做时 +1。
 bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+completed: true
+completed_at: 2026-07-28
 # QA 回归完成：后端 181/181 全绿，FLOW-047 setVariables 行为契约满足，无回归；
 # E2E Electron 启动超时为环境预存问题（非本次引入），记录为已知限制。
 created: 2026-07-23
@@ -34,6 +36,7 @@ history:
   - {at: 2026-07-28, from: BUG, to: BUG, note: "BUG-003 req-gap 就地补全：setVariables 表达式需支持多来源聚合/回退（如 {{svA.url || svB.url}}）。更新 REQ-FLOW-047、补测试、扩展 setVariablesExecutor 表达式求值。"}
   - {at: 2026-07-28, from: BUG, to: BUG, note: "BUG-005 test-gap：2026-07-16-flow-refinement 的回归测试 BUG-005 未随 REQ-FLOW-043/047 同步，仍期望 setVariables 不可见。更新 agentConfig.test.cjs 期望 setVariables 在 NodePalette 可见；测试红->绿。"}
   - {at: 2026-07-28, from: BUG, to: QA, note: "重新跑全量 QA：单元/API 344/344 绿，E2E 102/102 绿。BUG-001~005 全部闭环。满足 /reflect 前置条件。"}
+  - {at: 2026-07-28, from: QA, to: REFLECT, note: "用户最终验收通过。沉淀 engineering-lessons、CONTEXT、STANDARDS、adr/README、architecture、business-capabilities、checklists/testing；workflow-state 标记 completed。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive:

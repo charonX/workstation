@@ -8,6 +8,10 @@
 
 2026-07-27
 
+## 相关 REQ
+
+REQ-FLOW-042、REQ-FLOW-043、REQ-FLOW-047
+
 ## 上下文
 
 在实现 `2026-07-23-nested-flow`（嵌套子流程调用）过程中，新增 `setVariables` 节点后发现：
