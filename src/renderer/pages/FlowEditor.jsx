@@ -31,6 +31,14 @@ export default function FlowEditor() {
   const [canvasNodes, setCanvasNodes] = useState([]);
   const [canvasEdges, setCanvasEdges] = useState([]);
   const canvasRef = useRef(null);
+  // Track the latest selected node config so sequential single-key onChange calls
+  // issued in one event tick (e.g. CallFlowFields setting targetFlowId +
+  // targetInputNodeId + inputMappings + outputVariables) compose instead of the
+  // last write clobbering earlier ones.
+  const latestConfigRef = useRef(null);
+  useEffect(() => {
+    latestConfigRef.current = selectedNode?.data?.config || null;
+  }, [selectedNode?.data?.config]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,7 +183,9 @@ export default function FlowEditor() {
   const handleUpdateConfig = useCallback(
     (key, value) => {
       if (!selectedNode || !canvasRef.current?.updateNodeData) return;
-      const nextConfig = { ...(selectedNode.data?.config || {}), [key]: value };
+      const baseConfig = latestConfigRef.current || selectedNode.data?.config || {};
+      const nextConfig = { ...baseConfig, [key]: value };
+      latestConfigRef.current = nextConfig;
       canvasRef.current.updateNodeData(selectedNode.id, { config: nextConfig });
       setSelectedNode((prev) =>
         prev ? { ...prev, data: { ...prev.data, config: nextConfig } } : prev
