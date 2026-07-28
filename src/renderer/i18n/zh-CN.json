@@ -169,7 +169,9 @@
     "confirmDeleteRepoMessage": "确定要删除该技能仓库吗？仓库内所有技能及项目关联都会被移除。",
     "rescan": "刷新",
     "update": "更新",
-    "working": "处理中..."
+    "working": "处理中...",
+    "expandAll": "全部展开",
+    "collapseAll": "全部收起"
   },
   "topBar": {
     "searchPlaceholder": "搜索项目、流程、执行历史...",
@@ -324,7 +326,7 @@
     "callFlowOnErrorFail": "callFlow 节点失败时必须终止流程",
     "assignments": "变量赋值",
     "addAssignment": "添加赋值",
-    "setVariablesHelp": "为变量赋值或重命名。使用 {{节点ID.变量名}} 引用上游变量，支持点路径 {{a.b.c}} 和字符串拼接。"
+    "setVariablesHelp": "为变量赋值或重命名。使用 {{节点ID.变量名}} 引用上游变量，支持点路径 {{a.b.c}}、字符串拼接，以及 JS 表达式如 {{a || b}}、{{a ?? b}} 实现多来源回退。"
   },
   "palette": {
     "categories": {

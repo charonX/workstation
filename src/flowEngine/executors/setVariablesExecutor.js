@@ -3,14 +3,17 @@
 // 求值后通过 D10 多输出机制返回 outputVariables。
 // 典型用途：多入口归一化、常量注入、嵌套字段提取、中间值重命名。
 //
-// expression 支持三种形式（与 tech-design D11 一致）：
+// expression 支持四种形式（与 tech-design D11 / REQ-FLOW-047 AC9 一致）：
 //   1. 单 {{var}} 或 {{a.b.c}} 引用：用 evaluateExpression 求值，保留原类型
-//   2. 含 {{var}} 模板（如 "Hello {{name}}"）：字符串插值拼接
-//   3. 纯字面量（无 {{}}）：原样作为字符串值返回
+//   2. {{...}} 包裹的任意 JS 表达式：如 {{svA.url || svB.url}}、{{a ?? b}}、
+//      {{svA.url ? svA.url : svB.url}}，按 JS 求值结果返回（不保证类型保留）
+//   3. 含 {{var}} 模板（如 "Hello {{name}}"）：字符串插值拼接
+//   4. 纯字面量（无 {{}}）：原样作为字符串值返回
 
 import { evaluateExpression } from "./evaluateExpression.js";
 
 const SINGLE_REF_PATTERN = /^\{\{\s*([\w.]+)\s*\}\}$/;
+const EXPRESSION_PATTERN = /^\{\{\s*([^{}]+?)\s*\}\}$/;
 const TEMPLATE_REF_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/g;
 
 function evaluateSingleRef(path, context) {
@@ -28,6 +31,10 @@ function evaluateTemplate(expression, context) {
   });
 }
 
+function evaluateExpressionWrapped(expression, context) {
+  return evaluateExpression(expression, context);
+}
+
 function evaluate(expression, context) {
   if (typeof expression !== "string") return expression;
 
@@ -37,12 +44,19 @@ function evaluate(expression, context) {
     return evaluateSingleRef(singleMatch[1], context);
   }
 
-  // Case 2: template string with {{var}} interpolations.
+  // Case 2: {{...}} wrapping an arbitrary JS expression (multi-source
+  // aggregation / fallback). Examples: {{svA.url || svB.url}}, {{a ?? b}}.
+  const expressionMatch = expression.match(EXPRESSION_PATTERN);
+  if (expressionMatch) {
+    return evaluateExpressionWrapped(expressionMatch[1], context);
+  }
+
+  // Case 3: template string with {{var}} interpolations.
   if (expression.includes("{{")) {
     return evaluateTemplate(expression, context);
   }
 
-  // Case 3: plain literal — return as-is (string).
+  // Case 4: plain literal — return as-is (string).
   return expression;
 }
 
