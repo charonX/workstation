@@ -77,7 +77,6 @@ export async function callFlowExecutor({ node, context, services, currentDepth }
   //    引擎会为每个 key 写 ${nodeId}.${varName} 和裸 ${varName}。
   return {
     status: "success",
-    output: childOutputs,
     outputVariables: {
       ...childOutputs,
       __childExecutionId: childExecutionId

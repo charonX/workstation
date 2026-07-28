@@ -4,7 +4,7 @@
  * writes them (fullName + bare key) into context and nodeRecord.outputVariables.
  *
  * It reads bare keys (varDef.name) from context because upstream nodes write their
- * result to bare keys via the single-output path (config.outputVariable).
+ * outputs as bare keys via the unified output model (config.outputVariables).
  */
 export async function flowOutputExecutor({ node, context }) {
   const outputVariables = {};

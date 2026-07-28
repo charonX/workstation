@@ -1,12 +1,13 @@
 /**
  * triggerExecutor — pass-through executor for the start/trigger node.
- * It returns the input variables as output so downstream nodes can use them,
- * but does not modify context unless an outputVariable is configured.
+ *
+ * Trigger-like nodes (trigger / feishuMessage / flowInput) declare their outputs
+ * via config.outputVariables. The engine seeds and overrides those variables
+ * before the executor runs, so this executor only needs to return success.
  */
-export async function triggerExecutor({ node, context }) {
+export async function triggerExecutor({ node }) {
   return {
     status: "success",
-    output: { ...context },
     logs: [{ level: "info", message: `Trigger "${node.data?.label || node.name || node.id}" started` }]
   };
 }

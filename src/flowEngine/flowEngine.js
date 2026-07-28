@@ -202,18 +202,32 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
     }
 
     if (result.output !== undefined) {
-      if (node.config?.outputVariable) {
-        // REQ-FLOW-023 AC2：按 nodeId.variableName 写入；fullName 天然隔离同名变量（AC4）。
-        writeOutputVariable(context, record, node.id, node.config.outputVariable, result.output);
+      // Unified output model: single-output nodes (agent) declare their variable
+      // name via config.outputVariables[0].name. Keep a fallback to the legacy
+      // config.outputVariable field until all persisted flows are migrated.
+      const outputVarName = node.config?.outputVariables?.[0]?.name || node.config?.outputVariable;
+      if (outputVarName) {
+        writeOutputVariable(context, record, node.id, outputVarName, result.output);
       }
       lastOutput = result.output;
     }
 
-    // D10 多输出支持：executor 返回 result.outputVariables plain object 时，
-    // 遍历写入 namespaced key 和 legacy 裸 key 到 context 与 record.outputVariables。
+    // D10 multi-output support: executors returning result.outputVariables have each
+    // key written to both namespaced and legacy bare keys in context / record.
+    // This path is independent of the single-output path so executors can return
+    // both shapes during transition / for test seams.
     if (result.outputVariables && isPlainObject(result.outputVariables)) {
       for (const [varName, value] of Object.entries(result.outputVariables)) {
         writeOutputVariable(context, record, node.id, varName, value);
+      }
+      // When no top-level result.output is provided, surface the first declared
+      // outputVariables value as lastOutput so the flow's overall output remains
+      // meaningful (REQ-FLOW-035 AC5 compat).
+      if (result.output === undefined) {
+        const firstKey = Object.keys(result.outputVariables)[0];
+        if (firstKey !== undefined) {
+          lastOutput = result.outputVariables[firstKey];
+        }
       }
     }
 
@@ -454,7 +468,7 @@ function writeContextEntries(context, nodeId, varName, value) {
 }
 
 // Write a named output to context (via writeContextEntries) plus the node record.
-// Single-output (config.outputVariable) and multi-output (result.outputVariables)
+// Single-output (config.outputVariables[0].name) and multi-output (result.outputVariables)
 // paths share this helper (D10).
 function writeOutputVariable(context, record, nodeId, varName, value) {
   const fullName = writeContextEntries(context, nodeId, varName, value);

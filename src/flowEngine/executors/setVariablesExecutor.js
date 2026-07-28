@@ -1,5 +1,5 @@
 // REQ-FLOW-047 (D11): setVariables 节点执行器。
-// 通用变量赋值/重命名节点：遍历 node.config.assignments，对每条 expression
+// 通用变量赋值/重命名节点：遍历 node.config.outputVariables，按同名 expression
 // 求值后通过 D10 多输出机制返回 outputVariables。
 // 典型用途：多入口归一化、常量注入、嵌套字段提取、中间值重命名。
 //
@@ -50,14 +50,20 @@ export async function setVariablesExecutor({ node, context }) {
   const log = (message) => ({ at: new Date().toISOString(), message });
   const logs = [];
 
-  const assignments = Array.isArray(node.config?.assignments) ? node.config.assignments : [];
-  const outputVariables = {};
+  const outputVarDefs = Array.isArray(node.config?.outputVariables) ? node.config.outputVariables : [];
+  const expressions = Array.isArray(node.config?.expressions) ? node.config.expressions : [];
+  const expressionByName = new Map();
+  for (const expr of expressions) {
+    if (expr && typeof expr.name === "string" && expr.name !== "") {
+      expressionByName.set(expr.name, expr.expression);
+    }
+  }
 
-  for (const assignment of assignments) {
-    if (!assignment || typeof assignment !== "object") continue;
-    const { variableName, expression } = assignment;
-    if (typeof variableName !== "string" || variableName === "") continue;
-    outputVariables[variableName] = evaluate(expression, context);
+  const outputVariables = {};
+  for (const varDef of outputVarDefs) {
+    if (!varDef || typeof varDef.name !== "string" || varDef.name === "") continue;
+    const expression = expressionByName.get(varDef.name);
+    outputVariables[varDef.name] = evaluate(expression, context);
   }
 
   logs.push(log(`setVariables: assigned ${Object.keys(outputVariables).length} variable(s)`));
