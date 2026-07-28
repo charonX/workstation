@@ -1,7 +1,7 @@
 # 契约式需求 — 嵌套子流程调用（Nested Subflow）
 
 > 故事 ID：`2026-07-23-nested-flow`
-> 版本：v2.1
+> 版本：v2.2
 > 最后更新：2026-07-28
 
 ---
@@ -77,10 +77,11 @@
 4. **AC4（叶子语义）**：flowOutput 节点无出边时执行完流程终止（与其他叶子节点一致）；有出边时按普通节点继续（允许编排者把 flowOutput 放在中间——但 invokeSubflow 仍然取"最后一个 flowOutput"作为出口，见 REQ-FLOW-035）。
 5. **AC5（多 flowOutput）**：同一流程可有多个 flowOutput 节点（不同分支出口）；流程结束时 invokeSubflow 取 nodeRecords 中最后一个 type=flowoutput 的记录作为返回值来源。
 6. **AC6（注册表默认配置）**：拖入 flowOutput 节点时，`nodeRegistry` 提供 `defaultConfig.outputVariables: []`。
+7. **AC7（输出变量可显式映射上游变量）**：`flowOutput` 节点支持可选的 `config.expressions` 数组，每项 `{name, expression}`，其中 `name` 必须对应 `outputVariables` 中声明的变量名。执行时若某输出变量存在 expression，则按 setVariables 同款的表达式规则求值（支持 `{{nodeId.var}}`、`{{a.b.c}}`、模板字符串、JS 表达式如 `{{a || b}}`）并把结果作为该输出值；无 expression 时保持 AC3 行为，从 context 读同名 bare key。保存时校验：expression 非空字符串；name 不在 outputVariables 中时返回 `E-EXPR`。
 
 ### 测试
 
-- Seam: validateNodeList 单元 + flowEngine.run() 单元（构造含 flowOutput 的流程，断言 outputVariables 被写入 record）
+- Seam: validateNodeList 单元 + flowEngine.run() 单元（构造含 flowOutput 的流程，断言 outputVariables 被写入 record；覆盖 expression 映射与无 expression 回退）
 - Seam: `nodeRegistry.flowOutput.defaultConfig` 和 `deriveOutputVariables`
 - 文件：同 REQ-FLOW-032
 
@@ -559,6 +560,7 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v2.2 | 2026-07-28 | BUG-004 req-gap 就地补全：REQ-FLOW-033 新增 AC7，flowOutput 节点支持 expressions 显式映射上游变量 | AI + 人 |
 | v2.1 | 2026-07-28 | BUG-003 req-gap 就地补全：REQ-FLOW-047 新增 AC9，setVariables 表达式支持任意 JS 表达式与多来源聚合 | AI + 人 |
 | v2.0 | 2026-07-27 | Attempt 2：统一节点输出模型；setVariables 改用 outputVariables + expressions；callFlow 改用 outputVariables 自动填充；agent 改用 outputVariables；新增系统级约束 | AI + 人 |
 | v1.1 | 2026-07-26 | req-gap 补全：新增 REQ-FLOW-047 setVariables 通用变量赋值节点 | AI + 人 |
