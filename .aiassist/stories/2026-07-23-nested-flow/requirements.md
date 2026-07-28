@@ -1,8 +1,8 @@
 # 契约式需求 — 嵌套子流程调用（Nested Subflow）
 
 > 故事 ID：`2026-07-23-nested-flow`
-> 版本：v2.0
-> 最后更新：2026-07-27
+> 版本：v2.1
+> 最后更新：2026-07-28
 
 ---
 
@@ -510,14 +510,16 @@
 6. **AC6（典型场景：常量/嵌套字段）**：expressions 支持常量（`{name:"apiVersion", expression:"v2"}`）和嵌套字段提取（`{name:"url", expression:"{{response.data.url}}"}`），求值结果正确写入 context。
 7. **AC7（pass-through）**：setVariables 节点不中断流程，执行完正常按出边继续下一节点（普通 pass-through 节点语义）。
 8. **AC8（UI 配置面板）**：点击 setVariables 节点，配置面板显示 outputVariables 编辑器 + expressions 编辑器：可添加/删除行，每行有变量名输入框 + 表达式输入框（表达式输入支持插入上游变量引用，同现有其他节点表达式输入）；变量名变更同步到 outputVariables。
+9. **AC9（表达式支持任意 JS 表达式与多来源聚合）**：`config.expressions` 中每项 `expression` 除支持单 `{{var}}` 引用和模板字符串外，还支持 `{{...}}` 包裹的任意 JS 表达式。典型场景：多入口聚合时，可在单个 setVariables 节点内配置 `{{svA.url || svB.url}}`、`{{svA.url ?? svB.url}}` 或 `{{svA.url ? svA.url : svB.url}}`，求值结果写入同名输出变量；非单变量引用时按 JS 表达式求值结果返回（不保证类型保留）。`expression` 非空字符串即可通过校验。
 
 ### 测试
 
 - Seam: `flowService.validateNodeList` 单元覆盖 AC1/AC2 字段校验
-- Seam: `flowEngine.run()` 单元覆盖 AC3/AC4/AC5/AC6/AC7：
+- Seam: `flowEngine.run()` 单元覆盖 AC3/AC4/AC5/AC6/AC7/AC9：
   - 构造双入口 + 双 setVariables fixture，从两个入口分别启动，断言下游 `context.text` 值一致
   - 断言单变量引用类型保留（传 object 不被字符串化）
   - 断言常量/嵌套字段求值正确
+  - 断言多来源聚合表达式（如 `{{svA.url || svB.url}}`）在单 setVariables 节点内正确求值
 - Seam: 组件测试覆盖 AC8 UI 交互
 - 文件：`tests/capabilities/flow-orchestration/flow-engine/2026-07-23-nested-flow/api/setVariables.test.js`
 
@@ -557,6 +559,7 @@
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
+| v2.1 | 2026-07-28 | BUG-003 req-gap 就地补全：REQ-FLOW-047 新增 AC9，setVariables 表达式支持任意 JS 表达式与多来源聚合 | AI + 人 |
 | v2.0 | 2026-07-27 | Attempt 2：统一节点输出模型；setVariables 改用 outputVariables + expressions；callFlow 改用 outputVariables 自动填充；agent 改用 outputVariables；新增系统级约束 | AI + 人 |
 | v1.1 | 2026-07-26 | req-gap 补全：新增 REQ-FLOW-047 setVariables 通用变量赋值节点 | AI + 人 |
 | v1 | 2026-07-23 | 初版，15 REQ（FLOW-032 ~ FLOW-046） | AI + 人 |
