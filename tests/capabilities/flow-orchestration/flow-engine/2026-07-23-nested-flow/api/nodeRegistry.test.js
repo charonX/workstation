@@ -62,6 +62,25 @@ describe("ADR-010 / REQ-FLOW-043: 节点类型注册表契约", () => {
     }
   });
 
+  it("NodePalette 应渲染的节点必须标记 palette: true（REQ-FLOW-043 AC1 / REQ-FLOW-047 AC1）", () => {
+    assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
+    const paletteTypes = [
+      "trigger",
+      "feishuMessage",
+      "flowInput",
+      "flowOutput",
+      "agent",
+      "condition",
+      "callFlow",
+      "setVariables"
+    ];
+    for (const type of paletteTypes) {
+      const entry = NODE_REGISTRY[type];
+      assert.ok(entry, `${type} 必须注册`);
+      assert.equal(entry.palette, true, `${type} 必须在 NodePalette 中可见（palette 应为 true）`);
+    }
+  });
+
   it("每个节点类型的 defaultConfig 必须包含 outputVariables 数组", () => {
     assert.ok(NODE_REGISTRY, "NODE_REGISTRY 未加载");
     for (const type of KNOWN_NODE_TYPES) {
