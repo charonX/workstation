@@ -68,7 +68,8 @@ function printHelp() {
       "opc-workstation flow create --name Fetch --project-id p1",
       "opc-workstation schedule create --project-id p1 --flow-id f1 --cron \"0 8 * * *\"",
       "opc-workstation task run --project-id p1 --flow-id f1",
-      "opc-workstation skill install --source npm --identifier some-skill",
+      "opc-workstation skill install --source git --identifier https://github.com/owner/repo",
+      "opc-workstation project skill link <project-id> <slug> <skillName>",
       "opc-workstation settings set --language en-US"
     ]
   };
@@ -99,7 +100,7 @@ async function main() {
   }
 
   try {
-    const result = await handler(flags);
+    const result = await handler(flags, rest);
     output(result, globalFlags.pretty);
   } catch (err) {
     const status = err.status || 0;
