@@ -1,0 +1,630 @@
+{
+  "version": "1.5.20",
+  "syncedAt": "2026-07-30",
+  "agents": [
+    {
+      "name": "adal",
+      "displayName": "AdaL",
+      "skillsDir": ".adal/skills",
+      "globalSkillsDir": "~/.adal/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "aider-desk",
+      "displayName": "AiderDesk",
+      "skillsDir": ".aider-desk/skills",
+      "globalSkillsDir": "~/.aider-desk/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "amp",
+      "displayName": "Amp",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": true
+    },
+    {
+      "name": "antigravity",
+      "displayName": "Antigravity",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.gemini/antigravity/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "antigravity-cli",
+      "displayName": "Antigravity CLI",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.gemini/antigravity-cli/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "astrbot",
+      "displayName": "AstrBot",
+      "skillsDir": "data/skills",
+      "globalSkillsDir": "~/.astrbot/data/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "augment",
+      "displayName": "Augment",
+      "skillsDir": ".augment/skills",
+      "globalSkillsDir": "~/.augment/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "autohand-code",
+      "displayName": "Autohand Code CLI",
+      "skillsDir": ".autohand/skills",
+      "globalSkillsDir": "~/.autohand/skills",
+      "globalEnvDeps": [
+        "AUTOHAND_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "bob",
+      "displayName": "IBM Bob",
+      "skillsDir": ".bob/skills",
+      "globalSkillsDir": "~/.bob/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "claude-code",
+      "displayName": "Claude Code",
+      "skillsDir": ".claude/skills",
+      "globalSkillsDir": "~/.claude/skills",
+      "globalEnvDeps": [
+        "CLAUDE_CONFIG_DIR"
+      ],
+      "universal": false
+    },
+    {
+      "name": "cline",
+      "displayName": "Cline",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "codearts-agent",
+      "displayName": "CodeArts Agent",
+      "skillsDir": ".codeartsdoer/skills",
+      "globalSkillsDir": "~/.codeartsdoer/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "codebuddy",
+      "displayName": "CodeBuddy",
+      "skillsDir": ".codebuddy/skills",
+      "globalSkillsDir": "~/.codebuddy/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "codemaker",
+      "displayName": "Codemaker",
+      "skillsDir": ".codemaker/skills",
+      "globalSkillsDir": "~/.codemaker/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "codestudio",
+      "displayName": "Code Studio",
+      "skillsDir": ".codestudio/skills",
+      "globalSkillsDir": "~/.codestudio/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "codex",
+      "displayName": "Codex",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.codex/skills",
+      "globalEnvDeps": [
+        "CODEX_HOME"
+      ],
+      "universal": true
+    },
+    {
+      "name": "command-code",
+      "displayName": "Command Code",
+      "skillsDir": ".commandcode/skills",
+      "globalSkillsDir": "~/.commandcode/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "continue",
+      "displayName": "Continue",
+      "skillsDir": ".continue/skills",
+      "globalSkillsDir": "~/.continue/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "cortex",
+      "displayName": "Cortex Code",
+      "skillsDir": ".cortex/skills",
+      "globalSkillsDir": "~/.snowflake/cortex/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "crush",
+      "displayName": "Crush",
+      "skillsDir": ".crush/skills",
+      "globalSkillsDir": "~/.config/crush/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "cursor",
+      "displayName": "Cursor",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.cursor/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "deepagents",
+      "displayName": "Deep Agents",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.deepagents/agent/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "devin",
+      "displayName": "Devin for Terminal",
+      "skillsDir": ".devin/skills",
+      "globalSkillsDir": "~/.config/devin/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "dexto",
+      "displayName": "Dexto",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "droid",
+      "displayName": "Droid",
+      "skillsDir": ".factory/skills",
+      "globalSkillsDir": "~/.factory/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "eve",
+      "displayName": "Eve",
+      "skillsDir": "agent/skills",
+      "globalSkillsDir": null,
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "firebender",
+      "displayName": "Firebender",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.firebender/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "forgecode",
+      "displayName": "ForgeCode",
+      "skillsDir": ".forge/skills",
+      "globalSkillsDir": "~/.forge/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "gemini-cli",
+      "displayName": "Gemini CLI",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.gemini/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "github-copilot",
+      "displayName": "GitHub Copilot",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.copilot/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "goose",
+      "displayName": "Goose",
+      "skillsDir": ".goose/skills",
+      "globalSkillsDir": "~/.config/goose/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "grok",
+      "displayName": "Grok Build",
+      "skillsDir": ".grok/skills",
+      "globalSkillsDir": "~/.grok/skills",
+      "globalEnvDeps": [
+        "GROK_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "hermes-agent",
+      "displayName": "Hermes Agent",
+      "skillsDir": ".hermes/skills",
+      "globalSkillsDir": "~/.hermes/skills",
+      "globalEnvDeps": [
+        "HERMES_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "iflow-cli",
+      "displayName": "iFlow CLI",
+      "skillsDir": ".iflow/skills",
+      "globalSkillsDir": "~/.iflow/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "inference-sh",
+      "displayName": "inference.sh",
+      "skillsDir": ".inferencesh/skills",
+      "globalSkillsDir": "~/.inferencesh/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "jazz",
+      "displayName": "Jazz",
+      "skillsDir": ".jazz/skills",
+      "globalSkillsDir": "~/.jazz/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "junie",
+      "displayName": "Junie",
+      "skillsDir": ".junie/skills",
+      "globalSkillsDir": "~/.junie/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "kilo",
+      "displayName": "Kilo Code",
+      "skillsDir": ".kilocode/skills",
+      "globalSkillsDir": "~/.kilocode/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "kimchi",
+      "displayName": "Kimchi",
+      "skillsDir": ".kimchi/skills",
+      "globalSkillsDir": "~/.config/kimchi/harness/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "kimi-code-cli",
+      "displayName": "Kimi Code CLI",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "kiro-cli",
+      "displayName": "Kiro CLI",
+      "skillsDir": ".kiro/skills",
+      "globalSkillsDir": "~/.kiro/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "kode",
+      "displayName": "Kode",
+      "skillsDir": ".kode/skills",
+      "globalSkillsDir": "~/.kode/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "lingma",
+      "displayName": "Lingma",
+      "skillsDir": ".lingma/skills",
+      "globalSkillsDir": "~/.lingma/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "loaf",
+      "displayName": "Loaf",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "mcpjam",
+      "displayName": "MCPJam",
+      "skillsDir": ".mcpjam/skills",
+      "globalSkillsDir": "~/.mcpjam/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "mistral-vibe",
+      "displayName": "Mistral Vibe",
+      "skillsDir": ".vibe/skills",
+      "globalSkillsDir": "~/.vibe/skills",
+      "globalEnvDeps": [
+        "VIBE_HOME"
+      ],
+      "universal": false
+    },
+    {
+      "name": "moxby",
+      "displayName": "Moxby",
+      "skillsDir": ".moxby/skills",
+      "globalSkillsDir": "~/.moxby/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "mux",
+      "displayName": "Mux",
+      "skillsDir": ".mux/skills",
+      "globalSkillsDir": "~/.mux/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "neovate",
+      "displayName": "Neovate",
+      "skillsDir": ".neovate/skills",
+      "globalSkillsDir": "~/.neovate/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "ona",
+      "displayName": "Ona",
+      "skillsDir": ".ona/skills",
+      "globalSkillsDir": "~/.ona/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "openclaw",
+      "displayName": "OpenClaw",
+      "skillsDir": "skills",
+      "globalSkillsDir": "~/.openclaw/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "opencode",
+      "displayName": "OpenCode",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.config/opencode/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": true
+    },
+    {
+      "name": "openhands",
+      "displayName": "OpenHands",
+      "skillsDir": ".openhands/skills",
+      "globalSkillsDir": "~/.openhands/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "pi",
+      "displayName": "Pi",
+      "skillsDir": ".pi/skills",
+      "globalSkillsDir": "~/.pi/agent/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "pochi",
+      "displayName": "Pochi",
+      "skillsDir": ".pochi/skills",
+      "globalSkillsDir": "~/.pochi/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "promptscript",
+      "displayName": "PromptScript",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": null,
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "qoder",
+      "displayName": "Qoder",
+      "skillsDir": ".qoder/skills",
+      "globalSkillsDir": "~/.qoder/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "qoder-cn",
+      "displayName": "Qoder CN",
+      "skillsDir": ".qoder/skills",
+      "globalSkillsDir": "~/.qoder-cn/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "qwen-code",
+      "displayName": "Qwen Code",
+      "skillsDir": ".qwen/skills",
+      "globalSkillsDir": "~/.qwen/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "reasonix",
+      "displayName": "Reasonix",
+      "skillsDir": ".reasonix/skills",
+      "globalSkillsDir": "~/.reasonix/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "replit",
+      "displayName": "Replit",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": true
+    },
+    {
+      "name": "roo",
+      "displayName": "Roo Code",
+      "skillsDir": ".roo/skills",
+      "globalSkillsDir": "~/.roo/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "rovodev",
+      "displayName": "Rovo Dev",
+      "skillsDir": ".rovodev/skills",
+      "globalSkillsDir": "~/.rovodev/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "tabnine-cli",
+      "displayName": "Tabnine CLI",
+      "skillsDir": ".tabnine/agent/skills",
+      "globalSkillsDir": "~/.tabnine/agent/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "terramind",
+      "displayName": "Terramind",
+      "skillsDir": ".terramind/skills",
+      "globalSkillsDir": "~/.terramind/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "tinycloud",
+      "displayName": "Tinycloud",
+      "skillsDir": ".tinycloud/skills",
+      "globalSkillsDir": "~/.tinycloud/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "trae",
+      "displayName": "Trae",
+      "skillsDir": ".trae/skills",
+      "globalSkillsDir": "~/.trae/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "trae-cn",
+      "displayName": "Trae CN",
+      "skillsDir": ".trae/skills",
+      "globalSkillsDir": "~/.trae-cn/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "universal",
+      "displayName": "Universal",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "globalEnvDeps": [
+        "XDG_CONFIG_HOME"
+      ],
+      "universal": true
+    },
+    {
+      "name": "warp",
+      "displayName": "Warp",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "windsurf",
+      "displayName": "Windsurf",
+      "skillsDir": ".windsurf/skills",
+      "globalSkillsDir": "~/.codeium/windsurf/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "zcode",
+      "displayName": "ZCode",
+      "skillsDir": ".zcode/skills",
+      "globalSkillsDir": "~/.zcode/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "zed",
+      "displayName": "Zed",
+      "skillsDir": ".agents/skills",
+      "globalSkillsDir": "~/.agents/skills",
+      "globalEnvDeps": [],
+      "universal": true
+    },
+    {
+      "name": "zencoder",
+      "displayName": "Zencoder",
+      "skillsDir": ".zencoder/skills",
+      "globalSkillsDir": "~/.zencoder/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    },
+    {
+      "name": "zenflow",
+      "displayName": "Zenflow",
+      "skillsDir": ".zencoder/skills",
+      "globalSkillsDir": "~/.zencoder/skills",
+      "globalEnvDeps": [],
+      "universal": false
+    }
+  ]
+}
