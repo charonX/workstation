@@ -25,6 +25,22 @@ const PINNED_ORDER = ["claude-code", "codex", "opencode", "cursor", "kimi-code-c
 
 let cache = null;
 
+// Baseline = the snapshot shipped with the app (DEFAULT_SNAPSHOT_PATH), kept
+// separate from the env-overridable working snapshot. agentTypes validation
+// accepts keys known to either (REQ-WORKSPACE-013: a declaration that drifts
+// out of the current registry stays writable — the data is preserved and the
+// agent is marked invalid at convergence time — while never-known keys are
+// still rejected with INVALID_AGENT_TYPES). In production the two snapshots
+// are the same file; they diverge only under the OPC_AGENT_REGISTRY_SNAPSHOT
+// test seam.
+let baselineCache = null;
+
+function ensureBaselineLoaded() {
+  if (baselineCache !== null) return;
+  const snapshot = JSON.parse(fs.readFileSync(DEFAULT_SNAPSHOT_PATH, "utf-8"));
+  baselineCache = new Set(snapshot.agents.map((agent) => agent.name));
+}
+
 function snapshotPath() {
   return process.env.OPC_AGENT_REGISTRY_SNAPSHOT || DEFAULT_SNAPSHOT_PATH;
 }
@@ -43,11 +59,23 @@ function ensureLoaded() {
 
 export function resetAgentRegistryCache() {
   cache = null;
+  baselineCache = null;
 }
 
 export function isValidAgentKey(key) {
   ensureLoaded();
   return typeof key === "string" && cache.byName.has(key);
+}
+
+// Validation predicate for project agentTypes writes: current working
+// snapshot ∪ shipped baseline. Unlike isValidAgentKey (current snapshot only,
+// used for operational lookups such as skillsDir resolution), this keeps
+// drifted-but-once-known keys writable.
+export function isKnownAgentKey(key) {
+  if (typeof key !== "string") return false;
+  ensureBaselineLoaded();
+  if (baselineCache.has(key)) return true;
+  return isValidAgentKey(key);
 }
 
 export function getAgentKeyByDisplayName(displayName) {

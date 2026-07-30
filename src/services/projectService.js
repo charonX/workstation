@@ -53,14 +53,17 @@ function agentTypesValidationError(message, invalidAgents) {
 }
 
 // REQ-WORKSPACE-011: agentTypes is a JSON array of agent registry keys.
-// Non-array input and unknown keys are rejected (INVALID_AGENT_TYPES);
-// duplicates are removed keeping first-occurrence order; [] is legal
+// Non-array input and never-known keys are rejected (INVALID_AGENT_TYPES);
+// keys that drifted out of the current snapshot but exist in the shipped
+// baseline stay writable (REQ-WORKSPACE-013: declarations are preserved and
+// the agent is marked invalid at convergence, not rejected at write time).
+// Duplicates are removed keeping first-occurrence order; [] is legal
 // (semantics: no distribution yet).
 export function validateAgentTypes(value) {
   if (!Array.isArray(value)) {
     throw agentTypesValidationError("agentTypes must be an array of agent registry keys", []);
   }
-  const invalidAgents = [...new Set(value.filter((key) => !agentRegistryService.isValidAgentKey(key)))];
+  const invalidAgents = [...new Set(value.filter((key) => !agentRegistryService.isKnownAgentKey(key)))];
   if (invalidAgents.length > 0) {
     throw agentTypesValidationError(`Unknown agent types: ${invalidAgents.join(", ")}`, invalidAgents);
   }
@@ -68,6 +71,9 @@ export function validateAgentTypes(value) {
 }
 
 function parseAgentTypes(raw) {
+  // Rows from the DB carry the TEXT column; freshly built project objects
+  // carry the in-memory array (insertProject returns them without a re-read).
+  if (Array.isArray(raw)) return raw;
   try {
     const parsed = JSON.parse(raw || "[]");
     return Array.isArray(parsed) ? parsed : [];

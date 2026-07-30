@@ -5,7 +5,7 @@ import path from "node:path";
 import * as settingsService from "./settingsService.js";
 import * as projectService from "./projectService.js";
 import * as agentRegistryService from "./agentRegistryService.js";
-import { expandTilde, comparisonKey, isInsideOrEqual } from "./pathUtils.js";
+import { expandTilde, comparisonKey, isInsideOrEqual, realpathBestEffort } from "./pathUtils.js";
 
 // Skill service (ADR-011 revision): disk is the single source of truth.
 // - The skill library is a workstation-private directory (settings.skillRepoPath);
@@ -483,6 +483,118 @@ export async function requestSourceUpdate(slug) {
   return settleJobWhen(job, runUpdateJob(job, sourceDir));
 }
 
+// ---------- link attribution (view / convergence / resync shared) ----------
+
+// Resolve a symlink's absolute target. readlink keeps working for dangling
+// links where realpath would throw — broken links must stay attributable.
+function readLinkAbsTarget(linkPath) {
+  const raw = fs.readlinkSync(linkPath);
+  return path.resolve(path.dirname(linkPath), raw);
+}
+
+// Attribute a symlink target to a library skill. Returns {slug, skillName,
+// broken} when the target resolves inside the library, null otherwise.
+// broken=true means the target no longer corresponds to an existing skill
+// (dangling link or the skill vanished from the library).
+function attributeLinkTarget(absTarget) {
+  const root = repoRoot();
+  const rel = path.relative(realpathBestEffort(root), realpathBestEffort(absTarget));
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  const segments = rel.split(path.sep);
+  const slug = segments[0];
+  const sourceDir = path.join(root, slug);
+  if (isDirectory(sourceDir)) {
+    const targetKey = comparisonKey(absTarget);
+    for (const { skillName, dir } of discoverSkillDirs(sourceDir)) {
+      if (comparisonKey(dir) === targetKey) return { slug, skillName, broken: false };
+    }
+  }
+  // Fall back to path shape: root layout links point at <slug> itself;
+  // skills/* layout links point at <slug>/skills/<skillName>.
+  let skillName;
+  if (segments.length === 1) skillName = slug;
+  else if (segments[1] === "skills" && segments.length >= 3) skillName = segments[2];
+  else skillName = segments[segments.length - 1];
+  return { slug, skillName, broken: true };
+}
+
+// ---------- linked record (distribution bookkeeping) ----------
+//
+// Disk is the truth for VIEWS (listProjectSkills never consults this), but
+// repair needs memory: resync must rebuild an association whose link was
+// manually deleted (REQ-SKILL-014 AC4), which leaves no trace on disk. The
+// record lives inside the workstation-private skill library (never in
+// project dirs — REQ-SKILL-017 AC2) and captures link intent per project.
+// It is written by link/unlink/resync/cascade-remove; convergence
+// deliberately does not touch it (convergence migrates what disk shows, F3).
+
+const LINKED_RECORD_DIR = ".linked-skills";
+
+function linkedRecordPath(projectId) {
+  const safeId = String(projectId ?? "").replace(/[^a-zA-Z0-9._-]/g, "_");
+  return path.join(repoRoot(), LINKED_RECORD_DIR, `${safeId}.json`);
+}
+
+function readLinkedRecord(projectId) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(linkedRecordPath(projectId), "utf8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry) => entry && typeof entry.slug === "string" && typeof entry.skillName === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeLinkedRecord(projectId, entries) {
+  const recordPath = linkedRecordPath(projectId);
+  if (entries.length === 0) {
+    fs.rmSync(recordPath, { force: true });
+    return;
+  }
+  fs.mkdirSync(path.dirname(recordPath), { recursive: true });
+  fs.writeFileSync(recordPath, JSON.stringify(entries));
+}
+
+function recordKeyOf(entry) {
+  return `${entry.slug}/${entry.skillName}`;
+}
+
+function addToLinkedRecord(projectId, identity) {
+  if (!projectId) return;
+  const entries = readLinkedRecord(projectId);
+  if (entries.some((e) => e.slug === identity.slug && e.skillName === identity.skillName)) return;
+  entries.push({ slug: identity.slug, skillName: identity.skillName });
+  writeLinkedRecord(projectId, entries);
+}
+
+// identity.skillName may be omitted to drop every skill of a source (cascade).
+function removeFromLinkedRecord(projectId, identity) {
+  if (!projectId) return;
+  const entries = readLinkedRecord(projectId);
+  if (entries.length === 0) return;
+  const kept = entries.filter(
+    (e) => !(e.slug === identity.slug && (identity.skillName === undefined || e.skillName === identity.skillName))
+  );
+  if (kept.length === entries.length) return;
+  writeLinkedRecord(projectId, kept);
+}
+
+function removeSlugFromAllRecords(slug) {
+  const dir = path.join(repoRoot(), LINKED_RECORD_DIR);
+  let files;
+  try {
+    files = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    removeFromLinkedRecord(file.slice(0, -".json".length), { slug });
+  }
+}
+
 // ---------- link primitives (project agent dirs -> library) ----------
 
 function agentSkillsDir(agentKey) {
@@ -649,6 +761,9 @@ export function linkSkillToProject(project, { slug, skillName } = {}) {
     result.invalid = true;
     results.set(agent, result);
   }
+  // The association intent is recorded even when some agents conflicted or
+  // failed: resync is the repair path and must know what was asked for.
+  addToLinkedRecord(project.id, { slug, skillName });
   return { agents: agentTypes.map((agent) => results.get(agent)).filter(Boolean) };
 }
 
@@ -672,6 +787,429 @@ export function deleteSource(slug) {
       removeLinksInto(dirPath, baseKey);
     });
   }
+  removeSlugFromAllRecords(slug);
   fs.rmSync(sourceDir, { recursive: true, force: true });
   return { deleted: slug };
+}
+
+// ---------- project skill view (REQ-SKILL-012) ----------
+
+// GET /api/projects/:id/skills: live scan of the project's declared agent
+// dirs (skillsDir-deduped). Links resolving into the library are attributed
+// to their {slug, skillName} (origin "repo"; broken:true when the target
+// skill vanished). Real directories and links resolving elsewhere are
+// external entries ({name, agents, origin:"external"}) — shown as-is, never
+// modified (D4). A library skill whose link position is occupied by an
+// external entry is blocked there; the repo entry is surfaced with
+// conflict:true (the disk-truth way to reflect REQ-SKILL-010 AC5 after the
+// fact — name collision between a library skill and an external entry).
+export function listProjectSkills(project) {
+  const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
+  const entries = new Map();
+  const externalNames = new Set();
+
+  const mergeAgents = (list, agents) => {
+    for (const agent of agents) if (!list.includes(agent)) list.push(agent);
+  };
+
+  const addExternal = (name, agents) => {
+    externalNames.add(name);
+    const key = `external:${name}`;
+    const existing = entries.get(key) ?? { name, agents: [], origin: "external" };
+    mergeAgents(existing.agents, agents);
+    entries.set(key, existing);
+  };
+
+  forEachAgentSkillsDir(project, agentTypes, (dirPath, agents) => {
+    let dirEntries;
+    try {
+      dirEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (err) {
+      // Missing dirs are normal (never linked); anything else is E10 — skip
+      // the dir with a warning, the view as a whole must not fail.
+      if (err.code !== "ENOENT") {
+        console.warn(`[skillService] cannot scan ${dirPath}: ${err.message}`);
+      }
+      return;
+    }
+    for (const dirent of dirEntries) {
+      const entryPath = path.join(dirPath, dirent.name);
+      let lst;
+      try {
+        lst = fs.lstatSync(entryPath);
+      } catch {
+        continue; // E10: entry vanished mid-scan
+      }
+      if (lst.isSymbolicLink()) {
+        let attr = null;
+        try {
+          attr = attributeLinkTarget(readLinkAbsTarget(entryPath));
+        } catch {
+          attr = null;
+        }
+        if (attr) {
+          const key = `repo:${attr.slug}:${attr.skillName}`;
+          const existing = entries.get(key) ?? {
+            slug: attr.slug,
+            skillName: attr.skillName,
+            agents: [],
+            origin: "repo"
+          };
+          if (attr.broken) existing.broken = true;
+          mergeAgents(existing.agents, agents);
+          entries.set(key, existing);
+          continue;
+        }
+      }
+      addExternal(dirent.name, agents);
+    }
+  });
+
+  for (const group of listSkillGroups()) {
+    for (const skill of group.skills) {
+      if (!externalNames.has(skill.skillName)) continue;
+      const key = `repo:${group.slug}:${skill.skillName}`;
+      const existing = entries.get(key) ?? {
+        slug: group.slug,
+        skillName: skill.skillName,
+        agents: [],
+        origin: "repo"
+      };
+      existing.conflict = true;
+      entries.set(key, existing);
+    }
+  }
+
+  return [...entries.values()].sort((a, b) =>
+    String(a.skillName ?? a.name).localeCompare(String(b.skillName ?? b.name))
+  );
+}
+
+// ---------- project unlink (REQ-SKILL-011) ----------
+
+// DELETE /api/projects/:id/skills/:slug/:skillName: remove only the symlink
+// whose target resolves into that exact library skill (ours). External
+// entities and foreign symlinks are left untouched and reported as
+// conflicts; unknown identities 404; success is idempotent; the library is
+// never modified.
+export function unlinkSkillFromProject(project, { slug, skillName } = {}) {
+  validateSkillIdentity(slug, "slug");
+  validateSkillIdentity(skillName, "skillName");
+  const targetDir = resolveSkillTargetDir(slug, skillName); // 404 unknown identity
+  const targetKey = comparisonKey(targetDir);
+  const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
+
+  const results = new Map();
+  const invalidAgents = forEachAgentSkillsDir(project, agentTypes, (dirPath, agents, skillsDir) => {
+    const perAgent = agents.map((agent) => {
+      const result = emptyAgentResult(agent, skillsDir);
+      results.set(agent, result);
+      return result;
+    });
+    const report = (kind) => {
+      for (const result of perAgent) result[kind].push(skillName);
+    };
+    const linkPath = path.join(dirPath, skillName);
+    const existing = fs.lstatSync(linkPath, { throwIfNoEntry: false });
+    if (!existing) return; // idempotent: nothing of ours here
+    if (existing.isSymbolicLink()) {
+      let real = null;
+      try {
+        real = comparisonKey(readLinkAbsTarget(linkPath));
+      } catch {
+        real = null;
+      }
+      if (real && isInsideOrEqual(real, targetKey)) {
+        try {
+          fs.rmSync(linkPath, { force: true });
+          report("unlinked");
+        } catch (err) {
+          console.warn(`[skillService] failed to unlink ${linkPath}: ${err.message}`);
+          report("failed");
+        }
+        return;
+      }
+    }
+    // External entity or foreign symlink at the target position: skipped.
+    report("conflicts");
+  });
+  for (const agent of invalidAgents) {
+    const result = emptyAgentResult(agent, null);
+    result.invalid = true;
+    results.set(agent, result);
+  }
+  removeFromLinkedRecord(project.id, { slug, skillName });
+  return { agents: agentTypes.map((agent) => results.get(agent)).filter(Boolean) };
+}
+
+// ---------- convergence on agentTypes change (REQ-SKILL-013, F3) ----------
+
+// PUT /api/projects/:id {agentTypes}: after saving, migrate workstation-owned
+// links across the changed declaration. The linked set is scanned from the
+// UNION of before/after declared dirs (review F1: scanning only the new dirs
+// would silently drop associations when agents are switched). New dirs get
+// links for every associated skill (idempotent, conflict-skipped); removed
+// dirs lose only links resolving into the library. Convergence never links
+// skills outside the already-linked set, and never touches external entries.
+export function convergeProjectSkills(project, beforeKeys, afterKeys) {
+  const before = Array.isArray(beforeKeys) ? beforeKeys : [];
+  const after = Array.isArray(afterKeys) ? afterKeys : [];
+  const unionKeys = [...new Set([...before, ...after])];
+  if (unionKeys.length === 0) return { agents: [] };
+
+  const root = repoRoot();
+  const rootKey = comparisonKey(root);
+  const localPath = expandTilde(project.localPath || "");
+
+  const dirOfKey = new Map();
+  for (const key of unionKeys) {
+    const skillsDir = agentSkillsDir(key);
+    if (skillsDir) {
+      dirOfKey.set(key, skillsDir);
+    } else {
+      // E9 drift: skip the agent with a warning and report it invalid; the
+      // update itself must not fail (REQ-WORKSPACE-013 AC2).
+      console.warn(`[skillService] agent "${key}" not found in registry; skipping convergence for it`);
+    }
+  }
+  const dirsOf = (keys) => new Set(keys.map((key) => dirOfKey.get(key)).filter(Boolean));
+  const beforeDirs = dirsOf(before);
+  const afterDirs = dirsOf(after);
+  const unionDirs = new Set([...beforeDirs, ...afterDirs]);
+
+  const outcomes = new Map(); // skillsDir -> {linked[], unlinked[], failed[], conflicts[]}
+  const outcomeOf = (skillsDir) => {
+    if (!outcomes.has(skillsDir)) {
+      outcomes.set(skillsDir, { linked: [], unlinked: [], failed: [], conflicts: [] });
+    }
+    return outcomes.get(skillsDir);
+  };
+  const pushUnique = (list, name) => {
+    if (!list.includes(name)) list.push(name);
+  };
+
+  // Phase 1: the linked set from the union of before/after dirs (scan before
+  // any removal so switched-away dirs still contribute their associations).
+  const linkedSet = new Map();
+  for (const skillsDir of unionDirs) {
+    const dirPath = path.join(localPath, skillsDir);
+    let dirEntries;
+    try {
+      dirEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        console.warn(`[skillService] cannot scan ${dirPath}: ${err.message}`);
+      }
+      continue;
+    }
+    for (const dirent of dirEntries) {
+      const entryPath = path.join(dirPath, dirent.name);
+      let lst;
+      try {
+        lst = fs.lstatSync(entryPath);
+      } catch {
+        continue;
+      }
+      if (!lst.isSymbolicLink()) continue;
+      let attr = null;
+      try {
+        attr = attributeLinkTarget(readLinkAbsTarget(entryPath));
+      } catch {
+        attr = null;
+      }
+      if (!attr || attr.broken) continue;
+      linkedSet.set(recordKeyOf(attr), { slug: attr.slug, skillName: attr.skillName });
+    }
+  }
+
+  // Phase 2: removed dirs lose only links resolving into the library.
+  for (const skillsDir of beforeDirs) {
+    if (afterDirs.has(skillsDir)) continue;
+    const removed = removeLinksInto(path.join(localPath, skillsDir), rootKey);
+    for (const name of removed) pushUnique(outcomeOf(skillsDir).unlinked, name);
+  }
+
+  // Phase 3: every currently-declared dir gets links for the linked set.
+  for (const skillsDir of afterDirs) {
+    const outcome = outcomeOf(skillsDir);
+    const dirPath = path.join(localPath, skillsDir);
+    for (const { slug, skillName } of linkedSet.values()) {
+      let targetDir;
+      try {
+        targetDir = resolveSkillTargetDir(slug, skillName);
+      } catch {
+        continue; // vanished mid-run
+      }
+      try {
+        const kind = placeSkillLink(path.join(dirPath, skillName), targetDir, comparisonKey(targetDir));
+        pushUnique(outcome[kind], skillName);
+      } catch (err) {
+        console.warn(`[skillService] failed to link ${skillName} into ${dirPath}: ${err.message}`);
+        pushUnique(outcome.failed, skillName); // E5: surface, never copy
+      }
+    }
+  }
+
+  const agents = unionKeys.map((key) => {
+    const skillsDir = dirOfKey.get(key) ?? null;
+    if (!skillsDir) {
+      return { agent: key, skillsDir: null, linked: [], unlinked: [], failed: [], conflicts: [], invalid: true };
+    }
+    const outcome = outcomes.get(skillsDir) ?? { linked: [], unlinked: [], failed: [], conflicts: [] };
+    return {
+      agent: key,
+      skillsDir,
+      linked: outcome.linked,
+      unlinked: outcome.unlinked,
+      failed: outcome.failed,
+      conflicts: outcome.conflicts
+    };
+  });
+  return { agents };
+}
+
+// ---------- manual resync (REQ-SKILL-014) ----------
+
+// POST /api/projects/:id/skills/resync: rebuild the associated set (healthy
+// links found in declared dirs ∪ the workstation linked record) into every
+// currently-declared dir, idempotently. Broken links pointing into the
+// library are cleaned; links repointed by hand are repaired (the link name
+// is the skill identity, F4); external entries are never touched; skills
+// outside the associated set are never auto-linked.
+export function resyncProjectSkills(project) {
+  const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
+  if (agentTypes.length === 0) return { agents: [] };
+
+  const localPath = expandTilde(project.localPath || "");
+  const dirs = [];
+  const invalidAgents = forEachAgentSkillsDir(project, agentTypes, (dirPath, agents, skillsDir) => {
+    dirs.push({ dirPath, agents, skillsDir });
+  });
+
+  const results = new Map();
+  for (const { agents, skillsDir } of dirs) {
+    for (const agent of agents) {
+      results.set(agent, emptyAgentResult(agent, skillsDir));
+    }
+  }
+  const report = (agents, kind, name) => {
+    for (const agent of agents) {
+      const result = results.get(agent);
+      if (result && !result[kind].includes(name)) result[kind].push(name);
+    }
+  };
+
+  const linkedSet = new Map();
+
+  // Recorded associations that still exist in the library can be rebuilt even
+  // when every link was manually deleted — the record is the only memory.
+  for (const { slug, skillName } of readLinkedRecord(project.id)) {
+    try {
+      resolveSkillTargetDir(slug, skillName);
+      linkedSet.set(recordKeyOf({ slug, skillName }), { slug, skillName });
+    } catch {
+      // Stale record entry: the skill is gone from the library.
+    }
+  }
+
+  // Scan pass: harvest healthy links, clean broken ones, repair mis-pointed.
+  for (const { dirPath, agents } of dirs) {
+    let dirEntries;
+    try {
+      dirEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        console.warn(`[skillService] cannot scan ${dirPath}: ${err.message}`);
+      }
+      continue;
+    }
+    for (const dirent of dirEntries) {
+      const entryPath = path.join(dirPath, dirent.name);
+      let lst;
+      try {
+        lst = fs.lstatSync(entryPath);
+      } catch {
+        continue;
+      }
+      if (!lst.isSymbolicLink()) continue; // external entity — never touched
+      let attr = null;
+      try {
+        attr = attributeLinkTarget(readLinkAbsTarget(entryPath));
+      } catch {
+        attr = null;
+      }
+      if (!attr) continue; // foreign symlink — never touched
+      if (attr.broken) {
+        try {
+          fs.rmSync(entryPath, { force: true });
+          report(agents, "unlinked", dirent.name);
+        } catch (err) {
+          console.warn(`[skillService] failed to remove broken link ${entryPath}: ${err.message}`);
+          report(agents, "failed", dirent.name);
+        }
+        continue;
+      }
+      if (attr.skillName !== dirent.name) {
+        // Mis-pointed: the link name is the intended skill identity (F4).
+        // Repair when the library still holds that skill; otherwise leave the
+        // link alone and attribute it by its target.
+        let repaired = false;
+        try {
+          const correctDir = resolveSkillTargetDir(attr.slug, dirent.name);
+          fs.rmSync(entryPath, { force: true });
+          createSymlink(correctDir, entryPath);
+          linkedSet.set(recordKeyOf({ slug: attr.slug, skillName: dirent.name }), {
+            slug: attr.slug,
+            skillName: dirent.name
+          });
+          report(agents, "linked", dirent.name);
+          repaired = true;
+        } catch (err) {
+          if (err.status && err.status !== 404) {
+            console.warn(`[skillService] failed to repair ${entryPath}: ${err.message}`);
+            report(agents, "failed", dirent.name);
+            continue;
+          }
+        }
+        if (!repaired) {
+          linkedSet.set(recordKeyOf(attr), { slug: attr.slug, skillName: attr.skillName });
+        }
+        continue;
+      }
+      linkedSet.set(recordKeyOf(attr), { slug: attr.slug, skillName: attr.skillName });
+    }
+  }
+
+  // Rebuild pass: the associated set is present in every declared dir.
+  for (const { dirPath, agents } of dirs) {
+    for (const { slug, skillName } of linkedSet.values()) {
+      let targetDir;
+      try {
+        targetDir = resolveSkillTargetDir(slug, skillName);
+      } catch {
+        continue; // vanished mid-run
+      }
+      try {
+        const kind = placeSkillLink(path.join(dirPath, skillName), targetDir, comparisonKey(targetDir));
+        report(agents, kind, skillName);
+      } catch (err) {
+        console.warn(`[skillService] failed to relink ${skillName} into ${dirPath}: ${err.message}`);
+        report(agents, "failed", skillName); // E5
+      }
+    }
+  }
+
+  for (const agent of invalidAgents) {
+    const result = emptyAgentResult(agent, null);
+    result.invalid = true;
+    results.set(agent, result);
+  }
+
+  // Persist the repaired association set (prior record ∪ what disk showed).
+  const merged = new Map();
+  for (const entry of readLinkedRecord(project.id)) merged.set(recordKeyOf(entry), entry);
+  for (const entry of linkedSet.values()) merged.set(recordKeyOf(entry), entry);
+  writeLinkedRecord(project.id, [...merged.values()]);
+
+  return { agents: agentTypes.map((agent) => results.get(agent)).filter(Boolean) };
 }

@@ -2,7 +2,7 @@ import http from "node:http";
 import cron from "node-cron";
 import os from "node:os";
 import path from "node:path";
-import { resetDb, getDb } from "../db.js";
+import { resetDb, getDb, closeDb } from "../db.js";
 import * as settingsService from "../services/settingsService.js";
 import * as taskService from "../services/taskService.js";
 import * as schedulerService from "../services/schedulerService.js";
@@ -83,6 +83,13 @@ export function startServer(options = {}) {
       `opc-workstation-test-skills-${process.pid}-${Date.now()}`
     );
     settingsService.saveSettings({ skillRepoPath: tempSkillRepoPath });
+  } else if (options.dbPath) {
+    // reset:false with an explicit dbPath (e.g. legacy-DB migration runs):
+    // propagate the path so the lazily-opened getDb() lands on the requested
+    // file — opening it runs initSchema + migrateSchema (REQ-WORKSPACE-011
+    // AC5 legacy migration).
+    dbPath = options.dbPath;
+    process.env.DB_PATH = dbPath;
   }
 
   return new Promise((resolve) => {
@@ -149,6 +156,14 @@ export function stopServer({ server }) {
     }
     try {
       await taskService.clearExecutionQueue();
+    } catch {
+      // ignore
+    }
+    // Close the cached DB handle: a stopped server must not leak a stale
+    // handle into the next server's lifecycle (the file may be gone or a
+    // different DB_PATH may be in effect by then).
+    try {
+      closeDb();
     } catch {
       // ignore
     }

@@ -33,11 +33,18 @@ export async function handleProjects(req, res, body, pathParts) {
 
     if (req.method === "PUT") {
       try {
+        const existing = projectService.getProjectDetail(projectId);
+        if (!existing) return notFound(res, "Project not found");
         const updated = projectService.updateProject(projectId, body || {});
         if (!updated) return notFound(res, "Project not found");
-        // Convergence (link migration across changed agent dirs) is wired in a
-        // later slice; the response already carries the field per the contract.
-        return ok(res, { ...updated, convergence: { agents: [] } });
+        // F3: agentTypes in the body triggers synchronous convergence (link
+        // migration across the before/after declared dirs); other partial
+        // updates leave the linked state alone.
+        let convergence = { agents: [] };
+        if (Object.prototype.hasOwnProperty.call(body || {}, "agentTypes")) {
+          convergence = skillService.convergeProjectSkills(updated, existing.agentTypes, updated.agentTypes);
+        }
+        return ok(res, { ...updated, convergence });
       } catch (err) {
         return mapError(res, err);
       }
@@ -62,11 +69,53 @@ export async function handleProjects(req, res, body, pathParts) {
         return mapError(res, err);
       }
     }
-    // GET project skill view is implemented with the sync slice.
+    if (req.method === "GET") {
+      try {
+        return ok(res, skillService.listProjectSkills(project));
+      } catch (err) {
+        return mapError(res, err);
+      }
+    }
     return notFound(res);
   }
 
+  if (pathParts.length === 3 && pathParts[1] === "skills" && pathParts[2] === "resync") {
+    if (req.method !== "POST") return notFound(res);
+    const project = projectService.getProjectDetail(projectId);
+    if (!project) return notFound(res, "Project not found");
+    try {
+      return ok(res, skillService.resyncProjectSkills(project));
+    } catch (err) {
+      return mapError(res, err);
+    }
+  }
+
+  if (pathParts.length === 4 && pathParts[1] === "skills") {
+    if (req.method !== "DELETE") return notFound(res);
+    const project = projectService.getProjectDetail(projectId);
+    if (!project) return notFound(res, "Project not found");
+    try {
+      return ok(
+        res,
+        skillService.unlinkSkillFromProject(project, {
+          slug: decodeParam(pathParts[2]),
+          skillName: decodeParam(pathParts[3])
+        })
+      );
+    } catch (err) {
+      return mapError(res, err);
+    }
+  }
+
   return notFound(res);
+}
+
+function decodeParam(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 async function createProject(body) {
@@ -93,6 +142,9 @@ function buildProjectDetail(projectId) {
   const project = projectService.getProjectDetail(projectId);
   if (!project) return null;
   return {
+    // Flat fields at the top level (agentTypes reads, REQ-WORKSPACE-011);
+    // the overview envelope is kept for the renderer's existing consumers.
+    ...project,
     overview: {
       name: project.name,
       description: project.description,
@@ -105,8 +157,8 @@ function buildProjectDetail(projectId) {
       runsCount: project.runsCount,
       updatedAt: project.updatedAt
     },
-    // Project skill view (scan of declared agent dirs) lands with the sync slice.
-    skills: []
+    // Project skill view: live scan of the declared agent dirs (REQ-SKILL-012).
+    skills: skillService.listProjectSkills(project)
   };
 }
 
