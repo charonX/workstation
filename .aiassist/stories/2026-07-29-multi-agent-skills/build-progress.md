@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|
 | 1 | agent-registry | REQ-SKILL-018, REQ-SKILL-019 | agentRegistry.test.js, agentRegistrySnapshot.test.js | 12 | done |
 | 2 | skill-library（含旧机制清除） | REQ-SKILL-005/006/007/008/009/015/016/017 | skillLibrary.test.js, skillInstall.test.js | 31 | done |
-| 3 | distribution（含 agentTypes） | REQ-SKILL-010/011/012/013/014, REQ-WORKSPACE-011/013 | projectSkills.test.js, skillSync.test.js, projectAgents.test.js | 34 | pending |
+| 3 | distribution（含 agentTypes） | REQ-SKILL-010/011/012/013/014, REQ-WORKSPACE-011/013 | projectSkills.test.js, skillSync.test.js, projectAgents.test.js | 34 | done |
 | 4 | CLI | REQ-CLI-002 | skillCli.test.js | 10 | pending |
 | 5 | E2E UI | REQ-WORKSPACE-012 + skill E2E（006/009/013/014/015 等 UI 行为） | skillLibrary.test.cjs, agentTypes.test.cjs | 12 | pending |
 
@@ -112,3 +112,73 @@ PRD→代码 可追溯性表：
 - Slice 2: refactor pass done (a44a244..958935e, 提取 pathUtils/settleJobWhen/placeSkillLink 等，父代理复跑全绿, no rollback)
 - **留 slice 3 的已知缺陷（refactor 子代理发现）**：`insertProject` 返回 `rowToProject(project)`，`project.agentTypes` 为内存数组 → `parseAgentTypes` JSON.parse 抛错 → 恒返 `[]`。POST /api/projects 响应恒报 `agentTypes: []`（DB 存储正确、GET 往返正常）。projectAgents.test.js 断言 POST 响应值——slice 3 实现者需让 rowToProject 容忍数组输入或回读 DB 行，**不得**放松测试。
 - 留 /review --stage=code：projectService.expandHome 第三处 tilde 展开器未归并（尾分隔符微差异）；E12 冲突体仅含 existing.slug；PRD §10 simple-git vs 实现 execFile 的机制偏差记录。
+
+---
+
+## Slice 3: distribution（含 agentTypes）— 285e631
+
+验证：`node --test` 目标 3 文件 **34/34 绿**；Slice 2 回归 **31/31 绿**；Slice 1 回归 **12/12 绿**；老基线 codex-harness-desktop **76/76 绿**；单测 skillServiceSecurity **9/9 绿**。
+
+PRD→代码 可追溯性表：
+
+| PRD/REQ 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| REQ-SKILL-010 AC1 直链技能库（realpath 相等、沿链读 SKILL.md） | `skillService.linkSkillToProject`（slice 2 已交付） | projectSkills.test.js「linking creates a symlink…resolving into the library」 | COVERED（本 slice 复验绿） |
+| REQ-SKILL-010 AC2 skillsDir 去重单链双计 | `forEachAgentSkillsDir`（byDir 去重，per-agent 同报） | 「agents sharing one skillsDir produce a single link counted for both」 | COVERED |
+| REQ-SKILL-010 AC3 幂等 | `placeSkillLink`（existing 链 target 相等 → linked） | 「linking the same skill twice is idempotent」 | COVERED |
+| REQ-SKILL-010 AC4 E7 空声明 409 PROJECT_AGENTS_EMPTY | `linkSkillToProject` 前置校验 | 「empty agentTypes is rejected…(E7)」 | COVERED |
+| REQ-SKILL-010 AC5 外部占用冲突跳过、实体原样保留 | `placeSkillLink` → conflicts；绝不删非软链 | 「external occupation…skipped and surfaced as conflict (D4)」 | COVERED |
+| REQ-SKILL-010 AC6 E5 failed 字符串数组、他 agent 继续 | link 循环 try/catch → failed.push(skillName) | 「per-agent link failure…failed[] without aborting others (E5)」 | COVERED |
+| REQ-SKILL-010 AC7 复合身份：缺 slug/skillName 400；不存在 404 | `validateSkillIdentity` + `resolveSkillTargetDir` | 「link requires the {slug, skillName} identity」 | COVERED |
+| REQ-SKILL-011 AC1 删自有链；AC4 技能库不动 | `skillService.unlinkSkillFromProject`（readlink+comparisonKey 精确匹配 targetKey 才 rm） | 「unlinking removes only our symlink」 | COVERED |
+| REQ-SKILL-011 AC2 外部实体/外部链不动并标注 conflicts | 同上（非软链/realpath 不属该身份 → conflicts，零写盘） | 「leaves external entries and foreign symlinks untouched」 | COVERED |
+| REQ-SKILL-011 AC3 幂等成功；身份不存在 404 | lstat 缺失直接返回；`resolveSkillTargetDir` 404 | 「unlinking a non-linked skill is idempotent success」 | COVERED |
+| REQ-SKILL-012 AC1/AC2 视图即扫描；repo/external 归因；条目 {slug,skillName,agents,origin} / 外部 {name,agents,origin} | `skillService.listProjectSkills` + `attributeLinkTarget`（readlink 绝对化 + realpathBestEffort，断链也可归因） | 「attributes origin repo/external correctly」 | COVERED |
+| REQ-SKILL-012 AC3 断链 broken:true | `attributeLinkTarget` 落不到现存 skill → broken | 「a link whose library target vanished is marked broken」 | COVERED |
+| REQ-SKILL-012 AC4 外部占用 → repo 条目 conflict:true | 视图交叉引用技能库 skillName × 外部条目名（磁盘即真相下唯一可表面化途径） | 「a skill blocked by external occupation is marked conflict」 | COVERED |
+| REQ-SKILL-012 AC5/AC6 外部如实显示；E10 单目录不可读跳过+warning | readdir 失败仅 ENOENT 静默、其余 warn+continue | 「scan tolerates an unreadable agent dir…(E10)」 | COVERED |
+| REQ-SKILL-013 AC1 并集扫描域；AC4 换 agent 不丢关联（F1） | `skillService.convergeProjectSkills`：先扫 before∪after 得 linkedSet，再删移除目录，再补建 | 「switching agents rebuilds…removes ours from the old (F1)」 | COVERED |
+| REQ-SKILL-013 AC3 移除目录只删 realpath∈技能库的链 | `removeLinksInto`（slice 2 原语复用） | 「removes only our links from removed dirs and keeps external entries」 | COVERED |
+| REQ-SKILL-013 AC5 不自动关联新 skill | linkedSet 仅来自扫描 | 「convergence never links skills outside the already-linked set」 | COVERED |
+| REQ-SKILL-013 AC2 overlap 保留+新增补建 | phase 3 对全部 after 目录 placeSkillLink 幂等 | 「keeping an agent keeps its links, adding one adds links」 | COVERED |
+| REQ-SKILL-013 AC7 agentTypes=[] 删全部自有链 | afterDirs 空 → 全部 before 目录走 removeLinksInto | 「setting agentTypes to [] removes all our links and keeps externals」 | COVERED |
+| REQ-SKILL-013 AC6 PUT 响应 convergence.agents（linked/unlinked/failed/conflicts）；E5 表面化 | `routes/projects.js` PUT 分支（body 含 agentTypes 才收敛）；phase 3 catch → failed | 「convergence result reports per-agent outcomes including failures (E5)」 | COVERED |
+| REQ-SKILL-014 AC1 已关联口径重建（含手工删链） | `skillService.resyncProjectSkills`：linked record（`<repoRoot>/.linked-skills/<projectId>.json`，link/unlink/resync/cascade 维护）∪ 磁盘扫描 → 幂等重建 | 「resync rebuilds links that were manually deleted」 | COVERED |
+| REQ-SKILL-014 AC2 断链清理 | 扫描 pass：attr.broken → rm 链 → unlinked | 「resync removes broken links pointing into the library」 | COVERED |
+| REQ-SKILL-014 AC4 错指向修复 | 链名=skill 身份（F4）：名≠target skillName 且库中有同名 skill → 重建正确链 | 「resync repairs a link whose target was repointed」 | COVERED |
+| REQ-SKILL-014 AC3 外部不动+conflicts；AC5 不自动关联；空声明 no-op | 非软链/库外链 continue；placeSkillLink 冲突入 conflicts；agentTypes [] 提前返回 {agents:[]} | 「does not auto-link new skills and keeps external entries」「empty agentTypes…no-op」 | COVERED |
+| REQ-WORKSPACE-011 AC1 默认 [] + GET 往返；AC5 迁移 | `rowToProject`/`parseAgentTypes` 容忍数组输入（**slice-2 遗留缺陷修复**）；GET detail 顶层展开平铺字段；`startServer({reset:false,dbPath})` 分支生效旧库迁移 | 「defaults to [] and round-trips via GET」「projects created before this story migrate」 | COVERED |
+| REQ-WORKSPACE-011 AC2 非法 key 400 INVALID_AGENT_TYPES+invalidAgents 不写入 | `validateAgentTypes`（**改判 `isKnownAgentKey`**，见偏差 1） | 「unknown agent keys are rejected with 400 and not stored」 | COVERED |
+| REQ-WORKSPACE-011 AC3 去重保首次出现序；非数组 400；AC4 [] 合法；POST 响应携带传入值 | 同上 + parseAgentTypes 修复 | 「duplicates are deduped」「non-array…400」「empty array is legal」「creating…stores them」 | COVERED |
+| REQ-WORKSPACE-013 AC1 声明保留（drift 下可创建/可 PUT 同值） | `agentRegistryService.isKnownAgentKey`（现行快照 ∪ 随版基线） | 「drifted declaration is preserved…」 | COVERED |
+| REQ-WORKSPACE-013 AC2 收敛跳过失效 key+invalid:true+linked:[]，PUT 不失败 | `convergeProjectSkills` dirOfKey 缺失 → invalid 条目；其余 agent 正常 | 同上 + skillSync 全部 | COVERED |
+| REQ-WORKSPACE-013 AC4 快照恢复后正常收敛 | `resetAgentRegistryCache` 同时清基线缓存；收敛按现行快照 | 「agent recovers when a snapshot update brings the key back」 | COVERED |
+
+偏差与备注：
+1. **agentTypes 校验改判 `isKnownAgentKey`（现行 ∪ 基线）**：REQ-WORKSPACE-013 签核测试要求在 drift 快照（缺 claude-code）下 POST/PUT 含 claude-code 仍 201/200（声明保留且可写），而 REQ-WORKSPACE-011 要求 bogus-agent 400——两者同时成立的唯一语义是"校验集 = 现行快照 ∪ 随版基线快照"。生产环境两者同文件，语义不变；仅测试缝 override 下可区分。`isValidAgentKey`（slice 1 契约，供 skillsDir 等运行查找）保持仅看现行快照。
+2. **linked record 机制（`<repoRoot>/.linked-skills/<projectId>.json`）**：REQ-SKILL-014 AC4"手工删链 → resync 重建"在纯磁盘扫描下不可判定（链被删后与"从未关联"无法区分），必须有 workstation 记账。位置选在 workstation 私有技能库内（不进项目目录，REQ-SKILL-017 AC2 只禁 `.opc/skills`；`listSkillGroups` 跳过 dot 目录不受污染）。视图/收敛不读它（磁盘即真相不变）；仅 link/unlink/resync/cascade-remove 维护。已删项目的残留 record 为已知无害残留（与 PRD §13 残留链取舍同源）。
+3. **stopServer 关闭缓存 DB 句柄**：迁移测试删除临时 DB 后，下一个 startServer 复用陈旧句柄会 SQLITE_READONLY_DBMOVED——stopServer 现调 closeDb()，句柄不跨 server 生命周期泄漏。
+4. **startServer({reset:false, dbPath}) 生效**：原实现忽略 dbPath（懒加载 getDb 走 DB_PATH/默认路径），迁移测试 404；现 propagate 到 DB_PATH 使首请求落指定文件并触发迁移。生产调用方（main.js/headless-server）不传 dbPath，行为不变。
+5. GET /api/projects/:id 响应顶层新增平铺字段（name/agentTypes/…）+ `skills` 从占位 [] 变为真实扫描视图；`overview` 包络保留（老基线 overview 断言 76/76 绿证明兼容）。renderer/CLI 对新字段的适配属 slice 4/5。
+6.  unlink 结果沿用每 agent `{linked,unlinked,failed,conflicts}` 形状：被外部占用位置记 conflicts（签核"结果标注跳过"）。
+
+
+---
+
+## Slice 3: distribution（含 agentTypes）— 285e631..48383e3
+
+### 父代理验证与门禁记录
+
+- Slice 3: complete (285e631, 父代理独立复跑 34/34 + 43/43(slice1+2) + 76/76 + 单测 9/9 绿, commit 仅 5 个 src 文件)
+- Slice 3: PRD alignment passed（ALIGNED；两项设计性决策裁决「接受但需记录」）：
+  - **C1 linked record（`<repoRoot>/.linked-skills/<projectId>.json`）接受**：签核 REQ-SKILL-014 AC4（手工删链→resync 重建）在纯磁盘扫描下不可满足，记账是唯一最小机制；视图/收敛不读它，磁盘即真相不变；`.linked-skills` dot 目录不污染 listSkillGroups/E11；deleteSource 级联同步清理。探针实证卫生良好。
+  - **C2 isKnownAgentKey（现行快照 ∪ 随版基线）接受**：drift 测试要求 drifted key 可写 + bogus 400，∪ 是唯一同时成立的语义；基线 = committed 快照文件（单一数据源保持）；生产环境（无 env 缝）基线≡现行，语义不变。REQ-WORKSPACE-011 AC2 措辞与实现存在文本偏差，/reflect 时文档同步。
+  - slice-2 遗留缺陷（POST 响应恒 `agentTypes: []`）已修复验证：parseAgentTypes 容忍数组输入，POST 响应携带传入值，GET 往返一致。
+- **对齐报告记录项（低严重度，留 /review --stage=code 或 /reflect 决策）**：
+  1. record 幽灵条目不剪枝（手工清库 + 同身份重新入库后 resync 会复活旧关联）——与 resync 断链清理语义内部不一致，需显性记录
+  2. `removeLinksInto` rmSync 无 try/catch（收敛 Phase 2 删链失败 → DB 已保存后 500，与 unlink/resync 逐链容错不一致）
+  3. 移除目录中断链残留（realpathSync 对 dangling 抛错跳过；可改 readlink 归因）
+  4. REQ-SKILL-011 AC2 跳过标注、resync E5 failed 路径无签核测试断言（missing-test，留 /reflect）
+  5. record 非原子写 + 跨 owner 多进程竞态（降级不腐化，记为已知取舍）
+- Slice 3: refactor pass done (285e631..48383e3, 提取 scanSkillDirEntries/ensureLinksInDir/repairMispointedLink/finalizeAgentResults 等，净 -47 行，父代理复跑全绿, no rollback)
+- 留 /review：resync 半修复态归因边缘；linkSkillToProject 与 finalizeAgentResults 尾部重复（slice-2 区域）。
