@@ -15,7 +15,7 @@ export async function handleProjects(req, res, body, pathParts) {
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(project));
       } catch (err) {
-        return badRequest(res, err.message);
+        return mapError(res, err);
       }
     }
 
@@ -31,6 +31,18 @@ export async function handleProjects(req, res, body, pathParts) {
       return ok(res, detail);
     }
 
+    if (req.method === "PUT") {
+      try {
+        const updated = projectService.updateProject(projectId, body || {});
+        if (!updated) return notFound(res, "Project not found");
+        // Convergence (link migration across changed agent dirs) is wired in a
+        // later slice; the response already carries the field per the contract.
+        return ok(res, { ...updated, convergence: { agents: [] } });
+      } catch (err) {
+        return mapError(res, err);
+      }
+    }
+
     if (req.method === "DELETE") {
       const deleted = projectService.deleteProject(projectId);
       if (!deleted) return notFound(res, "Project not found");
@@ -41,21 +53,16 @@ export async function handleProjects(req, res, body, pathParts) {
   }
 
   if (pathParts.length === 2 && pathParts[1] === "skills") {
-    const detail = buildProjectDetail(projectId);
-    if (!detail) return notFound(res, "Project not found");
-    if (req.method === "GET") {
-      return ok(res, detail.skills);
-    }
-    if (req.method === "PATCH") {
-      const { skillId, linked } = body || {};
-      if (!skillId) return badRequest(res, "skillId is required");
-      if (linked) {
-        skillService.linkSkill(skillId, projectId);
-      } else {
-        skillService.unlinkSkill(skillId, projectId);
+    const project = projectService.getProjectDetail(projectId);
+    if (!project) return notFound(res, "Project not found");
+    if (req.method === "POST") {
+      try {
+        return ok(res, skillService.linkSkillToProject(project, body));
+      } catch (err) {
+        return mapError(res, err);
       }
-      return ok(res, buildProjectDetail(projectId));
     }
+    // GET project skill view is implemented with the sync slice.
     return notFound(res);
   }
 
@@ -70,31 +77,21 @@ async function createProject(body) {
       description: body.description,
       repoUrl: body.repoUrl,
       branch: body.branch,
-      cloneDirectory: body.cloneDirectory
+      cloneDirectory: body.cloneDirectory,
+      agentTypes: body.agentTypes
     });
   }
   return projectService.createLocalProject({
     name: body.name,
     description: body.description,
-    localPath: body.localPath
+    localPath: body.localPath,
+    agentTypes: body.agentTypes
   });
 }
 
 function buildProjectDetail(projectId) {
   const project = projectService.getProjectDetail(projectId);
   if (!project) return null;
-  const linkedSkillIds = skillService.getLinkedSkills(projectId);
-  const allSkills = skillService.listLinkableSkills();
-  const skillMap = new Map(allSkills.map(s => [s.id, s]));
-  const skills = [];
-  for (const skill of allSkills) {
-    skills.push({ ...skill, linked: linkedSkillIds.includes(skill.id) });
-  }
-  for (const id of linkedSkillIds) {
-    if (!skillMap.has(id)) {
-      skills.push({ id, linked: true });
-    }
-  }
   return {
     overview: {
       name: project.name,
@@ -103,11 +100,13 @@ function buildProjectDetail(projectId) {
       repoUrl: project.repoUrl,
       branch: project.branch,
       localPath: project.localPath,
+      agentTypes: project.agentTypes,
       flowsCount: project.flowsCount,
       runsCount: project.runsCount,
       updatedAt: project.updatedAt
     },
-    skills
+    // Project skill view (scan of declared agent dirs) lands with the sync slice.
+    skills: []
   };
 }
 
@@ -121,9 +120,12 @@ function noContent(res) {
   res.end();
 }
 
-function badRequest(res, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
+function mapError(res, err) {
+  const status = err.status || 400;
+  const body = { error: err.code || "VALIDATION_ERROR", message: err.message };
+  if (err.invalidAgents) body.invalidAgents = err.invalidAgents;
+  res.writeHead(status, { "Content-Type": "application/json" });
+  return res.end(JSON.stringify(body));
 }
 
 function notFound(res, message = "Not found") {

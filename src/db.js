@@ -150,38 +150,8 @@ function initSchema(database) {
       repoUrl TEXT,
       branch TEXT,
       localPath TEXT,
+      agentTypes TEXT NOT NULL DEFAULT '[]',
       updatedAt TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS skill_repos (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      repoPath TEXT NOT NULL,
-      installSource TEXT NOT NULL,
-      originalIdentifier TEXT,
-      createdAt TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS skills (
-      id TEXT PRIMARY KEY,
-      repoId TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      repoPath TEXT NOT NULL,
-      version TEXT,
-      dependencies TEXT,
-      category TEXT,
-      author TEXT,
-      tags TEXT,
-      parameters TEXT,
-      examples TEXT,
-      readme TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS project_skills (
-      projectId TEXT NOT NULL,
-      skillId TEXT NOT NULL,
-      PRIMARY KEY (projectId, skillId)
     );
 
     CREATE TABLE IF NOT EXISTS flows (
@@ -324,19 +294,17 @@ function migrateSchema(database) {
     database.exec(`ALTER TABLE executions ADD COLUMN depth INTEGER NOT NULL DEFAULT 0`);
   }
   database.exec(`CREATE INDEX IF NOT EXISTS idx_executions_parentExecutionId ON executions(parentExecutionId)`);
-  // Skill repo information architecture migration.
+  // REQ-SKILL-017 / ADR-011: the skill install-state tables are gone. Skill
+  // library truth now lives on disk (skill repo path scans); drop the legacy
+  // tables from any pre-existing database.
   database.exec(`
-    CREATE TABLE IF NOT EXISTS skill_repos (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      repoPath TEXT NOT NULL,
-      installSource TEXT NOT NULL,
-      originalIdentifier TEXT,
-      createdAt TEXT NOT NULL
-    )
+    DROP TABLE IF EXISTS project_skills;
+    DROP TABLE IF EXISTS skills;
+    DROP TABLE IF EXISTS skill_repos;
   `);
-  if (!hasColumn(database, "skills", "repoId")) {
-    database.exec(`ALTER TABLE skills ADD COLUMN repoId TEXT`);
+  // REQ-WORKSPACE-011: projects declare agent types (JSON array of registry keys).
+  if (!hasColumn(database, "projects", "agentTypes")) {
+    database.exec(`ALTER TABLE projects ADD COLUMN agentTypes TEXT NOT NULL DEFAULT '[]'`);
   }
   // REQ-FLOW-028: execution_nodes 表（旧库补建，与 initSchema 同 DDL，幂等）。
   database.exec(EXECUTION_NODES_DDL);
@@ -355,11 +323,5 @@ function migrateSchema(database) {
       createdAt TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
-  `);
-  // Clean up orphan skills left over from before the skill-repo information architecture.
-  // Skills must belong to a valid skill_repo; those without a repoId are no longer reachable.
-  database.exec(`
-    DELETE FROM project_skills WHERE skillId IN (SELECT id FROM skills WHERE repoId IS NULL);
-    DELETE FROM skills WHERE repoId IS NULL;
   `);
 }

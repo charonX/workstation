@@ -16,14 +16,12 @@ import { handleExecutions } from "./routes/executions.js";
 import { handleSkills } from "./routes/skills.js";
 import { handleAgents } from "./routes/agents.js";
 import { handleSettings } from "./routes/settings.js";
-import { handleSkillRepos } from "./routes/skillRepos.js";
 import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
-import { reconcileUserSkillRepos } from "../services/skillService.js";
 
 const activeServers = new Set();
 
@@ -78,18 +76,14 @@ export function startServer(options = {}) {
       );
     }
     settingsService.resetSettings();
-    // Isolate skill repo path in test/reset mode so reconcileUserSkillRepos does not
-    // scan the user's real ~/.codex-harness/skills directory (which may contain
-    // leftover repos from previous runs) and pollute the fresh DB.
+    // Isolate the skill library path in test/reset mode so library scans never
+    // touch the user's real ~/.opc-workstation/skills directory.
     const tempSkillRepoPath = path.join(
       os.tmpdir(),
       `opc-workstation-test-skills-${process.pid}-${Date.now()}`
     );
     settingsService.saveSettings({ skillRepoPath: tempSkillRepoPath });
   }
-  // BUG-011: 协调用户已安装的 skill repo——扫描 settings.skillRepoPath 目录，
-  // 把磁盘上存在但 DB 里没登记的 repo（因之前 DB 路径错位而丢失的记录）补登记回 DB。
-  reconcileUserSkillRepos();
 
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -188,7 +182,7 @@ export function stopServer({ server }) {
 async function handleRequest(req, res, server) {
   // CORS: allow renderer loaded from Vite dev server to call the local API.
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
@@ -223,8 +217,6 @@ async function handleRequest(req, res, server) {
       return handleSkills(req, res, body, subPath);
     case "agents":
       return handleAgents(req, res);
-    case "skill-repos":
-      return handleSkillRepos(req, res, body, subPath);
     case "dashboard":
       return handleDashboard(req, res);
     case "notifications":

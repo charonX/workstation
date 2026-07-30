@@ -1,125 +1,88 @@
-import { getDb, resetDb } from "../db.js";
-import * as settingsService from "./settingsService.js";
-import * as projectService from "./projectService.js";
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as settingsService from "./settingsService.js";
+import * as projectService from "./projectService.js";
+import * as agentRegistryService from "./agentRegistryService.js";
 
-export function resetSkills(seed = []) {
-  resetDb();
-  const db = getDb();
-  const insertSkill = db.prepare(`
-    INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const skill of seed) {
-    insertSkill.run(
-      skill.id,
-      skill.repoId ?? "legacy-repo",
-      skill.name,
-      skill.description ?? null,
-      skill.repoPath,
-      skill.version ?? null,
-      JSON.stringify(skill.dependencies ?? []),
-      skill.category ?? null,
-      skill.author ?? null,
-      JSON.stringify(skill.tags ?? []),
-      JSON.stringify(skill.parameters ?? []),
-      JSON.stringify(skill.examples ?? []),
-      skill.readme ?? null
-    );
-  }
-}
+// Skill service (ADR-011 revision): disk is the single source of truth.
+// - The skill library is a workstation-private directory (settings.skillRepoPath);
+//   each direct child directory is a "source directory" (one git clone or one
+//   local copy), holding one or more skills (root-level SKILL.md or skills/*/).
+// - There is no install-state DB: listing = live scan (tech-design F6),
+//   install = clone/copy into the library (F1/F2), update = git pull --ff-only
+//   (D6), remove = cascade link removal + delete source dir (F5), and project
+//   linking = workstation-owned symlinks straight into the library (F4).
+// - Legacy install sources were removed (REQ-SKILL-009); SKILL.md
+//   "dependencies" is never read or cascaded (ADR-004 revision).
 
-function rowToSkill(row) {
-  return {
-    id: row.id,
-    repoId: row.repoId,
-    name: row.name,
-    description: row.description,
-    repoPath: row.repoPath,
-    version: row.version,
-    dependencies: JSON.parse(row.dependencies || "[]"),
-    category: row.category,
-    author: row.author,
-    tags: JSON.parse(row.tags || "[]"),
-    parameters: JSON.parse(row.parameters || "[]"),
-    examples: JSON.parse(row.examples || "[]"),
-    readme: row.readme
-  };
-}
+const execFileAsync = promisify(execFile);
 
-function rowToRepo(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    repoPath: row.repoPath,
-    installSource: row.installSource,
-    originalIdentifier: row.originalIdentifier,
-    createdAt: row.createdAt
-  };
-}
+// ---------- shared path helpers ----------
 
-function resolveTilde(inputPath) {
-  if (!inputPath || typeof inputPath !== "string") return inputPath;
+function expandTilde(inputPath) {
+  if (typeof inputPath !== "string") return inputPath;
   if (inputPath === "~") return os.homedir();
-  if (inputPath.startsWith("~" + path.sep)) {
+  if (inputPath.startsWith("~/")) {
     return path.join(os.homedir(), inputPath.slice(2));
   }
   return inputPath;
 }
 
-function copyDirRecursive(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
+function isDirectory(targetPath) {
+  try {
+    return fs.statSync(targetPath).isDirectory();
+  } catch {
+    return false;
   }
 }
 
-function sanitizeSkillName(identifier) {
-  return path.basename(identifier).replace(/[^a-zA-Z0-9_-]/g, "_");
+function realpathBestEffort(targetPath) {
+  let current = targetPath;
+  const missing = [];
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+  try {
+    return path.join(fs.realpathSync(current), ...missing);
+  } catch {
+    return targetPath;
+  }
 }
+
+// Case-normalized comparison base (macOS/Windows case-insensitive volumes).
+function comparisonKey(targetPath) {
+  return realpathBestEffort(targetPath).toLowerCase();
+}
+
+function isInsideOrEqual(candidate, base) {
+  return candidate === base || candidate.startsWith(base + path.sep);
+}
+
+function repoRoot() {
+  const settings = settingsService.loadSettings();
+  return expandTilde(settings.skillRepoPath);
+}
+
+function codedError(status, code, message, extra = {}) {
+  const err = new Error(message);
+  err.status = status;
+  err.code = code;
+  Object.assign(err, extra);
+  return err;
+}
+
+// ---------- SKILL.md parsing ----------
 
 function parseScalar(raw) {
   if (raw == null) return "";
   const v = raw.trim();
   return v.replace(/^["']|["']$/g, "");
-}
-
-function parseList(raw) {
-  if (raw == null) return [];
-  const v = raw.trim();
-  if (!v) return [];
-  if (v.startsWith("[") && v.endsWith("]")) {
-    return v
-      .slice(1, -1)
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map(s => s.replace(/^["']|["']$/g, ""));
-  }
-  const lines = v.split("\n").map(l => l.trim()).filter(Boolean);
-  if (lines.length > 0 && lines.every(l => l.startsWith("-"))) {
-    return lines
-      .map(l => l.replace(/^-\s*/, "").trim())
-      .filter(Boolean)
-      .map(s => s.replace(/^["']|["']$/g, ""));
-  }
-  if (v.includes(",")) {
-    return v
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map(s => s.replace(/^["']|["']$/g, ""));
-  }
-  return [parseScalar(raw)];
 }
 
 function parseFrontmatter(text) {
@@ -162,636 +125,509 @@ function parseSkillMarkdown(filePath) {
   }
 }
 
-function findRepoSkillDirs(repoRoot) {
-  const skillsDir = path.join(repoRoot, "skills");
-  if (!fs.existsSync(skillsDir) || !fs.statSync(skillsDir).isDirectory()) {
-    return [];
-  }
+// ---------- skill directory discovery ----------
 
+// A source directory holds skills in one of two layouts (tech-design F6):
+// root-level SKILL.md (skillName = source dir name) or skills/<name>/SKILL.md.
+function discoverSkillDirs(sourceDir) {
+  if (fs.existsSync(path.join(sourceDir, "SKILL.md"))) {
+    return [{ skillName: path.basename(sourceDir), dir: sourceDir }];
+  }
+  const skillsRoot = path.join(sourceDir, "skills");
+  if (!isDirectory(skillsRoot)) return [];
   const results = [];
-  function walk(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    let hasSkillMd = false;
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        walk(path.join(dir, entry.name));
-      } else if (entry.name.toLowerCase() === "SKILL.md".toLowerCase()) {
-        hasSkillMd = true;
-      }
-    }
-    if (hasSkillMd) {
-      results.push(dir);
+  for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(skillsRoot, entry.name);
+    if (fs.existsSync(path.join(dir, "SKILL.md"))) {
+      results.push({ skillName: entry.name, dir });
     }
   }
-  walk(skillsDir);
   return results;
 }
 
-function scanRepoSkills(repoRoot) {
-  const skillDirs = findRepoSkillDirs(repoRoot);
-  return skillDirs.map((dir) => {
-    const parsed = parseSkillMarkdown(path.join(dir, "SKILL.md"));
-    const relativePath = path.relative(repoRoot, dir);
-    return {
-      name: parsed.frontmatter.name || path.basename(dir),
-      description: parsed.frontmatter.description || null,
-      category: parsed.frontmatter.category || null,
-      author: parsed.frontmatter.author || null,
-      version: parsed.frontmatter.version || null,
-      repoPath: relativePath,
-      tags: parseList(parsed.frontmatter.tags || ""),
-      dependencies: parseList(parsed.frontmatter.dependencies || ""),
-      readme: parsed.body || null
-    };
-  });
-}
+// Link names are skill directory names (disk truth; agents discover skills by
+// directory name). Reject anything with path separators, whitespace or
+// control characters (PRD §7, review S2).
+const ILLEGAL_SKILL_DIR_NAME = /[\s/\\]|[\x00-\x1f]/;
 
-export function createSkillRepo({ name, repoPath, installSource, originalIdentifier }) {
-  const db = getDb();
-  const id = `repo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  db.prepare(`
-    INSERT INTO skill_repos (id, name, repoPath, installSource, originalIdentifier, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, name, repoPath, installSource, originalIdentifier ?? null, new Date().toISOString());
-  return getSkillRepo(id);
-}
-
-export function getSkillRepo(repoId) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
-  return row ? rowToRepo(row) : undefined;
-}
-
-export function getSkillRepoByPath(repoPath) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM skill_repos WHERE repoPath = ?").get(repoPath);
-  return row ? rowToRepo(row) : undefined;
-}
-
-// BUG-011 fix: reconcile user-installed skill repos on disk with DB records.
-// Scans the configured skillRepoPath directory; any subdirectory that contains
-// skills/ with SKILL.md files but has no skill_repos DB row is re-registered.
-// This recovers from the BUG-009 split-brain where skills were installed to
-// ~/.opc-workstation/data.db but the app now reads from userData/data.db.
-export function reconcileUserSkillRepos() {
-  const settings = settingsService.loadSettings();
-  const rootPath = resolveTilde(settings.skillRepoPath);
-  if (!rootPath || !fs.existsSync(rootPath)) {
-    return { recovered: 0 };
-  }
-
-  // Collect existing repo paths from DB for quick dedup check.
-  const db = getDb();
-  const existingPaths = new Set(
-    db.prepare("SELECT repoPath FROM skill_repos").all().map((r) => r.repoPath)
-  );
-
-  let recovered = 0;
-  const recoveredNames = [];
-  for (const entry of fs.readdirSync(rootPath, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const repoPath = path.join(rootPath, entry.name);
-    if (existingPaths.has(repoPath)) continue;
-
-    // Must contain a skills/ subdirectory with SKILL.md files to be recognized
-    // as an installed skill repo (same validation as runInstallJob).
-    const skillDirs = findRepoSkillDirs(repoPath);
-    if (skillDirs.length === 0) continue;
-
-    try {
-      const repo = createSkillRepo({
-        name: entry.name,
-        repoPath,
-        installSource: "recovered"
-      });
-      for (const skill of scanRepoSkills(repoPath)) {
-        createSkill(skill, repo.id);
-      }
-      recovered++;
-      recoveredNames.push(entry.name);
-    } catch (err) {
-      console.warn(`[skillService] failed to recover repo ${entry.name}:`, err.message);
-    }
-  }
-
-  if (recovered > 0) {
-    console.log(`[skillService] recovered ${recovered} previously-installed skill repo(s): ${recoveredNames.join(", ")}`);
-  }
-  return { recovered, names: recoveredNames };
-}
-
-export function createSkill(skill, repoId) {
-  const db = getDb();
-  const id = skill.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  db.prepare(`
-    INSERT INTO skills (id, repoId, name, description, repoPath, version, dependencies, category, author, tags, parameters, examples, readme)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    repoId,
-    skill.name,
-    skill.description ?? null,
-    skill.repoPath,
-    skill.version ?? null,
-    JSON.stringify(skill.dependencies || []),
-    skill.category ?? null,
-    skill.author ?? null,
-    JSON.stringify(skill.tags || []),
-    JSON.stringify(skill.parameters || []),
-    JSON.stringify(skill.examples || []),
-    skill.readme ?? null
-  );
-  return getSkillDetail(id);
-}
-
-export function getSkillDetail(skillId) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM skills WHERE id = ?").get(skillId);
-  if (!row) {
-    return undefined;
-  }
-  return {
-    ...rowToSkill(row),
-    tabs: ["Overview", "Parameters", "Examples", "README"]
-  };
-}
-
-export function listSkills() {
-  const db = getDb();
-  return db.prepare("SELECT * FROM skills").all().map(rowToSkill);
-}
-
-export function listLinkableSkills() {
-  const db = getDb();
-  const validRepoIds = new Set(
-    db.prepare("SELECT id FROM skill_repos").all().map((row) => row.id)
-  );
-  return db
-    .prepare("SELECT * FROM skills")
-    .all()
-    .map(rowToSkill)
-    .filter((skill) => validRepoIds.has(skill.repoId));
-}
-
-export function listSkillRepos() {
-  const db = getDb();
-  const repos = db
-    .prepare("SELECT * FROM skill_repos ORDER BY createdAt DESC")
-    .all()
-    .map(rowToRepo);
-  const skills = db.prepare("SELECT * FROM skills").all().map(rowToSkill);
-  const byRepo = new Map(repos.map((r) => [r.id, []]));
-  for (const skill of skills) {
-    byRepo.get(skill.repoId)?.push(skill);
-  }
-  return repos.map((repo) => ({ repo, skills: byRepo.get(repo.id) || [] }));
-}
-
-const installJobs = new Map();
-
-function emitJobEvent(job, event) {
-  if (event.type === "log") {
-    job.logs.push(event.text);
-  } else if (event.type === "success") {
-    job.status = "success";
-    job.result = { repo: event.repo, skills: event.skills };
-  } else if (event.type === "error") {
-    job.status = "error";
-    job.errorMessage = event.message;
-  }
-  for (const listener of job.listeners) {
-    listener(event);
-  }
-}
-
-function runCommand(command, args, cwd, job) {
-  const cmd = process.platform === "win32" ? `${command}.cmd` : command;
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, shell: process.platform === "win32" });
-    const push = (data) => {
-      for (const line of data.toString().split(/\r?\n/)) {
-        if (line.length > 0) emitJobEvent(job, { type: "log", text: line });
-      }
-    };
-    child.stdout.on("data", push);
-    child.stderr.on("data", push);
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Command failed with exit code ${code}`));
-    });
-  });
-}
-
-function guessPackageName(identifier, dependencies) {
-  if (dependencies.length === 0) return null;
-  const base = path.basename(identifier);
-  if (dependencies.includes(base)) return base;
-  const nameOnly = identifier.replace(/@[^@/]+$/, "");
-  if (dependencies.includes(nameOnly)) return nameOnly;
-  return dependencies[0];
-}
-
-function recordRepoAndSkills(repoPath, { name, installSource, originalIdentifier }, job) {
-  const skillDirs = findRepoSkillDirs(repoPath);
+function validateSourceContent(sourceDir) {
+  const skillDirs = discoverSkillDirs(sourceDir);
   if (skillDirs.length === 0) {
-    throw new Error(`Installed repo does not contain any skill directories with SKILL.md under skills/`);
+    throw codedError(
+      400,
+      "SKILL_SOURCE_INVALID",
+      "Source must contain a SKILL.md at its root or under skills/*/SKILL.md"
+    );
   }
-
-  const repo = createSkillRepo({ name, repoPath, installSource, originalIdentifier });
-  const skills = [];
-  for (const skillData of scanRepoSkills(repoPath)) {
-    skills.push(createSkill(skillData, repo.id));
+  for (const { skillName } of skillDirs) {
+    if (ILLEGAL_SKILL_DIR_NAME.test(skillName)) {
+      throw codedError(
+        400,
+        "SKILL_SOURCE_INVALID",
+        `Illegal skill directory name: ${JSON.stringify(skillName)} (no whitespace, path separators or control characters allowed)`
+      );
+    }
   }
-  emitJobEvent(job, { type: "success", repo, skills });
+  return skillDirs;
 }
 
-async function runInstallJob(job, { source, identifier }) {
+// ---------- library scan view (REQ-SKILL-006) ----------
+
+function readGitRemoteUrl(sourceDir) {
   try {
-    job.status = "running";
-
-    const settings = settingsService.loadSettings();
-    const skillRepoPath = resolveTilde(settings.skillRepoPath);
-
-    if (!skillRepoPath) {
-      const err = new Error("Skill repository path is not configured");
-      err.status = 400;
-      throw err;
-    }
-
-    if (source === "local") {
-      const err = new Error("Local install source is not supported");
-      err.status = 400;
-      throw err;
-    }
-
-    if (source === "npm") {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-skill-install-"));
-      emitJobEvent(job, { type: "log", text: `Running npm install --prefix ${tempDir} ${identifier}` });
-      await runCommand("npm", ["install", "--prefix", tempDir, identifier], undefined, job);
-      emitJobEvent(job, { type: "log", text: "npm install completed; resolving installed package" });
-
-      const tempPackageJson = JSON.parse(fs.readFileSync(path.join(tempDir, "package.json"), "utf8"));
-      const dependencies = Object.keys(tempPackageJson.dependencies || {});
-      const packageName = guessPackageName(identifier, dependencies);
-      if (!packageName) {
-        throw new Error("npm install did not produce any dependencies");
-      }
-
-      const installedDir = path.join(tempDir, "node_modules", packageName);
-      if (!fs.existsSync(installedDir)) {
-        throw new Error(`Installed package directory not found: ${installedDir}`);
-      }
-
-      const pkgJson = JSON.parse(fs.readFileSync(path.join(installedDir, "package.json"), "utf8"));
-      const name = pkgJson.name || packageName;
-      const repoPath = path.join(skillRepoPath, sanitizeSkillName(name));
-
-      emitJobEvent(job, { type: "log", text: `Copying installed package to ${repoPath}` });
-      fs.cpSync(installedDir, repoPath, { recursive: true, force: true, dereference: true });
-      emitJobEvent(job, { type: "log", text: "Installed package copied successfully" });
-
-      recordRepoAndSkills(repoPath, { name, installSource: source, originalIdentifier: identifier }, job);
-    } else if (source === "plugin") {
-      const name = sanitizeSkillName(identifier);
-      const repoPath = path.join(skillRepoPath, name);
-      const skillDir = path.join(repoPath, "skills", name);
-      fs.mkdirSync(skillDir, { recursive: true });
-
-      const skillMd = [
-        "---",
-        `name: ${name}`,
-        `description: Installed from plugin`,
-        "---",
-        "",
-        `# ${name}`,
-        "",
-        `Installed from plugin identifier: ${identifier}`
-      ].join("\n");
-      fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillMd);
-      emitJobEvent(job, { type: "log", text: `Created managed plugin directory at ${repoPath}` });
-
-      recordRepoAndSkills(repoPath, { name, installSource: source, originalIdentifier: identifier }, job);
-    } else {
-      throw new Error(`Unsupported install source: ${source}`);
-    }
-  } catch (err) {
-    emitJobEvent(job, { type: "error", message: err.message });
+    const config = fs.readFileSync(path.join(sourceDir, ".git", "config"), "utf8");
+    const section = config.match(/\[remote "origin"\]([^\[]*)/);
+    if (!section) return null;
+    const urlLine = section[1].match(/^\s*url\s*=\s*(.+)$/m);
+    return urlLine ? urlLine[1].trim() : null;
+  } catch {
+    return null;
   }
 }
 
-export function startInstallJob(body) {
-  const { source, identifier } = body || {};
-  if (!source || !identifier) {
-    const err = new Error("source and identifier are required");
-    err.status = 400;
-    throw err;
-  }
+function isGitSource(sourceDir) {
+  // .git may be a directory (normal clone) or a file (worktree/submodule).
+  return fs.existsSync(path.join(sourceDir, ".git"));
+}
 
-  if (source === "local") {
-    const err = new Error("Local install source is not supported");
-    err.status = 400;
-    throw err;
+function scanSourceDir(sourceDir, slug) {
+  const git = isGitSource(sourceDir);
+  const skills = [];
+  for (const { skillName, dir } of discoverSkillDirs(sourceDir)) {
+    const parsed = parseSkillMarkdown(path.join(dir, "SKILL.md"));
+    const name = parseScalar(parsed.frontmatter.name);
+    const description = parseScalar(parsed.frontmatter.description);
+    // E6: invalid SKILL.md is skipped with a warning; the scan must not fail.
+    if (!name || !description) {
+      console.warn(
+        `[skillService] skipping ${path.join(slug, path.relative(sourceDir, dir)) || slug}: SKILL.md misses name/description`
+      );
+      continue;
+    }
+    skills.push({ skillName, name, description });
   }
-
-  const settings = settingsService.loadSettings();
-  if (!resolveTilde(settings.skillRepoPath)) {
-    const err = new Error("Skill repository path is not configured");
-    err.status = 400;
-    throw err;
-  }
-
-  const job = {
-    id: `install-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    status: "pending",
-    logs: [],
-    listeners: new Set()
+  skills.sort((a, b) => a.skillName.localeCompare(b.skillName));
+  return {
+    slug,
+    sourceType: git ? "git" : "local",
+    sourceUrl: git ? readGitRemoteUrl(sourceDir) : null,
+    skills
   };
-  installJobs.set(job.id, job);
-  runInstallJob(job, { source, identifier });
+}
+
+// GET /api/skills — grouped live scan of the library (disk as truth, no cache).
+export function listSkillGroups() {
+  const root = repoRoot();
+  if (!root || !isDirectory(root)) return [];
+  const groups = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith(".")) continue;
+    try {
+      groups.push(scanSourceDir(path.join(root, entry.name), entry.name));
+    } catch (err) {
+      // E10: a concurrently-changing source dir is skipped, not fatal.
+      console.warn(`[skillService] skipping source dir ${entry.name}: ${err.message}`);
+    }
+  }
+  groups.sort((a, b) => a.slug.localeCompare(b.slug));
+  return groups;
+}
+
+// ---------- jobs ----------
+
+const jobs = new Map();
+
+function createJob() {
+  const job = {
+    id: `skill-job-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    status: "pending",
+    error: null
+  };
+  jobs.set(job.id, job);
+  return job;
+}
+
+// GET /api/skills/jobs/:jobId — polling model {id, status, error:{code,message}}.
+export function getJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return undefined;
+  return { id: job.id, status: job.status, error: job.error ?? null };
+}
+
+function finishJob(job, error) {
+  if (error) {
+    job.status = "error";
+    job.error = { code: error.code ?? "SKILL_JOB_FAILED", message: error.message };
+  } else {
+    job.status = "success";
+    job.error = null;
+  }
+}
+
+// ---------- git helpers (system git, parameterized execFile, no shell) ----------
+
+async function ensureGitAvailable() {
+  try {
+    await execFileAsync("git", ["--version"]);
+  } catch {
+    throw codedError(503, "GIT_UNAVAILABLE", "System git is not available on PATH");
+  }
+}
+
+function gitErrorMessage(err) {
+  const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
+  return stderr || err.message;
+}
+
+// ---------- install (REQ-SKILL-007 / REQ-SKILL-008 / REQ-SKILL-009) ----------
+
+// git slugs derive from the URL (owner-repo); collisions get a numeric suffix.
+function deriveGitSlug(identifier) {
+  const trimmed = String(identifier).replace(/[/\\]+$/, "").replace(/\.git$/i, "");
+  const segments = trimmed.split(/[/:]+/).filter(Boolean);
+  const last = segments[segments.length - 1] || "skill-source";
+  const owner = segments.length > 1 ? segments[segments.length - 2] : null;
+  const raw = owner ? `${owner}-${last}` : last;
+  return raw.replace(/[^a-zA-Z0-9._-]/g, "-") || "skill-source";
+}
+
+function resolveGitSlug(root, identifier) {
+  const base = deriveGitSlug(identifier);
+  let candidate = base;
+  for (let n = 2; fs.existsSync(path.join(root, candidate)); n += 1) {
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
+}
+
+async function runGitInstallJob(job, { identifier, slug }) {
+  job.status = "running";
+  const root = repoRoot();
+  const targetDir = path.join(root, slug);
+  fs.mkdirSync(root, { recursive: true });
+  try {
+    await execFileAsync("git", ["clone", "--depth", "1", identifier, targetDir]);
+  } catch (err) {
+    // E1: fetch failure — no residue left in the library.
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    throw codedError(502, "SKILL_FETCH_FAILED", gitErrorMessage(err));
+  }
+  try {
+    validateSourceContent(targetDir);
+  } catch (err) {
+    // Content validation failure — clean up the clone (tech-design F1).
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    throw codedError(502, err.code ?? "SKILL_SOURCE_INVALID", err.message);
+  }
+}
+
+function validateLocalSource(identifier) {
+  if (typeof identifier !== "string" || identifier.trim() === "") {
+    throw codedError(400, "SKILL_SOURCE_INVALID", "Local source path is required");
+  }
+  const expanded = expandTilde(identifier.trim());
+  if (!isDirectory(expanded)) {
+    throw codedError(400, "SKILL_SOURCE_INVALID", `Local source is not an existing directory: ${identifier}`);
+  }
+  // E2 self-reference guard: the source must not equal/contain the library,
+  // nor live inside it.
+  const sourceKey = comparisonKey(expanded);
+  const rootKey = comparisonKey(repoRoot());
+  if (isInsideOrEqual(sourceKey, rootKey) || isInsideOrEqual(rootKey, sourceKey)) {
+    throw codedError(
+      400,
+      "SKILL_SOURCE_INVALID",
+      "Local source must not equal, contain or be contained by the skill library itself"
+    );
+  }
+  validateSourceContent(expanded);
+  return expanded;
+}
+
+function copyLocalSource(sourceDir, targetDir) {
+  fs.cpSync(sourceDir, targetDir, {
+    recursive: true,
+    dereference: false,
+    // Local copies must not bring a .git along — a copied source is local-type.
+    filter: (src) => path.basename(src) !== ".git"
+  });
+}
+
+function runLocalInstallJob(job, { sourceDir, slug, force }) {
+  job.status = "running";
+  const root = repoRoot();
+  const targetDir = path.join(root, slug);
+  fs.mkdirSync(root, { recursive: true });
+  if (force && fs.existsSync(targetDir)) {
+    // E12 force: local "update" = wipe and re-copy (tech-design D6/F2).
+    fs.rmSync(targetDir, { recursive: true, force: true });
+  }
+  copyLocalSource(sourceDir, targetDir);
+}
+
+// POST /api/skills/install {sourceType: "git"|"local", identifier, force?} -> {jobId}.
+// Synchronous rejections: invalid input (400 SKILL_SOURCE_INVALID), local slug
+// conflict without force (409 SKILL_SLUG_CONFLICT), git unavailable (503
+// GIT_UNAVAILABLE). Everything else lands in the async job's terminal state.
+export async function startInstall(body) {
+  const { sourceType, identifier, force } = body || {};
+  if (sourceType !== "git" && sourceType !== "local") {
+    // REQ-SKILL-009: legacy source types are rejected here (their install
+    // logic no longer exists anywhere in this service).
+    throw codedError(400, "SKILL_SOURCE_INVALID", `Unsupported skill source type: ${sourceType}`);
+  }
+  if (typeof identifier !== "string" || identifier.trim() === "") {
+    throw codedError(400, "SKILL_SOURCE_INVALID", "identifier is required");
+  }
+  const root = repoRoot();
+  if (!root) {
+    throw codedError(400, "SKILL_SOURCE_INVALID", "Skill repository path is not configured");
+  }
+
+  if (sourceType === "git") {
+    await ensureGitAvailable();
+    const slug = resolveGitSlug(root, identifier.trim());
+    const job = createJob();
+    runGitInstallJob(job, { identifier: identifier.trim(), slug })
+      .then(() => finishJob(job))
+      .catch((err) => finishJob(job, err));
+    return { jobId: job.id };
+  }
+
+  // local: all validation is synchronous (E2/E12 happen before any write).
+  const sourceDir = validateLocalSource(identifier);
+  const slug = path.basename(sourceDir);
+  if (fs.existsSync(path.join(root, slug)) && force !== true) {
+    throw codedError(
+      409,
+      "SKILL_SLUG_CONFLICT",
+      `A source named "${slug}" already exists in the skill library; pass force=true to overwrite it`,
+      { existing: { slug } }
+    );
+  }
+  const job = createJob();
+  try {
+    runLocalInstallJob(job, { sourceDir, slug, force: force === true });
+    finishJob(job);
+  } catch (err) {
+    finishJob(job, err);
+  }
   return { jobId: job.id };
 }
 
-export function getInstallJob(jobId) {
-  return installJobs.get(jobId);
-}
+// ---------- update (REQ-SKILL-016) ----------
 
-export function subscribeInstallJob(jobId, listener) {
-  const job = installJobs.get(jobId);
-  if (!job) return undefined;
-  for (const text of job.logs) {
-    listener({ type: "log", text });
-  }
-  if (job.status === "success") {
-    listener({ type: "success", repo: job.result.repo, skills: job.result.skills });
-  }
-  if (job.status === "error") {
-    listener({ type: "error", message: job.errorMessage });
-  }
-  job.listeners.add(listener);
-  return () => job.listeners.delete(listener);
-}
-
-function expandHome(filePath) {
-  if (typeof filePath !== "string") return filePath;
-  if (filePath === "~" || filePath.startsWith("~/")) {
-    return path.join(os.homedir(), filePath.slice(1));
-  }
-  return filePath;
-}
-
-function skillRepoSkillDir(skill) {
-  const repo = getSkillRepo(skill.repoId);
-  if (!repo) return null;
-  return path.join(repo.repoPath, skill.repoPath);
-}
-
-function skillSymlinkPaths(skill, project) {
-  if (!project?.localPath) return null;
-  const repo = getSkillRepo(skill.repoId);
-  if (!repo) return null;
-  const targetDir = path.join(repo.repoPath, skill.repoPath);
-  const linkDir = path.join(
-    expandHome(project.localPath),
-    ".opc",
-    "skills",
-    repo.name.replace(/[^a-zA-Z0-9_-]/g, "_")
-  );
-  const linkPath = path.join(linkDir, skill.name.replace(/[^a-zA-Z0-9_-]/g, "_"));
-  return { targetDir, linkDir, linkPath };
-}
-
-export function createSkillSymlink(skill, project) {
-  const paths = skillSymlinkPaths(skill, project);
-  if (!paths) return;
-  fs.mkdirSync(paths.linkDir, { recursive: true });
-  const existing = fs.lstatSync(paths.linkPath, { throwIfNoEntry: false });
-  if (existing) {
-    fs.rmSync(paths.linkPath, { recursive: true, force: true });
-  }
-  fs.symlinkSync(paths.targetDir, paths.linkPath, process.platform === "win32" ? "junction" : "dir");
-}
-
-function removeSkillSymlink(skill, project) {
-  const paths = skillSymlinkPaths(skill, project);
-  if (!paths) return;
-  const existing = fs.lstatSync(paths.linkPath, { throwIfNoEntry: false });
-  if (existing) {
-    fs.rmSync(paths.linkPath, { recursive: true, force: true });
-  }
-}
-
-function removeSkillSymlinksForSkill(skillId) {
-  const db = getDb();
-  const skill = getSkillDetail(skillId);
-  const projectIds = db
-    .prepare("SELECT projectId FROM project_skills WHERE skillId = ?")
-    .all(skillId)
-    .map((row) => row.projectId);
-  for (const projectId of projectIds) {
-    const project = projectService.getProjectDetail(projectId);
-    if (skill && project) {
-      removeSkillSymlink(skill, project);
-    }
-  }
-  db.prepare("DELETE FROM project_skills WHERE skillId = ?").run(skillId);
-}
-
-function resolveDependencySkill(raw, allSkills) {
-  const byId = allSkills.find((s) => s.id === raw);
-  if (byId) return byId;
-  return allSkills.find((s) => s.name === raw);
-}
-
-export function linkSkillRaw(db, skillId, projectId, visited = new Set(), touched = new Set()) {
-  if (visited.has(skillId)) return touched;
-  visited.add(skillId);
-
-  const exists = db.prepare(`
-    SELECT 1 FROM project_skills WHERE projectId = ? AND skillId = ?
-  `).get(projectId, skillId);
-  if (!exists) {
-    db.prepare(`
-      INSERT INTO project_skills (projectId, skillId) VALUES (?, ?)
-    `).run(projectId, skillId);
-  }
-  touched.add(skillId);
-
-  const skill = getSkillDetail(skillId);
-  if (skill?.dependencies?.length > 0) {
-    const allSkills = listLinkableSkills();
-    for (const dep of skill.dependencies) {
-      const depSkill = resolveDependencySkill(dep, allSkills);
-      if (depSkill) {
-        linkSkillRaw(db, depSkill.id, projectId, visited, touched);
-      }
-    }
-  }
-
-  return touched;
-}
-
-export function linkSkill(skillId, projectId, visited = new Set()) {
-  const db = getDb();
-  const touched = linkSkillRaw(db, skillId, projectId, visited);
-  const project = projectService.getProjectDetail(projectId);
-  for (const id of touched) {
-    const skill = getSkillDetail(id);
-    if (skill && project) {
-      createSkillSymlink(skill, project);
-    }
-  }
-}
-
-export function unlinkSkill(skillId, projectId) {
-  const db = getDb();
-  const skill = getSkillDetail(skillId);
-  const project = projectService.getProjectDetail(projectId);
-  if (skill && project) {
-    removeSkillSymlink(skill, project);
-  }
-  db.prepare(`
-    DELETE FROM project_skills WHERE projectId = ? AND skillId = ?
-  `).run(projectId, skillId);
-}
-
-export function getLinkedSkills(projectId) {
-  const db = getDb();
-  return db.prepare(`
-    SELECT skillId FROM project_skills WHERE projectId = ?
-  `).all(projectId).map(row => row.skillId);
-}
-
-export function deleteSkillRepo(repoId) {
-  const db = getDb();
-  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
-  if (!repo) return { deleted: false, reason: "not_found" };
-
-  const skillIds = db.prepare("SELECT id FROM skills WHERE repoId = ?").all(repoId).map(row => row.id);
-
-  if (fs.existsSync(repo.repoPath)) {
-    fs.rmSync(repo.repoPath, { recursive: true, force: true });
-  }
-
-  for (const skillId of skillIds) {
-    removeSkillSymlinksForSkill(skillId);
-  }
-  db.prepare("DELETE FROM skills WHERE repoId = ?").run(repoId);
-  db.prepare("DELETE FROM skill_repos WHERE id = ?").run(repoId);
-
-  return { deleted: true };
-}
-
-// Rescan a repo on disk: re-read SKILL.md files, add/update/remove skills in DB
-// to match what's currently on disk. Returns a summary of changes.
-export function rescanSkillRepo(repoId) {
-  const db = getDb();
-  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
-  if (!repo) {
-    const err = new Error(`Skill repo not found: ${repoId}`);
-    err.status = 404;
-    throw err;
-  }
-  if (!fs.existsSync(repo.repoPath)) {
-    const err = new Error(`Repo path not found on disk: ${repo.repoPath}`);
-    err.status = 400;
-    throw err;
-  }
-
-  const diskSkills = scanRepoSkills(repo.repoPath);
-  const existingRows = db.prepare("SELECT * FROM skills WHERE repoId = ?").all(repoId).map(rowToSkill);
-  const existingByName = new Map(existingRows.map(s => [s.name, s]));
-
-  const added = [];
-  const updated = [];
-  const removed = [];
-
-  // Add/update: for each skill on disk, insert or update DB row.
-  for (const skillData of diskSkills) {
-    const existing = existingByName.get(skillData.name);
-    if (existing) {
-      db.prepare(`
-        UPDATE skills SET description=?, repoPath=?, version=?, dependencies=?, category=?, author=?, tags=?, parameters=?, examples=?, readme=?
-        WHERE id = ?
-      `).run(
-        skillData.description ?? null,
-        skillData.repoPath,
-        skillData.version ?? null,
-        JSON.stringify(skillData.dependencies || []),
-        skillData.category ?? null,
-        skillData.author ?? null,
-        JSON.stringify(skillData.tags || []),
-        JSON.stringify(skillData.parameters || []),
-        JSON.stringify(skillData.examples || []),
-        skillData.readme ?? null,
-        existing.id
-      );
-      updated.push(skillData.name);
-    } else {
-      createSkill(skillData, repoId);
-      added.push(skillData.name);
-    }
-  }
-
-  // Remove: DB skills not present on disk.
-  const diskNames = new Set(diskSkills.map(s => s.name));
-  for (const existing of existingRows) {
-    if (!diskNames.has(existing.name)) {
-      removeSkillSymlinksForSkill(existing.id);
-      db.prepare("DELETE FROM skills WHERE id = ?").run(existing.id);
-      removed.push(existing.name);
-    }
-  }
-
-  return { repoId, repoName: repo.name, added, updated, removed, total: diskSkills.length };
-}
-
-// Update an npm-sourced skill repo by re-running npm install and rescanning.
-export async function updateSkillRepo(repoId) {
-  const db = getDb();
-  const repo = db.prepare("SELECT * FROM skill_repos WHERE id = ?").get(repoId);
-  if (!repo) {
-    const err = new Error(`Skill repo not found: ${repoId}`);
-    err.status = 404;
-    throw err;
-  }
-  if (repo.installSource !== "npm" && repo.installSource !== "recovered") {
-    // Plugin/recovered/local repos don't have a package identifier to re-fetch;
-    // fall back to rescan (user can pull new files manually, then call rescan).
-    return rescanSkillRepo(repoId);
-  }
-  if (!repo.originalIdentifier) {
-    // Recovered repos have no package identifier — just rescan.
-    return rescanSkillRepo(repoId);
-  }
-
-  const settings = settingsService.loadSettings();
-  const skillRepoPath = resolveTilde(settings.skillRepoPath);
-  if (!skillRepoPath) {
-    throw new Error("Skill repository path is not configured");
-  }
-
-  const targetDir = repo.repoPath;
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-
-  // Same install flow as runInstallJob: npm install into a temp dir, then cp over.
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-skill-update-"));
+async function runUpdateJob(job, sourceDir) {
+  job.status = "running";
   try {
-    await runCommand("npm", ["install", "--prefix", tempDir, repo.originalIdentifier]);
-    const tempPackageJson = JSON.parse(fs.readFileSync(path.join(tempDir, "package.json"), "utf8"));
-    const dependencies = Object.keys(tempPackageJson.dependencies || {});
-    const packageName = dependencies.includes(repo.originalIdentifier)
-      ? repo.originalIdentifier
-      : dependencies[0];
-    if (!packageName) throw new Error("npm install did not produce any dependencies");
-    const installedDir = path.join(tempDir, "node_modules", packageName);
-    if (!fs.existsSync(installedDir)) throw new Error(`Installed package directory not found: ${installedDir}`);
-    fs.cpSync(installedDir, targetDir, { recursive: true, force: true, dereference: true });
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    // D6: ff-only; on failure surface the error and leave the directory as-is
+    // (never reset, never force-overwrite a user's local changes).
+    await execFileAsync("git", ["-C", sourceDir, "pull", "--ff-only"]);
+  } catch (err) {
+    throw codedError(502, "SKILL_UPDATE_FAILED", gitErrorMessage(err));
+  }
+}
+
+// POST /api/skills/:slug/update -> {jobId} (git) | 400 local | 404 unknown.
+export async function requestSourceUpdate(slug) {
+  const root = repoRoot();
+  const sourceDir = path.join(root, slug);
+  if (!isDirectory(sourceDir)) {
+    throw codedError(404, "NOT_FOUND", `Skill source not found: ${slug}`);
+  }
+  if (!isGitSource(sourceDir)) {
+    // E8: local sources have no upstream; re-adding with force is the update path.
+    throw codedError(
+      400,
+      "SKILL_UPDATE_UNSUPPORTED",
+      "Local skill sources cannot be updated automatically; re-add the source with force=true to overwrite it"
+    );
+  }
+  await ensureGitAvailable();
+  const job = createJob();
+  runUpdateJob(job, sourceDir)
+    .then(() => finishJob(job))
+    .catch((err) => finishJob(job, err));
+  return { jobId: job.id };
+}
+
+// ---------- link primitives (project agent dirs -> library) ----------
+
+function agentSkillsDir(agentKey) {
+  const agent = agentRegistryService.listAgents().find((a) => a.name === agentKey);
+  return agent ? agent.skillsDir : null;
+}
+
+function createSymlink(targetDir, linkPath) {
+  fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+  // D9: junction on Windows does not need developer mode; plain dir symlink elsewhere.
+  fs.symlinkSync(targetDir, linkPath, process.platform === "win32" ? "junction" : "dir");
+}
+
+// Remove symlinks under dirPath whose realpath lands inside baseKey.
+// Only the links themselves are removed — external entities are never touched
+// (D4/D9). Returns the removed entry names.
+function removeLinksInto(dirPath, baseKey) {
+  const removed = [];
+  if (!isDirectory(dirPath)) return removed;
+  let entries;
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`[skillService] cannot scan ${dirPath}: ${err.message}`);
+    return removed;
+  }
+  for (const entry of entries) {
+    const linkPath = path.join(dirPath, entry.name);
+    let lst;
+    try {
+      lst = fs.lstatSync(linkPath);
+    } catch {
+      continue; // E10: entry vanished mid-scan
+    }
+    if (!lst.isSymbolicLink()) continue;
+    let real;
+    try {
+      real = fs.realpathSync(linkPath).toLowerCase();
+    } catch {
+      continue; // dangling link: not ours to judge here
+    }
+    if (real === baseKey || real.startsWith(baseKey + path.sep)) {
+      fs.rmSync(linkPath, { force: true });
+      removed.push(entry.name);
+    }
+  }
+  return removed;
+}
+
+// Per declared agent dir of a project (skillsDir deduped), call fn(dirPath,
+// agents). Unknown registry keys are skipped with a warning (E9) and reported.
+function forEachAgentSkillsDir(project, agentKeys, fn) {
+  const byDir = new Map();
+  const invalidAgents = [];
+  for (const key of agentKeys) {
+    const skillsDir = agentSkillsDir(key);
+    if (!skillsDir) {
+      console.warn(`[skillService] agent "${key}" not found in registry; skipping`);
+      invalidAgents.push(key);
+      continue;
+    }
+    if (!byDir.has(skillsDir)) byDir.set(skillsDir, []);
+    byDir.get(skillsDir).push(key);
+  }
+  const localPath = expandTilde(project.localPath || "");
+  for (const [skillsDir, agents] of byDir) {
+    fn(path.join(localPath, skillsDir), agents, skillsDir);
+  }
+  return invalidAgents;
+}
+
+// ---------- project linking (REQ-SKILL-010; consumed by REQ-SKILL-015/017) ----------
+
+function resolveSkillTargetDir(slug, skillName) {
+  const root = repoRoot();
+  const sourceDir = path.join(root, slug);
+  if (!isDirectory(sourceDir)) {
+    throw codedError(404, "NOT_FOUND", `Skill source not found: ${slug}`);
+  }
+  const match = discoverSkillDirs(sourceDir).find((s) => s.skillName === skillName);
+  if (!match) {
+    throw codedError(404, "NOT_FOUND", `Skill not found in source "${slug}": ${skillName}`);
+  }
+  return match.dir;
+}
+
+function emptyAgentResult(agent, skillsDir) {
+  return { agent, skillsDir, linked: [], unlinked: [], failed: [], conflicts: [] };
+}
+
+// POST /api/projects/:id/skills {slug, skillName}: link a library skill into
+// every declared agent dir (workstation-owned symlinks straight into the
+// library; skillsDir-deduped; idempotent; external occupation = conflict, the
+// external entity is left untouched; per-agent failures surface in failed[]).
+export function linkSkillToProject(project, { slug, skillName } = {}) {
+  if (!slug || !skillName) {
+    throw codedError(400, "SKILL_IDENTITY_REQUIRED", "Both slug and skillName are required");
+  }
+  const targetDir = resolveSkillTargetDir(slug, skillName);
+  const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
+  if (agentTypes.length === 0) {
+    // E7: nothing to distribute into — declare agent types first.
+    throw codedError(
+      409,
+      "PROJECT_AGENTS_EMPTY",
+      "Project has no agent types declared; set agentTypes before linking skills"
+    );
   }
 
-  return rescanSkillRepo(repoId);
+  const targetKey = comparisonKey(targetDir);
+  const results = new Map();
+  const invalidAgents = forEachAgentSkillsDir(project, agentTypes, (dirPath, agents, skillsDir) => {
+    const linkPath = path.join(dirPath, skillName);
+    const perAgent = agents.map((agent) => {
+      const result = emptyAgentResult(agent, skillsDir);
+      results.set(agent, result);
+      return result;
+    });
+    const report = (kind) => {
+      for (const result of perAgent) result[kind].push(skillName);
+    };
+    try {
+      const existing = fs.lstatSync(linkPath, { throwIfNoEntry: false });
+      if (existing) {
+        if (existing.isSymbolicLink()) {
+          let real = null;
+          try {
+            real = fs.realpathSync(linkPath).toLowerCase();
+          } catch {
+            real = null;
+          }
+          if (real && real === targetKey) {
+            report("linked"); // idempotent repeat link
+          } else {
+            report("conflicts"); // external symlink occupies the target
+          }
+        } else {
+          report("conflicts"); // external entity occupies the target
+        }
+        return;
+      }
+      createSymlink(targetDir, linkPath);
+      report("linked");
+    } catch (err) {
+      console.warn(`[skillService] failed to link ${skillName} into ${dirPath}: ${err.message}`);
+      report("failed"); // E5: surface, never silently fall back to copying
+    }
+  });
+  for (const agent of invalidAgents) {
+    const result = emptyAgentResult(agent, null);
+    result.invalid = true;
+    results.set(agent, result);
+  }
+  return { agents: agentTypes.map((agent) => results.get(agent)).filter(Boolean) };
+}
+
+// ---------- source removal (REQ-SKILL-015) ----------
+
+// DELETE /api/skills/:slug: cascade-remove every project symlink resolving
+// into <repoRoot>/<slug> across all declared agent dirs, then delete the
+// source directory. External entries are never touched.
+export function deleteSource(slug) {
+  const root = repoRoot();
+  const sourceDir = path.join(root, slug);
+  if (!isDirectory(sourceDir)) {
+    throw codedError(404, "NOT_FOUND", `Skill source not found: ${slug}`);
+  }
+  const baseKey = comparisonKey(sourceDir);
+  for (const project of projectService.listProjects()) {
+    const agentTypes = Array.isArray(project.agentTypes) ? project.agentTypes : [];
+    if (agentTypes.length === 0 || !project.localPath) continue;
+    forEachAgentSkillsDir(project, agentTypes, (dirPath) => {
+      removeLinksInto(dirPath, baseKey);
+    });
+  }
+  fs.rmSync(sourceDir, { recursive: true, force: true });
+  return { deleted: slug };
 }

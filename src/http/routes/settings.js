@@ -10,6 +10,10 @@ export function handleSettings(req, res, body) {
       const updated = settingsService.saveSettings(body);
       return ok(res, updated);
     } catch (err) {
+      if (err.code === "SKILL_REPO_PATH_CONFLICT") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: err.code, conflicts: err.conflicts, message: err.message }));
+      }
       return badRequest(res, err.message);
     }
   }
