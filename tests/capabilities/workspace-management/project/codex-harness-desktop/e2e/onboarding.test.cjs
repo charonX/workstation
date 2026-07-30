@@ -1,19 +1,20 @@
-// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-006, REQ-WORKSPACE-007, REQ-WORKSPACE-008, REQ-I18N-001, REQ-I18N-002
+// REQ-TRACE: codex-harness-desktop/REQ-WORKSPACE-003, REQ-WORKSPACE-004, REQ-WORKSPACE-007, REQ-WORKSPACE-008, REQ-I18N-001, REQ-I18N-002
 // REQ-VERSION: v1-hash:5d0bdb3d2786189d093861e7afc37e0431ca15d5e7ae871afd42b421bf45f108
 // CAPABILITY-TRACE: workspace-management, internationalization-theme
 // ENTITY-TRACE: project, settings, theme, language
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
+//
+// 2026-07-29-multi-agent-skills：旧"Project Detail 复选框关联 skill"测试（REQ-WORKSPACE-006）
+// 与 npm fixture 播种已随旧关联模型移除，由
+// skill-management/skill/2026-07-29-multi-agent-skills/e2e/skillLibrary.test.cjs 接替。
 
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
-const { installSkill } = require("../../../../../e2e/helpers/seed.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
-
-const NPM_SKILL_FIXTURE = path.resolve("tests/fixtures/npm-skill");
 
 async function createLocalGitRepo(baseDir, repoName) {
   const repoPath = path.join(baseDir, repoName);
@@ -39,9 +40,6 @@ test.describe("Onboarding", () => {
     firstWindow = ctx.firstWindow;
     apiBaseUrl = ctx.apiBaseUrl;
     userDataDir = ctx.userDataDir;
-
-    // Seed the offline npm skill fixture so Configure Skills has something to link.
-    await installSkill(apiBaseUrl, { source: "npm", identifier: NPM_SKILL_FIXTURE });
   });
 
   test.afterEach(async () => {
@@ -135,27 +133,6 @@ test.describe("Onboarding", () => {
         console.log("Renderer console:", consoleMessages.join("\n"));
       }
     }
-  });
-
-  test("user can configure skills in Project Detail", async () => {
-    await firstWindow.click(locators.WORKSPACE_LINK);
-    await firstWindow.click(locators.ADD_PROJECT_BUTTON);
-    await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Skill Test Project");
-    await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/skill-test-project`);
-    await firstWindow.click(locators.SUBMIT_PROJECT_BUTTON);
-
-    const projectCard = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Skill Test Project" });
-    await projectCard.locator(locators.CONFIGURE_SKILLS_BUTTON).click();
-    await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();
-
-    const skillCheckbox = firstWindow.locator(locators.SKILL_LINK_CHECKBOX).filter({ hasText: "npm-fixture-skill" });
-    await skillCheckbox.check();
-    await expect(skillCheckbox).toBeChecked();
-    await skillCheckbox.uncheck();
-    await expect(skillCheckbox).not.toBeChecked();
-
-    // Expected: association state toggles without error
-    await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();
   });
 
   test("theme toggle updates document data-theme", async () => {

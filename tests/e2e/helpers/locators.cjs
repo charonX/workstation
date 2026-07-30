@@ -54,7 +54,6 @@ module.exports = {
   PROJECT_DELETE_BUTTON: "[data-testid='project-delete-button']",
   CONFIGURE_SKILLS_BUTTON: "[data-testid='configure-skills-button']",
   PROJECT_DETAIL_MODAL: "[data-testid='project-detail-modal']",
-  SKILL_LINK_CHECKBOX: "[data-testid='skill-link-checkbox']",
 
   // Flows
   NEW_FLOW_BUTTON: "[data-testid='new-flow-button']",
@@ -114,6 +113,23 @@ module.exports = {
   SKILL_META_AUTHOR: "[data-testid='skill-meta-author']",
   SKILL_META_CATEGORY: "[data-testid='skill-meta-category']",
   SKILL_META_TAGS: "[data-testid='skill-meta-tags']",
+
+  // Agent type multi-select (project create/edit)
+  AGENT_TYPE_MULTISELECT: "[data-testid='agent-type-multiselect']",
+  AGENT_TYPE_SEARCH_INPUT: "[data-testid='agent-type-search-input']",
+  AGENT_TYPE_OPTION: "[data-testid='agent-type-option']",
+  AGENT_TYPE_PINNED_GROUP: "[data-testid='agent-type-pinned-group']",
+  AGENT_TYPE_INVALID_BADGE: "[data-testid='agent-type-invalid-badge']",
+  EDIT_PROJECT_BUTTON: "[data-testid='edit-project-button']",
+  CONVERGENCE_SUMMARY: "[data-testid='convergence-summary']",
+
+  // Project skills section (project detail)
+  PROJECT_SKILLS_SECTION: "[data-testid='project-skills-section']",
+  PROJECT_SKILL_ROW: "[data-testid='project-skill-row']",
+  SKILL_LINK_BUTTON: "[data-testid='skill-link-button']",
+  SKILL_UNLINK_BUTTON: "[data-testid='skill-unlink-button']",
+  RESYNC_SKILLS_BUTTON: "[data-testid='resync-skills-button']",
+  EXTERNAL_SKILL_BADGE: "[data-testid='external-skill-badge']",
 
   // Shared / Confirmation Dialog
   CONFIRM_DIALOG: "[data-testid='confirm-dialog']",

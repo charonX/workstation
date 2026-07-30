@@ -64,11 +64,16 @@ async function startViteDevServer() {
  * Start the Electron application with a temporary userData directory.
  * Waits for the HTTP server to be ready by polling server.json in userData.
  *
+ * @param {object} [options]
+ * @param {Record<string, string>} [options.extraEnv] Extra env vars merged into the Electron process env
+ *   (e.g. OPC_AGENT_REGISTRY_SNAPSHOT for registry fixture overrides).
+ * @param {string} [options.userDataDir] Reuse an existing userData dir (keeps the same DB across app restarts);
+ *   a fresh temp dir is created when omitted.
  * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, firstWindow: import('@playwright/test').Page, apiBaseUrl: string, userDataDir: string, dbPath: string }>}
  */
-async function startElectronApp() {
+async function startElectronApp(options = {}) {
   await startViteDevServer();
-  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-"));
+  const userDataDir = options.userDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-")));
   const dbPath = path.join(userDataDir, "data.db");
 
   const electronApp = await electron.launch({
@@ -82,6 +87,7 @@ async function startElectronApp() {
       NODE_ENV: "development",
       DB_PATH: dbPath,
       OPC_WORKSTATION_CONFIG_DIR: userDataDir,
+      ...(options.extraEnv ?? {}),
     },
   });
 
