@@ -151,6 +151,32 @@ function discoverSkillDirs(sourceDir) {
 // control characters (PRD §7, review S2).
 const ILLEGAL_SKILL_DIR_NAME = /[\s/\\]|[\x00-\x1f]/;
 
+// ---------- user-supplied skill identity (slug / skillName) ----------
+
+// Identities arriving from API clients must be single directory names: no
+// path separators, whitespace or control characters, never "." / "..", never
+// absolute forms (tech-design D9, review G1). URL params are WHATWG-normalized
+// today, but body-supplied identities are not — the invariant is enforced here
+// in the service layer so every present and future consumer inherits it.
+const ILLEGAL_IDENTITY_CHAR = /[\s/\\]|[\x00-\x1f\x7f]/;
+
+function validateSkillIdentity(value, kind) {
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value === "." ||
+    value === ".." ||
+    ILLEGAL_IDENTITY_CHAR.test(value) ||
+    path.isAbsolute(value)
+  ) {
+    throw codedError(
+      400,
+      "SKILL_IDENTITY_INVALID",
+      `Illegal ${kind}: ${JSON.stringify(value)} (must be a single directory name — no separators, whitespace, control characters or traversal)`
+    );
+  }
+}
+
 function validateSourceContent(sourceDir) {
   const skillDirs = discoverSkillDirs(sourceDir);
   if (skillDirs.length === 0) {
@@ -268,6 +294,23 @@ function finishJob(job, error) {
 
 // ---------- git helpers (system git, parameterized execFile, no shell) ----------
 
+// Git identifiers are restricted to non-executable transports (tech-design
+// security section: protocol whitelist https/ssh; file:// is local-trust in
+// the desktop API model and the signed-off fixtures depend on it). Anything
+// else — notably ext:: transports and option-shaped identifiers — can execute
+// arbitrary commands and is rejected before any job is created (review G2).
+const ALLOWED_GIT_IDENTIFIER = /^(https:\/\/\S+|ssh:\/\/\S+|file:\/\/\S+|[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:\S+)$/;
+
+function assertAllowedGitUrl(identifier) {
+  if (!ALLOWED_GIT_IDENTIFIER.test(identifier)) {
+    throw codedError(
+      400,
+      "SKILL_SOURCE_INVALID",
+      "Git identifier must be an https://, ssh://, file:// URL or scp-like <user>@<host>:<path>"
+    );
+  }
+}
+
 async function ensureGitAvailable() {
   try {
     await execFileAsync("git", ["--version"]);
@@ -308,7 +351,10 @@ async function runGitInstallJob(job, { identifier, slug }) {
   const targetDir = path.join(root, slug);
   fs.mkdirSync(root, { recursive: true });
   try {
-    await execFileAsync("git", ["clone", "--depth", "1", identifier, targetDir]);
+    // "--" terminates option parsing: even an identifier beginning with "-"
+    // can never be interpreted as a git option (defense in depth on top of
+    // the protocol whitelist).
+    await execFileAsync("git", ["clone", "--depth", "1", "--", identifier, targetDir]);
   } catch (err) {
     // E1: fetch failure — no residue left in the library.
     fs.rmSync(targetDir, { recursive: true, force: true });
@@ -387,6 +433,9 @@ export async function startInstall(body) {
   }
 
   if (sourceType === "git") {
+    // Synchronous rejection, same timing as E2 local validation: no job, no
+    // write, when the transport is not on the protocol whitelist.
+    assertAllowedGitUrl(identifier.trim());
     await ensureGitAvailable();
     const slug = resolveGitSlug(root, identifier.trim());
     const job = createJob();
@@ -421,6 +470,18 @@ export async function startInstall(body) {
 
 async function runUpdateJob(job, sourceDir) {
   job.status = "running";
+  // The remote URL lives in .git/config and could have been rewritten inside
+  // the library (e.g. to an ext:: transport, which git executes on fetch).
+  // Re-validate it against the install-time protocol whitelist before pulling;
+  // rejection surfaces as the job's terminal error.
+  const remoteUrl = readGitRemoteUrl(sourceDir);
+  if (remoteUrl && !ALLOWED_GIT_IDENTIFIER.test(remoteUrl)) {
+    throw codedError(
+      502,
+      "SKILL_UPDATE_FAILED",
+      `Remote origin URL is not an allowed git protocol: ${remoteUrl}`
+    );
+  }
   try {
     // D6: ff-only; on failure surface the error and leave the directory as-is
     // (never reset, never force-overwrite a user's local changes).
@@ -432,6 +493,7 @@ async function runUpdateJob(job, sourceDir) {
 
 // POST /api/skills/:slug/update -> {jobId} (git) | 400 local | 404 unknown.
 export async function requestSourceUpdate(slug) {
+  validateSkillIdentity(slug, "slug");
   const root = repoRoot();
   const sourceDir = path.join(root, slug);
   if (!isDirectory(sourceDir)) {
@@ -536,6 +598,16 @@ function resolveSkillTargetDir(slug, skillName) {
   if (!match) {
     throw codedError(404, "NOT_FOUND", `Skill not found in source "${slug}": ${skillName}`);
   }
+  // D9 defense in depth: the resolved skill directory must live inside the
+  // library by realpath — a symlink committed inside a cloned source must
+  // never become the target of a link we create.
+  if (!isInsideOrEqual(comparisonKey(match.dir), comparisonKey(root))) {
+    throw codedError(
+      400,
+      "SKILL_SOURCE_INVALID",
+      `Skill directory for "${skillName}" resolves outside the skill library; refusing to link`
+    );
+  }
   return match.dir;
 }
 
@@ -551,6 +623,8 @@ export function linkSkillToProject(project, { slug, skillName } = {}) {
   if (!slug || !skillName) {
     throw codedError(400, "SKILL_IDENTITY_REQUIRED", "Both slug and skillName are required");
   }
+  validateSkillIdentity(slug, "slug");
+  validateSkillIdentity(skillName, "skillName");
   const targetDir = resolveSkillTargetDir(slug, skillName);
   const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
   if (agentTypes.length === 0) {
@@ -615,6 +689,7 @@ export function linkSkillToProject(project, { slug, skillName } = {}) {
 // into <repoRoot>/<slug> across all declared agent dirs, then delete the
 // source directory. External entries are never touched.
 export function deleteSource(slug) {
+  validateSkillIdentity(slug, "slug");
   const root = repoRoot();
   const sourceDir = path.join(root, slug);
   if (!isDirectory(sourceDir)) {
