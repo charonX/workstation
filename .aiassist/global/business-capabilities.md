@@ -14,7 +14,7 @@
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `bootstrapEnv.test.js`, `settingsServiceLazy.test.js`, `themeLanguage.spec.js` (E2E) |
-| project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/` | REQ-WORKSPACE-003~006 | `project.test.js`, `onboarding.spec.js` (E2E) |
+| project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/e2e/` | REQ-WORKSPACE-003~006, REQ-WORKSPACE-011~013 | `project.test.js`, `onboarding.spec.js` (E2E), `projectAgents.test.js`, `agentTypes.test.cjs` (E2E) |
 | server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/` | REQ-WORKSPACE-008~010 | `server.test.js` |
 
 ### flow-orchestration
@@ -37,12 +37,13 @@
 | execution | `tests/capabilities/scheduling-execution/task/codex-harness-desktop/api/`, `tests/capabilities/flow-orchestration/flow/codex-harness-desktop/e2e/`, `tests/capabilities/scheduling-execution/execution/2026-07-19-media-production-line/api/` | REQ-SCHEDULE-001, REQ-SCHEDULE-003, REQ-SCHEDULE-007~009 | `task.test.js`, `flowRun.test.js` (E2E), `executionQueue.test.js`, `artifacts.test.js` |
 
 ### skill-management
-> 集中式 skill repo 管理、多源安装、项目关联。skill repo 作为一级实体，一个 repo 可包含多个 skill。
+> 技能库（workstation 私有磁盘目录，磁盘即真相）管理、git/local 来源安装、按项目 agentTypes 声明的软链分发与收敛、agent registry。skill repo 一级实体在 2026-07-29-multi-agent-skills 中消解为磁盘"来源目录"（ADR-003 修订）；REQ-SKILL-001~004（旧三表模型）由 REQ-SKILL-005~017 接替。
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004 | `skill.test.js`, `skillInstall.test.cjs` (E2E); rescan/update via HTTP API |
-| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-002 | `skill.test.js`, `skillInstall.test.cjs` (E2E) |
+| skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004（接替：REQ-SKILL-005~009, 015~017） | `skill.test.js`, `skillInstall.test.cjs` (E2E); rescan/update via HTTP API |
+| skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/`, `tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/e2e/` | REQ-SKILL-001, REQ-SKILL-002, REQ-SKILL-005~017 | `skill.test.js`, `skillInstall.test.cjs` (E2E), `skillLibrary.test.js`, `skillInstall.test.js`, `projectSkills.test.js`, `skillSync.test.js`, `skillLibrary.test.cjs` (E2E) |
+| agent-registry | `tests/capabilities/skill-management/agent-registry/2026-07-29-multi-agent-skills/api/` | REQ-SKILL-018~019 | `agentRegistry.test.js`, `agentRegistrySnapshot.test.js` |
 
 ### channel-integration
 > 外部 IM 通道接入：长连接收发、消息去重与路由、通道绑定、文档同步。（第一实现：飞书）
@@ -80,7 +81,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/` | REQ-CLI-001 | `cli.test.js` |
+| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `tests/capabilities/command-interface/cli/2026-07-29-multi-agent-skills/cli/` | REQ-CLI-001~002 | `cli.test.js`, `skillCli.test.js` |
 
 ## 能力依赖图
 
@@ -101,12 +102,12 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 3 | 36 | 2026-07-19 |
+| workspace-management | 3 | 38 | 2026-07-29 |
 | flow-orchestration | 3 | 58 | 2026-07-28 |
 | scheduling-execution | 3 | 16 | 2026-07-19 |
-| skill-management | 2 | 16 | 2026-07-16 |
+| skill-management | 3 | 23 | 2026-07-29 |
 | channel-integration | 1 | 0 | 2026-07-19 |
 | collection-pipeline | 3 | 0 | 2026-07-19 |
 | information-aggregation | 2 | 7 | 2026-07-19 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
-| command-interface | 1 | 3 | 2026-07-16 |
+| command-interface | 1 | 4 | 2026-07-29 |

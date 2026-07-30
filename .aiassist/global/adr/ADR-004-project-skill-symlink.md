@@ -1,9 +1,11 @@
 # ADR-004: Project 与 Skill 通过文件系统软连接关联
 
-- **状态**: 已接受
+- **状态**: 已修订（2026-07-29，ADR-011）
 - **日期**: 2026-07-16
 - **相关 story**: codex-harness-desktop
 - **相关 REQ**: REQ-WORKSPACE-006、REQ-SKILL-004
+
+> **修订注记（ADR-011）**：软链关联的核心决策保留，但：① 位置从 `<project>/.opc/skills/<repo>/<skill>` 改为**项目各 agent 原生目录**（按项目声明的 agentTypes），target 从安装目录改为**技能库内 skill 目录**；② 第 3 条 `dependencies` 级联关联**废止**；③ 第 4 条删除前清理软链保留，并新增**外部实体保护**——非 workstation 创建的条目不删实体、占用冲突跳过并表面化。下文为历史决策原文。
 
 ## 背景
 
