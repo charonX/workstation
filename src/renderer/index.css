@@ -405,6 +405,28 @@ body {
   text-decoration: none;
 }
 
+.project-action-tertiary,
+.flow-action-tertiary,
+.skill-action-tertiary {
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  cursor: pointer;
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+  padding: var(--ch-space-1) var(--ch-space-2);
+  transition: all 0.15s ease;
+}
+
+.project-action-tertiary:hover,
+.flow-action-tertiary:hover,
+.skill-action-tertiary:hover {
+  color: var(--ch-text);
+  border-color: var(--ch-border-hover);
+  background: var(--ch-surface-high);
+}
+
 /* Loading screen */
 .loading-screen {
   display: flex;
@@ -932,6 +954,62 @@ body {
   padding: var(--ch-space-3) var(--ch-space-4);
   background: var(--ch-surface-high);
   border-bottom: 1px solid var(--ch-border);
+}
+
+.skill-repo-header-clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.skill-repo-header-clickable:hover {
+  background: var(--ch-surface-higher);
+}
+
+.skill-repo-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+}
+
+.skill-collapse-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: var(--ch-text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.skill-collapse-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.skill-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--ch-space-2);
+  padding: 0 var(--ch-space-2);
+  min-width: 20px;
+  height: 18px;
+  border-radius: var(--ch-radius-full);
+  background: var(--ch-surface-highest);
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+}
+
+.skill-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+  background: var(--ch-surface);
 }
 
 .skill-repo-info {

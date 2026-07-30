@@ -14,7 +14,7 @@ const FALLBACK_LABELS = {
 function buildCategories(registry) {
   const groups = new Map();
   for (const entry of Object.values(registry)) {
-    if (!entry?.type) continue;
+    if (!entry?.type || entry.palette === false) continue;
     if (!groups.has(entry.category)) {
       groups.set(entry.category, {
         key: entry.category,

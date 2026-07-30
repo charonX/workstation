@@ -539,6 +539,11 @@ async function invokeSubflowImpl({
       logs: childResult.logs ?? []
     };
   } catch (err) {
+    // REQ-FLOW-044 AC4: propagate childExecutionId on the failure path so the
+    // parent callFlow node can still expose an expand affordance in the UI.
+    if (err && typeof err === "object" && !err.childExecutionId) {
+      err.childExecutionId = childExecutionId;
+    }
     // REQ-FLOW-037 AC1: 子流程节点失败冒泡 → 子 execution 标 error，持久化已累积节点记录。
     completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
     try {

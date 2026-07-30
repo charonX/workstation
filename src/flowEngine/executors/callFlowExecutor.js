@@ -56,9 +56,16 @@ export async function callFlowExecutor({ node, context, services, currentDepth }
     });
   } catch (err) {
     // 子流程失败冒泡：invokeSubflow 抛错 → 按错误码格式回传，引擎 onError=fail 会中止父流程。
+    // REQ-FLOW-044 AC4: 保留 childExecutionId 以便父 callFlow 节点仍可展开查看子执行详情。
+    const childExecutionId = err?.childExecutionId;
     const message = err?.message ? `E-SUBFLOW-FAILED: ${err.message}` : "E-SUBFLOW-FAILED: subflow invocation threw";
     logs.push(log(message));
-    return { status: "error", error: message, logs };
+    return {
+      status: "error",
+      error: message,
+      outputVariables: childExecutionId ? { __childExecutionId: childExecutionId } : undefined,
+      logs
+    };
   }
 
   if (!result || result.status !== "success") {

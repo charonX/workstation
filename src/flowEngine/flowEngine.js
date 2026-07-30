@@ -180,7 +180,7 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
 
     if (rawResult.status === "fatal") {
       // fatal：立即终止，不进入重试/onError 流程（REQ-FLOW-025 AC4）。
-      failRun(nodeRecords, record, rawResult, rawResult.error || `Node "${node.id}" failed fatally`);
+      failRun(nodeRecords, record, rawResult, rawResult.error || `Node "${node.id}" failed fatally`, context);
     }
 
     let result = rawResult;
@@ -188,11 +188,13 @@ export async function run(flowOrConfig, options = {}, inputVariables = {}) {
       const message = rawResult.error || `Node "${node.id}" failed`;
       if (onError !== "ignore") {
         // onError=fail（默认）：终止整个 flow（REQ-FLOW-025 AC2）。
-        failRun(nodeRecords, record, rawResult, message);
+        failRun(nodeRecords, record, rawResult, message, context);
       }
       // onError=ignore：视为成功，输出变量写空字符串，flow 继续（REQ-FLOW-025 AC3）。
+      // Preserve outputVariables (e.g. __childExecutionId from a failed subflow)
+      // so onError=ignore callers can still surface child execution metadata.
       record.error = message;
-      result = { status: "success", output: "", logs: rawResult.logs, agent: rawResult.agent };
+      result = { status: "success", output: "", outputVariables: rawResult.outputVariables, logs: rawResult.logs, agent: rawResult.agent };
     }
 
     if (result.logs && Array.isArray(result.logs)) {
@@ -344,9 +346,16 @@ function normalizeRetries(value) {
 // 终止整个 flow：补齐 nodeRecord（error + agent 详情）后以 fatal: 前缀中止。
 // 用于 fatal 直终（AC4）与重试耗尽后 onError=fail（AC2）两条路径。
 // 已累积的 nodeRecords 挂到错误对象上，供 taskService 在终止路径持久化（REQ-FLOW-028）。
-function failRun(nodeRecords, record, result, message) {
+function failRun(nodeRecords, record, result, message, context) {
   record.error = message;
   copyAgentDetail(record, result);
+  // REQ-FLOW-044 AC4: surface childExecutionId even on failure so the UI can
+  // offer expansion of the failed child execution.
+  if (result.outputVariables && isPlainObject(result.outputVariables)) {
+    for (const [varName, value] of Object.entries(result.outputVariables)) {
+      writeOutputVariable(context, record, record.nodeId, varName, value);
+    }
+  }
   nodeRecords.push(record);
   abortRun(nodeRecords, `fatal: ${message}`);
 }

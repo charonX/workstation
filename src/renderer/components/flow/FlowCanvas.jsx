@@ -275,12 +275,13 @@ const FlowCanvas = forwardRef(function FlowCanvas(
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     initialEdges.map(toReactFlowEdge)
   );
+  const nodeIdCounter = useRef(0);
 
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   const addNode = useCallback(
     (type, name, icon = getIconForType(type)) => {
-      const id = `node_${Date.now()}`;
+      const id = `node_${Date.now()}_${++nodeIdCounter.current}`;
       setNodes((prev) => {
         const count = prev.length;
         const newNode = {

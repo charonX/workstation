@@ -77,6 +77,14 @@ export function startServer(options = {}) {
       );
     }
     settingsService.resetSettings();
+    // Isolate skill repo path in test/reset mode so reconcileUserSkillRepos does not
+    // scan the user's real ~/.codex-harness/skills directory (which may contain
+    // leftover repos from previous runs) and pollute the fresh DB.
+    const tempSkillRepoPath = path.join(
+      os.tmpdir(),
+      `opc-workstation-test-skills-${process.pid}-${Date.now()}`
+    );
+    settingsService.saveSettings({ skillRepoPath: tempSkillRepoPath });
   }
   // BUG-011: 协调用户已安装的 skill repo——扫描 settings.skillRepoPath 目录，
   // 把磁盘上存在但 DB 里没登记的 repo（因之前 DB 路径错位而丢失的记录）补登记回 DB。
