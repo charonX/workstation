@@ -156,7 +156,6 @@ process.stdout.write(JSON.stringify(out));
   } catch (err) {
     fail(`upstream evaluation returned malformed output: ${err.message}`);
   }
-  return null; // unreachable
 }
 
 // Derives { globalSkillsDir(template|null), globalEnvDeps } for one agent from

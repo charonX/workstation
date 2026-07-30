@@ -56,23 +56,24 @@ export function getAgentKeyByDisplayName(displayName) {
 }
 
 // Expands a globalSkillsDir template at call time (ADR-009: never at load
-// time). A whitelisted env var, when set, replaces the template's leading
-// config-root segment — mirroring the upstream pattern
-// `process.env.V?.trim() || join(home, '.x')`. Environment variables outside
-// the agent's globalEnvDeps whitelist are never read.
+// time). Two template shapes are possible (see deriveTemplate in the sync
+// script):
+//   - "~/<config-root>/...": the first whitelisted env var that is set
+//     replaces the leading config-root segment — mirroring the upstream
+//     pattern `process.env.V?.trim() || join(home, '.x')`.
+//   - anything else (bare "~", "$VAR" placeholders, absolute paths): handled
+//     by placeholder expansion in expandDollarTemplate.
+// Environment variables outside the agent's globalEnvDeps whitelist are never
+// read.
 function expandGlobalTemplate(template, envDeps) {
   if (template == null) return null;
-  for (const varName of envDeps) {
-    const value = process.env[varName]?.trim();
-    if (!value) continue;
-    if (template.startsWith("~/")) {
+  if (template.startsWith("~/")) {
+    for (const varName of envDeps) {
+      const value = process.env[varName]?.trim();
+      if (!value) continue;
       const rest = template.slice(2);
       const slash = rest.indexOf("/");
       return slash === -1 ? value : path.join(value, rest.slice(slash + 1));
-    }
-    const token = `$${varName}`;
-    if (template.includes(token)) {
-      return expandDollarTemplate(template.replaceAll(token, value), envDeps);
     }
   }
   return expandDollarTemplate(template, envDeps);
