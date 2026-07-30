@@ -41,14 +41,24 @@ async function openFlowInEditor(firstWindow, apiBaseUrl, { projectId, name, node
 }
 
 /**
- * Add a node by clicking a palette button (category label or item).
- * Palette names: "Trigger" (category), "Condition" (item), "Agent" (item).
+ * Add a node by clicking a palette item.
+ * `buttonName` is the user-facing label historically used by tests (e.g. "Trigger",
+ * "Condition", "Agent", "Feishu Message"). It is mapped to the stable
+ * `data-testid="palette-node-<type>"` so the helper survives i18n label changes.
  */
+const PALETTE_NAME_TO_TESTID = {
+  Trigger: "palette-node-trigger",
+  Condition: "palette-node-condition",
+  Agent: "palette-node-agent",
+  "Feishu Message": "palette-node-feishuMessage",
+};
+
 async function addNodeFromPalette(firstWindow, buttonName) {
-  await firstWindow
-    .locator(locators.NODE_PALETTE)
-    .getByRole("button", { name: buttonName })
-    .click();
+  const testId = PALETTE_NAME_TO_TESTID[buttonName];
+  if (!testId) {
+    throw new Error(`Unknown palette item: ${buttonName}`);
+  }
+  await firstWindow.locator(`[data-testid='${testId}']`).click();
 }
 
 function nodeByIndex(firstWindow, index) {

@@ -77,8 +77,8 @@ test.describe("Flow Run", () => {
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Properties Test Flow" }).click();
     await expect(firstWindow.locator(locators.PROPERTIES_PANEL)).toContainText("Select a node to edit");
 
-    // Add a node by clicking its category in the palette.
-    await firstWindow.getByText("logic").click();
+    // Add a node by clicking an implemented palette item.
+    await firstWindow.getByTestId("palette-node-condition").click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(1);
     await firstWindow.locator(locators.FLOW_NODE).first().click();
     await expect(firstWindow.locator(locators.PROPERTIES_PANEL)).not.toContainText("Select a node to edit");
@@ -175,10 +175,9 @@ test.describe("Flow Run", () => {
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Connectable Flow" }).click();
     await expect(firstWindow.locator(locators.FLOW_EDITOR_PAGE)).toBeVisible();
 
-    // Add two agent nodes by clicking the Execution category label.
-    const executionCategory = firstWindow.locator(".palette-label").filter({ hasText: "Execution" });
-    await executionCategory.click();
-    await executionCategory.click();
+    // Add two agent nodes by clicking the Agent palette item.
+    await firstWindow.getByTestId("palette-node-agent").click();
+    await firstWindow.getByTestId("palette-node-agent").click();
     await expect(firstWindow.locator(locators.FLOW_NODE)).toHaveCount(2);
 
     // Drag from the source handle of the first node to the target handle of the second node.
