@@ -7,7 +7,7 @@ intention: >-
   不同 agent 对 skill 安装目录的要求不同，同步 skill 只能手工维护，
   无法按项目声明的 agent 类型自动适配。
 
-phase: ASSERTION-SIGNOFF  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-29
@@ -21,6 +21,7 @@ history:
   - {at: 2026-07-29, from: TECH-DESIGN, to: CRYSTALLIZE, note: "结晶完成：19 条 REQ（REQ-SKILL-005~019 / REQ-WORKSPACE-011~013 / REQ-CLI-002），覆盖 9 稳定块 S1-S9 + CLI 横切；新实体 skill-management/agent-registry；requirements.md v1 + requirements-v1.hash 已生成；business-capabilities.md 已更新（skill-repo 消解标注、agent-registry 新实体、CLI 新测试目录）。M1（resync 按钮位置）留 PRD 移动块。待用户审查 REQ。"}
   - {at: 2026-07-29, from: CRYSTALLIZE, to: TEST, note: "REQ 经用户确认。test-author 完成：99 个自动化测试（87 API/CLI + 12 E2E，8+2 文件），19 REQ 全覆盖；test-plan.md 记录映射/7 项实现者测试缝契约/REFLECT 纯审美项；旧模型测试退役（删 2 文件 + project/onboarding/seed/locators 手术）；测试缝含 OPC_AGENT_REGISTRY_SNAPSHOT 覆盖、registry fixture、--source 失败注入、job 轮询端点。断言待人签核（ASSERTIONS-SIGNED: false）。"}
   - {at: 2026-07-29, from: TEST, to: ASSERTION-SIGNOFF, note: "门 1 通过：44 处 TODO 占位归并为 24 项决策，全部经人逐项拍板并回写测试（ASSERTIONS-SIGNED: true，TODO 清零，语法+加载冒烟过）；signoff.md Assertion 部分完成（REQ 覆盖 19/19、capability/entity 与能力地图一致、检查清单全勾）；签核 commit f39c5d0 仅含 signoff.md。BUILD 解锁。"}
+  - {at: 2026-07-30, from: ASSERTION-SIGNOFF, to: BUILD, note: "进入 BUILD。切片计划（5 片，依赖序）：S1 agent-registry（REQ-SKILL-018/019，12 测试）→ S2 skill-library 含旧机制清除（REQ-SKILL-005~009/015/016/017，31 测试）→ S3 distribution 含 agentTypes（REQ-SKILL-010~014 + REQ-WORKSPACE-011/013，34 测试）→ S4 CLI（REQ-CLI-002，10 测试）→ S5 E2E UI（REQ-WORKSPACE-012 + skill E2E，12 测试）。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
