@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import * as settingsService from "./settingsService.js";
 import * as projectService from "./projectService.js";
 import * as agentRegistryService from "./agentRegistryService.js";
+import { expandTilde, comparisonKey, isInsideOrEqual } from "./pathUtils.js";
 
 // Skill service (ADR-011 revision): disk is the single source of truth.
 // - The skill library is a workstation-private directory (settings.skillRepoPath);
@@ -20,16 +20,7 @@ import * as agentRegistryService from "./agentRegistryService.js";
 
 const execFileAsync = promisify(execFile);
 
-// ---------- shared path helpers ----------
-
-function expandTilde(inputPath) {
-  if (typeof inputPath !== "string") return inputPath;
-  if (inputPath === "~") return os.homedir();
-  if (inputPath.startsWith("~/")) {
-    return path.join(os.homedir(), inputPath.slice(2));
-  }
-  return inputPath;
-}
+// ---------- shared helpers ----------
 
 function isDirectory(targetPath) {
   try {
@@ -37,31 +28,6 @@ function isDirectory(targetPath) {
   } catch {
     return false;
   }
-}
-
-function realpathBestEffort(targetPath) {
-  let current = targetPath;
-  const missing = [];
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    missing.unshift(path.basename(current));
-    current = parent;
-  }
-  try {
-    return path.join(fs.realpathSync(current), ...missing);
-  } catch {
-    return targetPath;
-  }
-}
-
-// Case-normalized comparison base (macOS/Windows case-insensitive volumes).
-function comparisonKey(targetPath) {
-  return realpathBestEffort(targetPath).toLowerCase();
-}
-
-function isInsideOrEqual(candidate, base) {
-  return candidate === base || candidate.startsWith(base + path.sep);
 }
 
 function repoRoot() {
@@ -227,7 +193,7 @@ function scanSourceDir(sourceDir, slug) {
     // E6: invalid SKILL.md is skipped with a warning; the scan must not fail.
     if (!name || !description) {
       console.warn(
-        `[skillService] skipping ${path.join(slug, path.relative(sourceDir, dir)) || slug}: SKILL.md misses name/description`
+        `[skillService] skipping ${path.join(slug, path.relative(sourceDir, dir))}: SKILL.md misses name/description`
       );
       continue;
     }
@@ -290,6 +256,13 @@ function finishJob(job, error) {
     job.status = "success";
     job.error = null;
   }
+}
+
+// Async job lifecycle: the job settles when the run promise does; the caller
+// gets the job id back immediately for polling.
+function settleJobWhen(job, runPromise) {
+  runPromise.then(() => finishJob(job)).catch((err) => finishJob(job, err));
+  return { jobId: job.id };
 }
 
 // ---------- git helpers (system git, parameterized execFile, no shell) ----------
@@ -435,14 +408,12 @@ export async function startInstall(body) {
   if (sourceType === "git") {
     // Synchronous rejection, same timing as E2 local validation: no job, no
     // write, when the transport is not on the protocol whitelist.
-    assertAllowedGitUrl(identifier.trim());
+    const gitIdentifier = identifier.trim();
+    assertAllowedGitUrl(gitIdentifier);
     await ensureGitAvailable();
-    const slug = resolveGitSlug(root, identifier.trim());
+    const slug = resolveGitSlug(root, gitIdentifier);
     const job = createJob();
-    runGitInstallJob(job, { identifier: identifier.trim(), slug })
-      .then(() => finishJob(job))
-      .catch((err) => finishJob(job, err));
-    return { jobId: job.id };
+    return settleJobWhen(job, runGitInstallJob(job, { identifier: gitIdentifier, slug }));
   }
 
   // local: all validation is synchronous (E2/E12 happen before any write).
@@ -509,10 +480,7 @@ export async function requestSourceUpdate(slug) {
   }
   await ensureGitAvailable();
   const job = createJob();
-  runUpdateJob(job, sourceDir)
-    .then(() => finishJob(job))
-    .catch((err) => finishJob(job, err));
-  return { jobId: job.id };
+  return settleJobWhen(job, runUpdateJob(job, sourceDir));
 }
 
 // ---------- link primitives (project agent dirs -> library) ----------
@@ -556,7 +524,7 @@ function removeLinksInto(dirPath, baseKey) {
     } catch {
       continue; // dangling link: not ours to judge here
     }
-    if (real === baseKey || real.startsWith(baseKey + path.sep)) {
+    if (isInsideOrEqual(real, baseKey)) {
       fs.rmSync(linkPath, { force: true });
       removed.push(entry.name);
     }
@@ -615,6 +583,27 @@ function emptyAgentResult(agent, skillsDir) {
   return { agent, skillsDir, linked: [], unlinked: [], failed: [], conflicts: [] };
 }
 
+// Decide the link outcome at linkPath, creating the symlink when the target is
+// free. Returns the per-agent result bucket: "linked" (created or idempotent
+// repeat) or "conflicts" (an external entity or external symlink occupies the
+// target and is left untouched, D4). Throws on fs failure — the caller maps
+// that to "failed" (E5).
+function placeSkillLink(linkPath, targetDir, targetKey) {
+  const existing = fs.lstatSync(linkPath, { throwIfNoEntry: false });
+  if (existing) {
+    if (!existing.isSymbolicLink()) return "conflicts";
+    let real = null;
+    try {
+      real = fs.realpathSync(linkPath).toLowerCase();
+    } catch {
+      real = null;
+    }
+    return real && real === targetKey ? "linked" : "conflicts";
+  }
+  createSymlink(targetDir, linkPath);
+  return "linked";
+}
+
 // POST /api/projects/:id/skills {slug, skillName}: link a library skill into
 // every declared agent dir (workstation-owned symlinks straight into the
 // library; skillsDir-deduped; idempotent; external occupation = conflict, the
@@ -649,27 +638,7 @@ export function linkSkillToProject(project, { slug, skillName } = {}) {
       for (const result of perAgent) result[kind].push(skillName);
     };
     try {
-      const existing = fs.lstatSync(linkPath, { throwIfNoEntry: false });
-      if (existing) {
-        if (existing.isSymbolicLink()) {
-          let real = null;
-          try {
-            real = fs.realpathSync(linkPath).toLowerCase();
-          } catch {
-            real = null;
-          }
-          if (real && real === targetKey) {
-            report("linked"); // idempotent repeat link
-          } else {
-            report("conflicts"); // external symlink occupies the target
-          }
-        } else {
-          report("conflicts"); // external entity occupies the target
-        }
-        return;
-      }
-      createSymlink(targetDir, linkPath);
-      report("linked");
+      report(placeSkillLink(linkPath, targetDir, targetKey));
     } catch (err) {
       console.warn(`[skillService] failed to link ${skillName} into ${dirPath}: ${err.message}`);
       report("failed"); // E5: surface, never silently fall back to copying

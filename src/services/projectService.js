@@ -44,25 +44,25 @@ function nextProjectId() {
   return crypto.randomUUID();
 }
 
+function agentTypesValidationError(message, invalidAgents) {
+  const err = new Error(message);
+  err.status = 400;
+  err.code = "INVALID_AGENT_TYPES";
+  err.invalidAgents = invalidAgents;
+  return err;
+}
+
 // REQ-WORKSPACE-011: agentTypes is a JSON array of agent registry keys.
 // Non-array input and unknown keys are rejected (INVALID_AGENT_TYPES);
 // duplicates are removed keeping first-occurrence order; [] is legal
 // (semantics: no distribution yet).
 export function validateAgentTypes(value) {
   if (!Array.isArray(value)) {
-    const err = new Error("agentTypes must be an array of agent registry keys");
-    err.status = 400;
-    err.code = "INVALID_AGENT_TYPES";
-    err.invalidAgents = [];
-    throw err;
+    throw agentTypesValidationError("agentTypes must be an array of agent registry keys", []);
   }
   const invalidAgents = [...new Set(value.filter((key) => !agentRegistryService.isValidAgentKey(key)))];
   if (invalidAgents.length > 0) {
-    const err = new Error(`Unknown agent types: ${invalidAgents.join(", ")}`);
-    err.status = 400;
-    err.code = "INVALID_AGENT_TYPES";
-    err.invalidAgents = invalidAgents;
-    throw err;
+    throw agentTypesValidationError(`Unknown agent types: ${invalidAgents.join(", ")}`, invalidAgents);
   }
   return [...new Set(value)];
 }
@@ -192,19 +192,7 @@ export function getProjectDetail(projectId) {
   if (!project) return null;
   const flowsCount = db.prepare("SELECT COUNT(*) AS count FROM flows WHERE projectId = ?").get(projectId).count;
   const runsCount = db.prepare("SELECT COUNT(*) AS count FROM executions WHERE projectId = ?").get(projectId).count;
-  return {
-    id: project.id,
-    name: project.name,
-    description: project.description,
-    sourceType: project.sourceType,
-    repoUrl: project.repoUrl,
-    branch: project.branch,
-    localPath: project.localPath,
-    agentTypes: parseAgentTypes(project.agentTypes),
-    updatedAt: project.updatedAt,
-    flowsCount,
-    runsCount
-  };
+  return { ...rowToProject(project), flowsCount, runsCount };
 }
 
 // PUT /api/projects/:id backing store: partial update of name/description/

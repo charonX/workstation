@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import * as agentRegistryService from "./agentRegistryService.js";
+import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 
 function resolveConfigDir() {
   if (process.env.OPC_WORKSTATION_CONFIG_DIR) {
@@ -48,35 +49,6 @@ function normalizeSettings(settings) {
     // return the stored/default value verbatim (REQ-SKILL-005 AC1 expects the
     // absolute default; a user-supplied "~/..." value round-trips unchanged).
   };
-}
-
-function expandTilde(inputPath) {
-  if (typeof inputPath !== "string") return inputPath;
-  if (inputPath === "~") return os.homedir();
-  if (inputPath === "~/" || inputPath.startsWith("~/")) {
-    return path.join(os.homedir(), inputPath.slice(2));
-  }
-  return inputPath;
-}
-
-// E11 comparison helper: resolve symlinks as far as possible even when the
-// path (or its tail) does not exist yet (e.g. ~/.agents/skills on a fresh
-// machine). /tmp-style symlinked prefixes (macOS /var -> /private/var) must
-// not defeat the prefix check.
-function realpathBestEffort(targetPath) {
-  let current = targetPath;
-  const missing = [];
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    missing.unshift(path.basename(current));
-    current = parent;
-  }
-  try {
-    return path.join(fs.realpathSync(current), ...missing);
-  } catch {
-    return targetPath;
-  }
 }
 
 function normalizeForConflictCheck(inputPath) {
