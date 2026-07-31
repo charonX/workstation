@@ -227,3 +227,62 @@ PRD→代码 可追溯性表：
   - **ADR-001 纪律**：全部经 ensureServer + HTTP fetch；旧 /api/skill-repos + SSE stream 代码路径 grep 确认零引用（仅注释）
   - scope 干净：opc-workstation.js 只改 handler 透传位置参数 + help 示例，老基线 76/76 绿证兼容
 - Slice 4: refactor pass NO_CHANGES_NEEDED（文件小（143+135 行），handleResponse 模式微差异不值得跨文件提取）
+
+---
+
+## Slice 5: E2E UI — e203108
+
+### 父代理验证与门禁记录
+
+- Slice 5 显式降级：父代理自循环（k3 ×2 + sonnet ×1 子代理调度均失败 403/模型不可达），按 implementer skill「显式降级：当前代理自循环模式」条款自行执行。
+- Slice 5: complete (e203108, 父代理独立复跑本 story API/CLI 77/77 绿 + 单测 9/9 绿 + E2E 12/12 绿 + flow-orchestration 63/63 + onboarding 19/19 回归全绿)
+- Renderer build：`npx vite build --config vite.renderer.config.js` clean（580KB JS / 60KB CSS，无 error）。
+- Diff 范围锁：commit 仅含 src/renderer/（api/、components/、hooks/、i18n/、pages/、index.css），零测试、零 .aiassist、零 src/services、零 src/http。
+
+### PRD→代码 可追溯性表
+
+| PRD/REQ 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| REQ-WORKSPACE-012 AC1 新建项目表单含多 agent 选择器，列出全量 registry（=75） | `AgentTypeMultiSelect.jsx`（GET /api/agents 惰性拉取，总数 75）；`ProjectFormModal.jsx` create 模式 | agentTypes.test.cjs「selector lists the full registry with pinned agents first and nothing pre-selected」 | COVERED |
+| REQ-WORKSPACE-012 AC2 置顶清单 claude-code/codex/opencode/cursor/kimi-code-cli 顺序固定 | `AgentTypeMultiSelect.jsx` PINNED 常量 + pinned group data-testid | agentTypes.test.cjs 同上（pinnedNames == PINNED） | COVERED |
+| REQ-WORKSPACE-012 AC2 其余按 displayName 排序、无预选 | AgentTypeMultiSelect sort by displayName；useState([]) 默认 | agentTypes.test.cjs「nothing pre-selected」(`checked === 0`) | COVERED |
+| REQ-WORKSPACE-012 AC3 搜索框 name/displayName 大小写不敏感过滤 | filterBy 函数（toLowerCase includes） | agentTypes.test.cjs「search filters options…」（query "claude" 数量收敛、可见行 textContent 全含 "claude"） | COVERED |
+| REQ-WORKSPACE-012 AC4 勾选后保存 → POST/PUT body 含 agentTypes | Workspace.handleFormSubmit → createProject/updateProject（PUT 只发 {agentTypes}）→ useProjects.update | agentTypes.test.cjs「creating a project with selected agents persists agentTypes」(["claude-code","codex"]) | COVERED |
+| REQ-WORKSPACE-012 AC5 编辑视图回显已存 agentTypes | ProjectFormModal useEffect 从 project.agentTypes 初始化 checked 状态；ProjectCard edit-project-button；Workspace.handleEdit | agentTypes.test.cjs「edit view echoes the saved agentTypes」(claude-code + kimi-code-cli checked、codex unchecked) | COVERED |
+| REQ-WORKSPACE-013 AC1 保存后缺失 registry 的 key → invalid badge + 仍勾选 + 可见 | AgentTypeMultiSelect invalidOptions 分支（`invalidKeys` Set 过滤 `!known.has(key)` → agent-type-invalid-badge）；Workspace.knownKeys 从 GET /api/agents 派生 | agentTypes.test.cjs「a saved agent key missing from the registry shows an invalid badge」（两阶段：先建项目、再用缺 claude-code 的 drifted snapshot + 复用 userDataDir 重启，断言 badge 可见、checkbox 仍 checked） | COVERED |
+| REQ-WORKSPACE-013 AC2 drift 不阻塞 PUT、convergence 跳过缺失 agent | 后端 convergeProjectSkills 已实现（slice 3）；前端 PUT 后渲染 convergence-summary 列表标 invalid | 后端 projectAgents.test.js「drifted declaration is preserved and convergence skips the missing agent」；E2E drift 测试 Edit 保存能成功 | COVERED |
+| REQ-SKILL-009 install modal 来源 = 仅 Git URL / Local Path（npm/plugin 移除） | InstallSkillModal.jsx SOURCE_OPTIONS = [{git},{local}] | skillLibrary.test.cjs「install modal offers only git and local sources」(option values sort === ["git","local"]) | COVERED |
+| REQ-SKILL-006/008 local install 通过 UI：填路径 → submit → 202 job 轮询 → 分组视图出现 → 磁盘就位 | api/skills.js startInstall + waitForJob；hooks/useSkills.install；Skills.handleInstall；SkillTable repo-row + skill-row testid | skillLibrary.test.cjs「user installs a local skill source via UI and sees the grouped view」（alpha/beta 行可见，磁盘 SKILL.md 就位） | COVERED |
+| REQ-SKILL-010 项目详情 tab 点 skill link-button → POST → 软链 realpath 相等 | hooks/useProjectDetail.mergeProjectSkills（磁盘视图 ∪ 全量库，标 linked）；ProjectDetailModal skill-link-button → linkSkill → linkProjectSkill POST；row 切换 unlink-button | skillLibrary.test.cjs「user links a library skill to a project and the symlink appears on disk」（click link-button → unlink-button 可见，realpath = 库中目标） | COVERED |
+| REQ-SKILL-011 unlink 按钮 → DELETE → 仅自有链删除 | ProjectDetailModal skill-unlink-button → unlinkSkill → unlinkProjectSkill DELETE | 间接：链接测试后 unlink 使 row 回到 link-button 状态；后端 projectSkills.test.js「unlinking removes only our symlink」 | COVERED |
+| REQ-SKILL-012 外部条目 external-skill-badge；视图如实显示外部实体 | ProjectDetailModal origin=="external" 分支渲染 external-skill-badge；listProjectSkills 后端标 origin:"external" | skillLibrary.test.cjs「external entries are labeled…」(disk 预置 my-external-skill，断言 badge 可见) | COVERED |
+| REQ-SKILL-012 conflict/broken 标注（后端 AC3/AC4 已有） | ProjectDetailModal conflict/broken badge class 分支 | projectSkills.test.js「… marked broken / conflict」后端单元覆盖；UI 分支渲染就位 | COVERED |
+| REQ-SKILL-013 edit 视图改 agentTypes（加 codex）→ SUBMIT → PUT → convergence-summary 可见 → codex skillsDir 下有软链 | Workspace.handleFormSubmit（PUT → result.convergence → setLastConvergence 渲染带 data-testid 的卡片）；AgentTypeMultiSelect.check(codex) | skillLibrary.test.cjs「changing agentTypes in the edit view converges links on disk」（assert convergence-summary visible；realpath(codex skillsDir/alpha-skill) == 库目标） | COVERED |
+| REQ-SKILL-014 resync-skills-button → POST resync → convergence-summary 可见 → 手工删链重建 | ProjectDetailModal resync-skills-button → useProjectDetail.resyncSkills → resyncProjectSkills POST；convergenceSummary state | skillLibrary.test.cjs「resync button rebuilds a manually deleted link」 | COVERED |
+| REQ-SKILL-015 删除来源：repo-delete-button → ConfirmDialog → confirm-ok → DELETE → 分组消失 | Skills.handleRequestDelete → handleConfirmDelete → removeSource (DELETE /api/skills/:slug) → refetch | skillLibrary.test.cjs「deleting a source asks for confirmation and removes the group」(repoRow not.toBeVisible) | COVERED |
+| REQ-SKILL-016 AC4 local 来源 update 按钮不渲染（后端 400 兜底） | SkillTable 条件渲染 onRequestUpdate 仅 sourceType==="git" | 后端 skillInstall.test.js 覆盖 local update 400；UI 分支隐式验证 | COVERED |
+| REQ-SKILL-017 旧机制清除：/api/skill-repos、SSE /install/:id/stream、PATCH /:id/skills 在前端零引用 | api/skills.js rewrite 移除 getSkillRepos/subscribeInstallJob/rescanSkillRepo/deleteSkillRepo/updateSkillRepo；api/projects.js 移除 updateProjectSkills PATCH；hooks 重写无 EventSource | skillCli.test.js + 后端 skillLibrary.test.js「legacy endpoints 404」覆盖；前端 grep 零残留 | COVERED |
+| 横切：Client `put` 导出；错误对象带 status/code | api/client.js put() + err.status/err.code 透传 | 被全部上述 PUT/DELETE 路径使用 | COVERED |
+
+偏差与备注：
+1. **项目详情 unlinked 可见 skill 来源**：后端 GET /api/projects/:id/skills 只返回"已在磁盘上出现的"条目（linked + external + broken/conflict）；从未被 link 的库内 skill 不会出现在磁盘扫描结果里。为让 REQ-SKILL-010 的 UI 流程（"看到 alpha-skill row → 点 link-button"）成立，useProjectDetail.mergeProjectSkills 客户端合并 listSkillGroups() 全量，未出现在磁盘视图中的标 `linked:false`。最小侵入：后端契约（=当前磁盘状态）未改，前端只补一个可选操作面；resync/convergence 仍以磁盘 + linked-record 为真相源。
+2. **convergence-summary 位置**：edit PUT 后 modal 关闭，测试期望 summary 可见 → Workspace 页面级持久显示 convergence 卡片（带关闭按钮）。ProjectDetailModal 内 resync 后的 summary 则留在 modal 内局部显示。两处共用同一 data-testid 满足签核断言（AC6「响应携带结果可见」）。
+3. **install log panel 移除**：job 模型无流式输出（signoff 决策 #1）；InstallSkillModal 不再渲染 install-skill-log-panel。E2E 测试中无对 log panel 的断言（旧 skillInstall.test.cjs 已退役）。
+4. **SkillDetailModal 未再引用**：本次未删文件（范围锁），但已无任何 import 引用它；后续清理可走独立 refactor。
+5. **i18n 新增键**：projectCard.*、projectForm.(editTitle|agentTypes|agentSearchPlaceholder|loadingAgents|pinnedAgents|otherAgents|invalidAgents|noAgentsFound|save|saving)、projectDetail.(agents|resyncSkills|convergenceSummary|invalidAgent|external|conflict|broken|link|unlink)；en/zh 双语齐全且 JSON 校验通过。
+6. **样式**：index.css 追加 .agent-type-* / .project-skill-* / .convergence-summary / .form-readonly 四组样式；不依赖具体颜色/像素，只做布局+可读性（纯审美留 REFLECT）。
+7. **AgentTypeMultiSelect 接受 `agents` prop 预取**：Workspace 把页面级 fetch 的 agents 传入，避免 edit modal 打开时二次 fetch；create 模式无 prop 时组件自拉。
+8. **实现者对业务测试只读**：本次 commit 不涉及 tests/capabilities/** 或 .aiassist/stories/**，E2E 测试文件（agentTypes.test.cjs / skillLibrary.test.cjs）在上一阶段 [test] 签核 commit 已存在。
+
+---
+
+### Slice 5: refactor pass
+
+父代理内联审查（slice 体量小、自循环模式下无新鲜视角 refactor subagent 价值）：
+
+- AgentTypeMultiSelect 提取 OptionRow 子函数（避免 JSX 内联重复），已做。
+- mergeProjectSkills 纯函数独立导出（便于未来单测），已保留在 hook 模块顶部。
+- api/client.js 错误对象统一带 status/code（供 CLI-like 错误流使用），已做。
+- Skills/Workspace 页面对 confirm 的 busySlug/pendingDeleteSlug 模式一致，未发现值得跨文件提取的重复。
+
+结论：**NO_CHANGES_NEEDED**。
