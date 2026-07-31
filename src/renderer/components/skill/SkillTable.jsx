@@ -1,61 +1,59 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRescan, onRepoUpdate, busyRepoId }) {
+/**
+ * Skill library table. Props:
+ *   - groups: listSkillGroups() output — [{slug, sourceType, sourceUrl, skills:[{skillName,name,description}]}]
+ *   - onRequestDelete(slug): open the confirm dialog
+ *   - onRequestUpdate(slug): trigger a source update job
+ *   - busySlug: slug currently running an update job
+ */
+export default function SkillTable({ groups, onRequestDelete, onRequestUpdate, busySlug }) {
   const { t } = useTranslation();
-  // 默认所有repo都是展开状态
-  const [expandedRepos, setExpandedRepos] = useState(() => new Set(repos.map(g => g.repo.id)));
+  // Default: expand every group so a fresh install is immediately visible.
+  const [expandedSlugs, setExpandedSlugs] = useState(() => new Set(groups.map((g) => g.slug)));
 
-  // 当新增repo时（比如安装新技能包），自动展开它
   useEffect(() => {
-    setExpandedRepos(prev => {
+    setExpandedSlugs((prev) => {
       const next = new Set(prev);
       let changed = false;
-      for (const group of repos) {
-        if (!next.has(group.repo.id)) {
-          next.add(group.repo.id);
+      const currentSlugs = new Set(groups.map((g) => g.slug));
+      for (const slug of currentSlugs) {
+        if (!next.has(slug)) {
+          next.add(slug);
           changed = true;
         }
       }
-      // 清理已删除的repo
-      const repoIds = new Set(repos.map(g => g.repo.id));
-      for (const id of next) {
-        if (!repoIds.has(id)) {
-          next.delete(id);
+      for (const slug of next) {
+        if (!currentSlugs.has(slug)) {
+          next.delete(slug);
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [repos]);
+  }, [groups]);
 
-  const totalSkills = repos.reduce((sum, group) => sum + group.skills.length, 0);
-  const isBusy = (id) => busyRepoId === id;
-  const isExpanded = (repoId) => expandedRepos.has(repoId);
-
-  function toggleRepo(repoId) {
-    setExpandedRepos(prev => {
+  function toggle(slug) {
+    setExpandedSlugs((prev) => {
       const next = new Set(prev);
-      if (next.has(repoId)) {
-        next.delete(repoId);
-      } else {
-        next.add(repoId);
-      }
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
       return next;
     });
   }
 
   function expandAll() {
-    setExpandedRepos(new Set(repos.map(g => g.repo.id)));
+    setExpandedSlugs(new Set(groups.map((g) => g.slug)));
   }
 
   function collapseAll() {
-    setExpandedRepos(new Set());
+    setExpandedSlugs(new Set());
   }
 
   return (
     <div className="skill-table" data-testid="skill-table">
-      {repos.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="skill-table-empty">{t("skills.noSkills")}</div>
       ) : (
         <>
@@ -67,19 +65,20 @@ export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRe
               {t("skills.collapseAll")}
             </button>
           </div>
-          {repos.map((group) => {
-            const expanded = isExpanded(group.repo.id);
+          {groups.map((group) => {
+            const expanded = expandedSlugs.has(group.slug);
+            const busy = busySlug === group.slug;
             return (
-              <div key={group.repo.id} className="skill-repo-group" data-testid="repo-row">
+              <div key={group.slug} className="skill-repo-group" data-testid="repo-row">
                 <div
                   className="skill-repo-header skill-repo-header-clickable"
-                  onClick={() => toggleRepo(group.repo.id)}
+                  onClick={() => toggle(group.slug)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      toggleRepo(group.repo.id);
+                      toggle(group.slug);
                     }
                   }}
                 >
@@ -89,49 +88,37 @@ export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRe
                     </span>
                     <div className="skill-repo-info">
                       <span className="skill-repo-name">
-                        {group.repo.name}
+                        {group.slug}
                         <span className="skill-count-badge">{group.skills.length}</span>
                       </span>
                       <span className="skill-repo-meta">
-                        {group.repo.installSource} · {group.repo.repoPath}
+                        {group.sourceType}
+                        {group.sourceUrl ? ` · ${group.sourceUrl}` : ""}
                       </span>
                     </div>
                   </div>
                   <div className="skill-repo-actions" onClick={(e) => e.stopPropagation()}>
-                    {onRepoRescan && (
-                      <button
-                        className="skill-action-secondary"
-                        data-testid="repo-rescan-button"
-                        disabled={isBusy(group.repo.id)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRepoRescan(group.repo.id);
-                        }}
-                      >
-                        {isBusy(group.repo.id) ? t("skills.working") : t("skills.rescan")}
-                      </button>
-                    )}
-                    {onRepoUpdate && (
+                    {group.sourceType === "git" && onRequestUpdate && (
                       <button
                         className="skill-action-secondary"
                         data-testid="repo-update-button"
-                        disabled={isBusy(group.repo.id)}
+                        disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onRepoUpdate(group.repo.id);
+                          onRequestUpdate(group.slug);
                         }}
                       >
-                        {isBusy(group.repo.id) ? t("skills.working") : t("skills.update")}
+                        {busy ? t("skills.working") : t("skills.update")}
                       </button>
                     )}
-                    {onRepoDelete && (
+                    {onRequestDelete && (
                       <button
                         className="skill-action-danger"
                         data-testid="repo-delete-button"
-                        disabled={isBusy(group.repo.id)}
+                        disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onRepoDelete(group.repo.id);
+                          onRequestDelete(group.slug);
                         }}
                       >
                         {t("skills.deleteRepo")}
@@ -144,10 +131,7 @@ export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRe
                   <>
                     <div className="skill-table-header">
                       <span>{t("skills.skill")}</span>
-                      <span>{t("skills.repoPath")}</span>
-                      <span>{t("skills.version")}</span>
-                      <span>{t("skills.category")}</span>
-                      <span></span>
+                      <span>{t("skills.description")}</span>
                     </div>
 
                     {group.skills.length === 0 ? (
@@ -155,19 +139,15 @@ export default function SkillTable({ repos, onSkillClick, onRepoDelete, onRepoRe
                     ) : (
                       group.skills.map((skill) => (
                         <div
-                          key={skill.id}
+                          key={`${group.slug}/${skill.skillName}`}
                           className="skill-table-row"
                           data-testid="skill-row"
-                          onClick={() => onSkillClick(skill.id)}
                         >
                           <div className="skill-cell-main">
-                            <span className="skill-cell-title">{skill.name}</span>
-                            <span className="skill-cell-meta">{skill.description}</span>
+                            <span className="skill-cell-title">{skill.name || skill.skillName}</span>
+                            <span className="skill-cell-meta">{skill.skillName}</span>
                           </div>
-                          <span className="skill-cell-text">{skill.repoPath}</span>
-                          <span className="skill-cell-text">{skill.version || "—"}</span>
-                          <span className="skill-cell-text">{skill.category || "—"}</span>
-                          <span className="skill-action-link">{t("skills.view")}</span>
+                          <span className="skill-cell-text">{skill.description || "—"}</span>
                         </div>
                       ))
                     )}

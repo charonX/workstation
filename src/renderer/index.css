@@ -1893,3 +1893,185 @@ body {
   color: var(--ch-text-secondary);
   font-size: var(--ch-text-sm);
 }
+
+/* ---------- Agent type multi-select (REQ-WORKSPACE-012) ---------- */
+.agent-type-multiselect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-2);
+  max-height: 320px;
+}
+.agent-type-search {
+  width: 100%;
+}
+.agent-type-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-1);
+}
+.agent-type-pinned {
+  padding-bottom: var(--ch-space-2);
+  border-bottom: 1px solid var(--ch-border);
+}
+.agent-type-group-label {
+  font-size: var(--ch-text-xs);
+  font-weight: 600;
+  color: var(--ch-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--ch-space-1) var(--ch-space-2);
+}
+.agent-type-option {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-3);
+  border-radius: var(--ch-radius-md);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.agent-type-option:hover {
+  background: var(--ch-surface-hover);
+}
+.agent-type-option input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+.agent-type-option-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.agent-type-option-name {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-primary);
+}
+.agent-type-option-key {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  font-family: var(--ch-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.agent-type-option--invalid .agent-type-option-name {
+  color: var(--ch-error);
+}
+.agent-type-invalid-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--ch-error);
+  color: white;
+  font-size: var(--ch-text-xs);
+  font-weight: 700;
+}
+.agent-type-empty {
+  padding: var(--ch-space-4);
+  text-align: center;
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-sm);
+}
+
+/* ---------- Project skills section (REQ-SKILL-010/012) ---------- */
+.project-skills-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--ch-space-3);
+}
+.project-skill-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ch-space-3);
+  padding: var(--ch-space-3) var(--ch-space-2);
+  border-bottom: 1px solid var(--ch-border);
+}
+.project-skill-row:last-child {
+  border-bottom: none;
+}
+.project-skill-row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.project-skill-name {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+}
+.project-skill-meta {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  font-family: var(--ch-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.external-skill-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--ch-radius-sm);
+  font-size: var(--ch-text-xs);
+  font-weight: 600;
+  background: var(--ch-surface-hover, rgba(127,127,127,0.15));
+  color: var(--ch-text-secondary);
+}
+.external-skill-badge--conflict {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+.external-skill-badge--broken {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--ch-error);
+}
+
+/* ---------- Convergence summary (REQ-SKILL-013 AC6) ---------- */
+.convergence-summary {
+  position: relative;
+  padding: var(--ch-space-3) var(--ch-space-4);
+  margin-bottom: var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-left: 3px solid var(--ch-accent);
+  border-radius: var(--ch-radius-md);
+  background: var(--ch-surface, rgba(127,127,127,0.05));
+  font-size: var(--ch-text-sm);
+}
+.convergence-summary-close {
+  position: absolute;
+  top: var(--ch-space-2);
+  right: var(--ch-space-2);
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+}
+.convergence-summary-list {
+  margin: var(--ch-space-2) 0 0;
+  padding-left: var(--ch-space-4);
+  font-family: var(--ch-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--ch-text-xs);
+}
+
+/* ---------- Readonly form block for edit mode ---------- */
+.form-readonly {
+  padding: var(--ch-space-2) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-primary);
+  background: var(--ch-surface, rgba(127,127,127,0.04));
+}
+.form-readonly--path {
+  margin-top: var(--ch-space-1);
+  font-family: var(--ch-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+}

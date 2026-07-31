@@ -1,58 +1,49 @@
 import { get, post, del } from "./client.js";
 
-const API_BASE = () => (typeof window !== "undefined" && window.opc?.apiBaseUrl) || "";
+// ADR-011 skill API (replaces legacy /api/skill-repos + SSE stream).
+//   GET  /api/skills                 grouped live scan: [{slug, sourceType, sourceUrl, skills:[{skillName,...}]}]
+//   POST /api/skills/install         {sourceType, identifier, force?} -> {jobId}
+//   GET  /api/skills/jobs/:jobId     {id, status, error:{code,message}|null}
+//   POST /api/skills/:slug/update    -> {jobId} (git only; local -> 400)
+//   DELETE /api/skills/:slug         -> {deleted}
 
-export function getSkillRepos() {
-  return get("/api/skill-repos");
+export function listSkillGroups() {
+  return get("/api/skills");
 }
 
-export function getSkill(skillId) {
-  return get(`/api/skills/${skillId}`);
-}
-
-export async function startInstallJob(body) {
-  const res = await post("/api/skills/install", body);
-  return res.jobId;
-}
-
-export function subscribeInstallJob(jobId, { onLog, onSuccess, onError }) {
-  const es = new EventSource(`${API_BASE()}/api/skills/install/${jobId}/stream`);
-  es.onmessage = (event) => {
-    let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch {
-      data = { type: "log", text: event.data };
-    }
-    if (data.type === "log") {
-      onLog?.(data.text);
-    } else if (data.type === "success") {
-      es.close();
-      onSuccess?.(data.repo, data.skills);
-    } else if (data.type === "error") {
-      es.close();
-      onError?.(new Error(data.message || "Installation failed"));
-    }
-  };
-  es.onerror = () => {
-    es.close();
-    onError?.(new Error("Installation stream disconnected"));
-  };
-  return () => es.close();
-}
-
-export function installSkill(body) {
+export function startInstall(body) {
   return post("/api/skills/install", body);
 }
 
-export function deleteSkillRepo(repoId) {
-  return del(`/api/skill-repos/${repoId}`);
+export function getJob(jobId) {
+  return get(`/api/skills/jobs/${encodeURIComponent(jobId)}`);
 }
 
-export function rescanSkillRepo(repoId) {
-  return post(`/api/skill-repos/${repoId}/rescan`, {});
+export function requestSourceUpdate(slug) {
+  return post(`/api/skills/${encodeURIComponent(slug)}/update`);
 }
 
-export function updateSkillRepo(repoId) {
-  return post(`/api/skill-repos/${repoId}/update`, {});
+export function deleteSource(slug) {
+  return del(`/api/skills/${encodeURIComponent(slug)}`);
+}
+
+// Poll GET /api/skills/jobs/:jobId until the job reaches a terminal state.
+// Returns the final success job; throws with error.code/message on failure.
+export async function waitForJob(jobId, { pollIntervalMs = 200, timeoutMs = 30000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const job = await getJob(jobId);
+    if (job.status === "success") return job;
+    if (job.status === "error") {
+      const err = new Error(job.error?.message || "Skill job failed");
+      err.code = job.error?.code;
+      throw err;
+    }
+    if (Date.now() > deadline) {
+      const err = new Error("Timed out waiting for skill job to finish");
+      err.code = "SKILL_JOB_TIMEOUT";
+      throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
 }

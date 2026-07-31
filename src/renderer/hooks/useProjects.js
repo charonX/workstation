@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { getProjects, createProject } from "../api/projects.js";
+import { getProjects, createProject, putProject } from "../api/projects.js";
 
 /**
- * Hook to load projects, create a project, and refresh the list.
- * Returns [projects, loading, error, create, refresh].
+ * Hook to load projects, create a project, update a project (partial PUT —
+ * used by the edit flow for agentTypes changes), and refresh the list.
  */
 export function useProjects() {
   const [projects, setProjects] = useState([]);
@@ -37,5 +37,19 @@ export function useProjects() {
     }
   }, []);
 
-  return [projects, loading, error, create, refresh];
+  // PUT /api/projects/:id — partial update. Returns { ...project, convergence }
+  // when agentTypes changed. Updates local list state to the returned project.
+  const update = useCallback(async (projectId, body) => {
+    try {
+      const result = await putProject(projectId, body);
+      const updated = { ...result };
+      delete updated.convergence;
+      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      return result;
+    } catch (err) {
+      throw new Error(err.message || "Failed to update project");
+    }
+  }, []);
+
+  return [projects, loading, error, create, refresh, update];
 }

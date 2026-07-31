@@ -17,13 +17,17 @@ async function request(method, endpoint, body) {
   const res = await fetch(url, options);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || `HTTP ${res.status}`);
+    const error = new Error(err.message || `HTTP ${res.status}`);
+    error.status = res.status;
+    error.code = err.error;
+    throw error;
   }
   if (res.status === 204) return undefined;
   return res.json();
 }
 
 export const get = (endpoint) => request("GET", endpoint);
+export const put = (endpoint, body) => request("PUT", endpoint, body);
 export const patch = (endpoint, body) => request("PATCH", endpoint, body);
 export const post = (endpoint, body) => request("POST", endpoint, body);
 export const del = (endpoint) => request("DELETE", endpoint);

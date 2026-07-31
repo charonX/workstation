@@ -349,8 +349,14 @@
     "feishuSend": "飞书发送",
     "setVariables": "变量赋值"
   },
+  "projectCard": {
+    "edit": "编辑",
+    "configureSkills": "配置技能",
+    "delete": "删除"
+  },
   "projectForm": {
     "title": "添加项目",
+    "editTitle": "编辑项目",
     "source": "来源",
     "sourceLocal": "本地目录",
     "sourceGit": "Git 仓库",
@@ -362,9 +368,18 @@
     "repoUrlPlaceholder": "https://github.com/...",
     "branch": "分支",
     "branchPlaceholder": "main",
+    "agentTypes": "支持的智能体类型",
+    "agentSearchPlaceholder": "筛选智能体...",
+    "loadingAgents": "加载智能体中...",
+    "pinnedAgents": "置顶",
+    "otherAgents": "其他智能体",
+    "invalidAgents": "当前注册表中缺失",
+    "noAgentsFound": "没有匹配的智能体。",
     "cancel": "取消",
     "add": "添加项目",
-    "adding": "添加中..."
+    "adding": "添加中...",
+    "save": "保存",
+    "saving": "保存中..."
   },
   "projectDetail": {
     "title": "项目详情",
@@ -374,9 +389,18 @@
     "projectName": "项目名称",
     "localPath": "本地路径",
     "repoUrl": "仓库地址",
+    "agents": "智能体",
     "flows": "流程数",
     "runs": "运行数",
     "updated": "更新时间",
-    "availableSkills": "可用技能"
+    "availableSkills": "可用技能",
+    "resyncSkills": "重新同步技能",
+    "convergenceSummary": "收敛结果：",
+    "invalidAgent": "失效",
+    "external": "外部",
+    "conflict": "冲突",
+    "broken": "断链",
+    "link": "关联",
+    "unlink": "取消关联"
   }
 }

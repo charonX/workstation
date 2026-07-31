@@ -4,15 +4,42 @@ import { useProjectDetail } from "../../hooks/useProjectDetail.js";
 import Modal from "../shared/Modal.jsx";
 import "./ProjectDetailModal.css";
 
+/**
+ * Project detail modal. The skills tab renders the project-skills-section:
+ * a flat list of entries (linked/unlinked library skills + external entries
+ * discovered by disk scan), with link/unlink affordances, a resync button,
+ * and the most recent convergence summary.
+ *
+ * Entry shapes (from useProjectDetail):
+ *   origin="repo":     { slug, skillName, name?, description?, agents, origin, linked, broken?, conflict? }
+ *   origin="external": { name, agents, origin, conflict? }
+ */
 export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("skills");
-  const [detail, loading, error, toggleSkill] = useProjectDetail(projectId);
+  const {
+    detail,
+    entries,
+    loading,
+    error,
+    linkSkill,
+    unlinkSkill,
+    resyncSkills,
+    convergenceSummary
+  } = useProjectDetail(projectId);
 
   if (!isOpen) return null;
 
-  function handleToggleSkill(skillId, currentlyLinked) {
-    toggleSkill(skillId, !currentlyLinked);
+  function handleLink(entry) {
+    linkSkill(entry.slug, entry.skillName);
+  }
+
+  function handleUnlink(entry) {
+    unlinkSkill(entry.slug, entry.skillName);
+  }
+
+  function handleResync() {
+    resyncSkills();
   }
 
   const footer = (
@@ -67,6 +94,14 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
                 </div>
               )}
               <div className="meta-row">
+                <span className="meta-label">{t("projectDetail.agents")}</span>
+                <span className="meta-value">
+                  {Array.isArray(detail.overview.agentTypes) && detail.overview.agentTypes.length > 0
+                    ? detail.overview.agentTypes.join(", ")
+                    : "—"}
+                </span>
+              </div>
+              <div className="meta-row">
                 <span className="meta-label">{t("projectDetail.flows")}</span>
                 <span className="meta-value">{detail.overview.flowsCount ?? 0}</span>
               </div>
@@ -88,42 +123,103 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
       )}
 
       {activeTab === "skills" && (
-        <div className="tab-panel">
+        <div className="tab-panel" data-testid="project-skills-section">
           {loading && <p className="tab-loading">{t("projectDetail.loading")}</p>}
           {error && <p className="tab-error">{error}</p>}
-          {detail?.skills && (
-            <>
-              <h4 className="skills-section-title">{t("projectDetail.availableSkills")}</h4>
-              {detail.skills.length === 0 && (
-                <p className="tab-empty">{t("projectDetail.noSkills")}</p>
-              )}
-              {detail.skills.map((skill) => (
-                <label
-                  key={skill.id}
-                  className="skill-option"
-                  data-testid="skill-link-checkbox"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!skill.linked}
-                    onChange={() =>
-                      handleToggleSkill(skill.id, skill.linked)
-                    }
-                  />
-                  <div className="skill-option-main">
-                    <span className="skill-option-title">
-                      {skill.name || skill.id}
-                    </span>
-                    {skill.description && (
-                      <span className="skill-option-meta">
-                        {skill.description}
+
+          <div className="project-skills-toolbar">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="resync-skills-button"
+              onClick={handleResync}
+              disabled={!detail}
+            >
+              {t("projectDetail.resyncSkills")}
+            </button>
+          </div>
+
+          {convergenceSummary && Array.isArray(convergenceSummary.agents) && (
+            <div className="convergence-summary" data-testid="convergence-summary">
+              {t("projectDetail.convergenceSummary")}
+              <ul className="convergence-summary-list">
+                {convergenceSummary.agents.map((a) => (
+                  <li key={a.agent}>
+                    {a.agent}
+                    {a.invalid ? ` (${t("projectDetail.invalidAgent")})` : ""}
+                    {a.linked?.length ? ` · +${a.linked.length}` : ""}
+                    {a.unlinked?.length ? ` · -${a.unlinked.length}` : ""}
+                    {a.failed?.length ? ` · !${a.failed.length}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {entries.length === 0 && !loading && (
+            <p className="tab-empty">{t("projectDetail.noSkills")}</p>
+          )}
+
+          {entries.map((entry) => {
+            const isExternal = entry.origin === "external";
+            const displayName = isExternal ? entry.name : entry.name || entry.skillName;
+            const key = isExternal ? `external:${entry.name}` : `${entry.slug}/${entry.skillName}`;
+            const linked = !isExternal && !!entry.linked;
+            return (
+              <div
+                key={key}
+                className="project-skill-row"
+                data-testid="project-skill-row"
+              >
+                <div className="project-skill-row-main">
+                  <span className="project-skill-name">
+                    {displayName}
+                    {isExternal && (
+                      <span className="external-skill-badge" data-testid="external-skill-badge">
+                        {t("projectDetail.external")}
                       </span>
                     )}
-                  </div>
-                </label>
-              ))}
-            </>
-          )}
+                    {entry.conflict && (
+                      <span className="external-skill-badge external-skill-badge--conflict">
+                        {t("projectDetail.conflict")}
+                      </span>
+                    )}
+                    {entry.broken && (
+                      <span className="external-skill-badge external-skill-badge--broken">
+                        {t("projectDetail.broken")}
+                      </span>
+                    )}
+                  </span>
+                  <span className="project-skill-meta">
+                    {isExternal ? null : entry.slug}
+                    {entry.agents?.length ? ` · ${entry.agents.join(", ")}` : ""}
+                  </span>
+                </div>
+                <div className="project-skill-row-actions">
+                  {isExternal ? null : linked ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      data-testid="skill-unlink-button"
+                      onClick={() => handleUnlink(entry)}
+                    >
+                      {t("projectDetail.unlink")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      data-testid="skill-link-button"
+                      onClick={() => handleLink(entry)}
+                      disabled={!!entry.conflict}
+                    >
+                      {t("projectDetail.link")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </Modal>

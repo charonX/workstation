@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
-import { getSkillRepos, getSkill, startInstallJob, subscribeInstallJob } from "../api/skills.js";
+import { listSkillGroups, startInstall, waitForJob, requestSourceUpdate, deleteSource } from "../api/skills.js";
 
 export function useSkills() {
-  const [repos, setRepos] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchRepos = useCallback(async () => {
+  const fetchGroups = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSkillRepos();
-      setRepos(data);
+      const data = await listSkillGroups();
+      setGroups(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message || "Failed to load skills");
     } finally {
@@ -20,52 +20,40 @@ export function useSkills() {
   }, []);
 
   useEffect(() => {
-    fetchRepos();
-  }, [fetchRepos]);
+    fetchGroups();
+  }, [fetchGroups]);
 
-  const install = useCallback(async (source, identifier, { onLog } = {}) => {
-    const jobId = await startInstallJob({ source, identifier });
-    return new Promise((resolve, reject) => {
-      const unsubscribe = subscribeInstallJob(jobId, {
-        onLog,
-        onSuccess: (repo, skills) => {
-          unsubscribe();
-          setRepos((prev) => [{ repo, skills }, ...prev]);
-          resolve({ repo, skills });
-        },
-        onError: (err) => {
-          unsubscribe();
-          reject(err);
-        }
-      });
-    });
-  }, []);
+  // Install: start a git/local job and poll to completion. Resolves with the
+  // resulting source group ({slug, sourceType, skills[]}) so the caller can
+  // surface the outcome; the hook also refreshes the group list.
+  const install = useCallback(
+    async (sourceType, identifier, { force } = {}) => {
+      const { jobId } = await startInstall({ sourceType, identifier, force: !!force });
+      await waitForJob(jobId);
+      await fetchGroups();
+      return { jobId };
+    },
+    [fetchGroups]
+  );
 
-  return { repos, loading, error, refetch: fetchRepos, install };
-}
+  const updateSource = useCallback(
+    async (slug) => {
+      const { jobId } = await requestSourceUpdate(slug);
+      await waitForJob(jobId);
+      await fetchGroups();
+      return { jobId };
+    },
+    [fetchGroups]
+  );
 
-export function useSkillDetail(skillId) {
-  const [skill, setSkill] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const removeSource = useCallback(
+    async (slug) => {
+      const result = await deleteSource(slug);
+      await fetchGroups();
+      return result;
+    },
+    [fetchGroups]
+  );
 
-  const fetchSkill = useCallback(async () => {
-    if (!skillId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getSkill(skillId);
-      setSkill(data);
-    } catch (err) {
-      setError(err.message || "Failed to load skill detail");
-    } finally {
-      setLoading(false);
-    }
-  }, [skillId]);
-
-  useEffect(() => {
-    fetchSkill();
-  }, [fetchSkill]);
-
-  return { skill, loading, error, refetch: fetchSkill };
+  return { groups, loading, error, refetch: fetchGroups, install, updateSource, removeSource };
 }

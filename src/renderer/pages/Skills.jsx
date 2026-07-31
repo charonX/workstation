@@ -2,63 +2,56 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSkills } from "../hooks/useSkills.js";
 import SkillTable from "../components/skill/SkillTable.jsx";
-import SkillDetailModal from "../components/skill/SkillDetailModal.jsx";
 import InstallSkillModal from "../components/skill/InstallSkillModal.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
-import { deleteSkillRepo, rescanSkillRepo, updateSkillRepo } from "../api/skills.js";
 
 export default function Skills() {
   const { t } = useTranslation();
-  const { repos, loading, error, refetch, install } = useSkills();
-  const [detailSkillId, setDetailSkillId] = useState(null);
+  const { groups, loading, error, refetch, install, updateSource, removeSource } = useSkills();
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingDeleteRepoId, setPendingDeleteRepoId] = useState(null);
-  const [busyRepoId, setBusyRepoId] = useState(null);
+  const [pendingDeleteSlug, setPendingDeleteSlug] = useState(null);
+  const [busySlug, setBusySlug] = useState(null);
   const [actionError, setActionError] = useState(null);
 
-  const skillCount = repos.reduce((sum, group) => sum + group.skills.length, 0);
+  const skillCount = groups.reduce((sum, g) => sum + g.skills.length, 0);
 
-  function handleRequestDeleteRepo(repoId) {
-    setPendingDeleteRepoId(repoId);
+  function handleRequestDelete(slug) {
+    setPendingDeleteSlug(slug);
     setConfirmOpen(true);
   }
 
   async function handleConfirmDelete() {
-    if (!pendingDeleteRepoId) return;
-    try {
-      await deleteSkillRepo(pendingDeleteRepoId);
-      await refetch();
-    } finally {
-      setPendingDeleteRepoId(null);
-      setConfirmOpen(false);
-    }
-  }
-
-  async function handleRescan(repoId) {
-    setBusyRepoId(repoId);
+    if (!pendingDeleteSlug) return;
+    const slug = pendingDeleteSlug;
+    setConfirmOpen(false);
+    setPendingDeleteSlug(null);
+    setBusySlug(slug);
     setActionError(null);
     try {
-      await rescanSkillRepo(repoId);
-      await refetch();
+      await removeSource(slug);
     } catch (err) {
-      setActionError(err.message || "Rescan failed");
+      setActionError(err.message || "Delete failed");
     } finally {
-      setBusyRepoId(null);
+      setBusySlug(null);
     }
   }
 
-  async function handleUpdate(repoId) {
-    setBusyRepoId(repoId);
+  async function handleUpdate(slug) {
+    setBusySlug(slug);
     setActionError(null);
     try {
-      await updateSkillRepo(repoId);
-      await refetch();
+      await updateSource(slug);
     } catch (err) {
       setActionError(err.message || "Update failed");
     } finally {
-      setBusyRepoId(null);
+      setBusySlug(null);
     }
+  }
+
+  async function handleInstall(sourceType, identifier) {
+    setActionError(null);
+    await install(sourceType, identifier);
   }
 
   return (
@@ -100,26 +93,17 @@ export default function Skills() {
 
       {!loading && !error && (
         <SkillTable
-          repos={repos}
-          onSkillClick={setDetailSkillId}
-          onRepoDelete={handleRequestDeleteRepo}
-          onRepoRescan={handleRescan}
-          onRepoUpdate={handleUpdate}
-          busyRepoId={busyRepoId}
+          groups={groups}
+          onRequestDelete={handleRequestDelete}
+          onRequestUpdate={handleUpdate}
+          busySlug={busySlug}
         />
       )}
 
       {showInstallModal && (
         <InstallSkillModal
           onClose={() => setShowInstallModal(false)}
-          onInstall={install}
-        />
-      )}
-
-      {detailSkillId && (
-        <SkillDetailModal
-          skillId={detailSkillId}
-          onClose={() => setDetailSkillId(null)}
+          onInstall={handleInstall}
         />
       )}
 
@@ -130,7 +114,7 @@ export default function Skills() {
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setConfirmOpen(false);
-          setPendingDeleteRepoId(null);
+          setPendingDeleteSlug(null);
         }}
       />
     </div>
