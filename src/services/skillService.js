@@ -93,8 +93,10 @@ function parseSkillMarkdown(filePath) {
 
 // ---------- skill directory discovery ----------
 
-// A source directory holds skills in one of two layouts (tech-design F6):
-// root-level SKILL.md (skillName = source dir name) or skills/<name>/SKILL.md.
+// A source directory holds skills in one of three layouts (tech-design F6):
+// root-level SKILL.md (skillName = source dir name), skills/<name>/SKILL.md,
+// or nested category layout skills/<category>/<name>/SKILL.md — e.g.
+// mattpocock's skills/engineering/<name>/ (skillName = leaf dir name, v1.1).
 function discoverSkillDirs(sourceDir) {
   if (fs.existsSync(path.join(sourceDir, "SKILL.md"))) {
     return [{ skillName: path.basename(sourceDir), dir: sourceDir }];
@@ -107,6 +109,23 @@ function discoverSkillDirs(sourceDir) {
     const dir = path.join(skillsRoot, entry.name);
     if (fs.existsSync(path.join(dir, "SKILL.md"))) {
       results.push({ skillName: entry.name, dir });
+      continue;
+    }
+    // v1.1: a dir without its own SKILL.md is a category; its skill dirs live
+    // one level deeper (skills/<category>/<name>/SKILL.md). Strictly additive:
+    // dirs already recognized as skills are never re-scanned as categories.
+    let subEntries;
+    try {
+      subEntries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // E10-style: an unreadable category dir is skipped, never fatal
+    }
+    for (const sub of subEntries) {
+      if (!sub.isDirectory()) continue;
+      const subDir = path.join(dir, sub.name);
+      if (fs.existsSync(path.join(subDir, "SKILL.md"))) {
+        results.push({ skillName: sub.name, dir: subDir });
+      }
     }
   }
   return results;
@@ -149,7 +168,7 @@ function validateSourceContent(sourceDir) {
     throw codedError(
       400,
       "SKILL_SOURCE_INVALID",
-      "Source must contain a SKILL.md at its root or under skills/*/SKILL.md"
+      "Source must contain a SKILL.md at its root, under skills/*/ or under skills/*/*/ (nested category layout)"
     );
   }
   for (const { skillName } of skillDirs) {
@@ -510,10 +529,11 @@ function attributeLinkTarget(absTarget) {
     }
   }
   // Fall back to path shape: root layout links point at <slug> itself;
-  // skills/* layout links point at <slug>/skills/<skillName>.
+  // skills/* and skills/*/* layout links point at <slug>/skills/.../<skillName>
+  // where the leaf dir name is the skill name (v1.1 nested categories).
   let skillName;
   if (segments.length === 1) skillName = slug;
-  else if (segments[1] === "skills" && segments.length >= 3) skillName = segments[2];
+  else if (segments[1] === "skills" && segments.length >= 3) skillName = segments[segments.length - 1];
   else skillName = segments[segments.length - 1];
   return { slug, skillName, broken: true };
 }
