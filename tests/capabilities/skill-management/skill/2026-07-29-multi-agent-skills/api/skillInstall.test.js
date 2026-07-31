@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-007, 2026-07-29-multi-agent-skills/REQ-SKILL-008, 2026-07-29-multi-agent-skills/REQ-SKILL-009
-// REQ-VERSION: v1-hash:48b5bb090689d0ae76858eee7132e228805e6eb09ff701686d30cc1e6863ee4f
+// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -173,6 +173,28 @@ describe("Skill Install (git / local / legacy sources removed)", () => {
       assert.equal(group.slug, path.basename(source));
       assert.ok(fs.existsSync(path.join(repoRoot, group.slug, "skills", "notes", "SKILL.md")));
       assert.ok(!fs.existsSync(path.join(repoRoot, group.slug, ".git")), ".git must be excluded from the copy");
+    } finally {
+      fs.rmSync(source, { recursive: true, force: true });
+    }
+  });
+
+  it("REQ-SKILL-008: installs a local source with the nested skills/<category>/<name>/ layout (v1.1)", async () => {
+    const source = makeTempDir("opc-install-local-nested-");
+    writeSkillMd(path.join(source, "skills", "engineering", "diagnosing-bugs"), {
+      name: "Diagnosing Bugs",
+      description: "Grill, locate and fix bugs"
+    });
+    try {
+      const res = await startInstall(serverCtx.baseUrl, { sourceType: "local", identifier: source });
+      assert.equal(res.status, 202);
+      const job = await waitForJob(serverCtx.baseUrl, (await res.json()).jobId);
+      assert.equal(job.status, "success");
+
+      const groups = await (await fetch(`${serverCtx.baseUrl}/api/skills`)).json();
+      const group = groups.find((g) => g.slug === path.basename(source));
+      assert.ok(group, "nested-layout local source must pass content validation and install");
+      assert.deepEqual(group.skills.map((s) => s.skillName), ["diagnosing-bugs"]);
+      assert.ok(fs.existsSync(path.join(repoRoot, group.slug, "skills", "engineering", "diagnosing-bugs", "SKILL.md")));
     } finally {
       fs.rmSync(source, { recursive: true, force: true });
     }

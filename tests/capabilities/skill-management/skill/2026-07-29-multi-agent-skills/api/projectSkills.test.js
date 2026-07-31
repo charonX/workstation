@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-010, 2026-07-29-multi-agent-skills/REQ-SKILL-011, 2026-07-29-multi-agent-skills/REQ-SKILL-012
-// REQ-VERSION: v1-hash:48b5bb090689d0ae76858eee7132e228805e6eb09ff701686d30cc1e6863ee4f
+// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -293,6 +293,46 @@ describe("Project Skills (link / unlink / project skill view)", () => {
     assert.ok(foreignLinkEntry, "foreign symlink must be listed with origin=external");
 
     fs.rmSync(foreignTarget, { recursive: true, force: true });
+  });
+
+  it("REQ-SKILL-010/012: nested-layout skills link by leaf dir name and attribute to the source (v1.1)", async () => {
+    const { project, localPath } = await createProjectWithAgents(serverCtx.baseUrl, {
+      agentTypes: ["claude-code"]
+    });
+    // 嵌套布局来源：acme-tools 已有 1 层布局的 review/deploy，补一个 engineering/code-review
+    writeSkillMd(path.join(repoRoot, "acme-tools", "skills", "engineering", "code-review"), {
+      name: "Code Review",
+      description: "Review code"
+    });
+
+    const res = await linkSkill(serverCtx.baseUrl, project.id, { slug: "acme-tools", skillName: "code-review" });
+    assert.equal(res.status, 200);
+    const result = await res.json();
+    const claude = result.agents.find((a) => a.agent === "claude-code");
+    assert.ok(claude.linked.includes("code-review"), "nested-layout skill must link under its leaf dir name");
+    assertLinkTo(path.join(localPath, ".claude", "skills", "code-review"), path.join(repoRoot, "acme-tools", "skills", "engineering", "code-review"));
+
+    const view = await (await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`)).json();
+    const own = view.find((e) => e.origin === "repo" && e.skillName === "code-review");
+    assert.ok(own, "nested-layout skill must appear in the project view with origin=repo");
+    assert.equal(own.slug, "acme-tools");
+    assert.ok(own.agents.includes("claude-code"));
+  });
+
+  it("REQ-SKILL-012: a broken nested-layout link is attributed by its leaf dir name (v1.1)", async () => {
+    const { project } = await createProjectWithAgents(serverCtx.baseUrl, { agentTypes: ["claude-code"] });
+    writeSkillMd(path.join(repoRoot, "acme-tools", "skills", "engineering", "code-review"), {
+      name: "Code Review",
+      description: "Review code"
+    });
+    await linkSkill(serverCtx.baseUrl, project.id, { slug: "acme-tools", skillName: "code-review" });
+    // 目标从库中消失 -> 断链，靠路径形状兜底归因到叶子目录名
+    fs.rmSync(path.join(repoRoot, "acme-tools", "skills", "engineering"), { recursive: true, force: true });
+
+    const view = await (await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`)).json();
+    const broken = view.find((e) => (e.skillName ?? e.name) === "code-review");
+    assert.ok(broken, "broken nested link must be listed by its leaf dir name");
+    assert.equal(broken.broken, true);
   });
 
   it("REQ-SKILL-012: a link whose library target vanished is marked broken", async () => {

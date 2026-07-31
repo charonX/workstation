@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-005, 2026-07-29-multi-agent-skills/REQ-SKILL-006, 2026-07-29-multi-agent-skills/REQ-SKILL-015, 2026-07-29-multi-agent-skills/REQ-SKILL-016, 2026-07-29-multi-agent-skills/REQ-SKILL-017
-// REQ-VERSION: v1-hash:48b5bb090689d0ae76858eee7132e228805e6eb09ff701686d30cc1e6863ee4f
+// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -214,6 +214,25 @@ describe("Skill Library (settings / scan view / remove / update / legacy cleanup
     assert.equal(groups[0].skills.length, 1);
     assert.equal(groups[0].skills[0].skillName, "solo-skill");
     assert.equal(groups[0].skills[0].description, "Single skill at root");
+  });
+
+  it("REQ-SKILL-006: discovers skills in the nested skills/<category>/<name>/ layout (v1.1)", async () => {
+    // mattpocock 式分类嵌套布局（skills/engineering/diagnosing-bugs/）与 1 层布局混用
+    makeSourceDir(repoRoot, "mattpocock-like", { skills: [{ dirName: "notes" }] });
+    writeSkillMd(path.join(repoRoot, "mattpocock-like", "skills", "engineering", "diagnosing-bugs"), {
+      name: "Diagnosing Bugs",
+      description: "Grill, locate and fix bugs"
+    });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/skills`);
+    const groups = await res.json();
+    const group = groups.find((g) => g.slug === "mattpocock-like");
+    assert.ok(group, "nested-layout source must appear as a group");
+    const names = group.skills.map((s) => s.skillName).sort();
+    assert.deepEqual(names, ["diagnosing-bugs", "notes"], "both layouts must be discovered");
+    const bug = group.skills.find((s) => s.skillName === "diagnosing-bugs");
+    assert.equal(bug.name, "Diagnosing Bugs");
+    assert.equal(bug.description, "Grill, locate and fix bugs");
   });
 
   it("REQ-SKILL-006: skips directories whose SKILL.md misses name/description (E6) without failing the scan", async () => {
