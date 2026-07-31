@@ -9,7 +9,7 @@ intention: >-
 
 phase: BUG  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-29
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -24,6 +24,7 @@ history:
   - {at: 2026-07-30, from: ASSERTION-SIGNOFF, to: BUILD, note: "进入 BUILD。切片计划（5 片，依赖序）：S1 agent-registry（REQ-SKILL-018/019，12 测试）→ S2 skill-library 含旧机制清除（REQ-SKILL-005~009/015/016/017，31 测试）→ S3 distribution 含 agentTypes（REQ-SKILL-010~014 + REQ-WORKSPACE-011/013，34 测试）→ S4 CLI（REQ-CLI-002，10 测试）→ S5 E2E UI（REQ-WORKSPACE-012 + skill E2E，12 测试）。"}
   - {at: 2026-07-31, from: BUILD, to: BUILD, note: "Slice 1-4 已合入（commit 920b99f..48383e3 含每片 [build]+[refactor]）。Slice 5 E2E UI 显式降级父代理自循环（k3/sonnet 子代理 403 配额失败）：新增 AgentTypeMultiSelect 组件 + 重写 skill/project renderer（api 层、hooks、InstallSkillModal/SkillTable/ProjectFormModal/ProjectDetailModal/ProjectCard/Workspace）+ i18n 补键 + index.css 样式；commit e203108。测试：story API/CLI 77/77 + 单测 9/9 + E2E 12/12 + flow-orchestration 63/63 + onboarding 19/19 全绿。BUILD 五片完成，待 QA。"}
   - {at: 2026-07-31, from: BUILD, to: BUG, note: "BUG-001（req-gap 就地补全）：技能库中 mattpocock-skills 扫描出 0 个 skill。根因：discoverSkillDirs 只支持根直下与 skills/*/ 两种布局，mattpocock 的 skills/<category>/<name>/ 嵌套布局（类别目录无直接 SKILL.md）全部落空；REQ-SKILL-006 AC3 未定义该边界。就地补全：AC3 扩展为三种布局（skillName = 叶子目录名）、tech-design F1/F6 与 PRD §7 同步措辞、重算 requirements-v1.hash；回归测试先红后绿（嵌套布局扫描/安装/建链归因/断链归因 4 例）；实现扩展 discoverSkillDirs（有限 2 层，strictly additive）+ 断链归因 fallback 取叶子目录名。phase 保持 BUG。"}
+  - {at: 2026-07-31, from: BUG, to: BUG, note: "BUG-002（code-defect）：构建产物运行（electron-forge start）编辑项目时 TTP handler 抛 ENOENT .vite/build/agentRegistry.json。根因：agentRegistryService 按 bundle 所在目录读快照（REQ-SKILL-018 AC1），vite main 构建从不把 src/services/agentRegistry.json 复制进产物；API/E2E 测试均从 src/ 源码启动（import.meta.url 指向 src/services/），盲区未被覆盖。修复：vite.main.config.js 增加 closeBundle 插件把快照复制到 build.outDir（源缺失 fail loud），覆盖 forge start/package/make；新增构件级回归测试（跑真实 vite build --outDir 临时目录，断言产物含快照且与源一致）先红后绿。受影响测试 116/116 绿；全量单测剩 2 条 pre-existing 失败（2026-07-19-media-production-line 的 imRouting AC4 / dailyDigest，stash 验证与本 bug 无关，另行处理）。phase 保持 BUG。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
