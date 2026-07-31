@@ -85,7 +85,7 @@
 
 1. **AC1（扫描即列表）**：`GET /api/skills` 返回按来源目录分组的视图：每个来源目录 `{ slug, sourceType, sourceUrl, skills[] }`；不读 skills/skill_repos 表（表已删，见 REQ-SKILL-017）。
 2. **AC2（来源类型与 URL）**：含 `.git` 的来源目录 `sourceType="git"` 且 `sourceUrl` 取自 git remote；无 `.git` 为 `"local"`，`sourceUrl` 为 null。
-3. **AC3（SKILL.md 解析）**：每个 skill 条目含 `skillName`（= 目录名）与 frontmatter 解析出的 `name`、`description` 等元数据；支持来源根目录直下与 `skills/*/` 两种布局。
+3. **AC3（SKILL.md 解析）**：每个 skill 条目含 `skillName`（= 目录名）与 frontmatter 解析出的 `name`、`description` 等元数据；支持来源根目录直下、`skills/*/` 与 `skills/*/*/`（分类嵌套，如 mattpocock 的 `skills/engineering/<name>/`）三种布局；嵌套布局的 `skillName` = 叶子目录名。v1.1（BUG-001 就地补全）：由两种布局扩展为三种布局。
 4. **AC4（E6 非法跳过）**：frontmatter 缺 `name`/`description` 的目录不进入列表，记 warning 日志；扫描整体不失败。
 5. **AC5（磁盘即真相）**：在技能库目录中手工新增/删除一个合法 skill 目录后，再次 `GET /api/skills` 如实反映（无缓存）。
 

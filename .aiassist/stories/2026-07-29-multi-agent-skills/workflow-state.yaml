@@ -7,9 +7,9 @@ intention: >-
   不同 agent 对 skill 安装目录的要求不同，同步 skill 只能手工维护，
   无法按项目声明的 agent 类型自动适配。
 
-phase: BUILD  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-07-29
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -23,6 +23,7 @@ history:
   - {at: 2026-07-29, from: TEST, to: ASSERTION-SIGNOFF, note: "门 1 通过：44 处 TODO 占位归并为 24 项决策，全部经人逐项拍板并回写测试（ASSERTIONS-SIGNED: true，TODO 清零，语法+加载冒烟过）；signoff.md Assertion 部分完成（REQ 覆盖 19/19、capability/entity 与能力地图一致、检查清单全勾）；签核 commit f39c5d0 仅含 signoff.md。BUILD 解锁。"}
   - {at: 2026-07-30, from: ASSERTION-SIGNOFF, to: BUILD, note: "进入 BUILD。切片计划（5 片，依赖序）：S1 agent-registry（REQ-SKILL-018/019，12 测试）→ S2 skill-library 含旧机制清除（REQ-SKILL-005~009/015/016/017，31 测试）→ S3 distribution 含 agentTypes（REQ-SKILL-010~014 + REQ-WORKSPACE-011/013，34 测试）→ S4 CLI（REQ-CLI-002，10 测试）→ S5 E2E UI（REQ-WORKSPACE-012 + skill E2E，12 测试）。"}
   - {at: 2026-07-31, from: BUILD, to: BUILD, note: "Slice 1-4 已合入（commit 920b99f..48383e3 含每片 [build]+[refactor]）。Slice 5 E2E UI 显式降级父代理自循环（k3/sonnet 子代理 403 配额失败）：新增 AgentTypeMultiSelect 组件 + 重写 skill/project renderer（api 层、hooks、InstallSkillModal/SkillTable/ProjectFormModal/ProjectDetailModal/ProjectCard/Workspace）+ i18n 补键 + index.css 样式；commit e203108。测试：story API/CLI 77/77 + 单测 9/9 + E2E 12/12 + flow-orchestration 63/63 + onboarding 19/19 全绿。BUILD 五片完成，待 QA。"}
+  - {at: 2026-07-31, from: BUILD, to: BUG, note: "BUG-001（req-gap 就地补全）：技能库中 mattpocock-skills 扫描出 0 个 skill。根因：discoverSkillDirs 只支持根直下与 skills/*/ 两种布局，mattpocock 的 skills/<category>/<name>/ 嵌套布局（类别目录无直接 SKILL.md）全部落空；REQ-SKILL-006 AC3 未定义该边界。就地补全：AC3 扩展为三种布局（skillName = 叶子目录名）、tech-design F1/F6 与 PRD §7 同步措辞、重算 requirements-v1.hash；回归测试先红后绿（嵌套布局扫描/安装/建链归因/断链归因 4 例）；实现扩展 discoverSkillDirs（有限 2 层，strictly additive）+ 断链归因 fallback 取叶子目录名。phase 保持 BUG。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

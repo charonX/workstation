@@ -66,8 +66,8 @@ UI/CLI → POST /api/skills/install {sourceType:"git", identifier:<url>}
   → job 启动（沿用现有异步 job + event 模式）
   → slug 化（owner-repo 从 URL 派生，冲突加后缀）
   → simple-git clone <url> → <repoRoot>/<slug>/（浅克隆 --depth 1）
-  → 校验：目录内含 SKILL.md 或 skills/*/SKILL.md（否则失败并清理）；
-     每个 skill 目录名合法（不含路径分隔符/空白/控制字符——链接名即目录名，见 F4）
+  → 校验：目录内含 SKILL.md、skills/*/SKILL.md 或 skills/*/*/SKILL.md（否则失败并清理）；
+     每个 skill 目录名合法（不含路径分隔符/空白/控制字符——链接名即目录名，见 F4）；嵌套布局 skillName = 叶子目录名
   → 完成事件 → 下次列表扫描即出现
 错误：系统 git 不可用 → job 失败，E3（GIT_UNAVAILABLE）；clone 失败 → job 失败，E1
 ```

@@ -80,7 +80,7 @@ tech-design spike 结论（skills@1.5.20 实测，详见 tech-design.md）：库
 |---|---|
 | 添加来源类型 | 必填；枚举 `git` \| `local` |
 | git URL | 必填；非空；合法 https/ssh/SCP-like git 地址；长度 ≤ 2048 |
-| 本地路径 | 必填；非空；展开 `~` 后为已存在的目录；目录内存在 `SKILL.md` 或 `skills/*/SKILL.md`；realpath 不得等于或包含技能库自身 |
+| 本地路径 | 必填；非空；展开 `~` 后为已存在的目录；目录内存在 `SKILL.md`、`skills/*/SKILL.md` 或 `skills/*/*/SKILL.md`；realpath 不得等于或包含技能库自身 |
 | local slug 冲突 | slug 已存在时默认拒绝（E12），显式确认（force）才覆盖（review W3） |
 | skill 目录名 | 链接名 = 来源内 skill 目录名；目录名含路径分隔符/空白/控制字符的 skill 在入库校验时拒绝（review S2） |
 | skill 身份（关联/取消） | 复合身份 `{slug, skillName}`（来源目录 + skill 目录名）；裸名称跨来源可重名，不足以定位（review W2）；必须存在于技能库扫描结果；项目 agentTypes 非空（空则拒绝并提示先设置 agent 类型，E7） |
