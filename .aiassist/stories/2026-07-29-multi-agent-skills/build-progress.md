@@ -9,7 +9,7 @@
 | 1 | agent-registry | REQ-SKILL-018, REQ-SKILL-019 | agentRegistry.test.js, agentRegistrySnapshot.test.js | 12 | done |
 | 2 | skill-library（含旧机制清除） | REQ-SKILL-005/006/007/008/009/015/016/017 | skillLibrary.test.js, skillInstall.test.js | 31 | done |
 | 3 | distribution（含 agentTypes） | REQ-SKILL-010/011/012/013/014, REQ-WORKSPACE-011/013 | projectSkills.test.js, skillSync.test.js, projectAgents.test.js | 34 | done |
-| 4 | CLI | REQ-CLI-002 | skillCli.test.js | 10 | pending |
+| 4 | CLI | REQ-CLI-002 | skillCli.test.js | 10 | done |
 | 5 | E2E UI | REQ-WORKSPACE-012 + skill E2E（006/009/013/014/015 等 UI 行为） | skillLibrary.test.cjs, agentTypes.test.cjs | 12 | pending |
 
 依赖关系：1 → 2（E11 校验用 registry 展开）→ 3（建链用 registry skillsDir + 技能库扫描）→ 4（CLI 包 API）→ 5（UI 调全部端点）。
@@ -182,3 +182,48 @@ PRD→代码 可追溯性表：
   5. record 非原子写 + 跨 owner 多进程竞态（降级不腐化，记为已知取舍）
 - Slice 3: refactor pass done (285e631..48383e3, 提取 scanSkillDirEntries/ensureLinksInDir/repairMispointedLink/finalizeAgentResults 等，净 -47 行，父代理复跑全绿, no rollback)
 - 留 /review：resync 半修复态归因边缘；linkSkillToProject 与 finalizeAgentResults 尾部重复（slice-2 区域）。
+
+---
+
+## Slice 4: CLI — 01c3b68
+
+验证：`node --test` 目标文件 **10/10 绿**；Slice 1-3 回归 **77/77 绿**；老基线 codex-harness-desktop **76/76 绿**；单测 skillServiceSecurity **9/9 绿**。
+
+PRD→代码 可追溯性表：
+
+| PRD/REQ 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| REQ-CLI-002 AC1 `skill list` = GET /api/skills 分组视图；默认输出即可 JSON.parse | `src/cli/commands/skill.js` list | skillCli.test.js「install + skill list round-trip」「remove … disappears from skill list」 | COVERED |
+| REQ-CLI-002 AC1 `skill install --source git\|local --identifier <> [--force]` → POST /api/skills/install + job 轮询；签核输出 `{slug, sourceType, skills[]}` | `skill.js` install（local slug=basename 确定性定位；git 用 before/after 分组 diff 定位 server 端 slug 派生结果，不复制派生逻辑） | 「install --source local + skill list round-trip」 | COVERED |
+| REQ-CLI-002 AC1 + REQ-SKILL-009 `--source npm\|plugin` 非零退出 + stderr 含 SKILL_SOURCE_INVALID | `skill.js` install CLI 侧枚举守卫（VALID_SOURCES，API 400 兜底未触达） | 「skill install --source npm is rejected」（npm/plugin 两形态） | COVERED |
+| REQ-CLI-002 AC1 + REQ-SKILL-008 AC3/AC4 slug 冲突 409 透传 SKILL_SLUG_CONFLICT；--force 覆盖 | `skill.js` install handleResponse（err.data=API 错误体）→ main() fail() 写 stderr；flags.force → body.force=true | 「duplicate local install fails with SKILL_SLUG_CONFLICT, --force overwrites」 | COVERED |
+| REQ-CLI-002 AC1 + REQ-SKILL-016 AC4 `skill update <slug>` local → 非零 + SKILL_UPDATE_UNSUPPORTED；git → 202 job 轮询至终态 | `skill.js` update + waitForJob（job error 透传 error.code） | 「skill update on a local source fails with SKILL_UPDATE_UNSUPPORTED」 | COVERED |
+| REQ-CLI-002 AC1 + REQ-SKILL-015 `skill remove <slug>` → DELETE /api/skills/:slug；磁盘目录消失 | `skill.js` remove | 「skill remove deletes the source…」 | COVERED |
+| REQ-CLI-002 AC1/AC4 + REQ-SKILL-018 AC3 `skill agents` = GET /api/agents 全量 75 + 置顶序 | `skill.js` agents（数组原样输出） | 「skill agents prints the registry including pinned agents」 | COVERED |
+| REQ-CLI-002 AC3 `project update <id> --agents a,b,c` = PUT agentTypes；输出含更新后 agentTypes；非法 key 非零 + stderr 含 key 名（INVALID_AGENT_TYPES + invalidAgents 透传） | `src/cli/commands/project.js` update（逗号切分、trim、滤空） | 「project update --agents + project skill link/list/unlink/resync flow」「unknown key fails」 | COVERED |
+| REQ-CLI-002 AC2 `project skill list\|link\|unlink\|resync <id> [<slug> <skillName>]` 三级子命令（CONTEXT.md 约定） | `project.js` skill dispatcher（list→GET、link→POST {slug,skillName}、unlink→DELETE 复合路径、resync→POST resync，均 encodeURIComponent） | 「project update --agents + … flow」（link 建链 realpath 相等 / list 含 skillName / 手工删链 resync 重建 / unlink 删链） | COVERED |
+| REQ-CLI-002 AC2 link/unlink 缺参数 → 用法错误非零退出 | `project.js` usageError（status 400 → main() exit 1，stderr USAGE_ERROR） | 「project skill link with missing arguments is a usage error」 | COVERED |
+| REQ-CLI-002 AC4 `--json` flag list/agents 机器可读 | `opc-workstation.js` 全局 --json 既有机制（默认输出即 JSON，flag 幂等） | 「--json flag yields machine-readable output for list commands」 | COVERED |
+| 横切：positionals 传递（`handler(flags, rest)`，旧 handler 单参签名兼容）；ADR-001 HTTP-only 沿用 ensureServer 发现；旧 /api/skill-repos、SSE stream、PATCH linkSkill 代码路径整体移除 | `opc-workstation.js` main；`skill.js`/`project.js` 重写 | 老基线 cli.test.js 3/3 绿（--help/--pretty/NOT_IMPLEMENTED 行为不变） | COVERED |
+
+偏差与备注：
+1. **install 成功输出的 slug 定位**：job 模型（签核决策 #1 `{id,status,error}`）不载安装结果；CLI 不复制 server 端 git slug 派生/后缀逻辑——local 用 basename 确定性查找，git 用 install 前后分组 diff 定位新 slug；force 覆盖（local）时 diff 为空、basename 查找兜底。
+2. **job 错误出口码**：job 终态 error 以 status 500 抛出 → main() exit 2；同步 4xx（409/400）→ exit 1；均非零且 stderr 携带 API `{error: CODE}` 体，满足"错误码透传"签核口径。
+3. **`settings set --skill-repo-path` 无需补齐**：既有 PATCH /api/settings 路径（skillRepoPath 字段 + E11 校验）与测试 beforeEach 依赖行为一致，未改动。
+4. **`project update` 仅支持 --agents**（REQ-CLI-002 AC3 最小面）；name/description 透传未开放，留待后续 REQ 驱动。
+5. E2E（.test.cjs）未跑，属 slice 5 范围。
+
+---
+
+## Slice 4: CLI — 01c3b68
+
+### 父代理验证与门禁记录
+
+- Slice 4: complete (01c3b68, 父代理独立复跑 10/10 + 87/87(story API/CLI 全) + 76/76 + 单测 9/9 绿, commit 仅 3 个 src/ cli 文件, 净 +98 行)
+- Slice 4: PRD alignment passed（父代理内联审查，因子代理配额失败）：
+  - **AC1-AC4 全部对齐**：skill 五组命令（list/install/update/remove/agents）、project skill 三级子命令（list/link/unlink/resync）、`--agents` 等价 PUT、错误码透传 stderr、`--json` 由全局处理
+  - **D1 install slug 定位**：local=basename 确定性、git=前后 diff，找不到 → 500 INTERNAL_ERROR 显式报错（不错报）；单进程串行场景下正确
+  - **D2 CLI 侧守卫**：npm/plugin 400 SKILL_SOURCE_INVALID，stderr 含错误码（签核断言验证）
+  - **ADR-001 纪律**：全部经 ensureServer + HTTP fetch；旧 /api/skill-repos + SSE stream 代码路径 grep 确认零引用（仅注释）
+  - scope 干净：opc-workstation.js 只改 handler 透传位置参数 + help 示例，老基线 76/76 绿证兼容
+- Slice 4: refactor pass NO_CHANGES_NEEDED（文件小（143+135 行），handleResponse 模式微差异不值得跨文件提取）
