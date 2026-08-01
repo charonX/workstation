@@ -43,7 +43,7 @@
 |------|----------|---------------|----------|
 | skill-repo | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/` | REQ-SKILL-001, REQ-SKILL-003, REQ-SKILL-004（接替：REQ-SKILL-005~009, 015~017） | `skill.test.js`, `skillInstall.test.cjs` (E2E); rescan/update via HTTP API |
 | skill | `tests/capabilities/skill-management/skill/codex-harness-desktop/api/`, `tests/capabilities/skill-management/skill/codex-harness-desktop/e2e/`, `tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/e2e/` | REQ-SKILL-001, REQ-SKILL-002, REQ-SKILL-005~017 | `skill.test.js`, `skillInstall.test.cjs` (E2E), `skillLibrary.test.js`, `skillInstall.test.js`, `projectSkills.test.js`, `skillSync.test.js`, `skillLibrary.test.cjs` (E2E) |
-| agent-registry | `tests/capabilities/skill-management/agent-registry/2026-07-29-multi-agent-skills/api/` | REQ-SKILL-018~019 | `agentRegistry.test.js`, `agentRegistrySnapshot.test.js` |
+| agent-registry | `tests/capabilities/skill-management/agent-registry/2026-07-29-multi-agent-skills/api/` | REQ-SKILL-018~019 | `agentRegistry.test.js`, `agentRegistrySnapshot.test.js`, `agentRegistryBuild.test.js` |
 
 ### channel-integration
 > 外部 IM 通道接入：长连接收发、消息去重与路由、通道绑定、文档同步。（第一实现：飞书）
@@ -102,10 +102,10 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 3 | 38 | 2026-07-29 |
+| workspace-management | 3 | 58 | 2026-08-01 |
 | flow-orchestration | 3 | 58 | 2026-07-28 |
 | scheduling-execution | 3 | 16 | 2026-07-19 |
-| skill-management | 3 | 23 | 2026-07-29 |
+| skill-management | 3 | 122 | 2026-08-01 |
 | channel-integration | 1 | 0 | 2026-07-19 |
 | collection-pipeline | 3 | 0 | 2026-07-19 |
 | information-aggregation | 2 | 7 | 2026-07-19 |
