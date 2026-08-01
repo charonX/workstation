@@ -1,10 +1,13 @@
 # 契约式需求 — 多 Agent Skill 管理与分发
 
 > 故事 ID：`2026-07-29-multi-agent-skills`
-> 版本：v1
-> 最后更新：2026-07-29
+> 版本：v1.2
+> 最后更新：2026-08-01
 > 输入：`prd.md` v0.4、`tech-design.md` v0.2、`review-tech.md`
 > 编号：REQ-SKILL 接续现有 001~004 从 005 起；REQ-WORKSPACE 接续 001~010 从 011 起；REQ-CLI 接续 001 从 002 起。
+>
+> 变更：
+> - v1.2（2026-08-01，BUG-003 req-gap 就地补全）：REQ-SKILL-010/011 link/unlink 接口改为支持批量（单对象入参向后兼容）；REQ-SKILL-012 新增项目技能弹层按来源分组、搜索/状态筛选、整组选择与批量关联/取消关联的 UI 契约。
 
 ---
 
@@ -175,7 +178,7 @@
 - **scope**：cross-module（skillService ↔ projectService / agentRegistryService / FS）
 - **capability/entity**：skill-management / skill
 - **modules**：skillService、projectService、agentRegistryService、projects 路由
-- **interface_contract**：输入 `{slug, skillName}` + 项目 agentTypes → 输出每 agent 结果 `{agent, skillsDir, linked[], failed[], conflicts[]}`；错误 E5/E7；副作用 = 项目各声明 agent skillsDir 下新建软链（Windows junction）
+- **interface_contract**：输入单对象 `{slug, skillName}` 或批量 `{skills:[{slug,skillName},...]}` + 项目 agentTypes → 单对象返回每 agent 结果 `{agent, skillsDir, linked[], failed[], conflicts[]}`（向后兼容）；批量返回 `{results:[{slug,skillName,status,code?,agents?}], count:{linked,skipped,failed}}`；错误 E5/E7；副作用 = 项目各声明 agent skillsDir 下新建软链（Windows junction）
 
 ### 验收标准
 
@@ -186,6 +189,7 @@
 5. **AC5（冲突跳过，D4）**：目标位置已存在外部实体目录或外部软链 → 该 agent 记入 `conflicts`，跳过建链，**外部实体原样保留**；其余 agent 照常。
 6. **AC6（E5 失败表面化）**：某 agent 建链失败（权限/磁盘）→ 该 agent 记入 `failed`，其余 agent 继续；不静默降级为拷贝。
 7. **AC7（身份校验）**：`{slug, skillName}` 不存在于技能库 → HTTP 400/404；裸 `skillName` 无 slug 的请求被拒绝（复合身份必填）。
+8. **AC8（批量关联，v1.2）**：`POST /api/projects/:id/skills` body 为 `{skills:[...]}` 时按序关联每个 `{slug,skillName}`；单项的身份错误、冲突、E5 失败不中断其余项，逐项在 `results[]` 中报告（`status:"linked"|"skipped"|"failed"`，失败/跳过时带 `code` 与每 agent `agents[]`），响应含 `count` 汇总；空数组、非数组 `skills` → HTTP 400；单对象 body 仍返回 AC1~AC7 的旧 `{agents}` 形态（向后兼容）。项目级 E7（agentTypes 为空）对批量同样返回 409。
 
 ### 测试
 
@@ -209,10 +213,11 @@
 2. **AC2（外部不动）**：目标位置为外部实体目录或 realpath 不在技能库内的链 → 不删除，结果中标注跳过；接口整体成功。
 3. **AC3（幂等）**：对已不存在的关联取消 → 成功，无错误。
 4. **AC4（技能库不动）**：取消关联不修改技能库目录任何内容。
+5. **AC5（批量取消，v1.2）**：`DELETE /api/projects/:id/skills`（无路径段）携带 JSON body `{skills:[{slug,skillName},...]}` 时按序取消每个，单项的冲突/未知身份不中断其余项，逐项在 `results[]` 报告（`status:"unlinked"|"skipped"`，跳过时带 `code`），响应含 `count` 汇总；空数组/非数组 → HTTP 400。URL 路径形态 `DELETE /api/projects/:id/skills/:slug/:skillName` 仍保留用于单条取消（向后兼容）。
 
 ### 测试
 
-- Seam：`DELETE /api/projects/:id/skills/:slug/:skillName` API 测试 + FS 断言
+- Seam：`DELETE /api/projects/:id/skills/:slug/:skillName` 单条与 `DELETE /api/projects/:id/skills` 批量 body 两种 API 测试 + FS 断言
 - 文件：`tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/api/projectSkills.test.js`
 
 ---
@@ -224,7 +229,7 @@
 - **优先级**：P0　**必须性**：必须
 - **scope**：cross-module
 - **capability/entity**：skill-management / skill
-- **modules**：skillService、agentRegistryService、projects 路由
+- **modules**：skillService、agentRegistryService、projects 路由、renderer 项目详情弹层
 
 ### 验收标准
 
@@ -234,11 +239,14 @@
 4. **AC4（conflict 标注）**：因外部占用导致建链被跳过的 `{slug, skillName}`（REQ-SKILL-010 AC5 发生后）→ 条目含 `conflict:true`。
 5. **AC5（外部条目如实显示）**：外部条目出现在列表中并标注 `origin:"external"`；视图本身不修改任何外部条目。
 6. **AC6（E10 并发容错）**：扫描期间单目录变动/不可读 → 跳过该目录 + warning，视图整体正常返回。
+7. **AC7（按来源分组，v1.2）**：项目详情技能弹层中，origin 为 repo 的条目按来源 `slug` 分组展示，每组有组头显示 slug 与"已关联 N/总数"；origin 为 external 的条目单独置底为只读区段（无勾选、无批量）。
+8. **AC8（搜索与状态筛选，v1.2）**：弹层顶部提供搜索框，按技能 name/slug/description 大小写不敏感实时过滤；提供状态筛选（全部 / 已关联 / 未关联 / 异常）。筛选只改变可见行，不改变已勾选集合与磁盘关联状态。
+9. **AC9（整组选择与批量关联/取消，v1.2）**：每组组头提供三态勾选框，选中态对应该组当前可见条目（全选/部分选/不选）；勾选若干条目后出现批量操作条，可一次性"关联选中"或"取消关联选中"，分别调用 REQ-SKILL-010 AC8 / REQ-SKILL-011 AC5 的批量接口；操作完成后逐项成功/失败/冲突在 UI 表面化并刷新列表与磁盘状态；external 条目不可被勾选或批量操作。
 
 ### 测试
 
-- Seam：`GET /api/projects/:id/skills` API 测试（预置混合：自有链/外部实体/外部链/断链）
-- 文件：`tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/api/projectSkills.test.js`
+- Seam：`GET /api/projects/:id/skills` API 测试（预置混合：自有链/外部实体/外部链/断链）+ Playwright Electron E2E（分组/搜索/状态筛选/整组选择/批量关联取消，预置多来源多 skill）
+- 文件：`tests/capabilities/skill-management/skill/2026-07-29-multi-agent-skills/api/projectSkills.test.js`、`.../e2e/skillLibrary.test.cjs`
 
 ---
 

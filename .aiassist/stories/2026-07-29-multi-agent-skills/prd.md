@@ -62,7 +62,7 @@ tech-design spike 结论（skills@1.5.20 实测，详见 tech-design.md）：库
 
 **S2/S3（添加 skill）**：技能库页 → "添加 Skill" → 选来源类型（git URL / 本地路径）→ 输入 `https://github.com/owner/repo` 或 `/abs/path` → 确认 → 安装任务执行 → 技能库目录出现该 skill 实体 → 技能列表展示（名称、描述来自 SKILL.md）。
 
-**S4（关联 skill）**：项目详情 → 技能区 → "关联 Skill" → 从技能库列表（按来源分组，身份 = 来源 + 名称）选择 → 确认 → 项目 `.claude/skills/<name>` 与 `.agents/skills/<name>` 出现软链 → 沿软链解析最终读到技能库目录中的 SKILL.md → Claude Code 在该项目能调用此 skill。
+**S4（关联 skill）**：项目详情 → 技能区 → 技能库技能按来源（slug）分组展示，每组组头可整组（取消）勾选，顶部支持按名称/来源/描述搜索与按状态（全部/已关联/未关联/异常）筛选；勾选若干后用底部批量操作条一次"关联选中"/"取消关联选中" → 项目 `.claude/skills/<name>` 与 `.agents/skills/<name>` 出现/移除软链，逐项成功/失败/冲突在 UI 表面化 → 沿软链解析最终读到技能库目录中的 SKILL.md → Claude Code 在该项目能调用此 skill。非 workstation 创建的外部条目置底只读显示，不参与勾选/批量。（v1.1，BUG-003）
 
 **S5（变更收敛）**：项目详情 → 编辑 agent 类型 → 增加 `cursor`、移除 `codex` → 保存 → cursor 对应目录（registry 查得）出现全部已关联 skill 的软链、codex 独有链被删除 → 若有建链失败，UI 表面化失败 agent 清单。点击"重新同步"→ 全部已关联 skill 按当前声明重建一次。
 

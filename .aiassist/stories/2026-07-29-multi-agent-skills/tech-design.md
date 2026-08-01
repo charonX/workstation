@@ -124,6 +124,14 @@ POST /api/projects/:id/skills { slug, skillName }
   → 返回每 agent 结果（含 conflicts）
 DELETE /api/projects/:id/skills/:slug/:skillName
   → 仅当目标是软链且 realpath ∈ 技能库对应 {slug, skillName} → 删链；外部实体不动
+
+批量（BUG-003 v1.1）：
+POST   /api/projects/:id/skills         body {skills:[{slug,skillName},...]}
+DELETE /api/projects/:id/skills         body {skills:[{slug,skillName},...]}
+  → 对每个身份顺序复用单条 link/unlink 逻辑；单项身份错误/冲突/E5 失败不中断其余
+  → 返回 {results:[{slug,skillName,status:"linked|unlinked|skipped|failed",code?,agents?}],
+          count:{linked,unlinked,skipped,failed}}
+  → 项目 agentTypes 为空（E7）整体 409；空数组/非数组 400
 ```
 
 ### F5 更新 / 移除 / 重同步
@@ -166,8 +174,9 @@ GET /api/projects/:id/skills → 对声明的 agentTypes（skillsDir 去重）�
 | `GET /api/agents` | registry 列表（pinned 在前，其余按 displayName 排序） |
 | `PUT /api/projects/:id` | body 含 `agentTypes` → 保存 + 收敛结果。**响应结构变更（breaking）**：原项目对象上附加 `convergence` 字段，renderer 项目编辑页与 CLI `project update` 同步适配（review S5） |
 | `GET /api/projects/:id/skills` | 项目扫描视图（含 external/conflict/broken 标注；条目带 slug+skillName） |
-| `POST /api/projects/:id/skills` | `{slug, skillName}` → 关联结果（每 agent 状态）；裸 skillName 歧义见 F4（review W2） |
-| `DELETE /api/projects/:id/skills/:slug/:skillName` | 取消关联（只删我们的链） |
+| `POST /api/projects/:id/skills` | 单对象 `{slug, skillName}` → `{agents:[...]}`（向后兼容）；批量 `{skills:[{slug,skillName},...]}` → `{results:[{slug,skillName,status,code?,agents?}], count:{linked,skipped,failed}}`（BUG-003 v1.1）。单项失败不中断其余；项目 E7 对两种形态均返回 409 |
+| `DELETE /api/projects/:id/skills` | 批量取消，body `{skills:[...]}` → 逐项 `results[]` + `count`（BUG-003 v1.1） |
+| `DELETE /api/projects/:id/skills/:slug/:skillName` | 单条取消（只删我们的链，向后兼容） |
 | `POST /api/projects/:id/skills/resync` | 已关联条目幂等重建 + 断链清理 |
 
 ### CLI（对齐 API，ADR-001；`project skill <action>` 为三级子命令，命名约定扩展已在 CONTEXT.md 登记——review S6）
