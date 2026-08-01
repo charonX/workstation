@@ -3,7 +3,7 @@
 
 story_id: 2026-08-01-macos-distribution
 intention: >-
-  打包产物未签名未公证，无法外发使用（Gatekeeper 拦截），且无发布渠道与更新机制，只能本机自用。修正（2026-08-01 访谈确认）：分发渠道 = 公开 GitHub Release，接受公开下载与国内访问慢；签名不做，引导右键打开。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+  打包产物未签名未公证，无法外发使用（Gatekeeper 拦截），且无发布渠道与更新机制，只能本机自用。修正（2026-08-01 访谈+research 确认）：分发渠道 = 公开 GitHub Release；签名不做（无 ADP 账号）；自动更新放弃（Squirrel 硬性签名要求，research 证伪）；改为手动重装 + 应用内检查更新引导下载；首次安装引导 Settings 批准（macOS 15+ 无右键打开）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
 phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
@@ -13,6 +13,7 @@ created: 2026-08-01
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-01, from: -, to: THINK, note: "创建 story。用户痛点：打包产物未签名未公证无法外发、无发布渠道与更新机制。需求访谈完成（interview-notes.md）：渠道=公开 GitHub Release（初衷修正：私密性移除，接受公开下载+国内访问慢）；签名不做（无 ADP 账号），首次安装引导右键打开；更新策略=自动下载+提示重启；发版= npm run release 一条命令；应用内有检查更新按钮+版本展示。两大技术风险待 spike：latest-mac.yml 生成、未签名 app 更新后启动兼容性。用户显式 OK 方向。"}
+  - {at: 2026-08-01, from: THINK, to: THINK, note: "research 证伪：Squirrel.Mac 硬性要求签名（未签名 app 更新器无法初始化），macOS 15+ 移除右键打开改 Settings 批准，App Translocation 影响从 Downloads 启动。用户重拍板：放弃自动更新（路线 B），改手动重装；保留应用内检查更新按钮（查 GitHub 最新版，引导下载 .dmg）。零成本路线。"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

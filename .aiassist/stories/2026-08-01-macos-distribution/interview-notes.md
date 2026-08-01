@@ -75,3 +75,21 @@
 - [ ] 检查更新的 UI 位置（设置页 vs 关于页 vs 顶部菜单）——BUILD 时按现有布局落地
 - [ ] 版本号展示位置（关于弹窗内）
 - [ ] Windows squirrel 资产是否顺带上传（scope 外，可不上传）
+
+---
+
+## 路线变更（2026-08-01，research 证伪后重拍板）
+
+**证伪事实**（见 `research/electron-updater-unsigned-macos-github-feed.md`）：
+1. Squirrel.Mac 硬性要求签名：未签名 app 连更新器都初始化不了（SecCodeCopyDesignatedRequirement），更新包也过不了 designated requirement 校验——**未签名 + electron-updater 自动更新不可行**（Electron 官方文档原话 "Your application must be signed for automatic updates on macOS"）。
+2. macOS 15 Sequoia 起移除 Control-click 覆盖 Gatekeeper，改为 System Settings > Privacy & Security 批准。
+3. App Translocation：从 ~/Downloads 启动的 app 在只读卷上，更新安装失败。
+
+**重拍板（用户选择 B）**：放弃自动更新，手动重装。
+- 渠道不变：公开 GitHub Release 发 .dmg
+- 零成本（无 ADP 账号）
+- 保留访谈确认的 C：应用内"检查更新"按钮查 GitHub 最新版本，发现新版提示用户下载 .dmg（半自动检查，无 Squirrel）
+- 首次安装引导改为：System Settings > Privacy & Security 批准（macOS 15+ 无右键打开）
+- 引导用户把 app 放入 /Applications（避免 Translocation 相关问题）
+
+**Success 修正**：发 v1.1 → 另一台 Mac 下载 .dmg、Settings 批准、启动正常；应用内"检查更新"能显示 v1.1 为最新；再发 v1.2 → 应用内检查提示有新版并引导下载。
