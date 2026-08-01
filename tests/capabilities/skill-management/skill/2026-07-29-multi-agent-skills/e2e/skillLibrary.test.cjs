@@ -1,5 +1,5 @@
-// REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-006, 2026-07-29-multi-agent-skills/REQ-SKILL-008, 2026-07-29-multi-agent-skills/REQ-SKILL-009, 2026-07-29-multi-agent-skills/REQ-SKILL-010, 2026-07-29-multi-agent-skills/REQ-SKILL-012, 2026-07-29-multi-agent-skills/REQ-SKILL-013, 2026-07-29-multi-agent-skills/REQ-SKILL-014, 2026-07-29-multi-agent-skills/REQ-SKILL-015
-// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
+// REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-006, 2026-07-29-multi-agent-skills/REQ-SKILL-008, 2026-07-29-multi-agent-skills/REQ-SKILL-009, 2026-07-29-multi-agent-skills/REQ-SKILL-010, 2026-07-29-multi-agent-skills/REQ-SKILL-011, 2026-07-29-multi-agent-skills/REQ-SKILL-012, 2026-07-29-multi-agent-skills/REQ-SKILL-013, 2026-07-29-multi-agent-skills/REQ-SKILL-014, 2026-07-29-multi-agent-skills/REQ-SKILL-015
+// REQ-VERSION: v1-hash:8e41121222f9276d64083118cdb9070c5346ec47a4e66a6d10622c1f4c2fcab8
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -214,6 +214,100 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
     await expect(externalRow).toBeVisible();
     await expect(externalRow.locator(locators.EXTERNAL_SKILL_BADGE)).toBeVisible();
 
+    await fs.rm(projectDir, { recursive: true, force: true });
+  });
+
+  test("REQ-SKILL-012 AC7/AC8 (v1.2): skills are grouped by source and the search box filters rows", async () => {
+    const sourceA = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-srcA-"));
+    const sourceB = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-srcB-"));
+    await writeSkillSource(sourceA, ["apple", "banana"]);
+    await writeSkillSource(sourceB, ["cherry"]);
+    await installLocalSource(apiBaseUrl, sourceA);
+    await installLocalSource(apiBaseUrl, sourceB);
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-proj-"));
+    await createProject(apiBaseUrl, { name: "Grouping Project", localPath: projectDir, agentTypes: ["claude-code"] });
+
+    await openProjectDetail("Grouping Project");
+
+    // 两个来源分组都可见，组头显示 slug
+    const groups = firstWindow.locator(locators.PROJECT_SKILL_GROUP);
+    await expect(groups).toHaveCount(2);
+    await expect(firstWindow.locator(locators.GROUP_TITLE).filter({ hasText: path.basename(sourceA) })).toBeVisible();
+    await expect(firstWindow.locator(locators.GROUP_TITLE).filter({ hasText: path.basename(sourceB) })).toBeVisible();
+
+    // 搜索只保留匹配的行，另一个分组折叠为空后整体隐藏
+    await firstWindow.fill(locators.PROJECT_SKILLS_SEARCH, "apple");
+    await expect(firstWindow.locator(locators.PROJECT_SKILL_ROW).filter({ hasText: "apple" })).toBeVisible();
+    await expect(firstWindow.locator(locators.PROJECT_SKILL_ROW).filter({ hasText: "banana" })).toHaveCount(0);
+    await expect(firstWindow.locator(locators.PROJECT_SKILL_ROW).filter({ hasText: "cherry" })).toHaveCount(0);
+
+    await fs.rm(sourceA, { recursive: true, force: true });
+    await fs.rm(sourceB, { recursive: true, force: true });
+    await fs.rm(projectDir, { recursive: true, force: true });
+  });
+
+  test("REQ-SKILL-012 AC9 (v1.2): group select-all links the whole group in one bulk action", async () => {
+    const source = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-srcbulk-"));
+    await writeSkillSource(source, ["bulk-one", "bulk-two", "bulk-three"]);
+    await installLocalSource(apiBaseUrl, source);
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-proj-"));
+    await createProject(apiBaseUrl, { name: "Bulk Project", localPath: projectDir, agentTypes: ["claude-code"] });
+
+    await openProjectDetail("Bulk Project");
+    const slug = path.basename(source);
+
+    // 找到该来源分组，点击组头全选，再点批量关联
+    const group = firstWindow.locator(locators.PROJECT_SKILL_GROUP).filter({ hasText: slug });
+    await group.locator(locators.GROUP_SELECT_ALL).click();
+    await expect(firstWindow.locator(locators.PROJECT_SKILLS_BULKBAR)).toBeVisible();
+    await firstWindow.click(locators.BULK_LINK_BUTTON);
+
+    // 三个 skill 的软链都真实落到磁盘
+    for (const name of ["bulk-one", "bulk-two", "bulk-three"]) {
+      const linkPath = path.join(projectDir, ".claude", "skills", name);
+      await expect
+        .poll(async () => {
+          try {
+            return await fs.realpath(linkPath);
+          } catch {
+            return null;
+          }
+        })
+        .toBe(await fs.realpath(path.join(skillRepoPath, slug, "skills", name)));
+    }
+
+    // 列表刷新后每行显示已关联（出现取消关联按钮）
+    for (const name of ["bulk-one", "bulk-two", "bulk-three"]) {
+      const row = firstWindow.locator(locators.PROJECT_SKILL_ROW).filter({ hasText: name }).first();
+      await expect(row.locator(locators.SKILL_UNLINK_BUTTON)).toBeVisible();
+    }
+
+    await fs.rm(source, { recursive: true, force: true });
+    await fs.rm(projectDir, { recursive: true, force: true });
+  });
+
+  test("REQ-SKILL-011/012 AC9 (v1.2): select-all-visible + bulk unlink removes all selected links", async () => {
+    const source = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-srcunlink-"));
+    await writeSkillSource(source, ["unlink-a", "unlink-b"]);
+    await installLocalSource(apiBaseUrl, source);
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-proj-"));
+    const project = await createProject(apiBaseUrl, { name: "BulkUnlink Project", localPath: projectDir, agentTypes: ["claude-code"] });
+    await linkSkillViaApi(apiBaseUrl, project.id, path.basename(source), "unlink-a");
+    await linkSkillViaApi(apiBaseUrl, project.id, path.basename(source), "unlink-b");
+
+    await openProjectDetail("BulkUnlink Project");
+
+    // 全选当前可见 → 批量取消关联
+    await firstWindow.check(locators.SELECT_ALL_VISIBLE);
+    await expect(firstWindow.locator(locators.PROJECT_SKILLS_BULKBAR)).toBeVisible();
+    await firstWindow.click(locators.BULK_UNLINK_BUTTON);
+
+    for (const name of ["unlink-a", "unlink-b"]) {
+      const linkPath = path.join(projectDir, ".claude", "skills", name);
+      await expect.poll(async () => fs.access(linkPath).then(() => true).catch(() => false)).toBe(false);
+    }
+
+    await fs.rm(source, { recursive: true, force: true });
     await fs.rm(projectDir, { recursive: true, force: true });
   });
 

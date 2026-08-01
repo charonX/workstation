@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-005, 2026-07-29-multi-agent-skills/REQ-SKILL-006, 2026-07-29-multi-agent-skills/REQ-SKILL-015, 2026-07-29-multi-agent-skills/REQ-SKILL-016, 2026-07-29-multi-agent-skills/REQ-SKILL-017
-// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
+// REQ-VERSION: v1-hash:8e41121222f9276d64083118cdb9070c5346ec47a4e66a6d10622c1f4c2fcab8
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent

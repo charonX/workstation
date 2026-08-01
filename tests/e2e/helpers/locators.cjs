@@ -130,6 +130,15 @@ module.exports = {
   SKILL_UNLINK_BUTTON: "[data-testid='skill-unlink-button']",
   RESYNC_SKILLS_BUTTON: "[data-testid='resync-skills-button']",
   EXTERNAL_SKILL_BADGE: "[data-testid='external-skill-badge']",
+  PROJECT_SKILLS_SEARCH: "[data-testid='project-skills-search']",
+  PROJECT_SKILL_GROUP: "[data-testid='project-skill-group']",
+  GROUP_TITLE: "[data-testid='group-title']",
+  GROUP_SELECT_ALL: "[data-testid='group-select-all']",
+  SELECT_ALL_VISIBLE: "[data-testid='select-all-visible']",
+  PROJECT_SKILL_CHECKBOX: "[data-testid='project-skill-checkbox']",
+  PROJECT_SKILLS_BULKBAR: "[data-testid='project-skills-bulkbar']",
+  BULK_LINK_BUTTON: "[data-testid='bulk-link-button']",
+  BULK_UNLINK_BUTTON: "[data-testid='bulk-unlink-button']",
 
   // Shared / Confirmation Dialog
   CONFIRM_DIALOG: "[data-testid='confirm-dialog']",

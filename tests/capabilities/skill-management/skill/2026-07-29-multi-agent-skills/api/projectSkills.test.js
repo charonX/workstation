@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-010, 2026-07-29-multi-agent-skills/REQ-SKILL-011, 2026-07-29-multi-agent-skills/REQ-SKILL-012
-// REQ-VERSION: v1-hash:2a55ba61c735de5ace6ceaf30e9b4aede312c1419bb3505b5795b38eba7bdc49
+// REQ-VERSION: v1-hash:8e41121222f9276d64083118cdb9070c5346ec47a4e66a6d10622c1f4c2fcab8
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -263,6 +263,124 @@ describe("Project Skills (link / unlink / project skill view)", () => {
     const { project } = await createProjectWithAgents(serverCtx.baseUrl, { agentTypes: ["claude-code"] });
     const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills/acme-tools/review`, { method: "DELETE" });
     assert.equal(res.status, 200);
+  });
+
+  // ---------- REQ-SKILL-010 AC8 / REQ-SKILL-011 AC5 批量 (v1.2) ----------
+
+  it("REQ-SKILL-010 AC8: bulk link links every valid identity, surfaces a bad identity per-item, and does not abort", async () => {
+    makeSourceDir(repoRoot, "acme-extras", ["migrate"]);
+    const { project, localPath } = await createProjectWithAgents(serverCtx.baseUrl, {
+      agentTypes: ["claude-code"]
+    });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        skills: [
+          { slug: "acme-tools", skillName: "review" },
+          { slug: "acme-tools", skillName: "deploy" },
+          { slug: "acme-extras", skillName: "migrate" },
+          { slug: "acme-tools", skillName: "does-not-exist" }
+        ]
+      })
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.results), "bulk link must return results[]");
+    assert.equal(body.results.length, 4);
+    assert.ok(body.count, "bulk link must return count summary");
+    assert.equal(body.count.linked, 3);
+
+    const byName = Object.fromEntries(body.results.map((r) => [r.skillName, r]));
+    assert.equal(byName.review.status, "linked");
+    assert.equal(byName.deploy.status, "linked");
+    assert.equal(byName.migrate.status, "linked");
+    assert.notEqual(byName["does-not-exist"].status, "linked");
+    assert.ok(byName["does-not-exist"].code, "failed item must carry an error code");
+
+    for (const skillName of ["review", "deploy", "migrate"]) {
+      const slug = skillName === "migrate" ? "acme-extras" : "acme-tools";
+      assertLinkTo(
+        path.join(localPath, ".claude", "skills", skillName),
+        path.join(repoRoot, slug, "skills", skillName)
+      );
+    }
+  });
+
+  it("REQ-SKILL-010 AC8: bulk link rejects empty / non-array skills with 400", async () => {
+    const { project } = await createProjectWithAgents(serverCtx.baseUrl, {
+      agentTypes: ["claude-code"]
+    });
+    for (const badBody of [{ skills: [] }, { skills: "review" }, {}]) {
+      const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(badBody)
+      });
+      assert.equal(res.status, 400, `body ${JSON.stringify(badBody)} must be rejected`);
+    }
+  });
+
+  it("REQ-SKILL-010 AC8: bulk link with empty agentTypes is rejected with 409 (E7)", async () => {
+    const { project } = await createProjectWithAgents(serverCtx.baseUrl); // no agents
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ skills: [{ slug: "acme-tools", skillName: "review" }] })
+    });
+    assert.equal(res.status, 409);
+  });
+
+  it("REQ-SKILL-011 AC5: bulk unlink removes only our links, surfaces unknown identities per-item, leaves external entries", async () => {
+    const { project, localPath } = await createProjectWithAgents(serverCtx.baseUrl, {
+      agentTypes: ["claude-code"]
+    });
+    await linkSkill(serverCtx.baseUrl, project.id, { slug: "acme-tools", skillName: "review" });
+    await linkSkill(serverCtx.baseUrl, project.id, { slug: "acme-tools", skillName: "deploy" });
+    const externalDir = path.join(localPath, ".claude", "skills", "external-thing");
+    writeSkillMd(externalDir, { name: "external-thing", description: "external" });
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+      method: "DELETE",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        skills: [
+          { slug: "acme-tools", skillName: "review" },
+          { slug: "acme-tools", skillName: "deploy" },
+          { slug: "acme-tools", skillName: "vanished" }
+        ]
+      })
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.results));
+    assert.equal(body.results.length, 3);
+    assert.equal(body.count.unlinked, 2);
+
+    const byName = Object.fromEntries(body.results.map((r) => [r.skillName, r]));
+    assert.equal(byName.review.status, "unlinked");
+    assert.equal(byName.deploy.status, "unlinked");
+    assert.notEqual(byName.vanished.status, "unlinked");
+    assert.ok(byName.vanished.code, "skipped item must carry a code");
+
+    assert.ok(!fs.existsSync(path.join(localPath, ".claude", "skills", "review")), "our link removed");
+    assert.ok(!fs.existsSync(path.join(localPath, ".claude", "skills", "deploy")), "our link removed");
+    assert.ok(fs.existsSync(externalDir), "external entry must be untouched");
+  });
+
+  it("REQ-SKILL-011 AC5: bulk unlink rejects empty / non-array skills with 400", async () => {
+    const { project } = await createProjectWithAgents(serverCtx.baseUrl, {
+      agentTypes: ["claude-code"]
+    });
+    for (const badBody of [{ skills: [] }, { skills: "review" }, {}]) {
+      const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/skills`, {
+        method: "DELETE",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(badBody)
+      });
+      assert.equal(res.status, 400, `body ${JSON.stringify(badBody)} must be rejected`);
+    }
   });
 
   // ---------- REQ-SKILL-012 项目技能视图与外部条目 ----------
