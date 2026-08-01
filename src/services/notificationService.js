@@ -4,7 +4,10 @@ import crypto from "node:crypto";
 let db = null;
 
 function getDbRef() {
-  if (!db) {
+  // better-sqlite3 exposes .open on the connection; closeDb() (e.g. between
+  // test servers) invalidates the cached handle, and re-requesting via getDb()
+  // lands on the active DB_PATH connection.
+  if (!db || !db.open) {
     db = getDb();
   }
   return db;
@@ -26,7 +29,12 @@ function rowToNotification(row) {
 
 function isDbClosedError(err) {
   const message = err?.message || "";
-  return message.toLowerCase().includes("database connection is closed");
+  return (
+    message.toLowerCase().includes("database connection is closed") ||
+    // better-sqlite3 reports "The database connection is not open" when the
+    // cached handle was closed underneath us (see getDbRef self-heal).
+    message.toLowerCase().includes("database connection is not open")
+  );
 }
 
 export function notify({ type, title, body, executionId } = {}) {
