@@ -32,6 +32,9 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
   // visible filter so checking items then narrowing the search keeps them.
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Collapsed source groups, keyed by slug. Collapsing hides only the rows;
+  // group selection and already-checked items are unaffected.
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const {
     detail,
     repoGroups,
@@ -110,6 +113,15 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
       return next;
     });
     setBulkMessage(null);
+  }
+
+  function toggleGroupCollapsed(slug) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
   }
 
   function selectAllVisible(checked) {
@@ -357,10 +369,25 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
             const groupSelected = groupKeys.filter((k) => selected.has(k));
             const groupAll = groupKeys.length > 0 && groupSelected.length === groupKeys.length;
             const linkedCount = group.skills.filter((s) => s.linked).length;
+            const isCollapsed = collapsedGroups.has(group.slug);
             return (
-              <div className="project-skill-group" key={group.slug} data-testid="project-skill-group">
+              <div
+                className={`project-skill-group${isCollapsed ? " project-skill-group--collapsed" : ""}`}
+                key={group.slug}
+                data-testid="project-skill-group"
+              >
                 <div className="project-skill-group-header">
-                  <label className="project-skill-select">
+                  <button
+                    type="button"
+                    className="project-skill-group-chevron"
+                    data-testid="group-collapse-toggle"
+                    aria-label={t(isCollapsed ? "projectDetail.expandGroup" : "projectDetail.collapseGroup", { group: group.slug })}
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleGroupCollapsed(group.slug)}
+                  >
+                    {isCollapsed ? "▸" : "▾"}
+                  </button>
+                  <label className="project-skill-select" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       data-testid="group-select-all"
@@ -371,14 +398,18 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
                       onChange={(e) => setGroupSelection(group, groupKeys, e.target.checked)}
                     />
                   </label>
-                  <span className="project-skill-group-title" data-testid="group-title">
+                  <span
+                    className="project-skill-group-title"
+                    data-testid="group-title"
+                    onClick={() => toggleGroupCollapsed(group.slug)}
+                  >
                     {group.slug}
                   </span>
                   <span className="project-skill-group-count">
                     {t("projectDetail.groupCount", { linked: linkedCount, total: group.skills.length })}
                   </span>
                 </div>
-                <div className="project-skill-group-body">
+                {!isCollapsed && <div className="project-skill-group-body">
                   {group.skills.map((entry) => {
                     const key = `${group.slug}/${entry.skillName}`;
                     const isChecked = selected.has(key);
@@ -445,7 +476,7 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
                       </div>
                     );
                   })}
-                </div>
+                </div>}
               </div>
             );
           })}

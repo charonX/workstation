@@ -424,6 +424,8 @@
       "unlinked": "已取消关联",
       "skipped": "已跳过 ({{code}})",
       "failed": "失败 ({{code}})"
-    }
+    },
+    "expandGroup": "展开分组 {{group}}",
+    "collapseGroup": "收起分组 {{group}}"
   }
 }

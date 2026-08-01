@@ -2053,6 +2053,32 @@ body {
   font-size: var(--ch-text-sm);
   font-family: var(--ch-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   color: var(--ch-text-primary);
+  cursor: pointer;
+}
+.project-skill-group-title:hover {
+  color: var(--ch-accent);
+}
+.project-skill-group-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ch-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--ch-radius-sm);
+}
+.project-skill-group-chevron:hover {
+  background: var(--ch-surface-hover, rgba(127,127,127,0.15));
+  color: var(--ch-text-primary);
+}
+.project-skill-group--collapsed .project-skill-group-body {
+  display: none;
 }
 .project-skill-group-count {
   margin-left: auto;

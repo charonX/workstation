@@ -238,7 +238,9 @@
     "broken": "Broken",
     "link": "Link",
     "unlink": "Unlink",
-    "agents": "Agents"
+    "agents": "Agents",
+    "expandGroup": "Expand group {{group}}",
+    "collapseGroup": "Collapse group {{group}}"
   },
   "topBar": {
     "searchPlaceholder": "Search projects, flows, executions...",
