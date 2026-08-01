@@ -8,6 +8,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 
 const CLI = "node src/cli/opc-workstation.js";
@@ -124,9 +125,13 @@ describe("REQ-NOTIFY-001: 通知服务", () => {
   });
 
   it("AC4: 写入失败仅记日志（E-NOTIFY-FAILED），不阻断主流程", async () => {
-    // 破坏 DB 连接模拟写入失败；notify 不得抛出，且应记 E-NOTIFY-FAILED 日志。
+    // 关闭连接并把 DB 文件置为只读，模拟真实的磁盘/权限写入失败（getDbRef
+    // 会在连接关闭后自愈，故只 closeDb 已不足以制造失败）；notify 不得抛出，
+    // 且应记 E-NOTIFY-FAILED 日志。
     const dbMod = await import("../../../../../../src/db.js");
+    const dbPath = process.env.DB_PATH;
     dbMod.closeDb();
+    fs.chmodSync(dbPath, 0o444);
 
     const logged = [];
     const origLog = console.log;
@@ -139,6 +144,7 @@ describe("REQ-NOTIFY-001: 通知服务", () => {
     } finally {
       console.log = origLog;
       console.error = origError;
+      fs.chmodSync(dbPath, 0o644);
     }
     assert.match(logged.join("\n"), /E-NOTIFY-FAILED/, "写入失败应记 E-NOTIFY-FAILED 日志");
   });
