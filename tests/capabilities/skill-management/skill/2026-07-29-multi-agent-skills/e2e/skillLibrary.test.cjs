@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-07-29-multi-agent-skills/REQ-SKILL-006, 2026-07-29-multi-agent-skills/REQ-SKILL-008, 2026-07-29-multi-agent-skills/REQ-SKILL-009, 2026-07-29-multi-agent-skills/REQ-SKILL-010, 2026-07-29-multi-agent-skills/REQ-SKILL-011, 2026-07-29-multi-agent-skills/REQ-SKILL-012, 2026-07-29-multi-agent-skills/REQ-SKILL-013, 2026-07-29-multi-agent-skills/REQ-SKILL-014, 2026-07-29-multi-agent-skills/REQ-SKILL-015
-// REQ-VERSION: v1-hash:8e41121222f9276d64083118cdb9070c5346ec47a4e66a6d10622c1f4c2fcab8
+// REQ-VERSION: v1-hash:fa23e65798c9caf788c5697ef1524e2fd084f0b582ae37ecb42bc032b2108551
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
 // TEST-AUTHOR: agent
@@ -243,6 +243,35 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
 
     await fs.rm(sourceA, { recursive: true, force: true });
     await fs.rm(sourceB, { recursive: true, force: true });
+    await fs.rm(projectDir, { recursive: true, force: true });
+  });
+
+  test("REQ-SKILL-012 AC7 (v1.2): group header collapses/expands rows without losing selection", async () => {
+    const source = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-srccollapse-"));
+    await writeSkillSource(source, ["collapse-a", "collapse-b"]);
+    await installLocalSource(apiBaseUrl, source);
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-proj-"));
+    await createProject(apiBaseUrl, { name: "Collapse Project", localPath: projectDir, agentTypes: ["claude-code"] });
+
+    await openProjectDetail("Collapse Project");
+    const slug = path.basename(source);
+    const group = firstWindow.locator(locators.PROJECT_SKILL_GROUP).filter({ hasText: slug });
+    const row = group.locator(locators.PROJECT_SKILL_ROW).filter({ hasText: "collapse-a" });
+
+    // 先勾选一行，再收起：行隐藏但勾选保留
+    await row.locator(locators.PROJECT_SKILL_CHECKBOX).check();
+    await expect(firstWindow.locator(locators.PROJECT_SKILLS_BULKBAR)).toBeVisible();
+
+    await group.locator(locators.GROUP_COLLAPSE_TOGGLE).click();
+    await expect(row).toBeHidden();
+
+    // 展开后勾选仍在，批量条计数不变
+    await group.locator(locators.GROUP_COLLAPSE_TOGGLE).click();
+    await expect(row).toBeVisible();
+    await expect(row.locator(locators.PROJECT_SKILL_CHECKBOX)).toBeChecked();
+    await expect(firstWindow.locator(locators.PROJECT_SKILLS_BULKBAR)).toBeVisible();
+
+    await fs.rm(source, { recursive: true, force: true });
     await fs.rm(projectDir, { recursive: true, force: true });
   });
 

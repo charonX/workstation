@@ -133,6 +133,7 @@ module.exports = {
   PROJECT_SKILLS_SEARCH: "[data-testid='project-skills-search']",
   PROJECT_SKILL_GROUP: "[data-testid='project-skill-group']",
   GROUP_TITLE: "[data-testid='group-title']",
+  GROUP_COLLAPSE_TOGGLE: "[data-testid='group-collapse-toggle']",
   GROUP_SELECT_ALL: "[data-testid='group-select-all']",
   SELECT_ALL_VISIBLE: "[data-testid='select-all-visible']",
   PROJECT_SKILL_CHECKBOX: "[data-testid='project-skill-checkbox']",
