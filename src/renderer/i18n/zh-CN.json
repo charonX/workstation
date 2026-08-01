@@ -401,6 +401,29 @@
     "conflict": "冲突",
     "broken": "断链",
     "link": "关联",
-    "unlink": "取消关联"
+    "unlink": "取消关联",
+    "searchPlaceholder": "搜索技能名称、来源或描述",
+    "statusFilter": "按状态筛选",
+    "status": {
+      "all": "全部",
+      "linked": "已关联",
+      "unlinked": "未关联",
+      "issues": "异常"
+    },
+    "selectAllVisible": "全选当前可见（已选 {{selected}}/{{total}}）",
+    "groupCount": "已关联 {{linked}}/{{total}}",
+    "externalSection": "外部条目（不受 workstation 管理）",
+    "linked": "已关联",
+    "selectedCount": "已选 {{count}} 项",
+    "bulkLink": "关联选中",
+    "bulkUnlink": "取消关联选中",
+    "clearSelection": "清除选择",
+    "bulkResult": "{{action}}完成：成功 {{ok}} 项，问题 {{problem}} 项。{{details}}",
+    "bulkStatus": {
+      "linked": "已关联",
+      "unlinked": "已取消关联",
+      "skipped": "已跳过 ({{code}})",
+      "failed": "失败 ({{code}})"
+    }
   }
 }

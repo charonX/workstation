@@ -30,4 +30,4 @@ export const get = (endpoint) => request("GET", endpoint);
 export const put = (endpoint, body) => request("PUT", endpoint, body);
 export const patch = (endpoint, body) => request("PATCH", endpoint, body);
 export const post = (endpoint, body) => request("POST", endpoint, body);
-export const del = (endpoint) => request("DELETE", endpoint);
+export const del = (endpoint, body) => request("DELETE", endpoint, body);

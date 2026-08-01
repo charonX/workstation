@@ -266,7 +266,9 @@ function handleServer(req, res, server, subPath) {
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
-    if (req.method === "GET" || req.method === "DELETE") return resolve({});
+    // DELETE may carry a JSON body for bulk operations
+    // (REQ-SKILL-011 AC5); only GET is always bodyless.
+    if (req.method === "GET") return resolve({});
 
     let data = "";
     req.on("data", (chunk) => {

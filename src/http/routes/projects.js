@@ -64,6 +64,11 @@ export async function handleProjects(req, res, body, pathParts) {
     if (!project) return notFound(res, "Project not found");
     if (req.method === "POST") {
       try {
+        // Bulk body {skills:[...]} (REQ-SKILL-010 AC8); single object falls
+        // through to the legacy per-agent result shape for backward compat.
+        if (Array.isArray(body?.skills)) {
+          return ok(res, skillService.linkSkillsToProject(project, body));
+        }
         return ok(res, skillService.linkSkillToProject(project, body));
       } catch (err) {
         return mapError(res, err);
@@ -72,6 +77,14 @@ export async function handleProjects(req, res, body, pathParts) {
     if (req.method === "GET") {
       try {
         return ok(res, skillService.listProjectSkills(project));
+      } catch (err) {
+        return mapError(res, err);
+      }
+    }
+    if (req.method === "DELETE") {
+      // Bulk unlink with JSON body {skills:[...]} (REQ-SKILL-011 AC5).
+      try {
+        return ok(res, skillService.unlinkSkillsFromProject(project, body));
       } catch (err) {
         return mapError(res, err);
       }

@@ -28,10 +28,20 @@ export function linkProjectSkill(projectId, { slug, skillName }) {
   return post(`/api/projects/${encodeURIComponent(projectId)}/skills`, { slug, skillName });
 }
 
+// Bulk link/unlink (REQ-SKILL-010 AC8 / REQ-SKILL-011 AC5). The endpoints
+// also accept the single-object / path-segment forms for backward compat.
+export function linkProjectSkills(projectId, skills) {
+  return post(`/api/projects/${encodeURIComponent(projectId)}/skills`, { skills });
+}
+
 export function unlinkProjectSkill(projectId, { slug, skillName }) {
   return del(
     `/api/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(slug)}/${encodeURIComponent(skillName)}`
   );
+}
+
+export function unlinkProjectSkills(projectId, skills) {
+  return del(`/api/projects/${encodeURIComponent(projectId)}/skills`, { skills });
 }
 
 export function resyncProjectSkills(projectId) {

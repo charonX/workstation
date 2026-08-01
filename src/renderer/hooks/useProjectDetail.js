@@ -3,69 +3,74 @@ import {
   getProjectDetail,
   linkProjectSkill,
   unlinkProjectSkill,
+  linkProjectSkills,
+  unlinkProjectSkills,
   resyncProjectSkills,
   putProject
 } from "../api/projects.js";
 import { listSkillGroups } from "../api/skills.js";
 
 /**
- * Build a combined project skill list: the disk-derived view from
- * GET /api/projects/:id/skills (linked repo entries + external entries +
- * broken/conflict markers) unioned with the full skill library so the UI can
- * offer every available skill for linking, not only those already linked.
+ * Build the grouped project-skill model for the project detail modal. The disk
+ * view from GET /api/projects/:id/skills provides linked/broken/conflict
+ * state plus external entries; the full skill library (listSkillGroups) folds
+ * in every available (possibly unlinked) skill grouped by source slug.
  *
- * Returns the same entry shape accepted by ProjectDetailModal:
- *   origin="repo":     { slug, skillName, name, description, agents, origin, linked, broken?, conflict? }
- *   origin="external": { name, agents, origin, conflict? }
+ * Returns:
+ *   repoGroups: [{ slug, skills: [repoEntry...] }]
+ *   externalEntries: [externalEntry...]
+ * where repoEntry = { slug, skillName, name, description, agents, origin:"repo",
+ *                     linked, broken?, conflict? } and externalEntry =
+ *   { name, agents, origin:"external", conflict? }.
  */
-function mergeProjectSkills(detail, groups) {
+function buildProjectSkillModel(detail, groups) {
   const fromView = Array.isArray(detail?.skills) ? detail.skills : [];
-  const byKey = new Map();
+  const linkedByKey = new Map();
+  const externalEntries = [];
   for (const entry of fromView) {
     if (entry.origin === "repo") {
-      const key = `${entry.slug}/${entry.skillName}`;
-      byKey.set(key, { ...entry, linked: true });
+      linkedByKey.set(`${entry.slug}/${entry.skillName}`, { ...entry, linked: true });
     } else {
-      byKey.set(`external:${entry.name}`, entry);
+      externalEntries.push(entry);
     }
   }
 
-  // Fold in library skills the disk scan didn't mention (available but
-  // unlinked for this project). REQ-SKILL-010: any {slug,skillName} in the
-  // library is a link candidate regardless of current link state.
-  for (const group of groups || []) {
-    for (const skill of group.skills || []) {
+  const repoGroups = (groups || []).map((group) => ({
+    slug: group.slug,
+    skills: (group.skills || []).map((skill) => {
       const key = `${group.slug}/${skill.skillName}`;
-      if (!byKey.has(key)) {
-        byKey.set(key, {
-          slug: group.slug,
-          skillName: skill.skillName,
-          name: skill.name,
-          description: skill.description,
-          agents: [],
-          origin: "repo",
-          linked: false
-        });
-      } else {
-        const existing = byKey.get(key);
-        if (!existing.name) existing.name = skill.name;
-        if (!existing.description) existing.description = skill.description;
+      const fromDisk = linkedByKey.get(key);
+      if (fromDisk) {
+        return {
+          ...fromDisk,
+          name: fromDisk.name || skill.name,
+          description: fromDisk.description || skill.description
+        };
       }
-    }
-  }
+      return {
+        slug: group.slug,
+        skillName: skill.skillName,
+        name: skill.name,
+        description: skill.description,
+        agents: [],
+        origin: "repo",
+        linked: false
+      };
+    })
+  }));
 
-  return [...byKey.values()].sort((a, b) =>
-    String(a.skillName ?? a.name).localeCompare(String(b.skillName ?? b.name))
-  );
+  externalEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return { repoGroups, externalEntries };
 }
 
 export function useProjectDetail(projectId) {
   const [detail, setDetail] = useState(null);
-  const [availableGroups, setAvailableGroups] = useState([]);
-  const [entries, setEntries] = useState([]);
+  const [repoGroups, setRepoGroups] = useState([]);
+  const [externalEntries, setExternalEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [convergenceSummary, setConvergenceSummary] = useState(null);
+  const [bulkMessage, setBulkMessage] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
@@ -74,8 +79,9 @@ export function useProjectDetail(projectId) {
     try {
       const [data, groups] = await Promise.all([getProjectDetail(projectId), listSkillGroups()]);
       setDetail(data);
-      setAvailableGroups(groups);
-      setEntries(mergeProjectSkills(data, groups));
+      const model = buildProjectSkillModel(data, groups);
+      setRepoGroups(model.repoGroups);
+      setExternalEntries(model.externalEntries);
     } catch (err) {
       setError(err.message || "Failed to load project detail");
     } finally {
@@ -105,6 +111,28 @@ export function useProjectDetail(projectId) {
     [projectId, refresh]
   );
 
+  // Bulk link selected identities. Returns the per-item results so the UI can
+  // surface failures/conflicts; selection is cleared by the caller on success.
+  const linkSkills = useCallback(
+    async (skills) => {
+      if (!projectId || skills.length === 0) return null;
+      const result = await linkProjectSkills(projectId, skills);
+      await refresh();
+      return result;
+    },
+    [projectId, refresh]
+  );
+
+  const unlinkSkills = useCallback(
+    async (skills) => {
+      if (!projectId || skills.length === 0) return null;
+      const result = await unlinkProjectSkills(projectId, skills);
+      await refresh();
+      return result;
+    },
+    [projectId, refresh]
+  );
+
   const resyncSkills = useCallback(async () => {
     if (!projectId) return;
     const result = await resyncProjectSkills(projectId);
@@ -126,14 +154,19 @@ export function useProjectDetail(projectId) {
 
   return {
     detail,
-    entries,
+    repoGroups,
+    externalEntries,
     loading,
     error,
     refresh,
     linkSkill,
     unlinkSkill,
+    linkSkills,
+    unlinkSkills,
     resyncSkills,
     updateAgentTypes,
-    convergenceSummary
+    convergenceSummary,
+    bulkMessage,
+    setBulkMessage
   };
 }

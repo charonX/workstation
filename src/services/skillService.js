@@ -979,6 +979,109 @@ export function unlinkSkillFromProject(project, { slug, skillName } = {}) {
   return finalizeAgentResults(results, agentTypes, invalidAgents);
 }
 
+// ---------- bulk link / unlink (REQ-SKILL-010 AC8 / REQ-SKILL-011 AC5, v1.2) ----------
+
+// Normalize a bulk body into a skills array. Throws 400 when the payload is
+// not a usable non-empty array.
+function normalizeBulkSkills(body) {
+  const skills = body?.skills;
+  if (!Array.isArray(skills) || skills.length === 0) {
+    throw codedError(400, "BULK_SKILLS_REQUIRED", "A non-empty skills array is required");
+  }
+  return skills;
+}
+
+function hasAny(agents, kind) {
+  return (agents || []).some((a) => Array.isArray(a[kind]) && a[kind].length > 0);
+}
+
+// POST /api/projects/:id/skills with {skills:[...]}: run each identity through
+// the single-link path, collecting per-item outcomes. A per-item identity
+// error, conflict, or E5 failure never aborts the rest. The project-level E7
+// (no agentTypes) is checked up front and surfaces as 409, exactly like the
+// single-object path.
+export function linkSkillsToProject(project, body) {
+  const skills = normalizeBulkSkills(body);
+  const agentTypes = Array.isArray(project?.agentTypes) ? project.agentTypes : [];
+  if (agentTypes.length === 0) {
+    throw codedError(
+      409,
+      "PROJECT_AGENTS_EMPTY",
+      "Project has no agent types declared; set agentTypes before linking skills"
+    );
+  }
+
+  const results = [];
+  const count = { linked: 0, skipped: 0, failed: 0 };
+  for (const item of skills) {
+    const { slug, skillName } = item || {};
+    try {
+      const single = linkSkillToProject(project, { slug, skillName });
+      let status = "linked";
+      if (hasAny(single.agents, "failed")) {
+        status = "failed";
+      } else if (!hasAny(single.agents, "linked")) {
+        status = "skipped";
+      }
+      count[status] += 1;
+      results.push({ slug, skillName, status, agents: single.agents });
+    } catch (err) {
+      count.failed += 1;
+      results.push({
+        slug,
+        skillName,
+        status: "failed",
+        code: err.code || "LINK_FAILED",
+        message: err.message
+      });
+    }
+  }
+  return { results, count };
+}
+
+// DELETE /api/projects/:id/skills with {skills:[...]}: run each identity
+// through the single-unlink path, collecting per-item outcomes. An unknown
+// identity (404) is reported as "skipped" (idempotent framing); other errors
+// are "failed" without aborting the rest.
+export function unlinkSkillsFromProject(project, body) {
+  const skills = normalizeBulkSkills(body);
+
+  const results = [];
+  const count = { unlinked: 0, skipped: 0, failed: 0 };
+  for (const item of skills) {
+    const { slug, skillName } = item || {};
+    try {
+      const single = unlinkSkillFromProject(project, { slug, skillName });
+      let status;
+      if (hasAny(single.agents, "unlinked")) {
+        status = "unlinked";
+      } else if (hasAny(single.agents, "conflicts")) {
+        status = "skipped";
+      } else {
+        status = "skipped"; // nothing of ours at the target position
+      }
+      if (status === "unlinked") count.unlinked += 1;
+      else count.skipped += 1;
+      results.push({ slug, skillName, status, agents: single.agents });
+    } catch (err) {
+      if (err.status === 404 || err.code === "NOT_FOUND") {
+        count.skipped += 1;
+        results.push({ slug, skillName, status: "skipped", code: "NOT_FOUND", message: err.message });
+      } else {
+        count.failed += 1;
+        results.push({
+          slug,
+          skillName,
+          status: "failed",
+          code: err.code || "UNLINK_FAILED",
+          message: err.message
+        });
+      }
+    }
+  }
+  return { results, count };
+}
+
 // ---------- convergence on agentTypes change (REQ-SKILL-013, F3) ----------
 
 function emptyOutcome() {
