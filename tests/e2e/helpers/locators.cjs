@@ -31,6 +31,7 @@ module.exports = {
   TOPBAR_SETTINGS_BUTTON: "[data-testid='topbar-settings-button']",
 
   // Settings
+  SETTINGS_PAGE: "[data-testid='settings-page']",
   SETTINGS_FORM: "[data-testid='settings-form']",
   WORKSPACE_ROOT_INPUT: "[data-testid='workspace-root-input']",
   WORKSPACE_ROOT_BROWSE_BUTTON: "[data-testid='workspace-root-input-browse']",
@@ -40,6 +41,13 @@ module.exports = {
   LANGUAGE_SELECT: "[data-testid='language-select']",
   DENSITY_SELECT: "[data-testid='density-select']",
   SAVE_SETTINGS_BUTTON: "[data-testid='save-settings-button']",
+
+  // Settings 关于/更新区 (2026-08-01-macos-distribution)
+  UPDATE_SECTION: "[data-testid='update-section']",
+  UPDATE_VERSION: "[data-testid='update-version']",
+  UPDATE_CHECK_BUTTON: "[data-testid='update-check-button']",
+  UPDATE_STATUS: "[data-testid='update-status']",
+  UPDATE_GUIDE: "[data-testid='update-guide']",
 
   // Workspace / Projects
   ADD_PROJECT_BUTTON: "[data-testid='add-project-button']",
