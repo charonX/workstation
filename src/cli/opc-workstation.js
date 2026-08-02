@@ -11,7 +11,7 @@ import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
 import * as source from "./commands/source.js";
 import * as channel from "./commands/channel.js";
-import { release, createDefaultRun } from "./commands/release.js";
+import { release } from "./commands/release.js";
 
 const entities = {
   settings,
@@ -99,11 +99,8 @@ async function main() {
       return fail({ error: "E_RELEASE_INVALID_VERSION", message: "缺少版本参数" }, 1);
     }
     try {
-      const result = await release(version, {
-        dryRun: flags["dry-run"] === true,
-        run: createDefaultRun(process.cwd()),
-        cwd: process.cwd()
-      });
+      // run/cwd 不传：release 的默认值即 createDefaultRun(process.cwd()) / process.cwd()，行为一致。
+      const result = await release(version, { dryRun: flags["dry-run"] === true });
       output(result, globalFlags.pretty);
     } catch (err) {
       return fail({ error: err.code || "INTERNAL_ERROR", message: err.message }, 1);

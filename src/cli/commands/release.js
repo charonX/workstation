@@ -124,8 +124,8 @@ function resolveArtifacts(cwd, version) {
 }
 
 // dry-run：只读检查 + 步骤清单，无任何副作用（不 make/bump/push/create/upload）。
-async function dryRunReport(version, normalized, branch, run) {
-  const checks = [{ name: "版本校验", status: "ok", detail: version }];
+async function dryRunReport(rawVersion, normalized, branch, run) {
+  const checks = [{ name: "版本校验", status: "ok", detail: rawVersion }];
   checks.push({
     name: "分支",
     status: branch === "main" ? "ok" : "not-main",
@@ -163,13 +163,10 @@ export async function release(version, { dryRun = false, run, cwd = process.cwd(
   const normalized = normalizeVersion(version);
   const tag = `v${normalized}`;
 
-  // 2. 分支校验（真实 git，只读）。必须先于 package.json 读取执行。
+  // 2. 分支校验（真实 git，只读）。必须先于 package.json 读取执行；dry-run 只记录不致命。
   const branch = currentBranch(cwd);
-  if (branch !== "main") {
-    if (!dryRun) {
-      throw releaseError("E_RELEASE_NOT_MAIN", `发布仅允许在 main 分支进行（当前分支：${branch || "(unknown)"}）`);
-    }
-    // dry-run：记录结果，不致命。
+  if (!dryRun && branch !== "main") {
+    throw releaseError("E_RELEASE_NOT_MAIN", `发布仅允许在 main 分支进行（当前分支：${branch || "(unknown)"}）`);
   }
 
   // 3. 版本递增校验（进程内；dry-run 跳过）。
@@ -186,7 +183,12 @@ export async function release(version, { dryRun = false, run, cwd = process.cwd(
   if (dryRun) {
     return dryRunReport(version, normalized, branch, exec);
   }
+  return executeRelease({ normalized, tag, cwd, exec });
+}
 
+// 真实模式（dry-run 已在上层排除）：对应文件头执行顺序第 4~13 步。
+// 副作用纪律：package.json 版本变更在 push 成功之前的任何失败路径都必须逐字节回滚（rollback）。
+async function executeRelease({ normalized, tag, cwd, exec }) {
   // 4. bump package.json（先于打包：真实模式用新版本打包）。
   //    保留原字符串；push 成功之前的所有错误路径都必须逐字节回滚。
   const pkgPath = path.join(process.cwd(), "package.json");
