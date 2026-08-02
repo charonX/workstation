@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: app-distribution
 // ENTITY-TRACE: release
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true (2026-08-02 assertion signoff)
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
@@ -44,8 +44,7 @@ test.describe("Settings 关于/更新区", () => {
     await expect(firstWindow.locator(locators.SETTINGS_PAGE)).toBeVisible();
     const version = firstWindow.locator(locators.UPDATE_VERSION);
     await expect(version).toBeVisible();
-    // TODO: HUMAN ASSERTION — 版本号文本非空；与 package.json version 一致（弱断言：
-    //   非空即可，精确一致由实现保证）
+    // 断言（签核 2026-08-02）：版本号文本非空；与 package.json 一致由实现保证（弱断言）
     expect((await version.textContent()).trim().length).toBeGreaterThan(0);
   });
 
@@ -61,7 +60,10 @@ test.describe("Settings 关于/更新区", () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     const guide = firstWindow.locator(locators.UPDATE_GUIDE);
     await expect(guide).toBeVisible();
-    // TODO: HUMAN ASSERTION — 确认文案提及 System Settings > Privacy & Security
-    //   批准路径与 /Applications 建议（断言包含关键词之一）
+    // 断言（签核 2026-08-02）：引导文案含批准路径关键词（System Settings/Privacy &
+    // Security）与 /Applications 建议
+    const text = await guide.textContent();
+    expect(text).toMatch(/System Settings|Privacy & Security|Privacy &amp; Security/i);
+    expect(text).toContain("/Applications");
   });
 });

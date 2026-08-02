@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: app-distribution
 // ENTITY-TRACE: release
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true (2026-08-02 assertion signoff)
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -45,8 +45,21 @@ function cliExpectFail(args, options = {}) {
   }
 }
 
+function currentVersion() {
+  return JSON.parse(fs.readFileSync(PKG, "utf-8")).version;
+}
+
+function makeGitRepo(branch) {
+  const dir = makeTempDir("opc-release-git-");
+  const run = (cmd) => execFileSync("git", ["-C", dir, ...cmd.split(" ")], { stdio: "pipe" });
+  run("init -q");
+  run("config user.email test@example.com");
+  run("config user.name test");
+  run(`checkout -q -b ${branch}`);
+  return dir;
+}
+
 describe("release command", () => {
-  // 备份并隔离 package.json，避免测试改动真实文件。
   let pkgBackup;
   let tmpGitDir;
 
@@ -59,59 +72,101 @@ describe("release command", () => {
     if (tmpGitDir) fs.rmSync(tmpGitDir, { recursive: true, force: true });
   });
 
-  it("REQ-DIST-001 AC1: 非法版本被拒绝且 package.json 不被修改", () => {
+  it("REQ-DIST-001 AC1: 非法版本被拒绝（E_RELEASE_INVALID_VERSION）且 package.json 不被修改", () => {
     const before = fs.readFileSync(PKG, "utf-8");
-    const { status } = cliExpectFail(["release", "not.a.version"]);
-    // TODO: HUMAN ASSERTION — 确认 stderr 含错误码 E_RELEASE_INVALID_VERSION
-    assert.notEqual(status, 0);
+    const { stderr } = cliExpectFail(["release", "not.a.version"]);
+    assert.match(stderr, /E_RELEASE_INVALID_VERSION/);
     assert.equal(fs.readFileSync(PKG, "utf-8"), before, "package.json must be untouched");
   });
 
-  it("REQ-DIST-001 AC2: 版本低于/等于当前版本被拒绝；v 前缀被接受", () => {
-    // TODO: HUMAN ASSERTION — 确认当前版本从 package.json 读取；v1.0.0 前缀用例
-    cliExpectFail(["release", "0.0.0"]);
-    // TODO: HUMAN ASSERTION — 确认 stderr 含 E_RELEASE_VERSION_BELOW
+  it("REQ-DIST-001 AC2: 版本低于/等于当前被拒绝（E_RELEASE_VERSION_BELOW）；v 前缀被接受", () => {
+    const { stderr } = cliExpectFail(["release", "0.0.0"]);
+    assert.match(stderr, /E_RELEASE_VERSION_BELOW/);
+    const same = cliExpectFail(["release", currentVersion()]);
+    assert.match(same.stderr, /E_RELEASE_VERSION_BELOW/);
+    // v 前缀接受：dry-run 不报 INVALID_VERSION（规范化由实现保证）
+    cli(["release", `v${currentVersion()}`, "--dry-run"]);
   });
 
-  it("REQ-DIST-001 AC3: 非 main 分支被拒绝，无副作用", () => {
-    tmpGitDir = makeTempDir("opc-release-git-");
-    // 临时 git 仓库，切到 dev 分支
-    // TODO: HUMAN ASSERTION — 确认 E_RELEASE_NOT_MAIN
-    cliExpectFail(["release", "9.9.9"], { cwd: tmpGitDir });
+  it("REQ-DIST-001 AC3: 非 main 分支被拒绝（E_RELEASE_NOT_MAIN），无副作用", () => {
+    tmpGitDir = makeGitRepo("dev");
+    const { stderr } = cliExpectFail(["release", "9.9.9"], { cwd: tmpGitDir });
+    assert.match(stderr, /E_RELEASE_NOT_MAIN/);
+    assert.equal(fs.readFileSync(PKG, "utf-8"), pkgBackup);
   });
 
-  it("REQ-DIST-001 AC5: gh CLI 未安装/未认证 → E_RELEASE_GH_AUTH", () => {
-    // 依赖环境：若发布者机器已认证 gh，此用例走注入 runner 版本（见下）。
-    // TODO: HUMAN ASSERTION — 确认 stderr 含 E_RELEASE_GH_AUTH 或环境跳过说明
-  });
-
-  it("REQ-DIST-001 AC4/AC9: dry-run 输出步骤序列且不产生副作用", async () => {
+  it("REQ-DIST-001 AC9: dry-run 输出步骤序列且不产生副作用", () => {
     const out = cli(["release", "9.9.9", "--dry-run"]);
-    // TODO: HUMAN ASSERTION — 确认 stdout 含步骤序列（校验版本/分支/gh 认证/tag 检查/打包/推送/创建 Release）
+    for (const keyword of ["版本校验", "分支", "gh 认证", "tag", "打包", "推送", "创建 Release"]) {
+      assert.ok(out.includes(keyword), `dry-run output must mention: ${keyword}`);
+    }
     assert.equal(fs.readFileSync(PKG, "utf-8"), pkgBackup, "dry-run must not modify package.json");
   });
 
-  // ---------- 注入 runner：有副作用路径（AC6-AC8） ----------
-
-  it("REQ-DIST-001 AC6: 打包后产物校验失败 → E_RELEASE_BUILD_FAILED", async () => {
-    // 注入 fake run：npm make 成功但 out/ 无目标版本产物
-    // TODO: HUMAN ASSERTION — 确认错误码与产物命名约定（Workstation-<version>.dmg / .zip）
+  it("REQ-DIST-001 AC4/AC8: tag 已存在拒绝（E_RELEASE_TAG_EXISTS）；成功路径 gh 序列 create+upload 且输出 Release URL", async () => {
     const release = (await import("../../../../../../src/cli/commands/release.js")).release;
     const calls = [];
-    const fakeRun = async () => {
-      calls.push("run");
-      return { stdout: "" };
+    const fakeRun = async (cmd) => {
+      calls.push(cmd);
+      if (cmd.includes("release view")) {
+        return { ok: true }; // tag 已存在
+      }
+      return { ok: false };
     };
-    // TODO: HUMAN ASSERTION — 断言 release 抛 E_RELEASE_BUILD_FAILED 且未调用 push/gh
+    await assert.rejects(
+      release("9.9.9", { dryRun: false, run: fakeRun, cwd: process.cwd() }),
+      (err) => err.code === "E_RELEASE_TAG_EXISTS"
+    );
+    // 成功路径：view 失败（不存在）→ create + upload
+    const calls2 = [];
+    const fakeRun2 = async (cmd) => {
+      calls2.push(cmd);
+      if (cmd.includes("release view")) return { ok: false };
+      if (cmd.includes("release create")) return { ok: true, stdout: "https://github.com/charonX/workstation/releases/tag/v9.9.9" };
+      return { ok: true };
+    };
+    const result = await release("9.9.9", { dryRun: false, run: fakeRun2, cwd: process.cwd() });
+    assert.ok(calls2.some((c) => c.includes("release create v9.9.9")), "must call gh release create");
+    assert.ok(calls2.some((c) => c.includes("release upload")), "must call gh release upload");
+    assert.match(result.url, /releases\/tag\/v9\.9\.9/);
   });
 
-  it("REQ-DIST-001 AC7: git commit/push 失败 → E_RELEASE_GIT_FAILED 且本地版本回滚", async () => {
-    // TODO: HUMAN ASSERTION — 确认失败时 package.json 恢复原版本
+  it("REQ-DIST-001 AC6: 产物缺失 → E_RELEASE_BUILD_FAILED 且未调用 push/gh", async () => {
+    const release = (await import("../../../../../../src/cli/commands/release.js")).release;
+    tmpGitDir = makeGitRepo("main");
+    const calls = [];
+    const fakeRun = async (cmd) => {
+      calls.push(cmd);
+      return { ok: true };
+    };
+    await assert.rejects(
+      release("9.9.9", { dryRun: false, run: fakeRun, cwd: tmpGitDir }),
+      (err) => err.code === "E_RELEASE_BUILD_FAILED"
+    );
+    assert.ok(!calls.some((c) => c.includes("push")), "must not push before artifact check");
+    assert.ok(!calls.some((c) => c.includes("release create")), "must not create release");
   });
 
-  it("REQ-DIST-001 AC4/AC8: tag 已存在拒绝；成功后调用 gh release create 并上传 dmg/zip", async () => {
-    // 注入 fake run：gh release view 成功 → 断言 E_RELEASE_TAG_EXISTS；
-    // gh release view 失败（不存在）→ 断言后续调用 create/upload 与 Release URL 输出
-    // TODO: HUMAN ASSERTION — 确认 gh 命令序列与资产文件名
+  it("REQ-DIST-001 AC7: git push 失败 → E_RELEASE_GIT_FAILED 且 package.json 回滚", async () => {
+    const release = (await import("../../../../../../src/cli/commands/release.js")).release;
+    tmpGitDir = makeGitRepo("main");
+    const calls = [];
+    const fakeRun = async (cmd) => {
+      calls.push(cmd);
+      if (cmd.includes("make")) return { ok: true };
+      if (cmd.includes("push")) return { ok: false, stderr: "rejected" };
+      return { ok: true };
+    };
+    // 产物校验需通过：往 tmpGitDir/out 放符合命名的假产物
+    const version = "9.9.9";
+    fs.mkdirSync(path.join(tmpGitDir, "out"), { recursive: true });
+    fs.writeFileSync(path.join(tmpGitDir, "out", `Workstation-${version}.dmg`), "fake");
+    fs.writeFileSync(path.join(tmpGitDir, "out", `Workstation-${version}.zip`), "fake");
+    await assert.rejects(
+      release(version, { dryRun: false, run: fakeRun, cwd: tmpGitDir }),
+      (err) => err.code === "E_RELEASE_GIT_FAILED"
+    );
+    // package.json 回滚：release 进程内修改的文件在失败后恢复
+    assert.equal(fs.readFileSync(PKG, "utf-8"), pkgBackup, "version must roll back on git failure");
   });
 });
