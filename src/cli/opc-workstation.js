@@ -11,6 +11,7 @@ import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
 import * as source from "./commands/source.js";
 import * as channel from "./commands/channel.js";
+import { release, createDefaultRun } from "./commands/release.js";
 
 const entities = {
   settings,
@@ -86,6 +87,29 @@ async function main() {
   }
 
   const [entityName, action, ...rest] = positional;
+
+  // release 命令 special-case：`release <version> [--dry-run]` 中 action 位是版本号，
+  // 不适用 `<entity> <action>` 分发（release 不是 entities 中的实体）。
+  // ADR-012 第 4 条：release 是 dev-time 发布者工具，绕过本地 HTTP server（ADR-001 的例外），
+  // 纯本地执行（bump → npm run make → git commit/push → gh release create），
+  // 因此不需要 ensureServer / stopManagedServer。
+  if (entityName === "release") {
+    const version = positional[1];
+    if (!version) {
+      return fail({ error: "E_RELEASE_INVALID_VERSION", message: "缺少版本参数" }, 1);
+    }
+    try {
+      const result = await release(version, {
+        dryRun: flags["dry-run"] === true,
+        run: createDefaultRun(process.cwd()),
+        cwd: process.cwd()
+      });
+      output(result, globalFlags.pretty);
+    } catch (err) {
+      return fail({ error: err.code || "INTERNAL_ERROR", message: err.message }, 1);
+    }
+    return exit(0);
+  }
 
   if (!entityName || !entities[entityName]) {
     return fail({ error: "NOT_IMPLEMENTED", message: `Entity not implemented: ${entityName || "(none)"}` }, 1);

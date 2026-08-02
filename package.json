@@ -11,6 +11,7 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "release": "node src/cli/opc-workstation.js release",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "CXXFLAGS='-std=c++20' npx @electron/rebuild -f -m node_modules/better-sqlite3"
   },
