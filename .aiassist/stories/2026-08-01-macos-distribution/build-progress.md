@@ -74,3 +74,29 @@
 - 重构后复验：`b19b99a`（[refactor]）后父代理重跑 → 7/7 绿，diff 仅 2 个实现文件、行为保持。
 - **Slice 1: complete**（`ca78f7f`..`b19b99a`，tests green 7/7，PRD alignment passed——GAP-1/2/4 修复获用户批准，GAP-3 测试缺口与 PRD §6.1 产物名锚点留待后续）
 - **Slice 1: refactor pass done**（`b19b99a`，tests green，no rollback）
+
+### Slice 2（REQ-DIST-002 主进程更新服务 + IPC）— implementer subagent，2026-08-02
+
+#### PRD→代码 可追溯性表
+
+| PRD 意图（§/AC） | 实现文件/函数 | 测试用例 | 状态 |
+|---|---|---|---|
+| §6.1 步骤 6 / §10 检查更新服务放主进程、经 `ipcMain.handle("opc-check-updates")` 暴露、查询逻辑与 UI 解耦（AC1） | `src/main/updates.js`：`checkForUpdates`（纯 Node 模块，无 electron import）；`src/main/main.js`：`opc-check-updates` handler；`src/preload/preload.js`：`checkUpdates` | AC1 返回契约结构（deepEqual 仅 4 key），hasUpdate 由版本比较得出 | COVERED |
+| §10 版本比较手写最小 semver（X.Y.Z 数值比较，不信任字符串序）（AC1/AC2/AC3 边界） | `src/main/updates.js`：`compareVersions`（数值比较；非法输入返回 0 安全默认，未测试路径） | compareVersions 相等/高于/低于/0.x 边界/数值比较（1.10.0 vs 1.9.9） | COVERED |
+| §8/§6.2 检查更新网络失败（超时/断网）→ `E_UPDATE_CHECK_NETWORK`，UI"检查失败请重试"、不崩溃（AC4） | `updates.js` `checkForUpdates`：fetch 失败 catch → error 字段，绝不向上抛；内部 `AbortSignal.timeout(5000)` 超时（E2E 15s 内出结果契约） | AC4 网络失败 → error.code E_UPDATE_CHECK_NETWORK + hasUpdate false | COVERED |
+| §8 仓库无 Release（GitHub 404）→ `E_UPDATE_NO_RELEASE`，UI"暂无发布版本"（AC5） | `updates.js` `checkForUpdates`：响应非 ok 分支 | AC5 404 → latestVersion null + hasUpdate false | COVERED |
+| §8 最新版本解析失败（tag 非 semver）→ `E_UPDATE_PARSE`（AC6） | `updates.js` `checkForUpdates`：`/^v?(\d+\.\d+\.\d+)$/` 匹配，`tag_name` 去 `v` 前缀规范化 | AC6 nightly-build → error.code E_UPDATE_PARSE | COVERED |
+| §10 仓库 owner/repo 读 package.json repository 字段（可配置可测）；兼容字符串/对象两种形态；缺失 → 降级不抛（AC1/AC5 数据来源） | `main.js`：`parseRepositoryFromPackageJson`（`fileURLToPath(new URL("../../package.json", import.meta.url))`；字符串 `"owner/repo"` 与对象 `{url: "https://github.com/owner/repo.git"}`；失败 → `E_UPDATE_PARSE` 契约结构返回） | 无直接签核测试（IPC 层）；Slice 3 E2E 间接覆盖 | PARTIAL（实现覆盖；测试缺口 → Slice 3 E2E / 可补 IPC 单测） |
+| §10 启动静默检查：app 启动后异步触发一次，超时短（~5s）、失败仅记日志、绝不打扰用户；AC7 服务不抛（AC7） | `main.js`：`scheduleSilentUpdateCheck`（窗口创建/加载后约 8s 触发；有新版 → `webContents.send("opc-silent-update")`；失败/无新版仅 `console.log` 一行；window 判空） | AC7 静默路径失败仅返回 error、服务不抛（doesNotReject） | COVERED（main→preload 事件通道已实现；**UI 提示路径在 Slice 3 Settings 页接入**） |
+| §6.1 步骤 7 / §10 "去下载" → `shell.openExternal(GitHub Releases 页)`（主进程已有 shell 用法）（AC2） | `main.js`：`opc-open-releases-page` handler（解析失败/打开失败返回 false 不抛）；`preload.js`：`openReleasesPage` | 无直接签核测试（IPC 层）；Slice 3 E2E 点击后跳转由人工/弱断言覆盖 | PARTIAL（实现覆盖；测试 → Slice 3） |
+| §10 手动检查按钮（AC8）+ 当前版本号展示（REQ-DIST-003 配套） | `main.js`：`opc-get-version` handler；`preload.js`：`getVersion` | 无（UI 在 Slice 3） | GAP（本 slice 仅提供 IPC 能力；**AC8 按钮 UI 在 Slice 3**） |
+
+#### 实现记录（implementer subagent）
+
+- 新增 `src/main/updates.js`：导出 `checkForUpdates({fetchImpl, getVersion, repo})` 与 `compareVersions(a, b)`，纯 Node 模块（无 electron import，单测可直接 import）。请求 `https://api.github.com/repos/{owner}/{repo}/releases/latest`，内部 `AbortSignal.timeout(5000)`；非 ok → `E_UPDATE_NO_RELEASE`；tag 匹配 `/^v?(\d+\.\d+\.\d+)$/` 取捕获组去 `v` 前缀，不匹配 → `E_UPDATE_PARSE`；fetch/json 任何异常 → catch 返回 `E_UPDATE_CHECK_NETWORK`（**绝不向上抛**，AC4/AC7 契约）；成功返回仅 4 key 结构（AC1 deepEqual）。`compareVersions` X.Y.Z 数值比较，非法输入返回 0。
+- 修改 `src/main/main.js`：新增 `parseRepositoryFromPackageJson`（兼容 repository 字符串/对象两形态，失败返回 null 不抛）；`opc-check-updates` / `opc-get-version` / `opc-open-releases-page` 三个 handler（前两者失败形态按契约返回/不抛）；`scheduleSilentUpdateCheck`（约 8s 后真实 fetch，hasUpdate 才 send `opc-silent-update`，日志仅一行，window 判空，try/catch 最后防线），在 `createWindow` 加载完成后调用一次。
+- 修改 `src/preload/preload.js`：`window.opc` 新增 `checkUpdates` / `getVersion` / `openReleasesPage` / `onUpdateResult`（返回退订函数），遵循现有 contextBridge 模式与 JSDoc 风格。
+- 修改 `package.json`：version 之后新增 `"repository": {"type": "git", "url": "https://github.com/charonX/workstation.git"}`（2 空格缩进，与 `JSON.stringify(pkg, null, 2)` 格式一致）。
+- 测试结果：本 slice 7 用例 **7/7 绿**（`checkUpdates.test.js`）；全套单测（排除 feishuChannel/nestedExecution）**421/0 无新失败**（基线 414 pass + 本 slice 7 = 421）。
+- 与签核测试零偏差：测试缝契约（`checkForUpdates({fetchImpl, getVersion, repo})` / `compareVersions` / 错误码全集 / 4-key 成功结构）全部满足，无任何断言妥协。
+- 设计注记：`json()` 解析失败（非契约测试路径）与 fetch 失败同归 `E_UPDATE_CHECK_NETWORK`（"绝不向上抛"不变量优先）；IPC 层 repository 解析失败返回 `E_UPDATE_PARSE` 契约结构而非抛异常。IPC 层与静默事件通道无直接签核单测，已在上表标 PARTIAL，由 Slice 3 E2E 与未来 IPC 单测补。commit：见 Slice 2 [build]/[docs] 提交记录。
