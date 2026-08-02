@@ -101,3 +101,12 @@
 - 与签核测试零偏差：测试缝契约（`checkForUpdates({fetchImpl, getVersion, repo})` / `compareVersions` / 错误码全集 / 4-key 成功结构）全部满足，无任何断言妥协。
 - 设计注记：`json()` 解析失败（非契约测试路径）与 fetch 失败同归 `E_UPDATE_CHECK_NETWORK`（"绝不向上抛"不变量优先）；IPC 层 repository 解析失败返回 `E_UPDATE_PARSE` 契约结构而非抛异常。IPC 层与静默事件通道无直接签核单测，已在上表标 PARTIAL，由 Slice 3 E2E 与未来 IPC 单测补。commit：见 Slice 2 [build]/[docs] 提交记录。
 - 修复记录（PRD 对齐子代理 2026-08-02）：`!res.ok` 分支按状态码细分——`res.status === 404` → `E_UPDATE_NO_RELEASE`（PRD §8 触发 = "404/latest 为空"）；其他非 ok（403 限流 / 5xx）→ `E_UPDATE_CHECK_NETWORK`（tech-design 风险表：限流表现为网络错误）。签核测试 AC5 仅覆盖 404，零断言影响（本 slice 7/7 仍绿）。JSDoc 同步修正：`fetchImpl` 无默认值、调用方必须传入（IPC 层传真实 fetch，测试注入 stub）。commit：`a26c81a`（[build] checkForUpdates 错误状态映射修正（403/5xx → E_UPDATE_CHECK_NETWORK））。
+
+#### 父代理验证结论（2026-08-02）
+
+- 业务测试：父代理亲自跑 `checkUpdates.test.js` → **7/7 全绿**；全套单测（排除 feishuChannel/nestedExecution 挂死文件）→ **421/0**（Slice 1 的 7 条预期红全部转绿，无新失败）。
+- PRD 对齐子代理：`ALIGNED`。唯一缺口（非 404 非 ok 状态码误归 E_UPDATE_NO_RELEASE，PRD §8 触发定义为"404/latest 为空"）已修复：404 → `E_UPDATE_NO_RELEASE`，403/5xx → `E_UPDATE_CHECK_NETWORK`（`a26c81a`，零签核断言影响）。JSDoc 失实同步修正。AC7 调度器/事件通道无直接单测为已知 missing-test，留待后续。
+- 重构后复验：`1e8aecd`（[refactor]：errorResult 提取 + 错误码常量导出 + runUpdateCheck helper）后父代理重跑 → 7/7 绿，diff 仅 3 个本 slice 文件、行为保持。
+- 已知设计注记（refactor 子代理）：`scheduleSilentUpdateCheck` 每次 createWindow 注册新定时器（macOS activate 重建窗口会多次触发；幂等+静默无实际危害，行为变更留待 REFLECT 讨论）；repository 解析失败复用 E_UPDATE_PARSE 码为既有契约决策。
+- **Slice 2: complete**（`878e6e5`..`1e8aecd`，tests green 7/7 + 421/0，PRD alignment passed）
+- **Slice 2: refactor pass done**（`1e8aecd`，tests green，no rollback）
