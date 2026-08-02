@@ -11,6 +11,7 @@
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "npm run rebuild:node && NODE_ENV=test node --test $(find tests/capabilities -type f \\( -path '*/api/*.test.js' -o -path '*/cli/*.test.js' \\))",
+    "lint": "oxlint src/",
     "test:e2e": "npm run rebuild:electron && playwright test",
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -45,6 +46,7 @@
     "@playwright/test": "^1.51.0",
     "@vitejs/plugin-react": "^6.0.3",
     "electron": "^43.0.0",
+    "oxlint": "^1.76.0",
     "vite": "^8.1.3"
   }
 }

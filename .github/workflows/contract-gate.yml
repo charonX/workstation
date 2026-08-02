@@ -1,3 +1,15 @@
+# Loop Contract Gate（0.17.0 模板 + 项目适配，2026-08-02）
+# 适配说明：
+#   - 保留 "Configure Git for tests"：本项目测试（release CLI 等）需要 git identity / 默认分支。
+#   - Lint 用 oxlint（src/ 范围，`npm run lint`）；当前仅 warnings，exit 0。
+#   - Type check 步骤按模板条件（tsconfig.json 存在才执行）——本项目为纯 JS 无 tsconfig，
+#     步骤自动跳过；引入 TS 或 JSDoc 检查时补 `npm run typecheck` script + tsconfig 即启用。
+#   - 单元测试加 coverage：node --test 的合法 flag 是 --experimental-test-coverage
+#     （模板原文 `-- --coverage` 对 node --test 是无效参数，已修正）。
+#   - 签核检查文件为 .aiassist/stories/<id>/signoff.md（模板原文 assertion-signoff.md 与
+#     项目实际不符，已修正；glob 用 ls 而非 test -f，避免多 story 展开参数过多）。
+#   - 0.17.0 起移除 feel-signoff 检查（feel-signoff 已并入 /reflect 机制）。
+
 name: Loop Contract Gate
 
 on:
@@ -30,9 +42,20 @@ jobs:
           git config --global user.email "ci@example.com"
           git config --global user.name "CI User"
 
-      - name: Unit tests
-        run: npm run test:unit
+      # 1. 静态检查
+      - name: Lint
+        run: npm run lint
 
+      # Type check：仅当项目引入 tsconfig.json 时生效（本项目纯 JS，自动跳过）
+      - name: Type check
+        run: npm run typecheck
+        if: ${{ hashFiles('tsconfig.json') != '' }}
+
+      # 2. 单元测试 + coverage
+      - name: Unit tests
+        run: npm run test:unit -- --experimental-test-coverage
+
+      # 3. E2E 测试（默认 Playwright）
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
@@ -46,24 +69,17 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
+      # 4. 契约签核文件存在性检查
       - name: Assertion signoff check
         run: |
           if grep -qE '\[build\]' <<< "${{ github.event.pull_request.title }}"; then
-            test -f .aiassist/stories/*/assertion-signoff.md || {
-              echo "❌ [build] PR 缺少 assertion-signoff.md"
+            ls .aiassist/stories/*/signoff.md >/dev/null 2>&1 || {
+              echo "❌ [build] PR 缺少 signoff.md"
               exit 1
             }
           fi
 
-      - name: Feel signoff check
-        run: |
-          if grep -qE '\[feel\]' <<< "${{ github.event.pull_request.title }}"; then
-            test -f .aiassist/stories/*/feel-signoff.md || {
-              echo "❌ [feel] PR 缺少 feel-signoff.md"
-              exit 1
-            }
-          fi
-
+      # 5. 测试文件只读检查：实现 PR 不能修改测试
       - name: Test files read-only check
         run: |
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
