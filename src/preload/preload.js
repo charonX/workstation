@@ -67,6 +67,35 @@ contextBridge.exposeInMainWorld("opc", {
     ipcRenderer.invoke("opc-show-artifact-in-folder", { projectRoot, artifactPath }),
 
   /**
+   * 检查应用更新：查询 GitHub 最新 release 并与当前版本比较。
+   * @returns {Promise<{currentVersion: string, latestVersion: string|null, hasUpdate: boolean, error: {code: string, message: string}|null}>}
+   */
+  checkUpdates: () => ipcRenderer.invoke("opc-check-updates"),
+
+  /**
+   * 获取当前应用版本号。
+   * @returns {Promise<string>}
+   */
+  getVersion: () => ipcRenderer.invoke("opc-get-version"),
+
+  /**
+   * 打开 GitHub Releases 页（系统默认浏览器）。
+   * @returns {Promise<boolean>} 是否成功打开。
+   */
+  openReleasesPage: () => ipcRenderer.invoke("opc-open-releases-page"),
+
+  /**
+   * 订阅启动静默检查结果（仅在新版可用时触发一次）。
+   * @param {(result: {currentVersion: string, latestVersion: string|null, hasUpdate: boolean, error: {code: string, message: string}|null}) => void} callback
+   * @returns {() => void} 退订函数。
+   */
+  onUpdateResult: (callback) => {
+    const handler = (_event, result) => callback(result);
+    ipcRenderer.on("opc-silent-update", handler);
+    return () => ipcRenderer.removeListener("opc-silent-update", handler);
+  },
+
+  /**
    * Test-only hook to replace the directory picker implementation.
    * @param {Function} fn - async (title, defaultPath) => string | null
    */

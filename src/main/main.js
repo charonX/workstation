@@ -16,6 +16,7 @@ import { discoverServer } from "../cli/server.js";
 import { takeoverExistingServer } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
+import { checkForUpdates } from "./updates.js";
 
 const require = createRequire(import.meta.url);
 
@@ -191,6 +192,9 @@ async function createWindow() {
 
   mainWindow.maximize();
 
+  // 启动静默检查（REQ-DIST-002 AC7）：窗口创建/加载后异步触发一次
+  scheduleSilentUpdateCheck();
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -228,6 +232,89 @@ ipcMain.handle("opc-show-artifact-in-folder", async (_event, { projectRoot, arti
   assertArtifactPathAllowed(projectRoot, artifactPath);
   shell.showItemInFolder(resolveArtifactPath(projectRoot, artifactPath));
 });
+
+// ---- 检查更新（REQ-DIST-002）----
+
+// 从 package.json repository 字段解析 {owner, repo}。
+// 兼容两种形态：字符串 "owner/repo" 与对象 {url: "https://github.com/owner/repo.git"}；
+// 缺失/无法解析返回 null（调用方负责降级，不抛异常）。
+function parseRepositoryFromPackageJson() {
+  try {
+    const pkgPath = fileURLToPath(new URL("../../package.json", import.meta.url));
+    const pkg = JSON.parse(fsSync.readFileSync(pkgPath, "utf8"));
+    const repository = pkg?.repository;
+    if (typeof repository === "string") {
+      const m = /^([^/\s]+)\/([^/\s]+)$/.exec(repository);
+      if (m) return { owner: m[1], repo: m[2] };
+      return null;
+    }
+    if (repository && typeof repository === "object" && typeof repository.url === "string") {
+      const m = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(repository.url);
+      if (m) return { owner: m[1], repo: m[2] };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// 手动检查更新（Settings 页"检查更新"按钮 / REQ-DIST-002 AC1）。
+ipcMain.handle("opc-check-updates", async () => {
+  const repo = parseRepositoryFromPackageJson();
+  if (!repo) {
+    return {
+      currentVersion: app.getVersion(),
+      latestVersion: null,
+      hasUpdate: false,
+      error: { code: "E_UPDATE_PARSE", message: "无法从 package.json repository 字段解析仓库" },
+    };
+  }
+  return checkForUpdates({
+    fetchImpl: (url, opts) => fetch(url, opts),
+    getVersion: () => app.getVersion(),
+    repo,
+  });
+});
+
+ipcMain.handle("opc-get-version", () => app.getVersion());
+
+// "去下载"：打开 GitHub Releases 页（浏览器，REQ-DIST-002 AC2）。
+ipcMain.handle("opc-open-releases-page", async () => {
+  const repo = parseRepositoryFromPackageJson();
+  if (!repo) return false;
+  try {
+    await shell.openExternal(`https://github.com/${repo.owner}/${repo.repo}/releases`);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+// 启动静默检查（REQ-DIST-002 AC7）：窗口创建后约 8 秒异步触发一次。
+// 有新版 → webContents.send("opc-silent-update")（UI 提示路径由 Slice 3 Settings 页接入）；
+// 失败/无新版 → 完全静默（仅一行日志），绝不打扰用户、绝不弹窗、绝不抛未捕获异常。
+const SILENT_UPDATE_CHECK_DELAY_MS = 8000;
+
+function scheduleSilentUpdateCheck() {
+  setTimeout(async () => {
+    const repo = parseRepositoryFromPackageJson();
+    if (!repo) return;
+    try {
+      const result = await checkForUpdates({
+        fetchImpl: (url, opts) => fetch(url, opts),
+        getVersion: () => app.getVersion(),
+        repo,
+      });
+      if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("opc-silent-update", result);
+      }
+      console.log(JSON.stringify({ event: "opc-silent-update-check", ...result }));
+    } catch (err) {
+      // checkForUpdates 已吞掉所有异常，这里仅作最后防线，防止未捕获异常
+      console.log(JSON.stringify({ event: "opc-silent-update-check-error", error: err?.message ?? String(err) }));
+    }
+  }, SILENT_UPDATE_CHECK_DELAY_MS);
+}
 
 // Test-only seam: E2E helper seeds notifications by writing directly to the DB.
 // Guarded to development so production builds do not expose this surface.
