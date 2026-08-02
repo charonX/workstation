@@ -5,7 +5,7 @@ story_id: 2026-08-01-macos-distribution
 intention: >-
   打包产物未签名未公证，无法外发使用（Gatekeeper 拦截），且无发布渠道与更新机制，只能本机自用。修正（2026-08-01 访谈+research 确认）：分发渠道 = 公开 GitHub Release；签名不做（无 ADP 账号）；自动更新放弃（Squirrel 硬性签名要求，research 证伪）；改为手动重装 + 应用内检查更新引导下载；首次安装引导 Settings 批准（macOS 15+ 无右键打开）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: ASSERTION-SIGNOFF  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-01
@@ -13,6 +13,8 @@ created: 2026-08-01
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-01, from: -, to: THINK, note: "创建 story。用户痛点：打包产物未签名未公证无法外发、无发布渠道与更新机制。需求访谈完成（interview-notes.md）：渠道=公开 GitHub Release（初衷修正：私密性移除，接受公开下载+国内访问慢）；签名不做（无 ADP 账号），首次安装引导右键打开；更新策略=自动下载+提示重启；发版= npm run release 一条命令；应用内有检查更新按钮+版本展示。两大技术风险待 spike：latest-mac.yml 生成、未签名 app 更新后启动兼容性。用户显式 OK 方向。"}
+  - {at: 2026-08-02, from: ASSERTION-SIGNOFF, to: BUILD, note: "implementer 启动：切片 S1（release CLI）/ S2（更新服务+IPC）/ S3（Settings 关于/更新区+README）按依赖顺序全部完成。关键事件：AC3 测试 harness 缺陷（相对入口+子进程 cwd → MODULE_NOT_FOUND）经用户批准一行修复（932ef5c，断言不变）；PRD 对齐发现 GAP-1（bump 顺序）/GAP-2（forge 真实产物命名）/GAP-4（make 失败中止）经用户批准修复（78aaa97）；PRD §6.1 产物名锚点与 forge 实际命名差异留待 REFLECT 同步。详见 build-progress.md。"}
+  - {at: 2026-08-02, from: BUILD, to: QA, note: "implementer 全部切片完成：业务测试 17/17 绿（CLI 7 + API 7 + E2E 3，父代理亲自复跑），全套单测 421/0；S1/S2/S3 各一轮 refactor 后仍全绿；进入 QA 待 /qa-runner 回归。"}
   - {at: 2026-08-01, from: THINK, to: THINK, note: "research 证伪：Squirrel.Mac 硬性要求签名（未签名 app 更新器无法初始化），macOS 15+ 移除右键打开改 Settings 批准，App Translocation 影响从 Downloads 启动。用户重拍板：放弃自动更新（路线 B），改手动重装；保留应用内检查更新按钮（查 GitHub 最新版，引导下载 .dmg）。零成本路线。"}
   - {at: 2026-08-02, from: THINK, to: TECH-DESIGN, note: "PRD v0.2 经用户确认锁定；tech-design 对抗三问（Settings 页关于/更新区 / 启动静默检查一次 / main-only 全自动 commit+push）；PRD v0.3 反向同步；ADR-012 固化未签名分发路线（research 证伪 electron-updater）。"}
   - {at: 2026-08-02, from: TECH-DESIGN, to: CRYSTALLIZE, note: "用户确认 tech-design v1（4 模块、IPC+CLI 双契约、8 测试 seams）。进入结晶。"}

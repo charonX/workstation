@@ -136,3 +136,34 @@
 - `README.md`：构建与打包章节之后新增「从 Release 安装（macOS）」+「发布新版本」两小节（对齐 PRD §6.1 步骤 3-5 / §13 / ADR-012；`npm run release -- 1.1.0`、`gh auth login`、仅 main 分支）。
 - 测试证据：rebuild:electron 后跑 `versionDisplay.test.cjs` → **3/3 全绿**（见下）。实现与签核测试零偏差：五个 testid（update-section/update-version/update-check-button/update-status/update-guide）与 locators.cjs 完全一致；未触碰任何 tests/ 文件与 main/preload/updates 文件。
 - 已知注记（REFLECT 人工验收项）：状态区视觉（颜色/间距）为纯审美；静默检查的 UI 提示路径无签核测试（E2E 无法稳定复现 hasUpdate 事件）；"去下载"跳转打开浏览器不可自动化。
+
+### Slice 3（REQ-DIST-002/003/004 Settings 关于/更新区 UI + README 引导）— implementer subagent，2026-08-02
+
+#### PRD→代码 可追溯性表（摘录，完整见 commit 2d3b3fc 对应实现）
+
+| PRD 意图（§/AC） | 实现文件/函数 | 测试用例 | 状态 |
+|---|---|---|---|
+| §6.1 步骤 6 手动检查：按钮 → IPC → 三态展示（AC8） | `Settings.jsx` `handleCheckUpdates`（window.opc.checkUpdates；检查中禁用防重入） | E2E 用例 2（点击后 15s 内 update-status 可见） | COVERED |
+| §10/AC7 启动静默检查复用同一提示路径 | `Settings.jsx` useEffect 订阅 `onUpdateResult`（仅 hasUpdate 更新状态区；cleanup 退订） | 无签核用例（E2E 无法稳定复现 hasUpdate，测试注释支持） | COVERED（测试合理延期） |
+| §6.1 步骤 7 / AC2 "去下载" → shell.openExternal | `handleDownload` → `window.opc.openReleasesPage()`（update-download-button 仅 hasUpdate 态渲染） | 无签核用例（浏览器跳转不可自动化） | PARTIAL（合理延期） |
+| §8 四态 UI 文案（NO_RELEASE/NETWORK+PARSE/hasUpdate/upToDate） | `updateStatusText`（error.code 分支 + hasUpdate + 默认已最新；IPC 抛错 catch 兜底网络错误态不崩溃） | E2E 弱断言三态之一；状态逻辑由 api 单测 4 态覆盖 | COVERED |
+| REQ-DIST-003 AC1 版本号经 IPC 获取、不硬编码 | `appVersion` 经 `window.opc.getVersion()` 挂载时读取（硬编码 0.1.0-alpha 已移除；IPC 失败降级空串；值加载后才渲染） | E2E 用例 1（可见且非空） | COVERED |
+| REQ-DIST-003 AC2 结构可定位 | 5 testid 与 locators.cjs 逐一一致 | E2E 用例 1-3 | COVERED |
+| §13/REQ-DIST-004 AC2 应用内引导文案 | `update-guide` 常驻渲染（en/zh 均含 System Settings / Privacy & Security / /Applications） | E2E 用例 3 | COVERED |
+| REQ-DIST-004 AC1 README 四要素 | README「从 Release 安装（macOS）」：下载 dmg → 拖入 /Applications（Translocation）→ Settings 批准（macOS 15+ 无右键打开）→ 批准后启动；附「发布新版本」（npm run release -- 1.1.0，gh 已认证，仅 main） | 文档审查项（REFLECT 人工） | COVERED（文档） |
+
+#### 父代理验证结论（2026-08-02）
+
+- E2E：父代理亲自复跑 `versionDisplay.test.cjs` → **3/3 全绿**（rebuild:electron 后；每用例约 1.2s）。
+- PRD 对齐子代理：`ALIGNED`，无缺口。观察项（留 REFLECT）：PRD §6.1 步骤 6 锚点措辞（"当前 v1.0.0，最新 v1.1.0"）与签核 REQ AC2 措辞（"发现新版本 v1.1.0"）不冲突（版本行同时可见）；`settings.about` i18n 死键待清理；静默检查事件在 Settings 未挂载时丢弃为设计意图（手动按钮是兜底触点）。
+- 重构后复验：`0a2d008`（[refactor]：statusFromResult 提取 + checking 派生态 + 订阅简化 + 样式常量）后父代理重跑 → 3/3 绿，diff 仅 Settings.jsx、行为保持。
+- **Slice 3: complete**（`2d3b3fc`..`0a2d008`，tests green 3/3，PRD alignment passed）
+- **Slice 3: refactor pass done**（`0a2d008`，tests green，no rollback）
+
+## 最终验证（父代理，2026-08-02）
+
+- 全套单测（`npm run rebuild:node` 后，排除 feishuChannel/nestedExecution 两个真实网络挂死文件）：**421/0 全绿**。
+- 全套 E2E：见 QA 报告（/qa-runner 或本记录附注）。
+- 业务测试汇总：REQ-DIST-001 CLI 7/7、REQ-DIST-002 API 7/7、REQ-DIST-002/003/004 E2E 3/3 = **17/17**。
+- commits：`932ef5c` [test] harness 修复（用户批准）、`ca78f7f`/`78aaa97`/`b19b99a` S1、`878e6e5`/`a26c81a`/`1e8aecd` S2、`2d3b3fc`/`0a2d008` S3 + 各 [docs] 记录 commit。
+- 遗留（REFLECT 人工验收/后续）：REQ-DIST-004 AC3 真实发布+另一台机器全流程；PRD §6.1 产物名锚点同步真实 forge 命名；检查更新状态区视觉呈现（纯审美）；GAP-3（resolveArtifacts 真实命名分支 / AC5 auth 失败分支）补测建议；i18n 死键清理；release 命令一次真实发版体验。
