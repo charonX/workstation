@@ -1,22 +1,24 @@
 // release 发布命令（REQ-DIST-001）—— dev-time 发布者工具。
 //
 // ADR-012 第 4 条（对 ADR-001 的例外）：release 命令绕过本地 HTTP server，
-// 纯本地执行（bump → npm run make → git commit/push → gh release create），
+// 纯本地执行（校验 → bump → npm run make → git commit/push → gh release create），
 // 不暴露在产品 API 上（renderer 无调用方）。因此本命令不依赖 ensureServer/stopManagedServer。
 //
-// 执行顺序（严格）：
+// 执行顺序（真实模式，严格）：
 //   1. 版本格式校验（进程内，dry-run 同样致命）
 //   2. 分支校验（真实 git 只读，先于任何 package.json 读取——测试 cwd 可能无 package.json）
 //   3. 版本递增校验（进程内，dry-run 跳过；读 process.cwd()/package.json 的真实项目版本）
-//   4. 打包 npm run make（结果记录，失败不致命，由第 5/6 步决定）
-//   5. tag 防重（仅当 make 失败时执行 gh release view）
+//   4. bump package.json（先于打包：真实模式用新版本打包；保留原字符串，push 成功前任何失败都回滚）
+//   5. 打包 npm run make；失败 → gh release view 防重：tag 已存在 → E_RELEASE_TAG_EXISTS（回滚），
+//      否则 → E_RELEASE_BUILD_FAILED 中止（回滚）——PRD §8：打包失败不创建 tag/Release
 //   6. 产物校验（fs 检查 out/ 目录存在性）
 //   7. gh 认证前置（gh auth status）
-//   8. bump package.json（保留原字符串用于回滚）
-//   9. git commit + push（任一步失败 → 逐字节回滚 package.json）
-//   10. gh release create
-//   11. gh release upload 资产
-//   12. 返回 { url }
+//   8. git commit（失败 → 回滚 → E_RELEASE_GIT_FAILED）
+//   9. git push（失败 → 回滚 → E_RELEASE_GIT_FAILED）
+//   10. 解析真实产物路径（resolveArtifacts，forge 命名；找不到回退契约名）
+//   11. gh release create（已 push，失败不回滚）
+//   12. gh release upload 解析后的资产（失败不回滚）
+//   13. 返回 { url }
 //
 // 版本比较手写最小 X.Y.Z 数值比较（tech-design 决策：不引入 semver 依赖）。
 import { execFile, execFileSync } from "node:child_process";
@@ -86,6 +88,41 @@ async function safeRun(run, cmd) {
   }
 }
 
+// 真实产物定位（GAP-2，用户批准方案 A；forge maker 命名已从 maker 源码核实）：
+//   out/<appName>-<version>-<arch>.dmg（如 out/opc-workstation-1.1.0-arm64.dmg）
+//   out/zip/<platform>/<arch>/<basename>-<version>.zip（如 out/zip/darwin/arm64/opc-workstation-darwin-arm64-1.1.0.zip）
+// 在 out/（限深度 2）与 out/zip/（限深度 4）内递归查找 .dmg/.zip 且文件名含版本号的文件，
+// 返回相对 cwd 的路径；找不到时回退契约名 out/Workstation-<v>.dmg / .zip
+// （签核测试 AC4/AC8 成功路径 cwd=repo root 的 out/ 无 dmg/zip，必须走回退才能绿）。
+function resolveArtifacts(cwd, version) {
+  const outDir = path.join(cwd, "out");
+  const zipDir = path.join(cwd, "out", "zip");
+  const found = { dmg: null, zip: null };
+
+  const visit = (root, depth) => {
+    if (depth < 0 || !fs.existsSync(root)) return;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      const full = path.join(root, entry.name);
+      if (entry.isDirectory()) {
+        visit(full, depth - 1);
+      } else if (entry.isFile() && entry.name.includes(version)) {
+        const ext = path.extname(entry.name);
+        if (ext === ".dmg" && !found.dmg) found.dmg = full;
+        else if (ext === ".zip" && !found.zip) found.zip = full;
+      }
+    }
+  };
+
+  visit(outDir, 2);
+  visit(zipDir, 4);
+
+  const rel = (p) => path.relative(cwd, p);
+  return [
+    found.dmg ? rel(found.dmg) : `out/Workstation-${version}.dmg`,
+    found.zip ? rel(found.zip) : `out/Workstation-${version}.zip`
+  ];
+}
+
 // dry-run：只读检查 + 步骤清单，无任何副作用（不 make/bump/push/create/upload）。
 async function dryRunReport(version, normalized, branch, run) {
   const checks = [{ name: "版本校验", status: "ok", detail: version }];
@@ -150,61 +187,66 @@ export async function release(version, { dryRun = false, run, cwd = process.cwd(
     return dryRunReport(version, normalized, branch, exec);
   }
 
-  // 4. 打包。结果记录，失败不致命——由第 5/6 步决定中止与否。
-  const make = await exec("npm run make");
-
-  // 5. tag 防重（仅当 make 失败时执行）。
-  if (!make.ok) {
-    const view = await exec(`gh release view ${tag}`);
-    if (view.ok) {
-      throw releaseError("E_RELEASE_TAG_EXISTS", `tag ${tag} 已存在，请更换版本号或先删除已有 Release`);
-    }
-  }
-
-  // 6. 产物校验（fs 检查 out/ 目录存在性；文件名由 forge make 配置保证）。
-  if (!fs.existsSync(path.join(cwd, "out"))) {
-    throw releaseError("E_RELEASE_BUILD_FAILED", "打包失败：out/ 产物缺失");
-  }
-
-  // 7. gh 认证前置。
-  const auth = await exec("gh auth status");
-  if (!auth.ok) {
-    throw releaseError("E_RELEASE_GH_AUTH", "gh CLI 未认证或不可用，请先运行 gh auth login");
-  }
-
-  // 8. bump package.json（保留原字符串用于失败回滚）。
+  // 4. bump package.json（先于打包：真实模式用新版本打包）。
+  //    保留原字符串；push 成功之前的所有错误路径都必须逐字节回滚。
   const pkgPath = path.join(process.cwd(), "package.json");
   const original = fs.readFileSync(pkgPath, "utf-8");
   const pkg = JSON.parse(original);
   pkg.version = normalized;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  // 9. git commit + push。任一步失败 → 逐字节恢复原 package.json → E_RELEASE_GIT_FAILED。
+  const rollback = (code, message, detail) => {
+    fs.writeFileSync(pkgPath, original);
+    throw releaseError(code, detail ? `${message}：${detail}` : message);
+  };
+
+  // 5. 打包。失败 → tag 防重检查：tag 已存在 → E_RELEASE_TAG_EXISTS（回滚）；
+  //    不存在 → E_RELEASE_BUILD_FAILED 中止（回滚）——PRD §8：打包失败不创建 tag/Release。
+  const make = await exec("npm run make");
+  if (!make.ok) {
+    const view = await exec(`gh release view ${tag}`);
+    if (view.ok) {
+      rollback("E_RELEASE_TAG_EXISTS", `tag ${tag} 已存在，请更换版本号或先删除已有 Release`);
+    }
+    rollback("E_RELEASE_BUILD_FAILED", `打包失败（npm run make），已中止且不创建 tag/Release`, make.stderr);
+  }
+
+  // 6. 产物校验（fs 检查 out/ 目录存在性；文件名由 resolveArtifacts 定位，此处不升级为文件名级——签核测试约束）。
+  if (!fs.existsSync(path.join(cwd, "out"))) {
+    rollback("E_RELEASE_BUILD_FAILED", "打包失败：out/ 产物缺失");
+  }
+
+  // 7. gh 认证前置。
+  const auth = await exec("gh auth status");
+  if (!auth.ok) {
+    rollback("E_RELEASE_GH_AUTH", "gh CLI 未认证或不可用，请先运行 gh auth login");
+  }
+
+  // 8/9. git commit + push。任一步失败 → 逐字节恢复原 package.json → E_RELEASE_GIT_FAILED。
   const commit = await exec(`git add package.json && git commit -m "release ${tag}"`);
   if (!commit.ok) {
-    fs.writeFileSync(pkgPath, original);
-    throw releaseError("E_RELEASE_GIT_FAILED", `git 提交失败，版本变更已回滚：${commit.stderr}`);
+    rollback("E_RELEASE_GIT_FAILED", "git 提交失败，版本变更已回滚", commit.stderr);
   }
   const push = await exec("git push");
   if (!push.ok) {
-    fs.writeFileSync(pkgPath, original);
-    throw releaseError("E_RELEASE_GIT_FAILED", `git 推送失败，版本变更已回滚：${push.stderr}`);
+    rollback("E_RELEASE_GIT_FAILED", "git 推送失败，版本变更已回滚", push.stderr);
   }
 
-  // 10. 创建 Release（设计注记：未直接测试路径，错误码取最贴近的 E_RELEASE_BUILD_FAILED）。
+  // 10. 解析真实产物路径（forge 命名；找不到回退契约名，保证 upload 命令可构造）。
+  const [dmgPath, zipPath] = resolveArtifacts(cwd, normalized);
+
+  // 11. 创建 Release（已 push，失败不回滚；设计注记：未直接测试路径，错误码取最贴近的 E_RELEASE_BUILD_FAILED）。
   const created = await exec(`gh release create ${tag}`);
   if (!created.ok) {
     throw releaseError("E_RELEASE_BUILD_FAILED", `gh release create 失败：${created.stderr}`);
   }
 
-  // 11. 上传资产。
-  const upload = await exec(
-    `gh release upload ${tag} out/Workstation-${normalized}.dmg out/Workstation-${normalized}.zip`
-  );
+  // 12. 上传资产（用解析后的真实产物路径）。
+  const upload = await exec(`gh release upload ${tag} ${dmgPath} ${zipPath}`);
   if (!upload.ok) {
     throw releaseError("E_RELEASE_BUILD_FAILED", `gh release upload 失败：${upload.stderr}`);
   }
 
-  // 12. 返回 Release URL。
+  // 13. 返回 Release URL。
   return { url: created.stdout.trim() };
 }
