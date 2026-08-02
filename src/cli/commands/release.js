@@ -91,7 +91,9 @@ async function safeRun(run, cmd) {
 // 真实产物定位（GAP-2，用户批准方案 A；forge maker 命名已从 maker 源码核实）：
 //   out/<appName>-<version>-<arch>.dmg（如 out/opc-workstation-1.1.0-arm64.dmg）
 //   out/zip/<platform>/<arch>/<basename>-<version>.zip（如 out/zip/darwin/arm64/opc-workstation-darwin-arm64-1.1.0.zip）
-// 在 out/（限深度 2）与 out/zip/（限深度 4）内递归查找 .dmg/.zip 且文件名含版本号的文件，
+// forge 7 的 makeDir 是 out/make/（2026-08-02 真实发布实测：产物在 out/make/...，zip 深度 3），
+// 因此从 out/ 根递归限深度 4 才能命中真实布局。
+// 在 out/（限深度 4）与 out/zip/（限深度 4）内递归查找 .dmg/.zip 且文件名含版本号的文件，
 // 返回相对 cwd 的路径；找不到时回退契约名 out/Workstation-<v>.dmg / .zip
 // （签核测试 AC4/AC8 成功路径 cwd=repo root 的 out/ 无 dmg/zip，必须走回退才能绿）。
 function resolveArtifacts(cwd, version) {
@@ -113,7 +115,7 @@ function resolveArtifacts(cwd, version) {
     }
   };
 
-  visit(outDir, 2);
+  visit(outDir, 4);
   visit(zipDir, 4);
 
   const rel = (p) => path.relative(cwd, p);
