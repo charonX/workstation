@@ -68,6 +68,12 @@
 | dashboard | `tests/capabilities/information-aggregation/dashboard/codex-harness-desktop/api/` | REQ-DASH-001 | `dashboard.test.js`, `dashboard.spec.js` (E2E) |
 | notification | `tests/capabilities/information-aggregation/notification/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-NOTIFY-001~002 | `notifications.test.js`, `notificationCenter.test.cjs` |
 
+### app-distribution
+
+| entity | 测试目录 | REQ | 测试文件 |
+|---|---|---|---|
+| release | `tests/capabilities/app-distribution/release/2026-08-01-macos-distribution/cli/`、`.../api/`、`.../e2e/` | REQ-DIST-001~004 | `release.test.js`, `checkUpdates.test.js`, `versionDisplay.test.cjs` (E2E) |
+
 ### internationalization-theme
 > 语言切换、主题切换、显示密度。
 
@@ -109,5 +115,6 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | channel-integration | 1 | 0 | 2026-07-19 |
 | collection-pipeline | 3 | 0 | 2026-07-19 |
 | information-aggregation | 2 | 7 | 2026-07-19 |
+| app-distribution | 1 | 0 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
