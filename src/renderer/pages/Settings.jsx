@@ -20,6 +20,35 @@ const STATUS_HAS_UPDATE = "hasUpdate";
 const STATUS_UP_TO_DATE = "upToDate";
 const STATUS_ERROR = "error";
 
+// 把主进程 checkUpdates 结果归一化为状态区对象（REQ-DIST-002 契约：hasUpdate / error / 其余 = 已最新）
+function statusFromResult(result) {
+  if (result?.hasUpdate) {
+    return { kind: STATUS_HAS_UPDATE, latestVersion: result.latestVersion ?? null, error: null };
+  }
+  if (result?.error) {
+    return { kind: STATUS_ERROR, latestVersion: null, error: result.error };
+  }
+  return { kind: STATUS_UP_TO_DATE, latestVersion: null, error: null };
+}
+
+// 状态行通用样式（channel 状态行 / 更新状态行共用）
+const STATUS_ROW_STYLE = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--ch-space-3)",
+  padding: "var(--ch-space-3)",
+  background: "var(--ch-surface-high)",
+  border: "1px solid var(--ch-border)",
+  borderRadius: "var(--ch-radius-md)",
+  marginBottom: "var(--ch-space-5)",
+};
+
+const UPDATE_STATUS_ROW_STYLE = {
+  ...STATUS_ROW_STYLE,
+  flexWrap: "wrap",
+  fontSize: "var(--ch-text-sm)",
+};
+
 export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, reloadSettings, loading] = useSettings();
@@ -41,8 +70,9 @@ export default function Settings() {
 
   // 关于/更新区：当前版本（经 IPC 获取，禁止硬编码——REQ-DIST-003）+ 检查更新状态
   const [appVersion, setAppVersion] = useState(null);
-  const [checking, setChecking] = useState(false);
   const [updateStatus, setUpdateStatus] = useState(null); // { kind, latestVersion, error }
+  // checking 从 updateStatus 派生（检查中即 kind === STATUS_CHECKING），避免双份状态
+  const checking = updateStatus?.kind === STATUS_CHECKING;
 
   useEffect(() => {
     if (settings && !initializedRef.current) {
@@ -101,33 +131,20 @@ export default function Settings() {
 
   // 启动静默检查结果订阅（REQ-DIST-002 AC7：复用同一提示路径；页面未挂载时结果自然丢弃）。
   useEffect(() => {
-    if (!window.opc?.onUpdateResult) return undefined;
-    return window.opc.onUpdateResult((result) => {
-      if (result?.hasUpdate) {
-        setUpdateStatus({ kind: STATUS_HAS_UPDATE, latestVersion: result.latestVersion ?? null, error: null });
-      }
+    return window.opc?.onUpdateResult?.((result) => {
+      if (result?.hasUpdate) setUpdateStatus(statusFromResult(result));
     });
   }, []);
 
   // 手动检查更新（REQ-DIST-002 AC8）：点击按钮触发 IPC，三种状态之一渲染到状态区。
   async function handleCheckUpdates() {
     if (!window.opc?.checkUpdates || checking) return;
-    setChecking(true);
     setUpdateStatus({ kind: STATUS_CHECKING, latestVersion: null, error: null });
     try {
-      const result = await window.opc.checkUpdates();
-      if (result?.hasUpdate) {
-        setUpdateStatus({ kind: STATUS_HAS_UPDATE, latestVersion: result.latestVersion ?? null, error: null });
-      } else if (result?.error) {
-        setUpdateStatus({ kind: STATUS_ERROR, latestVersion: null, error: result.error });
-      } else {
-        setUpdateStatus({ kind: STATUS_UP_TO_DATE, latestVersion: null, error: null });
-      }
+      setUpdateStatus(statusFromResult(await window.opc.checkUpdates()));
     } catch (err) {
       // 主进程契约不抛；此处仅作最后防线（REQ-DIST-002 AC4：应用不崩溃，显示可重试失败态）。
       setUpdateStatus({ kind: STATUS_ERROR, latestVersion: null, error: { code: "E_UPDATE_CHECK_NETWORK", message: String(err?.message ?? err) } });
-    } finally {
-      setChecking(false);
     }
   }
 
@@ -294,16 +311,7 @@ export default function Settings() {
               <div className="card-body">
                 <div
                   className="channel-status-row"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--ch-space-3)",
-                    padding: "var(--ch-space-3)",
-                    background: "var(--ch-surface-high)",
-                    border: "1px solid var(--ch-border)",
-                    borderRadius: "var(--ch-radius-md)",
-                    marginBottom: "var(--ch-space-5)",
-                  }}
+                  style={STATUS_ROW_STYLE}
                 >
                   <span
                     className={`status ${statusClass(channelStatus.status)}`}
@@ -571,18 +579,7 @@ export default function Settings() {
                   <div
                     className="update-status-row"
                     data-testid="update-status"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--ch-space-3)",
-                      flexWrap: "wrap",
-                      padding: "var(--ch-space-3)",
-                      background: "var(--ch-surface-high)",
-                      border: "1px solid var(--ch-border)",
-                      borderRadius: "var(--ch-radius-md)",
-                      marginBottom: "var(--ch-space-5)",
-                      fontSize: "var(--ch-text-sm)",
-                    }}
+                    style={UPDATE_STATUS_ROW_STYLE}
                   >
                     <span style={{ flex: 1, minWidth: 0 }}>{updateStatusText(updateStatus)}</span>
                     {updateStatus.kind === STATUS_HAS_UPDATE && (
