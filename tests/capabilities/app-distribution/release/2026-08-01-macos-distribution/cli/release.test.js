@@ -24,7 +24,9 @@ import path from "node:path";
 //   release 模块导出 release(version, { dryRun, run, cwd })，
 //   run = 异步命令执行器（默认 node:child_process 封装，测试注入 fake）。
 
-const CLI = ["node", ["src/cli/opc-workstation.js"]];
+// 2026-08-02 harness 修复（用户批准，断言不变）：CLI 入口用绝对路径——子进程 cwd 可能是
+// 临时 git 仓库（AC3），node 按子进程 cwd 解析相对入口会 MODULE_NOT_FOUND。
+const CLI = ["node", [path.resolve("src/cli/opc-workstation.js")]];
 const PKG = path.resolve("package.json");
 
 function makeTempDir(prefix) {
