@@ -51,4 +51,19 @@
 - 设计注记：`gh release create/upload` 失败路径（未直接测试）复用错误码池中最贴近的 `E_RELEASE_BUILD_FAILED`，消息含 stderr；已在 release.js 注释标明。
 - 全套单元测试基线检查：见父代理验证结论（imRouting AC4 / dailyDigest 2 条 pre-existing 失败已知存在）。
 
+#### 修复记录（父代理 PRD 对齐 + 用户批准，2026-08-02）
+
+| GAP | 修复内容 | 实现位置 |
+|---|---|---|
+| GAP-1 | bump 前置：真实模式第 4 步改为 bump（读 `process.cwd()/package.json`、保留原字符串），第 5 步才打包——真实模式用新版本打包（原顺序用旧版本打包） | `release.js` `release()` 第 4 步 |
+| GAP-4 | make 失败中止：`npm run make` `{ok:false}` 时 tag 防重检查后——tag 已存在 → `E_RELEASE_TAG_EXISTS`（回滚）；tag 不存在 → `E_RELEASE_BUILD_FAILED` 中止（回滚）。对齐 PRD §8「打包失败 → 命令中止，不创建 tag/Release」（原实现 make 失败仅记录） | `release.js` `release()` 第 5 步 + `rollback()` |
+| 回滚纪律 | bump 之后、push 成功之前的**所有**错误路径（TAG_EXISTS / BUILD_FAILED / 产物缺失 / GH_AUTH / commit / push）一律逐字节恢复原 package.json 字符串 | `release.js` `rollback()` 闭包 |
+| GAP-2 | 真实产物定位 `resolveArtifacts(cwd, version)`：在 `out/`（限深度 2）与 `out/zip/`（限深度 4）内递归查找 `.dmg`/`.zip` 且文件名含版本号的文件，返回相对 cwd 路径；找不到回退契约名 `out/Workstation-<v>.dmg/.zip`（签核测试 AC4/AC8 成功路径必须走回退）。upload 命令使用解析后路径。产物校验（第 6 步）保持只查 `out/` 目录存在性，不升级为文件名级 | `release.js` `resolveArtifacts()` + `release()` 第 10/12 步 |
+
+- 产物命名依据（已从 maker 源码核实）：`out/<appName>-<version>-<arch>.dmg`、`out/zip/<platform>/<arch>/<basename>-<version>.zip`。
+- **GAP-3 测试缺口**：`resolveArtifacts` 真实命名分支无自动化测试覆盖（签核测试只覆盖回退分支），留待 /test-author 或 /bug 补测。
+- **PRD §6.1 产物名锚点**（`Workstation-1.1.0.dmg`）与 forge 实际命名不一致，留待 REFLECT 同步 PRD/README。
+- 测试证据（修复后）：本 slice 7/7 绿（含 harness 修复 commit `932ef5c` 后基线）；全套单测（排除 feishuChannel/nestedExecution 两个真实网络挂死文件）421 用例仅 REQ-DIST-002 7 条预期红（Slice 2 未实现）。
+- 修复 commit：`78aaa97`（[build] release CLI 修复：bump 前置 + make 失败中止 + 真实产物定位（GAP-1/2/4））。
+
 （父代理验证结论由父代理在本节后追加）
