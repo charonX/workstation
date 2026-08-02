@@ -66,4 +66,11 @@
 - 测试证据（修复后）：本 slice 7/7 绿（含 harness 修复 commit `932ef5c` 后基线）；全套单测（排除 feishuChannel/nestedExecution 两个真实网络挂死文件）421 用例仅 REQ-DIST-002 7 条预期红（Slice 2 未实现）。
 - 修复 commit：`78aaa97`（[build] release CLI 修复：bump 前置 + make 失败中止 + 真实产物定位（GAP-1/2/4））。
 
-（父代理验证结论由父代理在本节后追加）
+#### 父代理验证结论（2026-08-02）
+
+- 业务测试：父代理亲自跑 `release.test.js` → **7/7 全绿**（`932ef5c` harness 修复后）。AC3 复现确认：相对入口 + 子进程 cwd 确实 MODULE_NOT_FOUND，实现侧不可满足，测试侧一行修复已获用户批准（断言不变）。
+- 全套单测（排除 feishuChannel/nestedExecution 挂死文件，`--test-timeout=20000`）：421 用例，仅 REQ-DIST-002 7 条预期红（Slice 2 未实现），无其他失败；此前记录的 imRouting AC4 / dailyDigest 2 条 pre-existing 失败在 `npm run rebuild:node` 后未复现（ABI 问题）。
+- GAP-2 真实命名分支：静态追踪验证（`resolveArtifacts` 递归深度限制内命中 `out/opc-workstation-<v>-arm64.dmg` 深度 1、`out/zip/darwin/arm64/...-<v>.zip` 深度 3，相对路径正确）；回退分支由 AC4/AC8 实证。父代理尝试 empirical 复验时 Bash 分类器间歇不可用，未完成——已在 GAP-3 记录补测建议。
+- 重构后复验：`b19b99a`（[refactor]）后父代理重跑 → 7/7 绿，diff 仅 2 个实现文件、行为保持。
+- **Slice 1: complete**（`ca78f7f`..`b19b99a`，tests green 7/7，PRD alignment passed——GAP-1/2/4 修复获用户批准，GAP-3 测试缺口与 PRD §6.1 产物名锚点留待后续）
+- **Slice 1: refactor pass done**（`b19b99a`，tests green，no rollback）
