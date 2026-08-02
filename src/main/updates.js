@@ -48,7 +48,7 @@ export function compareVersions(a, b) {
  * 与服务层调用方（IPC handler）无需 try/catch。
  *
  * @param {object} options
- * @param {Function} options.fetchImpl - 注入的 fetch 实现（测试 stub；默认 fetch）。
+ * @param {Function} options.fetchImpl - fetch 实现，调用方必须传入（IPC 层传真实 fetch，测试注入 stub），无默认值。
  * @param {() => string} options.getVersion - 返回当前应用版本（不规范化）。
  * @param {{owner: string, repo: string}} options.repo - 仓库 owner/repo（由调用方解析）。
  * @returns {Promise<{currentVersion: string, latestVersion: string|null, hasUpdate: boolean, error: {code: string, message: string}|null}>}
@@ -58,13 +58,22 @@ export async function checkForUpdates({ fetchImpl, getVersion, repo }) {
   try {
     const url = `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases/latest`;
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) {
+    if (res.status === 404) {
       // 仓库无 release（GitHub API 对无 release 仓库返回 404）
       return {
         currentVersion,
         latestVersion: null,
         hasUpdate: false,
         error: { code: E_UPDATE_NO_RELEASE, message: "仓库暂无发布版本" },
+      };
+    }
+    if (!res.ok) {
+      // 其他非 ok（403 限流 / 5xx 等）→ 网络类错误（tech-design 风险表：限流表现为网络错误）
+      return {
+        currentVersion,
+        latestVersion: null,
+        hasUpdate: false,
+        error: { code: E_UPDATE_CHECK_NETWORK, message: `检查更新失败：GitHub API 返回 ${res.status}` },
       };
     }
     const body = await res.json();
