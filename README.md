@@ -12,7 +12,8 @@ OPC Workstation Desktop 是一个基于 **Electron + React** 的本地桌面应�
 - **Schedules**：基于 cron 表达式的定时调度。
 - **Skills**：支持 npm、Claude Plugin 与本地文件三种来源安装，并在项目详情中关联 Skills。
 - **Dashboard**：关键指标卡片、最近执行记录、快捷项目链接。
-- **Settings**：工作区根目录、Skill 仓库路径、主题、语言、密度偏好。
+- **Settings**：工作区根目录、Skill 仓库路径、主题、语言、密度偏好；关于/更新区展示当前版本号、提供"检查更新"入口。
+- **分发**：`npm run release` 一条命令发版到公开 GitHub Release（未签名分发路线，ADR-012）；应用内检查更新引导用户下载新版。
 - **CLI**：独立的命令行入口 `src/cli/opc-workstation.js`，支持与桌面端共享同一本地 HTTP API。
 
 ## 技术栈
@@ -26,7 +27,7 @@ OPC Workstation Desktop 是一个基于 **Electron + React** 的本地桌面应�
 
 ## 环境准备
 
-需要 Node.js 22+ 和 npm。
+需要 Node.js 22+ 和 npm。发布新版本需要 [gh CLI](https://cli.github.com/) 且已登录（`gh auth login`）。
 
 ```bash
 npm install
@@ -86,8 +87,8 @@ npm run test:e2e
 
 当前测试覆盖：
 
-- 单元测试：61 个，覆盖 HTTP API、CLI、FlowEngine。
-- E2E 测试：21 个 Playwright Electron 用例，覆盖主题/语言/密度、Dashboard、Flow 编辑与执行、Skill 安装、Project 配置等关键路径。
+- 单元测试：400+ 个（`tests/capabilities/**/api|cli/*.test.js`），覆盖 HTTP API、CLI、FlowEngine、检查更新服务等。
+- E2E 测试：116 个 Playwright Electron 用例，覆盖主题/语言/密度、Dashboard、Flow 编辑与执行、Skill 安装、Project 配置、Settings 关于/更新区等关键路径。
 
 ## 构建与打包
 
@@ -99,13 +100,16 @@ npm run package
 npm run make
 ```
 
-构建产物输出到 `out/` 目录。
+构建产物输出到 `out/` 目录。macOS 下实际产物命名（forge 默认）：
+
+- `out/opc-workstation-<version>-<arch>.dmg`（如 `opc-workstation-1.1.0-arm64.dmg`）
+- `out/zip/<platform>/<arch>/opc-workstation-darwin-arm64-<version>.zip`
 
 ## 从 Release 安装（macOS）
 
 > Story：`2026-08-01-macos-distribution` — 未签名分发路线（ADR-012），经公开 GitHub Release 零成本分发。首次安装需在系统设置中批准一次。
 
-1. 在 [GitHub Releases](https://github.com/charonX/workstation/releases) 页下载最新 `.dmg` 安装包。
+1. 在 [GitHub Releases](https://github.com/charonX/workstation/releases) 页下载最新 `.dmg` 安装包（文件形如 `opc-workstation-<version>-<arch>.dmg`）。
 2. 打开 dmg，把应用拖入 **/Applications**（建议）：直接从 Downloads 启动会触发 App Translocation，应用被放入只读卷而无法正常读写数据。
 3. 首次启动被 Gatekeeper 拦截（“无法验证开发者”）时：打开 **System Settings > Privacy & Security**，在 Security 区域点击「仍要打开」(Open Anyway) 批准。macOS 15+ 没有右键打开入口（Sequoia 起 Control-click 覆盖已被移除）。
 4. 批准后重新启动应用即可正常使用。
@@ -115,6 +119,9 @@ npm run make
 ```bash
 # 需要 gh CLI 已认证（gh auth login）；仅允许在 main 分支执行
 npm run release -- 1.1.0
+
+# 预检：只打印步骤序列与校验结果，不产生任何副作用
+npm run release -- 1.1.0 --dry-run
 ```
 
 该命令依次：校验版本号（必须为 `X.Y.Z` 且高于当前版本）→ 更新 `package.json` → 打包（dmg + zip）→ 自动提交并推送版本变更 → 创建 GitHub Release（`v1.1.0`）并上传资产。发布成功后使用者在 Releases 页即可看到新版。
@@ -134,7 +141,8 @@ npm run release -- 1.1.0
 │   ├── http/             # 本地 HTTP API 与路由
 │   │   └── routes/
 │   ├── main/             # Electron 主进程
-│   │   └── main.js
+│   │   ├── main.js
+│   │   └── updates.js    # 检查更新服务（GitHub 查询 + 版本比较，纯 Node 模块）
 │   ├── preload/          # Electron preload 脚本
 │   ├── renderer/         # Electron 渲染进程（React 应用）
 │   │   ├── api/          # 前端 API 调用封装
@@ -172,7 +180,7 @@ npm run release -- 1.1.0
 
 ## 工作流状态
 
-当前 story 处于 **FEEL-SIGNOFF** 阶段，QA 已全部通过，等待观感验收。
+当前 story：`2026-08-01-macos-distribution`（macOS 分发：GitHub Release 发布 + 应用内检查更新）。BUILD 已完成（业务测试 17/17 绿），处于 **QA** 阶段，等待 /qa-runner 回归与 /reflect 最终验收。
 
 ## 相关命令速查
 
@@ -187,4 +195,5 @@ npm run release -- 1.1.0
 | `npm run test:e2e` | 运行 Playwright Electron E2E |
 | `npm run package` | 打包 Electron 应用 |
 | `npm run make` | 制作安装包 |
+| `npm run release -- <version>` | 发布新版本到 GitHub Release（需 gh 已认证、main 分支） |
 | `node src/cli/opc-workstation.js --help` | 查看 CLI 帮助 |
