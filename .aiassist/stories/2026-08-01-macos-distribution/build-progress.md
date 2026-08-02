@@ -180,3 +180,8 @@
 - 两个失败用例**隔离重跑均通过**（sourcesPage 6/6、agentTypes 5/5）；agentTypes 搜索 1 例为 2026-07-29-multi-agent-skills BUG-003 已记录的 pre-existing 时序 flake。
 - 判定：与本 story 改动无关（失败路径均不触及本 story 的 CLI/main/preload/Settings 变更；i18n 仅新增 settings.* 键不影响 sources.* 键；主进程仅新增 additive IPC + 8s 后异步静默检查）。
 - 本 story 的 3 个 E2E 用例在全部 4 轮中均为绿。
+
+### 决策记录（2026-08-02，用户拍板）
+
+- **Windows 分发：暂缓**（延续 PRD §12 范围外 + M2 移动块 scope 外）。用户确认不投入。
+- 已评估（供未来 story 参考）：Windows 产物只能在 Windows 上构建（maker-squirrel 平台绑定；开发机为 mac），现实路线为 GitHub Actions windows-latest 构建 + `gh release upload` 到同一 Release；检查更新/IPC/Settings UI 平台无关可直接复用；增量点为 CI workflow、`resolveArtifacts` 扩展 `.exe`、SmartScreen 引导文案；Squirrel.Windows 不硬性要求签名（与 Squirrel.Mac 不同），自动更新理论可行但为路线一致性暂不做。
