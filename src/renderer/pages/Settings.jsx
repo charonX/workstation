@@ -14,6 +14,12 @@ const DEFAULT_FORM = {
 
 const DEFAULT_CHANNEL_STATUS = { status: "offline", error: null };
 
+// 检查更新状态区：checking=检查中 / hasUpdate=发现新版 / upToDate=已是最新 / error=检查失败
+const STATUS_CHECKING = "checking";
+const STATUS_HAS_UPDATE = "hasUpdate";
+const STATUS_UP_TO_DATE = "upToDate";
+const STATUS_ERROR = "error";
+
 export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, reloadSettings, loading] = useSettings();
@@ -32,6 +38,11 @@ export default function Settings() {
   const [channelError, setChannelError] = useState(null);
   const [channelSuccess, setChannelSuccess] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ appId: false, appSecret: false });
+
+  // 关于/更新区：当前版本（经 IPC 获取，禁止硬编码——REQ-DIST-003）+ 检查更新状态
+  const [appVersion, setAppVersion] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null); // { kind, latestVersion, error }
 
   useEffect(() => {
     if (settings && !initializedRef.current) {
@@ -73,6 +84,73 @@ export default function Settings() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // 挂载时读取当前版本号（REQ-DIST-003 AC1：经 IPC 获取，与打包进应用的 package.json version 一致）。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await window.opc?.getVersion?.();
+        if (!cancelled) setAppVersion(v ?? "");
+      } catch {
+        if (!cancelled) setAppVersion("");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // 启动静默检查结果订阅（REQ-DIST-002 AC7：复用同一提示路径；页面未挂载时结果自然丢弃）。
+  useEffect(() => {
+    if (!window.opc?.onUpdateResult) return undefined;
+    return window.opc.onUpdateResult((result) => {
+      if (result?.hasUpdate) {
+        setUpdateStatus({ kind: STATUS_HAS_UPDATE, latestVersion: result.latestVersion ?? null, error: null });
+      }
+    });
+  }, []);
+
+  // 手动检查更新（REQ-DIST-002 AC8）：点击按钮触发 IPC，三种状态之一渲染到状态区。
+  async function handleCheckUpdates() {
+    if (!window.opc?.checkUpdates || checking) return;
+    setChecking(true);
+    setUpdateStatus({ kind: STATUS_CHECKING, latestVersion: null, error: null });
+    try {
+      const result = await window.opc.checkUpdates();
+      if (result?.hasUpdate) {
+        setUpdateStatus({ kind: STATUS_HAS_UPDATE, latestVersion: result.latestVersion ?? null, error: null });
+      } else if (result?.error) {
+        setUpdateStatus({ kind: STATUS_ERROR, latestVersion: null, error: result.error });
+      } else {
+        setUpdateStatus({ kind: STATUS_UP_TO_DATE, latestVersion: null, error: null });
+      }
+    } catch (err) {
+      // 主进程契约不抛；此处仅作最后防线（REQ-DIST-002 AC4：应用不崩溃，显示可重试失败态）。
+      setUpdateStatus({ kind: STATUS_ERROR, latestVersion: null, error: { code: "E_UPDATE_CHECK_NETWORK", message: String(err?.message ?? err) } });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  // "去下载"：打开 GitHub Releases 页（REQ-DIST-002 AC2，经主进程 shell.openExternal）。
+  async function handleDownload() {
+    try {
+      await window.opc?.openReleasesPage?.();
+    } catch {
+      // 打开失败静默（主进程已返回 false；不打扰用户）。
+    }
+  }
+
+  function updateStatusText(status) {
+    if (status?.kind === STATUS_CHECKING) return t("settings.checkingUpdates");
+    if (status?.kind === STATUS_HAS_UPDATE) {
+      return t("settings.updateAvailable", { version: status.latestVersion ?? "" });
+    }
+    if (status?.kind === STATUS_UP_TO_DATE) return t("settings.upToDate");
+    // STATUS_ERROR：E_UPDATE_NO_RELEASE（AC5 暂无发布版本）与其他错误（AC4/AC6 检查失败请重试）区分
+    return status?.error?.code === "E_UPDATE_NO_RELEASE"
+      ? t("settings.noRelease")
+      : t("settings.checkFailed");
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -459,20 +537,70 @@ export default function Settings() {
           </div>
 
           <div className="settings-side">
-            <div className="card">
+            <div className="card" data-testid="update-section">
               <div className="card-header">
-                <h2 className="card-title">{t("settings.about")}</h2>
+                <h2 className="card-title">{t("settings.aboutUpdate")}</h2>
               </div>
               <div className="card-body">
                 <div className="form-group">
                   <label className="form-label">{t("settings.version")}</label>
-                  <div className="form-static">0.1.0-alpha</div>
+                  {appVersion !== null && (
+                    <div className="form-static" data-testid="update-version">
+                      {appVersion}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">{t("settings.dataDirectory")}</label>
                   <div className="form-static form-static-mono">
                     ~/.opc-workstation
                   </div>
+                </div>
+                <div className="form-group">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    data-testid="update-check-button"
+                    onClick={handleCheckUpdates}
+                    disabled={checking}
+                  >
+                    {checking ? t("settings.checkingUpdates") : t("settings.checkForUpdates")}
+                  </button>
+                </div>
+                {updateStatus && (
+                  <div
+                    className="update-status-row"
+                    data-testid="update-status"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--ch-space-3)",
+                      flexWrap: "wrap",
+                      padding: "var(--ch-space-3)",
+                      background: "var(--ch-surface-high)",
+                      border: "1px solid var(--ch-border)",
+                      borderRadius: "var(--ch-radius-md)",
+                      marginBottom: "var(--ch-space-5)",
+                      fontSize: "var(--ch-text-sm)",
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0 }}>{updateStatusText(updateStatus)}</span>
+                    {updateStatus.kind === STATUS_HAS_UPDATE && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        data-testid="update-download-button"
+                        onClick={handleDownload}
+                      >
+                        {t("settings.download")}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <p className="help-text" data-testid="update-guide">
+                    {t("settings.updateGuide")}
+                  </p>
                 </div>
               </div>
             </div>

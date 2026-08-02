@@ -101,6 +101,24 @@ npm run make
 
 构建产物输出到 `out/` 目录。
 
+## 从 Release 安装（macOS）
+
+> Story：`2026-08-01-macos-distribution` — 未签名分发路线（ADR-012），经公开 GitHub Release 零成本分发。首次安装需在系统设置中批准一次。
+
+1. 在 [GitHub Releases](https://github.com/charonX/workstation/releases) 页下载最新 `.dmg` 安装包。
+2. 打开 dmg，把应用拖入 **/Applications**（建议）：直接从 Downloads 启动会触发 App Translocation，应用被放入只读卷而无法正常读写数据。
+3. 首次启动被 Gatekeeper 拦截（“无法验证开发者”）时：打开 **System Settings > Privacy & Security**，在 Security 区域点击「仍要打开」(Open Anyway) 批准。macOS 15+ 没有右键打开入口（Sequoia 起 Control-click 覆盖已被移除）。
+4. 批准后重新启动应用即可正常使用。
+
+### 发布新版本
+
+```bash
+# 需要 gh CLI 已认证（gh auth login）；仅允许在 main 分支执行
+npm run release -- 1.1.0
+```
+
+该命令依次：校验版本号（必须为 `X.Y.Z` 且高于当前版本）→ 更新 `package.json` → 打包（dmg + zip）→ 自动提交并推送版本变更 → 创建 GitHub Release（`v1.1.0`）并上传资产。发布成功后使用者在 Releases 页即可看到新版。
+
 ## 项目目录说明
 
 ```
