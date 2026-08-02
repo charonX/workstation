@@ -167,3 +167,16 @@
 - 业务测试汇总：REQ-DIST-001 CLI 7/7、REQ-DIST-002 API 7/7、REQ-DIST-002/003/004 E2E 3/3 = **17/17**。
 - commits：`932ef5c` [test] harness 修复（用户批准）、`ca78f7f`/`78aaa97`/`b19b99a` S1、`878e6e5`/`a26c81a`/`1e8aecd` S2、`2d3b3fc`/`0a2d008` S3 + 各 [docs] 记录 commit。
 - 遗留（REFLECT 人工验收/后续）：REQ-DIST-004 AC3 真实发布+另一台机器全流程；PRD §6.1 产物名锚点同步真实 forge 命名；检查更新状态区视觉呈现（纯审美）；GAP-3（resolveArtifacts 真实命名分支 / AC5 auth 失败分支）补测建议；i18n 死键清理；release 命令一次真实发版体验。
+
+### 全套 E2E 回归（父代理，2026-08-02，4 轮）
+
+| 轮次 | 结果 | 失败 |
+|---|---|---|
+| 1 | 115/116 | sourcesPage.test.cjs:93（tag 编辑器时序） |
+| 2 | 115/116 | agentTypes.test.cjs:68（REQ-WORKSPACE-012 搜索时序） |
+| 3 | 115/116 | sourcesPage.test.cjs:93（同上） |
+| 4 | **116/116 全绿** | — |
+
+- 两个失败用例**隔离重跑均通过**（sourcesPage 6/6、agentTypes 5/5）；agentTypes 搜索 1 例为 2026-07-29-multi-agent-skills BUG-003 已记录的 pre-existing 时序 flake。
+- 判定：与本 story 改动无关（失败路径均不触及本 story 的 CLI/main/preload/Settings 变更；i18n 仅新增 settings.* 键不影响 sources.* 键；主进程仅新增 additive IPC + 8s 后异步静默检查）。
+- 本 story 的 3 个 E2E 用例在全部 4 轮中均为绿。
