@@ -110,3 +110,29 @@
 - 已知设计注记（refactor 子代理）：`scheduleSilentUpdateCheck` 每次 createWindow 注册新定时器（macOS activate 重建窗口会多次触发；幂等+静默无实际危害，行为变更留待 REFLECT 讨论）；repository 解析失败复用 E_UPDATE_PARSE 码为既有契约决策。
 - **Slice 2: complete**（`878e6e5`..`1e8aecd`，tests green 7/7 + 421/0，PRD alignment passed）
 - **Slice 2: refactor pass done**（`1e8aecd`，tests green，no rollback）
+
+### Slice 3（REQ-DIST-002/003/004 Settings 关于/更新区 UI + README 引导）— implementer subagent，2026-08-02
+
+#### PRD→代码 可追溯性表
+
+| PRD 意图（§/AC） | 实现文件/函数 | 测试用例 | 状态 |
+|---|---|---|---|
+| §6.1 步骤 6 手动检查：应用内点"检查更新"→ 查询 GitHub 最新 release 并展示状态（REQ-DIST-002 AC8） | `src/renderer/pages/Settings.jsx`：`handleCheckUpdates`（点击 → `window.opc.checkUpdates()` → 三态渲染；检查中禁用按钮）；`data-testid="update-check-button"` / `update-status` | E2E 用例 2「按钮存在，点击后 15s 内状态区可见」 | COVERED |
+| §6.1 步骤 7 / §10 "去下载" → `shell.openExternal(Releases 页)`（REQ-DIST-002 AC2） | `Settings.jsx`：`handleDownload`（`window.opc.openReleasesPage()`）+ `data-testid="update-download-button"`（仅 hasUpdate 态渲染） | 无直接签核用例（跳转打开浏览器不可自动化）；主进程 handler 已在 Slice 2 实现 | PARTIAL（实现覆盖；测试 → 人工/REFLECT） |
+| §10 / REQ-DIST-002 AC7 启动静默检查复用同一提示路径（页面未挂载自然丢弃） | `Settings.jsx`：`useEffect` 订阅 `window.opc.onUpdateResult(...)`，收到且 `hasUpdate` → 状态区更新为"发现新版本"；effect cleanup 退订 | 无签核用例（E2E 无法稳定复现静默事件）；由实现保证 + Slice 2 服务不抛断言覆盖 | COVERED（实现）；测试无签核用例 |
+| §6.2/§8 检查更新三错误态 UI 文案：`E_UPDATE_CHECK_NETWORK` → "检查失败，请重试"（AC4）；`E_UPDATE_NO_RELEASE` → "暂无发布版本"（AC5）；`E_UPDATE_PARSE` → 检查失败（AC6） | `Settings.jsx`：`updateStatusText`（error.code === "E_UPDATE_NO_RELEASE" 分支 → noRelease，其余 → checkFailed）；IPC 失败兜底 catch → 网络错误态（不崩溃） | E2E 用例 2 宽松断言"三态之一可见"（test-plan 明确：具体状态由 api 单测 4 态覆盖，E2E 只断言结构/交互）；文案映射本身无签核用例 | PARTIAL（实现覆盖；文案映射测试 → 未来 /test-author 或 /bug） |
+| §10 版本比较/查询状态：hasUpdate → "发现新版本 v{latest}"（AC2）；latest ≤ current → "当前已是最新版本"（AC3） | `Settings.jsx`：`updateStatusText`（STATUS_HAS_UPDATE → `updateAvailable`（含 `{{version}}` 插值）/ STATUS_UP_TO_DATE → `upToDate`） | 同上（E2E 弱断言；状态逻辑由 api 单测覆盖） | COVERED（实现）；测试弱断言 |
+| REQ-DIST-003 AC1 版本号展示：经主进程 IPC / app.getVersion() 获取，不硬编码 renderer（S3） | `Settings.jsx`：`appVersion` state + `useEffect`（挂载时 `window.opc.getVersion()`；失败降级空串不抛）；`data-testid="update-version"` 仅在有值后渲染（避免空文本竞态）；原硬编码 `0.1.0-alpha` 已移除 | E2E 用例 1「版本号可见且文本非空」 | COVERED |
+| REQ-DIST-003 AC2 结构可定位（testid） | `Settings.jsx`：`data-testid="update-version"`（与 locators.cjs `UPDATE_VERSION` 一致） | E2E 用例 1 | COVERED |
+| §13 / REQ-DIST-004 AC2 应用内引导文案：Settings 批准路径（macOS 15+ 无右键打开）+ 放入 /Applications 建议（避免 Translocation 只读卷） | `Settings.jsx`：`data-testid="update-guide"` 段落 → `t("settings.updateGuide")`；en-US 文案含 "System Settings > Privacy & Security" 与 "/Applications"；zh-CN 中文叙述保留 "System Settings"/"Privacy & Security"/"/Applications" 字样（切语言后语义仍满足） | E2E 用例 3「guide 可见 + 正则 System Settings/Privacy & Security + toContain /Applications」 | COVERED |
+| REQ-DIST-004 AC1 README「从 Release 安装」章节：下载 .dmg → 拖入 /Applications → Gatekeeper 拦截 → System Settings > Privacy & Security 批准（macOS 15+ 无右键打开）→ 重新启动（S4） | `README.md`：「从 Release 安装（macOS）」章节（构建与打包之后；含 GitHub Releases 链接、Translocation 说明、Open Anyway 路径）；另附「发布新版本」小节（`npm run release -- 1.1.0`，需 `gh auth login`，仅 main 分支——对齐 PRD §6.1/ADR-012） | AC1 为文档审查项（无自动化测试）；应用内 AC2 由 E2E 用例 3 覆盖 | COVERED（文档）；测试 → REFLECT 人工审查 |
+| 文案走 i18n（双语言键，命名对齐现有风格） | `src/renderer/i18n/en-US.json` + `zh-CN.json`：settings 块新增 `aboutUpdate`/`checkForUpdates`/`checkingUpdates`/`updateAvailable`/`upToDate`/`checkFailed`/`noRelease`/`download`/`updateGuide` | E2E（默认 en-US）间接覆盖 en 文案 | COVERED |
+| 样式：现有 CSS 变量 token（var(--ch-*)），不新写大段 CSS | `Settings.jsx`：`update-status` 内联样式复用 channel-status-row 同款 token 组合（surface-high/border/radius-md/text-sm/space-3） | — | COVERED |
+
+#### 实现记录（implementer subagent）
+
+- 改造 `src/renderer/pages/Settings.jsx`「关于/更新」区（settings-side 内原 About 卡片）：容器 `data-testid="update-section"`；版本行 `update-version` 经 `window.opc.getVersion()` 挂载时读取（渲染条件 `appVersion !== null`，规避 E2E 读空文本竞态；IPC 失败降级空串不抛）；`update-check-button` 检查中禁用并显示"检查中..."；`update-status` 状态区在检查中/结果三态（hasUpdate → 发现新版本 v{latest} + `update-download-button`；upToDate → 已是最新；error → E_UPDATE_NO_RELEASE 显示"暂无发布版本"、其他显示"检查失败，请重试"）；`update-guide` 引导文案常驻渲染；启动静默检查经 `window.opc.onUpdateResult` 订阅（hasUpdate 才更新状态区，卸载退订）。数据目录行与 form-static 样式保留。硬编码 `0.1.0-alpha` 已移除。
+- `en-US.json` / `zh-CN.json` settings 块新增 9 键（见上表）。en `updateGuide` 含 "System Settings > Privacy & Security" 与 "/Applications"（满足 E2E 正则与 toContain）。
+- `README.md`：构建与打包章节之后新增「从 Release 安装（macOS）」+「发布新版本」两小节（对齐 PRD §6.1 步骤 3-5 / §13 / ADR-012；`npm run release -- 1.1.0`、`gh auth login`、仅 main 分支）。
+- 测试证据：rebuild:electron 后跑 `versionDisplay.test.cjs` → **3/3 全绿**（见下）。实现与签核测试零偏差：五个 testid（update-section/update-version/update-check-button/update-status/update-guide）与 locators.cjs 完全一致；未触碰任何 tests/ 文件与 main/preload/updates 文件。
+- 已知注记（REFLECT 人工验收项）：状态区视觉（颜色/间距）为纯审美；静默检查的 UI 提示路径无签核测试（E2E 无法稳定复现 hasUpdate 事件）；"去下载"跳转打开浏览器不可自动化。
