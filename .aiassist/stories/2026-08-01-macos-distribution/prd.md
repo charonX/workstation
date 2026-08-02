@@ -1,6 +1,6 @@
 # macOS 分发：GitHub Release 发布 + 应用内检查更新
 
-> 状态：探索期
+> 状态：已锁定（用户确认 2026-08-01）
 > 故事 ID：`2026-08-01-macos-distribution`
 > 最后更新：2026-08-01
 
@@ -26,8 +26,8 @@
 
 | # | 稳定块 | 为什么不再推翻 |
 |---|---|---|
-| S1 | release 发布命令：bump 版本 → 打包（dmg+zip）→ 生成/上传 GitHub Release 资产 | 渠道（公开 GitHub Release）、零成本路线（不签名）、手动重装（无自动更新）均经用户拍板；发版自动化是访谈确认的 B |
-| S2 | 应用内"检查更新"：查询 GitHub 最新 release 版本号，与当前版本比较，有新版时提示并引导下载 | 访谈确认的 C；无 Squirrel/签名依赖，纯 HTTP 查询，零成本 |
+| S1 | release 发布命令（仅 main 分支）：校验版本 → bump package.json → 打包（dmg+zip）→ 自动 commit+push 版本变更 → 生成/上传 GitHub Release 资产 | 渠道（公开 GitHub Release）、零成本路线（不签名）、手动重装（无自动更新）均经用户拍板；发版自动化是访谈确认的 B |
+| S2 | 应用内"检查更新"（手动按钮 + 启动后静默检查一次）：查询 GitHub 最新 release 版本号，与当前版本比较，有新版时提示并引导下载；静默检查失败无感知 | 访谈确认的 C；无 Squirrel/签名依赖，纯 HTTP 查询，零成本 |
 | S3 | 当前版本号展示（应用 UI） | 检查更新的必要配套（用户需要知道"自己是什么版本"） |
 | S4 | 首次安装引导：macOS 15+ System Settings > Privacy & Security 批准 + 建议放入 /Applications | research 证伪右键打开（Sequoia 移除 Control-click），引导文案是分发可用性的必要组成 |
 
@@ -35,9 +35,9 @@
 
 | # | 还在动的块 | 不确定什么 |
 |---|---|---|
-| M1 | "检查更新"按钮的 UI 位置 | Settings 页 vs 顶部菜单 vs 关于弹窗——BUILD 时按现有布局落地 |
 | M2 | Windows squirrel 资产是否顺带上传 | scope 外；可先只传 macOS 资产 |
-| M3 | release 命令的版本来源 | 读 package.json version 并 bump，还是手动传参——倾向手动传参 + 校验（更可测），BUILD 定稿 |
+
+> 已定稿移出：M1 → Settings 页新增"关于/更新"区；M3 → 手动传参 + 校验（tech-design 2026-08-01 确认）。
 
 ## 6. 用户操作流（Operation Flows）
 
@@ -50,7 +50,7 @@
 | 3 | 使用者在 GitHub Releases 页下载 `.dmg` | — | 下载成功 |
 | 4 | 使用者双击 dmg → 拖入 /Applications → 首次启动 | macOS 弹"无法验证开发者"拦截 | 引导文案可见（README/应用内） |
 | 5 | 使用者前往 System Settings > Privacy & Security → 批准 → 再启动 | 应用正常启动 | 启动无崩溃 |
-| 6 | 使用者在应用内打开"检查更新" | 查询 GitHub 最新 release，显示"当前 v1.0.0，最新 v1.1.0" | 版本对比正确 |
+| 6 | 应用启动后（异步静默）或使用者在应用内点"检查更新" | 查询 GitHub 最新 release；启动静默检查有新版才提示、失败无感知；手动检查显示"当前 v1.0.0，最新 v1.1.0" | 版本对比正确 |
 | 7 | 使用者点击"去下载" | 打开 GitHub Releases 页（浏览器） | 跳转正确 |
 | 8 | 发布者再发 v1.2.0 后，使用者重复 6-7 | 检查提示 v1.2.0 可用 | 新版本可被发现 |
 
@@ -60,6 +60,7 @@
 |---|---|---|
 | 版本号格式非法（非 semver） | 命令拒绝执行并提示格式 | E-RELEASE-INVALID-VERSION |
 | 版本号低于/等于当前版本 | 命令拒绝（防误发） | E-RELEASE-VERSION-BELOW |
+| 当前分支非 main | 命令拒绝执行 | E-RELEASE-NOT-MAIN |
 | gh CLI 未登录/无权限 | 命令在创建 Release 前失败，明确提示认证 | E-RELEASE-GH-AUTH |
 | 打包失败（构建错误） | 命令中止，不创建 tag/Release | E-RELEASE-BUILD-FAILED |
 | 检查更新时网络不通/GitHub 不可达 | 显示"检查失败"可重试，不崩溃 | E-UPDATE-CHECK-NETWORK |
@@ -108,6 +109,10 @@
 - 版本比较用 semver 规范比较（自己实现或最小依赖），不信任字符串序。
 - "去下载"跳转用 `shell.openExternal(GitHub Releases 页)`（主进程已有 shell 用法）。
 - release 命令支持 `--dry-run`：只打印将执行的步骤与命令，不实际 bump/打包/上传——测试 seam。
+- release 命令前置校验：当前 git 分支必须为 main；变更 package.json 后自动 commit + push（tag 由 gh release create 推送）；命令内记录原版本，失败时恢复。
+- 检查更新：主进程 fetch `api.github.com/repos/{owner}/{repo}/releases/latest`（公开仓库免 token，未认证限流 60 req/h，手动+启动静默频率远低于此）；仓库 owner/repo 读 package.json 的 repository 字段。
+- 版本比较：手写最小 semver 比较（X.Y.Z 数值比较），不引入新依赖。
+- 启动静默检查：app ready 后异步触发一次，超时短（~5s），失败仅记日志；有新版时复用同一套 UI 提示。
 
 ## 11. 测试决策
 
@@ -152,3 +157,5 @@
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v0.1 | 2026-08-01 | 初稿（访谈 + research 后） | AI + 人 |
+| v0.2 | 2026-08-01 | 用户确认，锁定进入 tech-design | 人 |
+| v0.3 | 2026-08-02 | tech-design 讨论反向同步：S1 加 main 分支约束+自动 commit/push；S2 加启动静默检查；M1/M3 定稿移出移动块；检查更新 API 端点/版本比较/仓库来源定稿 | AI + 人 |

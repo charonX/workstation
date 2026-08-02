@@ -21,3 +21,4 @@
 | ADR-009 | 模块惰性初始化，禁止顶层读 env/磁盘 | 已接受 | 2026-07-24 | BUG-007/009 教训（2026-07-19-media-production-line） |
 | ADR-010 | 统一节点输出模型与节点类型注册表 | 已接受 | 2026-07-27 | REQ-FLOW-042、REQ-FLOW-043、REQ-FLOW-047 |
 | ADR-011 | Agent skill 分发由 workstation 自持，第三方库仅作 registry 数据源 | 已接受 | 2026-07-29 | 待结晶（2026-07-29-multi-agent-skills） |
+| ADR-012 | macOS 分发走未签名 + 公开 GitHub Release + 手动重装 + 轻量检查更新 | 已接受 | 2026-08-02 | 待结晶（2026-08-01-macos-distribution） |
