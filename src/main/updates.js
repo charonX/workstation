@@ -7,8 +7,12 @@
 //   }>
 //   compareVersions(a, b) -> -1 | 0 | 1   （X.Y.Z 数值比较，非字符串序）
 //
-// 错误码契约：E_UPDATE_NO_RELEASE（仓库无 release）/ E_UPDATE_PARSE（tag 解析失败）
-//             / E_UPDATE_CHECK_NETWORK（fetch 失败/超时）
+// 错误码契约（导出供 main.js IPC 层复用同一常量，避免字符串漂移）：
+//   E_UPDATE_NO_RELEASE（仓库无 release）/ E_UPDATE_PARSE（tag 解析失败）
+//   / E_UPDATE_CHECK_NETWORK（fetch 失败/超时）
+export const E_UPDATE_NO_RELEASE = "E_UPDATE_NO_RELEASE";
+export const E_UPDATE_PARSE = "E_UPDATE_PARSE";
+export const E_UPDATE_CHECK_NETWORK = "E_UPDATE_CHECK_NETWORK";
 
 // 匹配 GitHub release tag（可带 v 前缀），捕获组 1 = 规范化版本号。
 const TAG_VERSION_RE = /^v?(\d+\.\d+\.\d+)$/;
@@ -17,10 +21,6 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 // 检查更新请求超时（ms）。E2E 契约：点击检查更新后状态区 15 秒内必须出现结果。
 const FETCH_TIMEOUT_MS = 5000;
-
-const E_UPDATE_NO_RELEASE = "E_UPDATE_NO_RELEASE";
-const E_UPDATE_PARSE = "E_UPDATE_PARSE";
-const E_UPDATE_CHECK_NETWORK = "E_UPDATE_CHECK_NETWORK";
 
 /**
  * 比较两个 X.Y.Z 版本号（数值比较，非字符串序）。
@@ -42,6 +42,19 @@ export function compareVersions(a, b) {
 }
 
 /**
+ * 构造错误返回结构（4-key 契约，latestVersion 固定 null、hasUpdate 固定 false）。
+ * 集中错误返回形状，避免各分支重复构建同一结构。
+ */
+function errorResult(currentVersion, code, message) {
+  return {
+    currentVersion,
+    latestVersion: null,
+    hasUpdate: false,
+    error: { code, message },
+  };
+}
+
+/**
  * 查询 GitHub 最新 release 并与当前版本比较（REQ-DIST-002）。
  *
  * 永不向上抛异常：网络失败/解析失败均以 error 字段返回，保证启动静默检查
@@ -60,33 +73,18 @@ export async function checkForUpdates({ fetchImpl, getVersion, repo }) {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (res.status === 404) {
       // 仓库无 release（GitHub API 对无 release 仓库返回 404）
-      return {
-        currentVersion,
-        latestVersion: null,
-        hasUpdate: false,
-        error: { code: E_UPDATE_NO_RELEASE, message: "仓库暂无发布版本" },
-      };
+      return errorResult(currentVersion, E_UPDATE_NO_RELEASE, "仓库暂无发布版本");
     }
     if (!res.ok) {
       // 其他非 ok（403 限流 / 5xx 等）→ 网络类错误（tech-design 风险表：限流表现为网络错误）
-      return {
-        currentVersion,
-        latestVersion: null,
-        hasUpdate: false,
-        error: { code: E_UPDATE_CHECK_NETWORK, message: `检查更新失败：GitHub API 返回 ${res.status}` },
-      };
+      return errorResult(currentVersion, E_UPDATE_CHECK_NETWORK, `检查更新失败：GitHub API 返回 ${res.status}`);
     }
     const body = await res.json();
     const tagName = String(body?.tag_name ?? "");
     const match = TAG_VERSION_RE.exec(tagName);
     if (!match) {
       // tag 无法解析为版本（如 "nightly-build"）
-      return {
-        currentVersion,
-        latestVersion: null,
-        hasUpdate: false,
-        error: { code: E_UPDATE_PARSE, message: `无法解析最新版本号：${tagName}` },
-      };
+      return errorResult(currentVersion, E_UPDATE_PARSE, `无法解析最新版本号：${tagName}`);
     }
     const latestVersion = match[1];
     return {
@@ -97,11 +95,6 @@ export async function checkForUpdates({ fetchImpl, getVersion, repo }) {
     };
   } catch (err) {
     // 网络失败/超时/响应解析失败：绝不向上抛
-    return {
-      currentVersion,
-      latestVersion: null,
-      hasUpdate: false,
-      error: { code: E_UPDATE_CHECK_NETWORK, message: `检查更新失败：${err?.message ?? String(err)}` },
-    };
+    return errorResult(currentVersion, E_UPDATE_CHECK_NETWORK, `检查更新失败：${err?.message ?? String(err)}`);
   }
 }

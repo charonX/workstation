@@ -16,7 +16,7 @@ import { discoverServer } from "../cli/server.js";
 import { takeoverExistingServer } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
-import { checkForUpdates } from "./updates.js";
+import { checkForUpdates, E_UPDATE_PARSE } from "./updates.js";
 
 const require = createRequire(import.meta.url);
 
@@ -258,6 +258,15 @@ function parseRepositoryFromPackageJson() {
   }
 }
 
+// 以真实 fetch 与当前应用版本运行一次更新检查（手动 IPC 与启动静默检查共用）。
+function runUpdateCheck(repo) {
+  return checkForUpdates({
+    fetchImpl: (url, opts) => fetch(url, opts),
+    getVersion: () => app.getVersion(),
+    repo,
+  });
+}
+
 // 手动检查更新（Settings 页"检查更新"按钮 / REQ-DIST-002 AC1）。
 ipcMain.handle("opc-check-updates", async () => {
   const repo = parseRepositoryFromPackageJson();
@@ -266,14 +275,10 @@ ipcMain.handle("opc-check-updates", async () => {
       currentVersion: app.getVersion(),
       latestVersion: null,
       hasUpdate: false,
-      error: { code: "E_UPDATE_PARSE", message: "无法从 package.json repository 字段解析仓库" },
+      error: { code: E_UPDATE_PARSE, message: "无法从 package.json repository 字段解析仓库" },
     };
   }
-  return checkForUpdates({
-    fetchImpl: (url, opts) => fetch(url, opts),
-    getVersion: () => app.getVersion(),
-    repo,
-  });
+  return runUpdateCheck(repo);
 });
 
 ipcMain.handle("opc-get-version", () => app.getVersion());
@@ -300,11 +305,7 @@ function scheduleSilentUpdateCheck() {
     const repo = parseRepositoryFromPackageJson();
     if (!repo) return;
     try {
-      const result = await checkForUpdates({
-        fetchImpl: (url, opts) => fetch(url, opts),
-        getVersion: () => app.getVersion(),
-        repo,
-      });
+      const result = await runUpdateCheck(repo);
       if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("opc-silent-update", result);
       }
