@@ -173,3 +173,38 @@
 ---
 
 来源：2026-07-29-multi-agent-skills /reflect（2026-08-01）
+
+---
+
+来源：2026-08-01-macos-distribution /reflect（2026-08-02）
+
+## 外部工具/构建链的真实输出形态要"实测一次"，不能停在源码推演
+
+- **现象**：release 命令的产物定位按 maker 源码推演（`out/<app>-<v>-<arch>.dmg` + `out/zip/...`），漏掉 forge 7 的 makeDir 前缀——真实产物在 `out/make/` 下（zip 深度 3）。首次真实发布 upload 失败（zip 回退契约名不存在）；修复为深度 2→4。
+- **根因**：tech-design 风险表已标注"一次本地打包验证"的快速验证路径，但从未执行；产物布局靠读 maker 源码"推演"代替"实测"。
+- **结论**：凡是外部工具/构建链的真实输出形态（forge 产物布局、原生模块 ABI、gh CLI 行为、SDK payload 形态），契约里标注的快速验证路径必须真的跑一次。发布类命令在合入前跑一次 `npm run make` + `find out -name "*.dmg|*.zip"` 的成本远低于真实发布失败。
+
+## 带外部副作用的命令要把"失败后如何收尾"设计进错误路径
+
+- **现象**：release 命令 create 成功、upload 失败 → Release 已公开但 0 资产（半发布状态）；按设计 create/upload 失败不回滚（已 push），错误码复用 E_RELEASE_BUILD_FAILED。
+- **结论**：创建远程资源的命令（Release/部署/上传），失败路径要明确"半发布状态如何恢复"（本例：`gh release upload` 手工补传资产即可恢复）；REQ 的失败场景应包含"副作用已部分发生"的收尾契约。
+
+## 签核测试也可能有 harness bug：写 CLI 子进程测试前推演执行语义
+
+- **现象**：AC3 测试以相对路径 `node src/cli/opc-workstation.js` + 子进程 `cwd=临时 git 仓库` 启动 → node 按子进程 cwd 解析入口 → MODULE_NOT_FOUND，实现永远无法介入；实现侧不可满足，需测试侧一行修复（绝对路径）。
+- **结论**：test-author 写子进程 CLI 测试时：① 入口路径用 `path.resolve` 绝对化；② 签核前推演"测试进程如何启动被测代码"（node 相对入口按子进程 cwd 解析、execFileSync 的 cwd 参数语义）；③ 签核断言与启动方式解耦。
+
+## dry-run 的"校验清单"语义要在测试里显式定义，签核测试可能强制非常规语义
+
+- **现象**：签核测试要求 dry-run 通过 `v<当前版本>`（等于），真实模式必须拒绝等于——唯一自洽语义是"dry-run 跳过版本递增校验"；同理 tag 防重仅在 make 失败时执行（AC4/AC6/AC7 三个测试共同约束的唯一自洽解）。
+- **结论**：dry-run 哪些校验执行、哪些跳过，以及"某检查只在异常分支执行"这类语义，必须在 REQ/测试中逐条显式写出；实现者遇到多测试约束冲突时，先推导唯一自洽解再实现，并把推导记录进 build-progress。
+
+## 原生模块 ABI 不只有 better-sqlite3：forge maker 链也有原生依赖
+
+- **现象**：首次真实发布 make 失败——`macos-alias`（maker-dmg 依赖）编译自 Node 22 ABI 131，当前 Node 24 ABI 137；`rebuild:node` 只重建 better-sqlite3。
+- **结论**：Node 大版本升级后，除 better-sqlite3 外，forge maker 链的原生依赖（macos-alias 等）也需 `npm rebuild` 按当前 Node ABI 重建；发布前跑一次真实 make 可提前暴露（同第一条教训）。
+
+## 真实发布是"链路测试"：它验证了错误路径设计，也暴露了未实测假设
+
+- **现象**：首次真实发布：make 失败 → 命令中止不创建 tag/Release + package.json 回滚（GAP-4 修复在真实环境验证通过）；第二次 make 成功但 upload 失败（产物定位假设错误）。
+- **结论**：人工验收项（REQ-DIST-004 AC3）不只是"过一遍流程"，它是错误路径设计（回滚/中止语义）与未实测假设（构建链输出）的最后一次真实校验；REFLECT 前把可实测的假设尽量前置（第一条教训），让首发只验证"外部世界行为"（GitHub 权限、Gatekeeper）而非自身代码。

@@ -82,3 +82,12 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 ---
 
 来源：改编自 `reference/agent-skills/references/testing-patterns.md` 与 `references/definition-of-done.md`。
+
+## 反模式（2026-08-02 补充：2026-08-01-macos-distribution）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| CLI 子进程测试用相对入口路径 | node 按子进程 cwd 解析入口（execFileSync cwd 参数），临时目录下 MODULE_NOT_FOUND，实现永远无法介入（AC3 教训） | 子进程入口一律 `path.resolve()` 绝对化；签核前推演被测代码的启动方式 |
+| 外部工具输出形态靠源码推演 | forge 7 makeDir=out/make/ 前缀漏推，产物定位错误，真实发布 upload 失败 | 构建链/外部工具的产物布局做一次真实实测（跑真实 make + find 产物），把实测结果写进实现注释 |
+| dry-run 校验语义不显式定义 | "dry-run 应该全查一遍"的直觉 vs 签核测试约束（跳过递增校验、tag 防重仅 make 失败时）冲突 | REQ/测试逐条列出 dry-run 执行与跳过的校验；实现者推导多约束唯一自洽解并记录 |
+| 远程资源创建失败无收尾路径 | create 成功 upload 失败 → 半发布状态（Release 0 资产） | 外部副作用命令设计"半发布状态恢复"路径（如 gh release upload 手工补传）并写入 REQ 失败场景 |

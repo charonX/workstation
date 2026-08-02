@@ -5,7 +5,9 @@ story_id: 2026-08-01-macos-distribution
 intention: >-
   打包产物未签名未公证，无法外发使用（Gatekeeper 拦截），且无发布渠道与更新机制，只能本机自用。修正（2026-08-01 访谈+research 确认）：分发渠道 = 公开 GitHub Release；签名不做（无 ADP 账号）；自动更新放弃（Squirrel 硬性签名要求，research 证伪）；改为手动重装 + 应用内检查更新引导下载；首次安装引导 Settings 批准（macOS 15+ 无右键打开）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+completed: true  # /reflect 最终验收通过
+completed_at: 2026-08-02
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-01

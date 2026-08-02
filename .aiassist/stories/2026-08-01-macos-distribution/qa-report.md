@@ -56,3 +56,8 @@
 - REFLECT 人工验收项：REQ-DIST-004 AC3 真实发布 + 另一台机器全流程；release 命令真实发版体验；检查更新状态区视觉呈现（纯审美）。
 - 待同步：PRD §6.1 产物名锚点（`Workstation-<v>` → forge 实际命名，README 已同步，PRD 待同步）。
 - 2 个 pre-existing flake 建议在后续 story 中作为独立项处理（不阻塞本 story）。
+
+## AC3 真实发布补充（REFLECT 阶段，2026-08-02）
+
+- **REQ-DIST-004 AC3 已部分完成**：真实发布 v0.1.0 成功（Release 含 dmg + zip 两资产；main 版本 0.1.0）。发布过程中验证：GAP-4 失败中止+回滚路径真实有效（首次 make 失败未产生 tag/Release）；发现并修复 resolveArtifacts 深度缺陷（forge 7 makeDir=out/make/，[bugfix] commit）。剩余人工项：另一台 macOS 下载→批准→启动。
+- **发布后回归**：resolveArtifacts 修复后签核测试 7/7 仍绿（fallback 路径不受影响）。

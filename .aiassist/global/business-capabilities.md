@@ -115,6 +115,6 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | channel-integration | 1 | 0 | 2026-07-19 |
 | collection-pipeline | 3 | 0 | 2026-07-19 |
 | information-aggregation | 2 | 7 | 2026-07-19 |
-| app-distribution | 1 | 0 | 2026-08-02 |
+| app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |

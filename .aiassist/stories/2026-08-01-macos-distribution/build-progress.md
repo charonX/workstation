@@ -185,3 +185,11 @@
 
 - **Windows 分发：暂缓**（延续 PRD §12 范围外 + M2 移动块 scope 外）。用户确认不投入。
 - 已评估（供未来 story 参考）：Windows 产物只能在 Windows 上构建（maker-squirrel 平台绑定；开发机为 mac），现实路线为 GitHub Actions windows-latest 构建 + `gh release upload` 到同一 Release；检查更新/IPC/Settings UI 平台无关可直接复用；增量点为 CI workflow、`resolveArtifacts` 扩展 `.exe`、SmartScreen 引导文案；Squirrel.Windows 不硬性要求签名（与 Squirrel.Mac 不同），自动更新理论可行但为路线一致性暂不做。
+
+### AC3 真实发布记录（REFLECT 人工验收项，2026-08-02）
+
+- **首次尝试（预期失败路径验证）**：`npm run release -- 0.1.0` → make 失败（macos-alias 原生模块 ABI 131 vs Node 24 ABI 137）→ **GAP-4 修复真实验证通过**：命令中止、不创建 tag/Release、package.json 逐字节回滚（0.0.1 恢复，无 v0.1.0 tag、releases 404）。修复：`npm rebuild macos-alias`。
+- **第二次尝试（发现真实缺陷）**：make 成功 → bump+commit+push 成功（main 至 0.1.0，commit `9d408bc`）→ `gh release create v0.1.0` 成功 → **upload 失败**：resolveArtifacts 深度 2 漏检 `out/make/zip/darwin/arm64/...`（forge 7 makeDir=out/make/，zip 深度 3）→ 回退契约名不存在。
+- **修复（用户批准方案 A）**：`resolveArtifacts` 深度 2→4（实测真实 out/ 两资产命中；签核测试 7/7 仍绿），commit `[bugfix]`。半发布状态收尾：`gh release upload v0.1.0` 补传真实路径资产。
+- **最终状态**：Release v0.1.0 资产 = `opc-workstation-0.1.0-arm64.dmg` + `opc-workstation-darwin-arm64-0.1.0.zip`；main 版本 0.1.0。AC3 剩余人工项：另一台 macOS「下载 → System Settings 批准 → 启动」全流程（用户执行）。
+- **教训沉淀**：见 engineering-lessons.md（实测构建链输出、半发布收尾、ABI 不止 better-sqlite3、dry-run 语义显式化、测试 harness 推演）。

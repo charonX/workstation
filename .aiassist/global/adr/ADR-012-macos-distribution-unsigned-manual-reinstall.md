@@ -3,7 +3,7 @@
 - **状态**: 已接受
 - **日期**: 2026-08-02
 - **相关 story**: 2026-08-01-macos-distribution
-- **相关 REQ**: 待结晶（2026-08-01-macos-distribution）
+- **相关 REQ**: REQ-DIST-001 ~ REQ-DIST-004（2026-08-01-macos-distribution）
 
 ## 背景
 
