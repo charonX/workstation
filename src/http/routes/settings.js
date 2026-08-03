@@ -1,5 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
-import { broadcastIdentityChange } from "../../services/agentService.js";
+import { broadcastAgentConfigChange } from "../../services/agentService.js";
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -61,12 +61,21 @@ function loadPublicSettings() {
 }
 
 // PUT /api/settings/agent：保存供应商/key/身份（校验失败 → E-CONFIG-INVALID）。
-// 身份变更 → 存量会话热更新（REQ-AGENT-004 标准 2：config-ack，不重建上下文）。
+// 变更广播（tech-design 数据流 7）：
+// - identity 变更 → 存量会话热更新（REQ-AGENT-004 标准 2：config-ack，不重建上下文）；
+// - provider/key 变更 → 存量会话重建 + 新 key 一次性注入（GAP 补全，2026-08-03 登记）。
+// key 明文仅经内存传递（不落日志）。
 function handleAgentConfigSave(req, res, body) {
   try {
     const saved = settingsService.saveAgentConfig(body);
-    if (body && hasOwn(body, "identity")) {
-      broadcastIdentityChange({ identity: saved.identity });
+    const hasIdentity = hasOwn(body, "identity");
+    const hasCreds = hasOwn(body, "provider") && hasOwn(body, "apiKey");
+    if (hasIdentity || hasCreds) {
+      broadcastAgentConfigChange({
+        identity: hasIdentity ? saved.identity : undefined,
+        provider: hasCreds ? saved.provider : undefined,
+        apiKey: hasCreds ? body.apiKey : undefined
+      });
     }
     return ok(res, saved);
   } catch (err) {

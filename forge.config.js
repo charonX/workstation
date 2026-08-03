@@ -33,6 +33,10 @@ const config = {
           config: "vite.main.config.js"
         },
         {
+          entry: "src/agent/worker.js",
+          config: "vite.worker.config.js"
+        },
+        {
           entry: "src/preload/preload.js",
           config: "vite.preload.config.js"
         }
