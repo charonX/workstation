@@ -110,6 +110,17 @@ function writeSettings(settings) {
   }
 }
 
+// 落盘后收紧权限（0o600）：settings.json 含渠道凭据与 agent key 密文，仅属主
+// 可读写。受限环境（tests/CI）下权限设置失败可容忍（沿用 saveChannelCredentials 做法）。
+function writeSettingsRestricted(settings) {
+  writeSettings(settings);
+  try {
+    fs.chmodSync(settingsFile(), 0o600);
+  } catch {
+    // Ignore permission failures in restricted environments (tests, CI).
+  }
+}
+
 // BUG-009: lazy init — null sentinel; populated on first loadSettings()/saveSettings().
 // Previously this was `let settings = readSettings()` which ran at module load time,
 // before the Electron main process had a chance to set OPC_WORKSTATION_CONFIG_DIR
@@ -170,12 +181,7 @@ export function saveChannelCredentials({ appId, appSecret } = {}) {
     ...settings,
     channelCredentials: { appId, appSecret, updatedAt: new Date().toISOString() }
   };
-  writeSettings(settings);
-  try {
-    fs.chmodSync(settingsFile(), 0o600);
-  } catch {
-    // Ignore permission failures in restricted environments (tests, CI).
-  }
+  writeSettingsRestricted(settings);
   return { appId, updatedAt: settings.channelCredentials.updatedAt };
 }
 
@@ -201,9 +207,10 @@ export function loadAgentConfig() {
   };
 }
 
-// 保存 Agent 配置（provider/key 或 identity 可单独/组合更新）：
-// - provider+apiKey 成对出现（切换供应商时校验对应 key，PRD §7）→ key 经
-//   secretStore 加密后落 settings.json（无明文，签核决策 5）；
+// 保存 Agent 配置（provider+apiKey 成对更新，或 identity 单独更新）：
+// - provider 与 apiKey 必须成对出现：只传其一会因缺失对应字段报错
+//   （「请选择供应商」/「API key 不能为空」，PRD §7 切换供应商校验对应 key）→
+//   key 经 secretStore 加密后落 settings.json（无明文，签核决策 5）；
 // - identity 单独更新 → 由调用方触发存量会话热更新（REQ-AGENT-004，见路由层）；
 // - key 仅非空校验（签核修订①：前缀不校验，准确性由用户负责，测试连接兜底）。
 // 校验失败抛 { code: "E-CONFIG-INVALID", status: 400 }。
@@ -252,6 +259,6 @@ export function saveAgentConfig(body = {}) {
   }
 
   settings = { ...settings, agent: next };
-  writeSettings(settings);
+  writeSettingsRestricted(settings);
   return loadAgentConfig();
 }
