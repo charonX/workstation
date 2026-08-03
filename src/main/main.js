@@ -4,7 +4,7 @@
 // initialization (ESM static imports are hoisted, so the order here is the
 // load order).
 import "./bootstrap-env.js";
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from "electron";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,7 @@ import { takeoverExistingServer } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
 import { checkForUpdates, E_UPDATE_PARSE } from "./updates.js";
+import { setSecretBackend } from "../services/secretStore.js";
 
 const require = createRequire(import.meta.url);
 
@@ -138,6 +139,15 @@ async function createWindow() {
   // Start the HTTP server only if not already running (guard against activate).
   // REQ-WORKSPACE-009: if a headless server is already running, request shutdown and take over.
   if (!serverCtx) {
+    // REQ-AGENT-001 AC2：Agent API key 经 Electron safeStorage 加密存储
+    // （macOS Keychain / Windows DPAPI / Linux libsecret）；不可用（无钥匙串环境）
+    // 时保持 secretStore 默认 fake 后端（settings.json 仍无明文，tech-design 风险表降级）。
+    if (typeof safeStorage?.isEncryptionAvailable === "function" && safeStorage.isEncryptionAvailable()) {
+      setSecretBackend({
+        encrypt: (plaintext) => Buffer.from(safeStorage.encryptString(String(plaintext))).toString("base64"),
+        decrypt: (ciphertext) => safeStorage.decryptString(Buffer.from(ciphertext, "base64")).toString("utf8")
+      });
+    }
     const existing = await discoverServer({ allowAnyOwner: true });
     if (existing) {
       try {

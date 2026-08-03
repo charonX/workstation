@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import * as agentRegistryService from "./agentRegistryService.js";
+import { encryptSecret } from "./secretStore.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 
 function resolveConfigDir() {
@@ -11,7 +12,7 @@ function resolveConfigDir() {
   return path.join(os.homedir(), ".opc-workstation");
 }
 
-function configDir() {
+export function configDir() {
   return resolveConfigDir();
 }
 
@@ -176,4 +177,81 @@ export function saveChannelCredentials({ appId, appSecret } = {}) {
     // Ignore permission failures in restricted environments (tests, CI).
   }
   return { appId, updatedAt: settings.channelCredentials.updatedAt };
+}
+
+// —— Agent 配置（REQ-AGENT-001~004）——
+// 供应商枚举（签核决策 2）：{deepseek, moonshotai, moonshotai-cn}。
+export const AGENT_PROVIDERS = ["deepseek", "moonshotai", "moonshotai-cn"];
+// 自定义身份长度上限（签核决策 4 / PRD §7：≤2000 字符，可空）。
+export const AGENT_IDENTITY_MAX_LEN = 2000;
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+// Agent 配置只读视图：永不外泄 key（明文或密文均不返回，签核决策 5）。
+// GET /api/settings/agent 返回 { provider, configured, identity }。
+export function loadAgentConfig() {
+  ensureLoaded();
+  const agent = settings.agent ?? {};
+  return {
+    provider: agent.provider ?? "",
+    configured: agent.configured === true,
+    identity: agent.identity ?? ""
+  };
+}
+
+// 保存 Agent 配置（provider/key 或 identity 可单独/组合更新）：
+// - provider+apiKey 成对出现（切换供应商时校验对应 key，PRD §7）→ key 经
+//   secretStore 加密后落 settings.json（无明文，签核决策 5）；
+// - identity 单独更新 → 由调用方触发存量会话热更新（REQ-AGENT-004，见路由层）；
+// - key 仅非空校验（签核修订①：前缀不校验，准确性由用户负责，测试连接兜底）。
+// 校验失败抛 { code: "E-CONFIG-INVALID", status: 400 }。
+export function saveAgentConfig(body = {}) {
+  ensureLoaded();
+  const current = settings.agent ?? {};
+  const next = { ...current };
+  let touched = false;
+
+  const hasCredentials = hasOwn(body, "provider") || hasOwn(body, "apiKey");
+  if (hasCredentials) {
+    if (!AGENT_PROVIDERS.includes(body.provider)) {
+      const err = new Error("请选择供应商");
+      err.code = "E-CONFIG-INVALID";
+      err.status = 400;
+      throw err;
+    }
+    if (typeof body.apiKey !== "string" || body.apiKey.trim() === "") {
+      const err = new Error("API key 不能为空");
+      err.code = "E-CONFIG-INVALID";
+      err.status = 400;
+      throw err;
+    }
+    next.provider = body.provider;
+    next.apiKeyEncrypted = encryptSecret(body.apiKey);
+    next.configured = true;
+    touched = true;
+  }
+
+  if (hasOwn(body, "identity")) {
+    if (typeof body.identity !== "string" || body.identity.length > AGENT_IDENTITY_MAX_LEN) {
+      const err = new Error("身份配置过长");
+      err.code = "E-CONFIG-INVALID";
+      err.status = 400;
+      throw err;
+    }
+    next.identity = body.identity;
+    touched = true;
+  }
+
+  if (!touched) {
+    const err = new Error("无有效配置字段");
+    err.code = "E-CONFIG-INVALID";
+    err.status = 400;
+    throw err;
+  }
+
+  settings = { ...settings, agent: next };
+  writeSettings(settings);
+  return loadAgentConfig();
 }

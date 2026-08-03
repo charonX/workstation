@@ -87,6 +87,7 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS content_sources;
     DROP TABLE IF EXISTS channel_bindings;
     DROP TABLE IF EXISTS channel_messages;
+    DROP TABLE IF EXISTS agent_sessions;
   `);
   initSchema(database);
 }
@@ -247,6 +248,16 @@ function initSchema(database) {
       createdAt TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
+
+    -- REQ-AGENT-008 接口契约：agent_sessions（对话空间 ↔ PI session 引用）。
+    -- SQLite 为真相；spaceKey 唯一（feishu:<chatId>）；sessionRef = JSONL 路径。
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      spaceKey TEXT PRIMARY KEY,
+      sessionRef TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      lastActiveAt TEXT NOT NULL,
+      summaryRef TEXT
+    );
 
     ${EXECUTION_NODES_DDL}
   `);

@@ -216,7 +216,7 @@ async function handleRequest(req, res, server) {
 
   switch (resource) {
     case "settings":
-      return handleSettings(req, res, body);
+      return handleSettings(req, res, body, subPath);
     case "projects":
       return handleProjects(req, res, body, subPath);
     case "flows":
