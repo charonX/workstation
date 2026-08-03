@@ -26,6 +26,7 @@
 | 变量赋值节点 | setVariables Node | 通用变量归一化节点：声明 outputVariables 并用 expressions 求值，用于多入口变量名对齐或常量注入 | `nodes` 表中 `type="setVariables"` | — |
 | 发布物 | Release | 一次应用分发的版本发布（GitHub Release + tag，含 dmg/zip 资产），驱动检查更新与手动重装 | GitHub Release（无 DB 表） | 版本发布 |
 | 嵌套执行 | Nested Execution | 子流程被调用时产生的 execution，通过 parentExecutionId/parentNodeId/depth 与父执行关联 | `executions` 表 | — |
+| 对话空间 | Conversation Space | 对话的上下文容器，按入口与聊天维度隔离（飞书单聊 / 每个群聊 / UI 面板各一）；每空间一个独立 agent 会话，上下文互不串扰；spaceKey 形如 `feishu:<chatId>`、`ui:copilot` | `agent_sessions` 表 + PI session | 会话（易与通用会话混淆）、聊天 |
 
 ## 业务概念
 
@@ -40,9 +41,12 @@
 | 收敛 | Convergence：使项目 agent 目录中的软链与"已关联集合 × 当前声明 agentTypes"一致的动作（新增补建、移除删链、重同步幂等重建） | Project, Skill | agentTypes 变更 / 重新同步 |
 | 外部条目 | External Entry：项目 agent 目录中非 workstation 创建的 skill 条目（实体目录或外部软链）；如实显示+标注，不动实体，冲突跳过 | Project, Skill | 项目技能扫描视图 |
 | 素材库 | 项目目录内约定的内容沉淀区：速存 markdown + 索引文件，供下游文章/视频 Flow 消费 | Project | 链接速存 / 收集管线 |
-| 通道 | 连接外部 IM 的触发与投递通道（第一实现：飞书长连接）；收=消息触发 Flow，发=执行结果送达 | Flow, Execution | 外部触发 / 日报送达 |
+| 通道 | 连接外部 IM 的投递通道（第一实现：飞书长连接）；**收=消息进 agent 对话（agent 优先，2026-08-03 修订 REQ-CHANNEL-002）**，发=执行结果/回复送达 | 对话空间, Execution | 对话入口 / 结果送达 |
+| 通道绑定 | Channel Binding | 通道类型到 Flow/Project 的单一路由绑定；**修订后（2026-08-03）：不再直接触发，成为 agent 下发任务的默认目标候选** | `channel_bindings` 表 | — |
+| 用户绑定 | User Binding | settings 中登记的飞书 open_id，内置 agent 的唯一操作者（未绑定用户一切消息拒绝，含查询）；经"Settings 引导发消息"一次性绑定，可解绑 | settings 配置 | 单用户绑定、授权用户（易与通道绑定混淆） |
+| 确认挂起 | Pending Confirmation | 高危操作被命令保险层拦截后进入挂起队列的状态；飞书卡片确认/拒绝回调驱动后续执行或中止（确认与执行解耦） | `agent_confirmations` 表 | 待确认 |
 | 产物 | Flow 执行产出的文件（日报、速存 markdown 等）；主锚点是项目文件，执行记录登记其路径 | Execution | 产物登记 / 通知 / 飞书文档同步 |
-| 触发来源 | 执行的启动方式：手动 / 调试 / schedule / 通道 | Execution | executions.trigger 字段 |
+| 触发来源 | 执行的启动方式：手动 / 调试 / schedule / 通道 / **对话**（agent 对话识别下发意图，2026-08-03 登记） | Execution | executions.trigger 字段 |
 | Tag | 内容源的品类标签；Flow 按 tag 筛选引用内容源，不做逐一关联 | 内容源 | 定时日报的来源圈定 |
 
 ## 状态与生命周期
@@ -53,6 +57,7 @@
 | success | 执行成功 | Execution | 终态 |
 | error | 执行失败 | Execution | 终态 |
 | enabled | Schedule 启用中 | Schedule | enabled ↔ disabled |
+| pending | 确认挂起中（高危操作被拦截，等待卡片确认） | 确认挂起 | pending → approved / rejected |
 
 ## 命名约定
 
@@ -74,3 +79,4 @@
 | 2026-07-19 | 新增内容源、通知实体；素材库、通道、产物、触发来源、Tag 概念 | 2026-07-19-media-production-line |
 | 2026-07-28 | 新增子流程、callFlow/flowInput/flowOutput/setVariables 节点、嵌套执行术语 | 2026-07-23-nested-flow /reflect |
 | 2026-07-29 | Skill 代码映射改为磁盘（三表删除）；Skill Repository → 技能库/来源目录；Skill Symlink 定义更新（agent 原生目录→技能库）；删除 Dependency Cascade（ADR-011 废止）、Orphan Skill（三表删除后概念消失）；新增 agentTypes、Agent Registry、收敛、外部条目；CLI 三级子命令约定扩展 | 2026-07-29-multi-agent-skills tech-design |
+| 2026-08-03 | 新增「对话空间」实体、「用户绑定」「确认挂起」概念；修订「通道」「通道绑定」定义（agent 优先，REQ-CHANNEL-002）；触发来源新增「对话」；状态新增 pending | 2026-08-02-builtin-agent domain-model |

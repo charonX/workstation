@@ -89,6 +89,17 @@
 |------|----------|---------------|----------|
 | cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `tests/capabilities/command-interface/cli/2026-07-29-multi-agent-skills/cli/` | REQ-CLI-001~002 | `cli.test.js`, `skillCli.test.js` |
 
+### agent-dialogue
+> 内置对话 agent（PI 运行时 + 飞书入口）：配置、对话空间会话、用户绑定、确认挂起、命令直通、卡片流式。（2026-08-02-builtin-agent 登记）
+
+| 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
+|------|----------|---------------|----------|
+| settings | `tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/api/` | REQ-AGENT-001~004 | `agentConfig.test.js`, `systemPrompt.test.js` |
+| conversation-space | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/` | REQ-AGENT-005~013 | `agentProcess.test.js`, `agentDialogue.test.js`, `sessionStore.test.js`, `toolSurface.test.js` |
+| user-binding | `tests/capabilities/agent-dialogue/user-binding/2026-08-02-builtin-agent/api/` | REQ-AGENT-014~015 | `userBinding.test.js` |
+| confirmation | `tests/capabilities/agent-dialogue/confirmation/2026-08-02-builtin-agent/api/` | REQ-AGENT-016 | `confirmation.test.js` |
+| channel | `tests/capabilities/agent-dialogue/channel/2026-08-02-builtin-agent/api/` | REQ-AGENT-017~022 | `agentRoute.test.js`, `cardStream.test.js`, `slashCommands.test.js` |
+
 ## 能力依赖图
 
 ```
@@ -118,3 +129,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
+| agent-dialogue | 5 | 0 | 2026-08-03 |
