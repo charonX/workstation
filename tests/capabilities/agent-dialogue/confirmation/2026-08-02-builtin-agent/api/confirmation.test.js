@@ -11,29 +11,129 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-// seam：确认服务状态机（agent_confirmations 表，临时 SQLite）+ 真 IPC 集成（notify-result 回投）。
-// TODO(HUMAN): 确认确认服务 API 形态（submit/approve/reject/query）与卡片渲染回调注入点。
+// seam：确认服务状态机（agent_confirmations 表，临时 SQLite）+ 真 IPC 集成（notify-result 回投，W-2）。
+
+// seam：确认服务（tech-design「确认服务（b 解耦）」）。
+// 建议落点 src/services/confirmationService.js，导出 createConfirmationService({ dbPath, execute, notifyResult, sendCard }) →
+// { submit(req) → {status, replyText}, approve(confirmId), reject(confirmId), get(confirmId), listPending() }。
+// req = { confirmId, sessionKey, command, args, riskLevel }；agent_confirmations 状态 pending|approved|rejected。
+// 确认后由确认服务直接驱动同一命令模块执行（execute 注入，C2 路径），结果经 notifyResult 注入会话（W-2）。
+async function loadConfirmationService() {
+  const mod = await import("../../../../../../src/services/confirmationService.js").catch(() => null);
+  assert.ok(mod, "seam 未就绪：src/services/confirmationService.js 尚未实现（REQ-AGENT-016）");
+  assert.equal(typeof mod.createConfirmationService, "function", "confirmationService 应导出 createConfirmationService()");
+  return mod.createConfirmationService;
+}
 
 describe("REQ-AGENT-016 高危确认挂起与解耦执行", () => {
+  let workdir;
+
+  beforeEach(() => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "confirmation-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  });
+
   it("confirm 级命令拦截 → 挂起队列 + 确认卡片 + agent 回复待确认", async () => {
-    // TODO: HUMAN ASSERTION — agent 调 source delete → confirm-request 事件；队列 pending；
-    // 回复含"待确认"；确认卡片含命令摘要
+    const createConfirmationService = await loadConfirmationService();
+    const cards = [];
+    const executed = [];
+    const svc = createConfirmationService({
+      dbPath: path.join(workdir, "confirm.db"),
+      sendCard: async (card) => { cards.push(card); return { cardId: `card_${cards.length}` }; },
+      execute: async (command, args) => { executed.push({ command, args }); return { output: "已删除" }; }
+    });
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "source delete", args: { id: "src_1" }, riskLevel: "confirm" };
+    const result = svc.submit(req);
+    // 挂起队列（agent_confirmations pending，REQ-AGENT-016 标准 1）。
+    const row = svc.get(req.confirmId);
+    assert.equal(row.status, "pending", "确认请求应挂起为 pending");
+    assert.equal(row.command, "source delete", "队列应记录命令");
+    assert.deepEqual(row.args, { id: "src_1" }, "队列应记录参数");
+    assert.equal(row.sessionKey, "feishu:oc_1", "队列应记录会话");
+    assert.equal(row.riskLevel, "confirm", "队列应记录风险等级");
+    // 确认卡片含命令摘要。
+    assert.equal(cards.length, 1, "应发确认卡片");
+    assert.ok(
+      JSON.stringify(cards[0]).includes("source delete") || JSON.stringify(cards[0]).includes("src_1"),
+      "确认卡片应含命令摘要"
+    );
+    // agent 该轮结束并回复「操作待确认」。
+    assert.ok(result.replyText.includes("待确认"), `agent 回复应含「待确认」，实际: ${result.replyText}`);
+    assert.equal(executed.length, 0, "挂起期间不应执行");
   });
 
   it("确认回调驱动执行（不经过 agent turn）+ notify-result 回投自然语言", async () => {
-    // TODO: HUMAN ASSERTION — approve 后命令执行（副作用可见）→ notify-result 注入会话
-    // → agent 生成基于执行结果的回投文本
+    const createConfirmationService = await loadConfirmationService();
+    const executed = [];
+    const notified = [];
+    const svc = createConfirmationService({
+      dbPath: path.join(workdir, "confirm.db"),
+      execute: async (command, args) => { executed.push({ command, args }); return { output: "内容源已删除" }; },
+      notifyResult: async (msg) => { notified.push(msg); }
+    });
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "source delete", args: { id: "src_1" }, riskLevel: "confirm" };
+    svc.submit(req);
+    await svc.approve(req.confirmId);
+    // 确认服务直接驱动同一命令模块执行（不经过 agent turn，REQ-AGENT-016 标准 2）。
+    assert.deepEqual(executed, [{ command: "source delete", args: { id: "src_1" } }], "确认后应由确认服务驱动同一命令模块执行");
+    // 结果经 notify-result 注入会话 → agent 生成自然语言回投（断言回投文本基于执行结果）。
+    assert.equal(notified.length, 1, "应经 notify-result 回投会话");
+    assert.equal(notified[0].sessionKey, "feishu:oc_1");
+    assert.ok(JSON.stringify(notified[0].result).includes("内容源已删除"), "回投应基于执行结果");
   });
 
   it("拒绝 → 不执行 + 回投已取消", async () => {
-    // TODO: HUMAN ASSERTION — reject 后无副作用；回投含"已取消"
+    const createConfirmationService = await loadConfirmationService();
+    const executed = [];
+    const notified = [];
+    const svc = createConfirmationService({
+      dbPath: path.join(workdir, "confirm.db"),
+      execute: async (command, args) => { executed.push({ command, args }); return {}; },
+      notifyResult: async (msg) => { notified.push(msg); }
+    });
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "source delete", args: { id: "src_1" }, riskLevel: "confirm" };
+    svc.submit(req);
+    await svc.reject(req.confirmId);
+    assert.equal(executed.length, 0, "拒绝后不应执行（REQ-AGENT-016 标准 3）");
+    assert.equal(svc.get(req.confirmId).status, "rejected", "状态应为 rejected");
+    assert.ok(
+      JSON.stringify(notified[0]).includes("已取消") || notified[0].cancelled === true,
+      "应回投「已取消」"
+    );
   });
 
   it("confirmId 幂等：重复回调只执行一次", async () => {
-    // TODO: HUMAN ASSERTION — 同一 confirmId approve 两次 → 执行一次
+    const createConfirmationService = await loadConfirmationService();
+    const executed = [];
+    const svc = createConfirmationService({
+      dbPath: path.join(workdir, "confirm.db"),
+      execute: async (command, args) => { executed.push({ command, args }); return {}; }
+    });
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "settings set", args: { key: "x", value: "1" }, riskLevel: "confirm" };
+    svc.submit(req);
+    await svc.approve(req.confirmId);
+    await svc.approve(req.confirmId); // 重复回调
+    assert.equal(executed.length, 1, "同一 confirmId 应只执行一次（签核决策 18 / REQ-AGENT-016 标准 4）");
   });
 
   it("挂起队列持久化：重启后 pending 项仍可确认", async () => {
-    // TODO: HUMAN ASSERTION — 重启后 approve 仍生效（SQLite 真相）
+    const createConfirmationService = await loadConfirmationService();
+    const dbPath = path.join(workdir, "confirm.db");
+    const executed = [];
+    const svc1 = createConfirmationService({ dbPath, execute: async () => {} });
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "channel bind", args: { flowId: "f1" }, riskLevel: "confirm" };
+    svc1.submit(req);
+    // 重启（新实例，同一 SQLite 文件——SQLite 为真相，REQ-AGENT-016 标准 5）。
+    const svc2 = createConfirmationService({
+      dbPath,
+      execute: async (command, args) => { executed.push({ command, args }); return { output: "绑定成功" }; }
+    });
+    const pending = svc2.listPending();
+    assert.ok(pending.some((p) => p.confirmId === req.confirmId), "重启后 pending 项应仍在队列（挂起可稍后处理）");
+    await svc2.approve(req.confirmId);
+    assert.equal(executed.length, 1, "重启后 pending 项仍可确认");
   });
 });
