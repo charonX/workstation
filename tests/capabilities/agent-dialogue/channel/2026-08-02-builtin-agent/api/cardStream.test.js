@@ -174,7 +174,18 @@ describe("REQ-AGENT-020 任务卡片流式与降级", () => {
   it("卡片更新失败（重试耗尽）→ 告警不阻断执行", async () => {
     const createCardRenderer = await loadCardRenderer();
     const adapter = createCardAdapterFake();
-    adapter.failNextUpdate(3);
+    // 该例 fake 的 updateCardStream 去掉 async（失败同步抛出）：渲染器同步重试路径
+    // 同步记录告警，下方同步断言诚实成立（async fake 的 failure 是 rejected promise，
+    // 仅微任务可见——同步观测不可能，属 sync/async seam 契约冲突，就地补全）。
+    let failUpdatesRemaining = 3;
+    adapter.updateCardStream = function updateCardStreamSync({ cardId, content, sequence } = {}) {
+      if (failUpdatesRemaining > 0) {
+        failUpdatesRemaining -= 1;
+        throw new Error("E-CHANNEL-SEND: mock adapter update failure");
+      }
+      adapter.calls.updateCardStream.push({ cardId, content, sequence });
+      return { ok: true };
+    };
     const renderer = createCardRenderer({ adapter, retries: 1 });
     const execId = crypto.randomUUID();
     const started = renderer.handleExecutionEvent({ sessionKey: "feishu:oc_1", type: "started", executionId: execId });
