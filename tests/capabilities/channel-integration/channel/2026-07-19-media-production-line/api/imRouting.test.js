@@ -15,10 +15,12 @@ import { createMockChannelAdapter } from "../../../../../fixtures/media-producti
 
 /**
  * 将飞书开放平台域名请求 mock 为快速成功/失败，避免测试依赖真实网络。
- * 返回恢复函数，必须在 finally 中调用。
+ * 返回 { sentReplies, restore }：sentReplies 记录发往开放平台的出站消息体
+ * （AC6 接替断言用），restore 必须在 finally 中调用。
  */
 function mockFeishuOpenPlatform({ tokenValid = true } = {}) {
   const originalFetch = global.fetch;
+  const sentReplies = [];
   global.fetch = async (url, init) => {
     const urlStr = String(url);
     if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
@@ -28,12 +30,21 @@ function mockFeishuOpenPlatform({ tokenValid = true } = {}) {
       return new Response(JSON.stringify({ code: 99991663, msg: "app access token invalid" }), { status: 200 });
     }
     if (urlStr.includes("open.feishu.cn/open-apis/im/v1/messages")) {
+      // 记录出站消息体（reply 走 /im/v1/messages/:id/reply），再返回成功。
+      try {
+        sentReplies.push(JSON.parse(init.body));
+      } catch {
+        // 忽略非 JSON 请求体（不应出现）。
+      }
       return new Response(JSON.stringify({ code: 0, msg: "success", data: { message_id: "om_fake_1" } }), { status: 200 });
     }
     return originalFetch(url, init);
   };
-  return () => {
-    global.fetch = originalFetch;
+  return {
+    sentReplies,
+    restore: () => {
+      global.fetch = originalFetch;
+    }
   };
 }
 
@@ -223,13 +234,16 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     assert.ok(elapsed < 3000, `事件回调应 3 秒内返回，实际: ${elapsed}ms`);
   });
 
-  it("AC6: production path — channelManager 将 adapter onMessage 桥接到 eventBus，imRouter 订阅后创建执行", async () => {
+  it("AC6: production path — channelManager 将 adapter onMessage 桥接到 eventBus，imRouter 全量进 agent 对话（REQ-CHANNEL-002 接替）", async () => {
+    // REQ-CHANNEL-002 接替（2026-08-02-builtin-agent REQ-AGENT-017，2026-08-04）：
     // 本测试走完整生产路径：startServer 已通过 createImRouter({ channelManager }) 订阅
     // channel:message-received；保存凭据并重启 channelManager 后，adapter 的 onMessage 回调
-    // 由 channelManager 桥接到 eventBus，最终触发 imRouter 创建执行。
+    // 由 channelManager 桥接到 eventBus。接替语义：消息全量进 agentRouter（绑定检查 →
+    // 命令识别 → 会话分发），绑定不再直接 createTask——未配 agent key 时走
+    // E-AGENT-NO-KEY 拒绝路径（回复引导文案），不创建任何执行。
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-imrouting-"));
     process.env.OPC_WORKSTATION_CONFIG_DIR = tmpDir;
-    const restoreFetch = mockFeishuOpenPlatform();
+    const feishuMock = mockFeishuOpenPlatform();
     try {
       const settings = await import("../../../../../../src/services/settingsService.js");
       const channelManager = await import("../../../../../../src/services/channelManager.js");
@@ -251,11 +265,24 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 300));
 
+      // 接替语义：消息应经 eventBus 桥接进 agent 对话路由；未配 key → E-AGENT-NO-KEY
+      // 拒绝 → 出站回复引导文案「请在设置中配置 Agent API key」（agentRouter 签核文案）。
+      const replyTexts = feishuMock.sentReplies
+        .filter((r) => r.msg_type === "text")
+        .map((r) => {
+          try { return JSON.parse(r.content).text; } catch { return ""; }
+        });
+      assert.ok(
+        replyTexts.some((t) => t.includes("配置 Agent API key")),
+        `应回复 E-AGENT-NO-KEY 引导文案（未配 key 拒绝路径），实际出站消息: ${JSON.stringify(feishuMock.sentReplies)}`
+      );
+
+      // 接替语义：命中绑定不再直接 createTask（REQ-AGENT-017），无 channel 触发执行。
       const executions = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
       const created = executions.find((e) => e.flowId === flow.id && e.trigger === "channel");
-      assert.ok(created, "imRouter 应通过 eventBus 桥接收到消息并创建 trigger=channel 的执行");
+      assert.equal(created ?? null, null, "接替语义：绑定不应再直接触发 createTask（REQ-AGENT-017）");
     } finally {
-      restoreFetch();
+      feishuMock.restore();
       delete process.env.OPC_WORKSTATION_CONFIG_DIR;
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

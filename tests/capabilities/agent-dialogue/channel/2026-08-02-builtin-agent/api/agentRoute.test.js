@@ -56,7 +56,17 @@ async function createProjectFlow(baseUrl, { publish = true } = {}) {
       name: "Agent Route Flow",
       projectId: project.id,
       nodes: [
-        { id: "n1", type: "feishuMessage", config: { outputVariables: [{ name: "text", type: "string", defaultValue: "" }] } }
+        {
+          id: "n1",
+          type: "feishuMessage",
+          config: {
+            outputVariables: [
+              { name: "text", type: "string", defaultValue: "" },
+              { name: "sender", type: "string", defaultValue: "" },
+              { name: "messageId", type: "string", defaultValue: "" }
+            ]
+          }
+        }
       ]
     })
   })).json();
@@ -151,7 +161,11 @@ describe("REQ-AGENT-017 agent 优先路由（REQ-CHANNEL-002 接替）", () => {
     });
     assert.equal(manualRes.status, 201, "手动触发应仍可用（回归）");
     const created = await manualRes.json();
-    assert.equal(created.trigger, "manual", "手动触发应为 manual");
+    // 签核契约（tech-design「taskService.createTask」）：POST 返回 {executionId, queuePosition}，
+    // trigger 经 GET /api/executions/:id 核验（对齐 executionQueue.test.js 同款断言写法）。
+    assert.ok(created.executionId, "手动触发应返回 executionId");
+    const detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${created.executionId}`)).json();
+    assert.equal(detail.trigger, "manual", "手动触发应为 manual");
     // 调试触发（POST /api/flows/:id/debug）仍可用。
     const debugRes = await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}/debug`, {
       method: "POST",
