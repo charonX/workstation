@@ -162,6 +162,10 @@ describe("REQ-AGENT-002 key 缺失引导", () => {
   it("未配置 key 时 agent 对话回复 E-AGENT-NO-KEY 引导文案，不启动会话", async () => {
     const createAgentRouter = await loadAgentRouter();
     const router = createAgentRouter({}); // 未配置 key（默认 settings）
+    // 全量拒绝语义（REQ-AGENT-015，Slice 8 裁决）：无绑定态未绑定用户一切消息先被
+    // E-AUTH-NOT-BOUND 拒绝（绑定检查先于 key 检查）——先绑定操作者，使「已绑定用户
+    // 未配 key → E-AGENT-NO-KEY」语义完整成立（REQ-AGENT-002 标准 1）。
+    bindUser(router, "ou_1");
     const result = router.route({ message: "你好", chatId: "oc_1", senderId: "ou_1", channelType: "p2p" });
     assert.equal(result.action, "reject", "未配 key 时对话应被拒绝（不进入会话分发）");
     const payloadJson = JSON.stringify(result.payload);

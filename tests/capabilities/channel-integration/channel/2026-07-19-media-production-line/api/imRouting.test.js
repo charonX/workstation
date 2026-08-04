@@ -239,8 +239,9 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
     // 本测试走完整生产路径：startServer 已通过 createImRouter({ channelManager }) 订阅
     // channel:message-received；保存凭据并重启 channelManager 后，adapter 的 onMessage 回调
     // 由 channelManager 桥接到 eventBus。接替语义：消息全量进 agentRouter（绑定检查 →
-    // 命令识别 → 会话分发），绑定不再直接 createTask——未配 agent key 时走
-    // E-AGENT-NO-KEY 拒绝路径（回复引导文案），不创建任何执行。
+    // 命令识别 → 会话分发），绑定不再直接 createTask——无绑定态未绑定用户一切消息被
+    // E-AUTH-NOT-BOUND 拒绝（REQ-AGENT-015 全量拒绝，绑定检查先于 key 检查，Slice 8
+    // 裁决；此前未配 key 的 E-AGENT-NO-KEY 拒绝路径由本语义接替），不创建任何执行。
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opc-imrouting-"));
     process.env.OPC_WORKSTATION_CONFIG_DIR = tmpDir;
     const feishuMock = mockFeishuOpenPlatform();
@@ -265,16 +266,18 @@ describe("REQ-CHANNEL-002: IM 接收、去重与路由", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 300));
 
-      // 接替语义：消息应经 eventBus 桥接进 agent 对话路由；未配 key → E-AGENT-NO-KEY
-      // 拒绝 → 出站回复引导文案「请在设置中配置 Agent API key」（agentRouter 签核文案）。
+      // 接替语义：消息应经 eventBus 桥接进 agent 对话路由；无绑定态未绑定用户 →
+      // E-AUTH-NOT-BOUND 拒绝（REQ-AGENT-014/015 全量拒绝，绑定检查先于 key 检查，
+      // Slice 8 裁决）→ 出站回复引导文案「请先在设置中绑定操作者」（agentRouter
+      // 签核文案；此前 E-AGENT-NO-KEY 拒绝路径由本语义接替）。
       const replyTexts = feishuMock.sentReplies
         .filter((r) => r.msg_type === "text")
         .map((r) => {
           try { return JSON.parse(r.content).text; } catch { return ""; }
         });
       assert.ok(
-        replyTexts.some((t) => t.includes("配置 Agent API key")),
-        `应回复 E-AGENT-NO-KEY 引导文案（未配 key 拒绝路径），实际出站消息: ${JSON.stringify(feishuMock.sentReplies)}`
+        replyTexts.some((t) => t.includes("绑定操作者")),
+        `应回复 E-AUTH-NOT-BOUND 引导文案（未绑定拒绝路径），实际出站消息: ${JSON.stringify(feishuMock.sentReplies)}`
       );
 
       // 接替语义：命中绑定不再直接 createTask（REQ-AGENT-017），无 channel 触发执行。

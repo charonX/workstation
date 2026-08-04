@@ -185,6 +185,15 @@ describe("REQ-AGENT-018 会话分发与群聊语义", () => {
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-route-"));
     process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
     serverCtx = await startServer({ port: 0 });
+    // Slice 8 裁决后语义：绑定检查先于 key 检查（无绑定态未绑定用户已被
+    // E-AUTH-NOT-BOUND 拒绝，REQ-AGENT-015 全量拒绝）——「会话分发」（REQ-AGENT-018）
+    // 在已绑定 + 已配 key 环境下成立。前置：经 HTTP API 配置 key（真实加密落盘路径）。
+    const cfgRes = await fetch(`${serverCtx.baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "deepseek", apiKey: "sk-test-route-018" })
+    });
+    assert.equal(cfgRes.status, 200, "前置：配置 agent key");
   });
 
   afterEach(async () => {
@@ -194,7 +203,7 @@ describe("REQ-AGENT-018 会话分发与群聊语义", () => {
 
   it("空间 key = feishu:<chatId>：单聊与群聊各自独立", async () => {
     const createAgentRouter = await loadAgentRouter();
-    const router = createAgentRouter({});
+    const router = createAgentRouter(); // 缺省惰性读 settingsService（ADR-009）——已配 key 环境
     bindUser(router, "ou_1");
     const r1 = router.route({ message: "你好", chatId: "oc_111", senderId: "ou_1", channelType: "p2p" });
     const r2 = router.route({ message: "大家好", chatId: "oc_222", senderId: "ou_1", channelType: "group" });
@@ -207,7 +216,7 @@ describe("REQ-AGENT-018 会话分发与群聊语义", () => {
 
   it("绑定用户在群聊发言 → 群空间对话；同群他人 → 拒绝", async () => {
     const createAgentRouter = await loadAgentRouter();
-    const router = createAgentRouter({});
+    const router = createAgentRouter(); // 缺省惰性读 settingsService（ADR-009）——已配 key 环境
     bindUser(router, "ou_owner");
     const byOwner = router.route({ message: "群聊消息", chatId: "oc_group_1", senderId: "ou_owner", channelType: "group" });
     assert.equal(byOwner.action, "dialogue", "绑定用户在群聊发言应进入该群空间对话");
@@ -221,7 +230,7 @@ describe("REQ-AGENT-018 会话分发与群聊语义", () => {
 
   it("空间不存在自动创建 + 下发 session-config", async () => {
     const createAgentRouter = await loadAgentRouter();
-    const router = createAgentRouter({});
+    const router = createAgentRouter(); // 缺省惰性读 settingsService（ADR-009）——已配 key 环境
     bindUser(router, "ou_1");
     const res = router.route({ message: "首次对话", chatId: "oc_new", senderId: "ou_1", channelType: "p2p" });
     assert.equal(res.action, "dialogue", "首次对话应进入会话分发");
@@ -229,8 +238,9 @@ describe("REQ-AGENT-018 会话分发与群聊语义", () => {
     // 空间不存在自动创建；创建时下发 session-config（供应商/key/身份，REQ-AGENT-018 标准 3）。
     const cfg = res.payload.sessionConfig;
     assert.ok(cfg, "首次对话应附带 session-config");
-    assert.ok(cfg.provider, "session-config 应含供应商");
-    assert.ok(cfg.apiKey, "session-config 应含 key（一次性注入，签核决策 5）");
+    assert.equal(cfg.provider, "deepseek", "session-config 应含配置的供应商");
+    // 已配 key 环境：注入真实 key（经 secretStore 解密还原，非 NOT_CONFIGURED 占位，签核决策 5）。
+    assert.equal(cfg.apiKey, "sk-test-route-018", "session-config 应注入真实 key");
     assert.ok(cfg.systemPrompt, "session-config 应含内置身份 systemPrompt");
   });
 });
