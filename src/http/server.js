@@ -238,34 +238,20 @@ export function startServer(options = {}) {
       // 仍按事件到达惰性创建（ADR-009）；无会话的执行（非对话下发）→ sessionKey
       // 解析为空 → 渲染器不动作。
       const resolveSessionKey = (executionEvent) => executionEvent?.variables?.spaceKey ?? undefined;
-      eventBus.subscribe("execution:started", (e) => {
+      // 执行事件 → 任务卡片（REQ-AGENT-020）：事件字段共性（executionId/status）外，
+      // 各事件带专属字段（flowId/log/output/artifacts）经 extra 透传。
+      const dispatchExecutionEvent = (event, type, extra = {}) => {
         getCardRenderer().handleExecutionEvent({
-          sessionKey: resolveSessionKey(e),
-          type: "started",
-          executionId: e.executionId,
-          flowId: e.flowId,
-          status: e.status,
+          sessionKey: resolveSessionKey(event),
+          type,
+          executionId: event.executionId,
+          status: event.status,
+          ...extra,
         });
-      });
-      eventBus.subscribe("execution:progress", (e) => {
-        getCardRenderer().handleExecutionEvent({
-          sessionKey: resolveSessionKey(e),
-          type: "progress",
-          executionId: e.executionId,
-          status: e.status,
-          log: e.log,
-        });
-      });
-      eventBus.subscribe("execution:completed", (e) => {
-        getCardRenderer().handleExecutionEvent({
-          sessionKey: resolveSessionKey(e),
-          type: "completed",
-          executionId: e.executionId,
-          status: e.status,
-          output: e.output,
-          artifacts: e.artifacts,
-        });
-      });
+      };
+      eventBus.subscribe("execution:started", (e) => dispatchExecutionEvent(e, "started", { flowId: e.flowId }));
+      eventBus.subscribe("execution:progress", (e) => dispatchExecutionEvent(e, "progress", { log: e.log }));
+      eventBus.subscribe("execution:completed", (e) => dispatchExecutionEvent(e, "completed", { output: e.output, artifacts: e.artifacts }));
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });

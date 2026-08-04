@@ -104,9 +104,11 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     return { Authorization: `Bearer ${tenantAccessToken}` };
   }
 
-  async function postJson(url, body, headers = {}) {
+  // 通用 JSON 请求（POST/PUT 共用：res 形状 { ok, status, data }，平台失败 code≠0
+  // 记为 !ok；响应体解析失败兜底空对象）。
+  async function requestJson(method, url, body, headers = {}) {
     const res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body)
     });
@@ -114,14 +116,19 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     return { ok: res.ok && data.code === 0, status: res.status, data };
   }
 
-  async function putJson(url, body, headers = {}) {
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({}));
-    return { ok: res.ok && data.code === 0, status: res.status, data };
+  function postJson(url, body, headers) {
+    return requestJson("POST", url, body, headers);
+  }
+
+  function putJson(url, body, headers) {
+    return requestJson("PUT", url, body, headers);
+  }
+
+  // E-CHANNEL-SEND 错误（统一 code 标注，供上层告警分类；message 保留既有文案）。
+  function channelSendError(message) {
+    const err = new Error(`E-CHANNEL-SEND: ${message}`);
+    err.code = "E-CHANNEL-SEND";
+    return err;
   }
 
   async function sendWithRetry(operation) {
@@ -317,10 +324,10 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
      */
     async sendCard({ chatId, cardJson } = {}) {
       if (!chatId) {
-        throw new Error("E-CHANNEL-SEND: chatId is required");
+        throw channelSendError("chatId is required");
       }
       if (!cardJson || typeof cardJson !== "object") {
-        throw new Error("E-CHANNEL-SEND: cardJson is required");
+        throw channelSendError("cardJson is required");
       }
       // 创建卡片实体（CardKit：cardkit:card:write 权限）。
       const createResult = await sendWithRetry(async () =>
@@ -328,9 +335,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       );
       const cardId = createResult?.card?.card_id ?? createResult?.card_id;
       if (!cardId) {
-        const err = new Error("E-CHANNEL-SEND: card entity creation returned no card_id");
-        err.code = "E-CHANNEL-SEND";
-        throw err;
+        throw channelSendError("card entity creation returned no card_id");
       }
       // 发送交互消息（im:message:send_as_bot 权限），卡片实体随消息一次性发出。
       await sendWithRetry(async () =>
@@ -361,14 +366,10 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
         return { ok: true, skipped: true };
       }
       if (typeof content !== "string" || content.length < 1 || content.length > MAX_CARD_CONTENT_CHARS) {
-        const err = new Error("E-CHANNEL-SEND: content 必须为 1~100,000 字符（H4）");
-        err.code = "E-CHANNEL-SEND";
-        throw err;
+        throw channelSendError("content 必须为 1~100,000 字符（H4）");
       }
       if (!Number.isInteger(sequence) || sequence < 1) {
-        const err = new Error("E-CHANNEL-SEND: sequence 必须为正整数且严格递增（H4，错误码 300317）");
-        err.code = "E-CHANNEL-SEND";
-        throw err;
+        throw channelSendError("sequence 必须为正整数且严格递增（H4，错误码 300317）");
       }
       const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/elements/${encodeURIComponent(elementId)}/content`;
       return sendWithRetry(async () =>

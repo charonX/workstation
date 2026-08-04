@@ -49,18 +49,42 @@ function taskTerminalLine(executionId, status, { output, artifacts } = {}) {
     line += `\n产物：${artifactList.join("；")}`;
   }
   if (output !== undefined && output !== null) {
-    let text = "";
-    if (typeof output === "string") text = output;
-    else {
-      try {
-        text = JSON.stringify(output);
-      } catch {
-        text = "";
-      }
-    }
+    const text = stringifyOutput(output);
     if (text) line += `\n输出：${text}`;
   }
   return line;
+}
+
+// 终态输出序列化（字符串原样；对象 → JSON，序列化失败（循环引用等）兜底为空串）。
+function stringifyOutput(output) {
+  if (typeof output === "string") return output;
+  try {
+    return JSON.stringify(output);
+  } catch {
+    return "";
+  }
+}
+
+// 任务卡片启动行（REQ-AGENT-020 标准 1：执行 id + 流程 id 开场）。
+function taskStartLine(executionId, flowId) {
+  return `任务执行中…\n\n执行 ID：${executionId ?? ""}${flowId ? `\n流程 ID：${flowId}` : ""}`;
+}
+
+// CardKit 流式卡片 JSON（F1/H4：schema 2.0 + streaming_mode 开启）；回复卡片带打印
+// 节奏配置（print_frequency_ms/print_step），任务卡片仅 summary。
+function buildStreamingCard(content, { summary, printFrequencyMs, printStep } = {}) {
+  const streamingConfig = { summary };
+  if (printFrequencyMs !== undefined) {
+    streamingConfig.print_frequency_ms = printFrequencyMs;
+    streamingConfig.print_step = printStep ?? 1;
+  }
+  return {
+    schema: "2.0",
+    config: { streaming_mode: true, streaming_config: streamingConfig },
+    body: {
+      elements: [{ tag: "markdown", id: "content", content }],
+    },
+  };
 }
 
 export function createCardRenderer({
@@ -102,6 +126,10 @@ export function createCardRenderer({
   // fire-and-forget 发卡：sendCard 异步完成后回填 cardId（后续更新携带真实
   // card_id）；失败 → 告警 + 释放流状态（下一次事件重新发卡）。
   function dispatchSendCard(state, chatId, cardJson, registry) {
+    const onFailure = (err) => {
+      recordWarning(err?.message ?? String(err));
+      registry.delete(state.sessionKey);
+    };
     try {
       Promise.resolve(adapter.sendCard({ chatId, cardJson })).then(
         (r) => {
@@ -110,14 +138,10 @@ export function createCardRenderer({
           // 重置）→ 旧轮 sendCard 回填不写进新轮，防跨轮串卡（cardId 张冠李戴）。
           if (current && current === state) current.cardId = r?.cardId;
         },
-        (err) => {
-          recordWarning(err?.message ?? String(err));
-          registry.delete(state.sessionKey);
-        }
+        onFailure
       );
     } catch (err) {
-      recordWarning(err?.message ?? String(err));
-      registry.delete(state.sessionKey);
+      onFailure(err);
     }
   }
 
@@ -191,16 +215,11 @@ export function createCardRenderer({
 
     if (!stream) {
       // 流式开始 → 发送回复卡片（卡片实体一次发送，H4；streaming_mode 开启）。
-      const cardJson = {
-        schema: "2.0",
-        config: {
-          streaming_mode: true,
-          streaming_config: { summary: "[生成中...]", print_frequency_ms: 70, print_step: 1 },
-        },
-        body: {
-          elements: [{ tag: "markdown", id: "content", content: content ?? delta ?? "" }],
-        },
-      };
+      const cardJson = buildStreamingCard(content ?? delta ?? "", {
+        summary: "[生成中...]",
+        printFrequencyMs: 70,
+        printStep: 1,
+      });
       stream = {
         sessionKey,
         chatId,
@@ -250,24 +269,15 @@ export function createCardRenderer({
         task = null;
       }
       if (!task) {
-        const cardJson = {
-          schema: "2.0",
-          config: {
-            streaming_mode: true,
-            streaming_config: { summary: "[任务执行中...]" },
-          },
-          body: {
-            elements: [
-              { tag: "markdown", id: "content", content: `任务执行中…\n\n执行 ID：${executionId ?? ""}${flowId ? `\n流程 ID：${flowId}` : ""}` },
-            ],
-          },
-        };
+        const cardJson = buildStreamingCard(taskStartLine(executionId, flowId), {
+          summary: "[任务执行中...]",
+        });
         task = {
           sessionKey,
           chatId,
           cardId: undefined,
           executionId,
-          text: `任务执行中…\n\n执行 ID：${executionId ?? ""}${flowId ? `\n流程 ID：${flowId}` : ""}`,
+          text: taskStartLine(executionId, flowId),
           sequence: 0,
           terminal: false,
         };
@@ -306,23 +316,29 @@ export function createCardRenderer({
         tasks.delete(sessionKey);
       }
       // 执行结果经对话回投（REQ-AGENT-020 标准 3：会话活跃时——agent 生成摘要）。
-      if (sessions[sessionKey]?.onExecutionResult) {
-        try {
-          const result = sessions[sessionKey].onExecutionResult({
-            executionId: executionId ?? task?.executionId,
-            status,
-            output,
-            artifacts,
-          });
-          if (result && typeof result.catch === "function") result.catch(() => {});
-        } catch {
-          // 回投失败不阻断（会话侧自行处理）。
-        }
-      }
+      notifyExecutionResult(sessionKey, {
+        executionId: executionId ?? task?.executionId,
+        status,
+        output,
+        artifacts,
+      });
       return { terminal: true };
     }
 
     return {};
+  }
+
+  // 执行结果回投（REQ-AGENT-020 标准 3：会话活跃时 onExecutionResult 驱动 agent
+  // 生成执行摘要）；回投失败不阻断（会话侧自行处理）。
+  function notifyExecutionResult(sessionKey, result) {
+    const session = sessions[sessionKey];
+    if (!session || typeof session.onExecutionResult !== "function") return;
+    try {
+      const returned = session.onExecutionResult(result);
+      if (returned && typeof returned.catch === "function") returned.catch(() => {});
+    } catch {
+      // 回投失败不阻断（会话侧自行处理）。
+    }
   }
 
   return {
