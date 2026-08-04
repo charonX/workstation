@@ -48,8 +48,33 @@ fs.mkdirSync(agentHome, { recursive: true });
 // keyRef → 明文 key 仅持内存（一次性注入语义，不落盘/不落日志/不进 JSONL）。
 const sessions = new Map();
 const keySecrets = new Map();
+
+// 串行队列工厂（排队串行，tech-design W-6）：
+// - 每 session 一条队列 → 同 sessionKey 排队串行、跨 session 并行；
+// - 全局消息队列 → session-config 等异步处理先于后续 prompt 完成。
+// enqueue 返回本次任务的原始 promise（调用方自行处理拒绝）；链上异常经
+// onError 处理（默认吞掉，队列不断）。
+function createSerialQueue(onError = () => {}) {
+  let chain = Promise.resolve();
+  return {
+    enqueue(fn) {
+      const next = chain.then(fn, fn);
+      chain = next.catch(onError);
+      return next;
+    },
+    // 队尾 promise（异常已消化）：用于等待队列清空。
+    drained() {
+      return chain;
+    },
+  };
+}
+
 // 每 session 的 prompt 串行队列（IPC 排队串行，tech-design W-6）。
-const sessionQueues = new Map();
+const sessionQueues = new Map(); // sessionKey → createSerialQueue()
+function enqueueSession(sessionKey, fn) {
+  if (!sessionQueues.has(sessionKey)) sessionQueues.set(sessionKey, createSerialQueue());
+  return sessionQueues.get(sessionKey).enqueue(fn);
+}
 
 let runtimePromise = null;
 let fauxHandle = null;
@@ -171,9 +196,7 @@ async function handleSessionConfig(msg) {
       existing.model !== model ||
       existing.sessionRef !== sessionRef;
     if (!credsChanged) {
-      existing.config.systemPrompt = systemPrompt ?? "";
-      // 热更新：resourceLoader.reload() 重算 systemPrompt（override 读取可变 config）。
-      await existing.resourceLoader.reload();
+      await hotUpdateSystemPrompt(existing, systemPrompt);
       send({ type: "config-ack", sessionKey });
       return;
     }
@@ -182,17 +205,21 @@ async function handleSessionConfig(msg) {
     sessions.delete(sessionKey);
   }
 
+  await createSessionEntry(msg);
+}
+
+// 热更新：仅刷新 config.systemPrompt（resourceLoader.reload() 重算 override），
+// 不重建上下文（REQ-AGENT-004 标准 2）。
+async function hotUpdateSystemPrompt(entry, systemPrompt) {
+  entry.config.systemPrompt = systemPrompt ?? "";
+  await entry.resourceLoader.reload();
+}
+
+// 新建会话（含 provider/key 变更后的重建路径）：PI AgentSession 创建 + 订阅 + 注册。
+async function createSessionEntry(msg) {
+  const { sessionKey, provider, model, keyRef, sessionRef, systemPrompt, apiKey } = msg;
   const runtime = await getModelRuntime();
-  let modelObj;
-  if (FAUX_MODE) {
-    modelObj = fauxHandle.getModel();
-  } else {
-    if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
-    modelObj = runtime.getModel(provider, model);
-    if (!modelObj) {
-      throw new Error(`E-AGENT-MODEL: provider=${provider} model=${model} 不可用`);
-    }
-  }
+  const modelObj = await resolveModel(runtime, provider, model, apiKey);
 
   const settingsManager = SettingsManager.inMemory();
   const finalRef = sessionRef ?? path.join(sessionDir, `${safeKeyFor(sessionKey)}.jsonl`);
@@ -247,12 +274,16 @@ async function handleSessionConfig(msg) {
   send({ type: "config-ack", sessionKey });
 }
 
-// 每 session 串行队列（跨 session 并行，tech-design W-6 并发语义）。
-function enqueueSession(sessionKey, fn) {
-  const prev = sessionQueues.get(sessionKey) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  sessionQueues.set(sessionKey, next.catch(() => {}));
-  return next;
+// 模型解析（H3 seam）：faux 模式直取 faux 模型（零网络）；否则注入 key 并取
+// provider/model，不可用则抛 E-AGENT-MODEL。
+async function resolveModel(runtime, provider, model, apiKey) {
+  if (FAUX_MODE) return fauxHandle.getModel();
+  if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
+  const modelObj = runtime.getModel(provider, model);
+  if (!modelObj) {
+    throw new Error(`E-AGENT-MODEL: provider=${provider} model=${model} 不可用`);
+  }
+  return modelObj;
 }
 
 async function handlePrompt(msg) {
@@ -289,13 +320,9 @@ async function shutdownAll() {
 
 // 全局消息串行队列：session-config 等异步处理必须先于后续 prompt 完成
 // （IPC 语义：同 sessionKey 排队串行，且配置先于对话）。
-let messageChain = Promise.resolve();
-function enqueueMessage(handler) {
-  messageChain = messageChain.then(handler, handler).catch((err) => {
-    log(`消息处理异常 err=${err?.message ?? String(err)}`);
-  });
-  return messageChain;
-}
+const messageQueue = createSerialQueue((err) => {
+  log(`消息处理异常 err=${err?.message ?? String(err)}`);
+});
 
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 
@@ -307,7 +334,7 @@ rl.on("line", (line) => {
     log(`收到非法 IPC 行，忽略`);
     return;
   }
-  enqueueMessage(() => handleMessage(msg));
+  messageQueue.enqueue(() => handleMessage(msg));
 });
 
 async function handleMessage(msg) {
@@ -348,16 +375,11 @@ async function handleMessage(msg) {
 rl.on("close", () => {
   const timer = setTimeout(() => process.exit(0), 2000);
   timer.unref?.();
-  messageChain.then(
-    () => {
-      clearTimeout(timer);
-      process.exit(0);
-    },
-    () => {
-      clearTimeout(timer);
-      process.exit(0);
-    }
-  );
+  const exitNow = () => {
+    clearTimeout(timer);
+    process.exit(0);
+  };
+  messageQueue.drained().then(exitNow, exitNow);
 });
 
 // 就绪即回 ready（REQ-AGENT-005 标准 1；看门狗以 ready 判定存活起点）。

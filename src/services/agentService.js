@@ -94,6 +94,21 @@ function enforceSizeLimit(event) {
   return out;
 }
 
+// 结构化错误事件（REQ-AGENT-007 标准 3：用户可展示文案与内部错误码区分）。
+// 内存版内核与子进程 session-error 回执共用；status 缺省 → 事件不带该字段。
+function emitErrorEvent(session, { code, reason, status, userMessage }) {
+  session.emit(
+    "session-event",
+    enforceSizeLimit({
+      type: "error",
+      code,
+      reason,
+      status,
+      userMessage: userMessage ?? `LLM 调用失败：${reason}`,
+    })
+  );
+}
+
 // 会话句柄：EventEmitter（on("session-event")）+ 会话元数据。
 // keyRef → 明文 key 仅持内存（一次性注入语义，不落盘/不落日志/不进 JSONL）。
 function createSessionHandle(fields) {
@@ -109,6 +124,12 @@ function sessionRefFor(sessionDir, spaceKey, generation = 1) {
   const safeKey = String(spaceKey).replace(/[^a-zA-Z0-9_-]/g, "_");
   const suffix = generation > 1 ? `.${generation}` : "";
   return path.join(sessionDir, `${safeKey}${suffix}.jsonl`);
+}
+
+// keyRef 命名（provider + JSONL 世代）：key 明文按 keyRef 索引仅持内存
+// （一次性注入语义，不落盘/不落日志/不进 JSONL）。
+function keyRefFor(provider, generation) {
+  return `key:${provider}:${generation}`;
 }
 
 function defaultSessionDir() {
@@ -127,17 +148,7 @@ function createInMemoryAgentService(options = {}) {
     const code =
       typeof err.code === "string" && err.code.startsWith("E-AGENT-") ? err.code : "E-AGENT-LLM-FAIL";
     const reason = err.reason ?? err.message ?? "未知原因";
-    session.emit(
-      "session-event",
-      enforceSizeLimit({
-        type: "error",
-        code,
-        reason,
-        status: err.status,
-        // 用户可展示文案与内部错误码区分（REQ-AGENT-007 标准 3）。
-        userMessage: `LLM 调用失败：${reason}`,
-      })
-    );
+    emitErrorEvent(session, { code, reason, status: err.status });
   }
 
   async function runTurn(session, text) {
@@ -278,16 +289,23 @@ function createProcessAgentService(options = {}) {
     }
   }
 
+  // 终止当前子进程：已退出则跳过（exit 事件接管后续看门狗逻辑）。
+  function killChild(signal) {
+    if (child && child.exitCode === null) {
+      try {
+        child.kill(signal);
+      } catch {
+        // 已退出则交由 exit 事件处理。
+      }
+    }
+  }
+
   function sendPing() {
     if (state !== "ready" || !child) return;
     if (Date.now() - lastPongAt > HEARTBEAT_TIMEOUT_MS) {
       // 心跳超时 → 判定崩溃（REQ-AGENT-005 标准 2）。
       log("心跳超时：判定子进程崩溃，强制重启");
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // 已退出则交由 exit 事件处理。
-      }
+      killChild("SIGKILL");
       return;
     }
     sendToChild({ type: "ping" });
@@ -389,15 +407,11 @@ function createProcessAgentService(options = {}) {
       case "session-error": {
         const session = sessions.get(msg.sessionKey);
         if (session) {
-          session.emit(
-            "session-event",
-            enforceSizeLimit({
-              type: "error",
-              code: msg.code,
-              reason: msg.reason,
-              userMessage: msg.userMessage ?? `操作失败：${msg.code}`,
-            })
-          );
+          emitErrorEvent(session, {
+            code: msg.code,
+            reason: msg.reason,
+            userMessage: msg.userMessage ?? `操作失败：${msg.code}`,
+          });
         }
         break;
       }
@@ -436,6 +450,21 @@ function createProcessAgentService(options = {}) {
     };
   }
 
+  // 会话上下文重建（tech-design 数据流 7）：sessionRef 换代 + 新 key 一次性注入
+  // （旧 keyRef 明文从内存注销；下轮 session-config 由主进程重新下发）。
+  function rebuildSession(spaceKey, session, newProvider, newKey) {
+    const oldKeyRef = session.keyRef;
+    const gen = (generation.get(spaceKey) ?? 1) + 1;
+    generation.set(spaceKey, gen);
+    session.provider = newProvider;
+    session.model = DEFAULT_MODELS[newProvider] ?? newProvider;
+    session.keyRef = keyRefFor(newProvider, gen);
+    session.sessionRef = sessionRefFor(sessionDir, spaceKey, gen);
+    if (newKey !== undefined) keySecrets.set(session.keyRef, newKey);
+    keySecrets.delete(oldKeyRef);
+    session.rebuilt = true;
+  }
+
   function startHeartbeat() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = setInterval(sendPing, HEARTBEAT_INTERVAL_MS);
@@ -450,7 +479,8 @@ function createProcessAgentService(options = {}) {
     createSession({ spaceKey, provider, apiKey, identity }) {
       const existing = sessions.get(spaceKey);
       if (existing) return existing;
-      const keyRef = `key:${provider}:${generation.get(spaceKey) ?? 1}`;
+      const gen = generation.get(spaceKey) ?? 1;
+      const keyRef = keyRefFor(provider, gen);
       if (apiKey) keySecrets.set(keyRef, apiKey);
       const session = createSessionHandle({
         spaceKey,
@@ -458,7 +488,7 @@ function createProcessAgentService(options = {}) {
         model: DEFAULT_MODELS[provider] ?? provider,
         keyRef,
         identity: identity ?? settingsService.loadAgentConfig().identity,
-        sessionRef: sessionRefFor(sessionDir, spaceKey, generation.get(spaceKey) ?? 1),
+        sessionRef: sessionRefFor(sessionDir, spaceKey, gen),
       });
       sessions.set(spaceKey, session);
       sendToChild(buildConfigMessage(spaceKey, session));
@@ -501,16 +531,7 @@ function createProcessAgentService(options = {}) {
         if (credsChanged) {
           const newProvider = typeof provider === "string" ? provider : session.provider;
           const newKey = typeof apiKey === "string" ? apiKey : keySecrets.get(session.keyRef);
-          const oldKeyRef = session.keyRef;
-          const gen = (generation.get(spaceKey) ?? 1) + 1;
-          generation.set(spaceKey, gen);
-          session.provider = newProvider;
-          session.model = DEFAULT_MODELS[newProvider] ?? newProvider;
-          session.keyRef = `key:${newProvider}:${gen}`;
-          session.sessionRef = sessionRefFor(sessionDir, spaceKey, gen);
-          if (newKey !== undefined) keySecrets.set(session.keyRef, newKey);
-          keySecrets.delete(oldKeyRef);
-          session.rebuilt = true;
+          rebuildSession(spaceKey, session, newProvider, newKey);
         }
         sendToChild(buildConfigMessage(spaceKey, session));
       }
@@ -548,13 +569,7 @@ function createProcessAgentService(options = {}) {
       clearInterval(heartbeatTimer);
       clearTimeout(restartTimer);
       rejectPendingPrompts(restartingError());
-      if (child && child.exitCode === null) {
-        try {
-          child.kill("SIGTERM");
-        } catch {
-          // 已退出。
-        }
-      }
+      killChild("SIGTERM");
       child = null;
       state = "stopped";
     },
@@ -562,13 +577,7 @@ function createProcessAgentService(options = {}) {
       // 模拟崩溃（任意退出码）→ 看门狗重启（REQ-AGENT-005 标准 2/3/4）。
       state = "restarting";
       rejectPendingPrompts(restartingError());
-      if (child && child.exitCode === null) {
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          // 已退出则交由 exit 事件处理。
-        }
-      }
+      killChild("SIGKILL");
     },
     isAlive() {
       return state === "ready" && !!child && child.exitCode === null;
