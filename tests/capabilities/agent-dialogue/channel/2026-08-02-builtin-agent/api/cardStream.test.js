@@ -4,12 +4,17 @@
 // ENTITY-TRACE: channel
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: true
+// BUG-TRACE: Slice 7 code-defect（待 /bug 编号）——缺陷 1：cardRenderer 流式结束（text_end/error）
+// 只置 final=true 不删 streams 条目，下一轮首个事件被丢弃（第二轮零产出）；缺陷 2：imRouter 对
+// 同一会话句柄每条消息重复 session.on（监听器累积 → 每轮事件触发 N 次）。两例回归 Prove-It，修复前应红。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { createMockChannelAdapter } from "../../../../../fixtures/media-production-line/mockChannelAdapter.js";
+import { getDb } from "../../../../../../src/db.js";
 
 // seam：会话卡片渲染器 + feishuChannelAdapter 卡片接口（adapter fake 断言结构与 sequence）。
 // 依赖 H4 假设（CardKit 卡片流式最小调用，spike 已证）。
@@ -58,6 +63,35 @@ function createCardAdapterFake() {
 function chatIdOf(sessionKey) {
   return sessionKey.replace(/^feishu:/, "");
 }
+
+// seam：imRouter（REQ-AGENT-019 会话事件接线；code-defect 2 监听器累积回归）。
+async function loadImRouter() {
+  const mod = await import("../../../../../../src/services/channels/imRouter.js").catch(() => null);
+  assert.ok(mod, "seam 未就绪：src/services/channels/imRouter.js");
+  return mod.createImRouter;
+}
+
+// session 句柄 fake：on() 记录挂载次数（监听器累积判定），emit() 触发已挂监听器。
+function createSessionMock() {
+  const listeners = {};
+  const calls = { on: 0 };
+  return {
+    calls,
+    on(event, cb) {
+      calls.on += 1;
+      (listeners[event] ??= []).push(cb);
+      return () => {};
+    },
+    emit(event, payload) {
+      for (const cb of listeners[event] ?? []) cb(payload);
+    },
+  };
+}
+
+// 冲刷微任务：sendCard 异步回填 cardId（Promise.resolve(...).then）完成后继续观测。
+const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+// 路由链 settle：agentRouter → agentService → session.on → prompt（微任务链）。
+const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 
 describe("REQ-AGENT-019 回复卡片流式", () => {
   let workdir;
@@ -128,6 +162,29 @@ describe("REQ-AGENT-019 回复卡片流式", () => {
     assert.ok(plain, "窗口关闭后应降级普通文本消息（E-CARD-STREAM-CLOSED，签核决策 19）");
     assert.ok(JSON.stringify(plain.text).includes("/status"), "降级消息应提示可用 /status 查询");
   });
+
+  it("多轮对话：每轮各一张回复卡片，更新指向各自卡片（code-defect 1：第二轮零产出回归）", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    // 同一渲染器实例（不重建）模拟两轮流式事件序列（签核决策 19：每轮对话流式更新）。
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "stream_start" });
+    await flushMicrotasks(); // sendCard 异步回填 cardId（后续更新携带真实 card_id）
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "第一轮增量" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "第一轮完整回复" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "stream_start" });
+    await flushMicrotasks();
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "第二轮增量" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "第二轮完整回复" });
+
+    assert.equal(adapter.calls.sendCard.length, 2, "每轮对话应各发一张回复卡片（修复前第二轮零产出：仅 1 张）");
+    const updates = adapter.calls.updateCardStream;
+    // 两轮增量之和：每轮 text_delta + text_end 各一次更新（缺陷复现：turn1 updates=2、turn2 updates=2）。
+    assert.equal(updates.length, 4, `第二轮事件不应被丢弃（updates = 两轮增量之和 4，实际 ${updates.length}）`);
+    assert.ok(updates.slice(0, 2).every((u) => u.cardId === "card_1"), "第一轮更新应指向第一张卡片（不串卡）");
+    assert.ok(updates.slice(2).every((u) => u.cardId === "card_2"), "第二轮更新应指向第二张卡片（不串卡）");
+    assert.ok(JSON.stringify(updates.at(-1).content).includes("第二轮完整回复"), "第二轮最终内容应为第二轮完整回复");
+  });
 });
 
 describe("REQ-AGENT-020 任务卡片流式与降级", () => {
@@ -197,5 +254,60 @@ describe("REQ-AGENT-020 任务卡片流式与降级", () => {
       renderer.warnings?.some((w) => JSON.stringify(w).includes("E-CHANNEL-SEND")),
       "更新失败重试耗尽应产生 E-CHANNEL-SEND 告警"
     );
+  });
+});
+
+describe("code-defect 回归：imRouter 对同一会话只挂一次监听器（缺陷 2：监听器累积）", () => {
+  let workdir;
+  let prevDbPath;
+
+  beforeEach(() => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "im-router-"));
+    prevDbPath = process.env.DB_PATH;
+    // 消息去重（channel_messages）走真实 DB（REQ-CHANNEL-002 语义），指向临时库。
+    process.env.DB_PATH = path.join(workdir, "data.db");
+    getDb();
+  });
+
+  afterEach(() => {
+    if (prevDbPath === undefined) delete process.env.DB_PATH;
+    else process.env.DB_PATH = prevDbPath;
+    fs.rmSync(workdir, { recursive: true, force: true });
+  });
+
+  it("imRouter 对同一会话只挂一次监听器：事件不随消息数累积", async () => {
+    const createImRouter = await loadImRouter();
+    const adapter = createMockChannelAdapter();
+    // 同一会话句柄（生产：createSession 按 spaceKey 缓存）——两条消息命中同一句柄，
+    // session.on 只应挂一次（当前实现每条消息无条件挂载 → 累积）。
+    const session = createSessionMock();
+    const routed = [];
+    const onSessionEventCalls = [];
+    const agentService = async () => ({
+      createSession: () => session,
+      prompt: async () => {},
+    });
+    createImRouter({
+      channelAdapter: adapter,
+      baseUrl: "http://localhost",
+      agentRouter: {
+        route: (input) => {
+          routed.push(input);
+          return { action: "dialogue", payload: {} };
+        },
+      },
+      agentService,
+      onSessionEvent: (spaceKey, ev) => onSessionEventCalls.push({ spaceKey, ev }),
+    });
+    adapter.emitMessage({ messageId: "om_turn_1", chatId: "oc_1", senderId: "ou_1", text: "第一轮" });
+    await settle();
+    adapter.emitMessage({ messageId: "om_turn_2", chatId: "oc_1", senderId: "ou_1", text: "第二轮" });
+    await settle();
+    assert.equal(routed.length, 2, "两条消息应都进入 agent 对话（去重不误伤）");
+    assert.equal(session.calls.on, 1, "同一会话句柄应只挂一次 session-event 监听器（修复前每条消息都挂 → 累积）");
+    // 行为级：一条 session-event 应恰好触发一次 onSessionEvent（修复前 2 个累积监听器 → 2 次，最终每轮 sendCard 触发 N 次）。
+    onSessionEventCalls.length = 0;
+    session.emit("session-event", { type: "text_delta", delta: "第二轮增量" });
+    assert.equal(onSessionEventCalls.length, 1, "一条 session-event 应恰好触发一次 onSessionEvent（监听器不累积）");
   });
 });
