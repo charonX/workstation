@@ -13,7 +13,7 @@
 //
 // 事件契约（REQ-AGENT-006 标准 4 / REQ-AGENT-012 标准 4）：
 // - tool_execution_start：{ type, name, status: "running" }
-// - tool_execution_end：{ type, name, status: "completed" | "rejected" }
+// - tool_execution_end：{ type, name, status: "completed" | "pending" | "rejected" }
 // - tool_execution_error：{ type, name, status: "error", errorCode, errorMessage }
 // 工具失败 → 错误事件回传对话，agent 可继续（不崩）。
 //
@@ -22,8 +22,17 @@
 // - 惰性（ADR-009）：createToolSurface 无副作用（注册表组装 + 可选覆盖校验）；
 //   命令函数仅在 execute 时调用。
 // - release 永不注入（REQ-AGENT-013）；尝试执行 → 明确拒绝「不支持该操作」。
-// - confirm 级工具：本 slice 声明 riskLevel + 预留拦截点（onConfirmRequest），
-//   触发确认交互 = Slice 8 确认服务（本 slice 未接线 → 直接执行）。
+// - confirm 级工具：本 slice 声明 riskLevel + 拦截点（onConfirmRequest）——Slice 8
+//   确认服务接线：拦截 → IPC confirm-request → 主进程确认服务入队（agent_confirmations
+//   pending + 确认卡片）→ 返回待确认（E-CONFIRM-PENDING，工具不执行——执行由确认
+//   回调驱动，REQ-AGENT-016 b 解耦）；未接线 → 与 CLI 路径一致直接执行。
+// - G1 接线（REQ-AGENT-017 标准 2 生产消费）：task run 缺省项目/流程时注入绑定
+//   默认目标候选（getDefaultTarget，buildToolContext 经 session-config toolContext
+//   下发）；GAP 1（Slice 7 登记）：task run 记录 originating spaceKey 到执行
+//   variables（任务卡片路由激活——execution:started → variables.spaceKey）。
+// - 主进程侧确认执行（REQ-AGENT-016 AC2）：executeToolCommand 导出——确认服务驱动
+//   **同一命令模块**执行（C2 路径，与工具路径同一 TOOL_DEFS 注册表，一处实现两端
+//   生效，签核决策 12/13）。
 
 import fs from "node:fs";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
@@ -72,8 +81,10 @@ const TOOL_DEFS = [
     // PRD §6.1 对话下发 / REQ-AGENT-017 接替声明：工具路径（对话场景）缺省
     // trigger=dialogue（defaultArgs 注入，见 execute）；manual 保留给手动/定时路径，
     // 且不覆盖调用方显式传值。命令模块自身默认 manual 面向 CLI 手动路径。
-    description: "下发执行任务（对话下发，直跑；trigger 缺省 dialogue）",
-    argsSchema: obj({ "project-id": str("项目 ID（必填）"), "flow-id": str("流程 ID（必填）"), trigger: enumOf(["manual", "dialogue"], "触发来源（缺省 dialogue：对话下发；manual 保留手动路径）") }, ["project-id", "flow-id"]),
+    // G1 接线：project-id/flow-id 非必填——缺省时注入绑定默认目标候选
+    // （buildToolContext → getDefaultTarget；无绑定时命令校验报错回投）。
+    description: "下发执行任务（对话下发，直跑；trigger 缺省 dialogue；project-id/flow-id 缺省用绑定流程）",
+    argsSchema: obj({ "project-id": str("项目 ID（缺省用绑定流程）"), "flow-id": str("流程 ID（缺省用绑定流程）"), trigger: enumOf(["manual", "dialogue"], "触发来源（缺省 dialogue：对话下发；manual 保留手动路径）") }),
     defaultArgs: { trigger: "dialogue" } },
   { name: "task list", module: "task", fn: "listExecutions", riskLevel: "query",
     description: "列出执行记录（不含日志详情）",
@@ -335,15 +346,19 @@ function emitToolError(emit, name, errorCode, errorMessage) {
 }
 
 // —— 工具面 ——
-// createToolSurface({ commandsDir, baseUrl, onConfirmRequest }) →
+// createToolSurface({ commandsDir, baseUrl, onConfirmRequest, sessionKey, getDefaultTarget }) →
 // { listTools, execute, onEvent, toPiToolDefinitions }。
 // - commandsDir：可选；提供时做注册表覆盖校验（防命令模块漂移）。
 // - baseUrl：可选；注入时命令执行直连该 HTTP API（测试 seam「本测试服务器」），
 //   缺省按注册表发现主进程 server（生产 agent 子进程路径，C2）。
-// - onConfirmRequest：可选；confirm 级工具拦截点（Slice 8 确认服务接线；
-//   未接线 → confirm 级工具直接执行）。
+// - onConfirmRequest：可选；confirm 级工具拦截点（Slice 8 确认服务接线——
+//   worker 经 IPC confirm-request → 主进程确认服务入队；未接线 → 直接执行）。
+// - sessionKey：可选；所属 agent 会话（空间 key）——task run 记录 originating
+//   spaceKey 到执行 variables（GAP 1，任务卡片路由）。
+// - getDefaultTarget：可选；绑定默认目标候选惰性读取（G1，REQ-AGENT-017 标准 2
+//   生产消费——session-config toolContext 由 worker 注入）。
 export function createToolSurface(options = {}) {
-  const { commandsDir, baseUrl, onConfirmRequest } = options;
+  const { commandsDir, baseUrl, onConfirmRequest, sessionKey, getDefaultTarget } = options;
   const listeners = [];
 
   const surface = {
@@ -380,15 +395,33 @@ export function createToolSurface(options = {}) {
       const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
       surface.emit({ type: "tool_execution_start", name, status: "running" });
       try {
-        // 确认拦截点（预留）：confirm 级工具在注入 onConfirmRequest 时先请求确认
-        // （tech-design 命令保险层钩子 C2；触发确认交互 = Slice 8 确认服务，
-        // 本 slice 未接线 → 与 CLI 路径一致直接执行）。
+        // 确认拦截点（Slice 8 接线）：confirm 级工具在注入 onConfirmRequest 时先请求
+        // 确认（tech-design 命令保险层钩子 C2）。确认服务已入队（pending + 确认卡片）
+        // → 返回 E-CONFIRM-PENDING（工具不执行——执行由确认回调驱动，REQ-AGENT-016
+        // b 解耦，不经过 agent turn）；明确拒绝 → E-CONFIRM-REJECTED。
         if (tool.riskLevel === "confirm" && typeof onConfirmRequest === "function") {
           const decision = await onConfirmRequest({ tool: name, args: flags, riskLevel: tool.riskLevel });
           if (decision?.approved !== true) {
+            if (decision?.pending === true) {
+              surface.emit({ type: "tool_execution_end", name, status: "pending" });
+              return errorResult("E-CONFIRM-PENDING", decision?.reply ?? "操作待确认，请在确认卡片中完成操作");
+            }
             surface.emit({ type: "tool_execution_end", name, status: "rejected" });
-            return errorResult("E-CONFIRM-REJECTED", "操作已拒绝");
+            return errorResult("E-CONFIRM-REJECTED", decision?.error ?? "操作已拒绝");
           }
+        }
+        // G1 接线（REQ-AGENT-017 标准 2 生产消费）：task run 缺省项目/流程 →
+        // 注入绑定默认目标候选（绑定 flow 优先；无绑定/调用方显式传值 → 不覆盖）。
+        if (tool.name === "task run") {
+          const target = typeof getDefaultTarget === "function" ? getDefaultTarget() : null;
+          if (!flags["project-id"] && target?.projectId) flags["project-id"] = target.projectId;
+          if (!flags["flow-id"] && target?.flowId) flags["flow-id"] = target.flowId;
+        }
+        // GAP 1（Slice 7 登记）：task run 记录 originating spaceKey 到执行 variables——
+        // 任务卡片路由激活（server.js resolveSessionKey = executionEvent.variables?.spaceKey）。
+        if (tool.name === "task run" && sessionKey) {
+          const existing = flags.variables;
+          flags.variables = { ...(existing && typeof existing === "object" ? existing : {}), spaceKey: sessionKey };
         }
         const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
         surface.emit({ type: "tool_execution_end", name, status: "completed" });
@@ -435,4 +468,20 @@ export function createToolSurface(options = {}) {
 // 供未来调用方复用（确认流程等）：按名字查工具定义。
 export function getToolDefinition(name) {
   return TOOL_DEFS.find((t) => t.name === name) ?? null;
+}
+
+// 主进程侧确认执行（REQ-AGENT-016 AC2 / tech-design b 解耦）：确认回调驱动
+// **同一命令模块**执行（C2 路径：进程内 import 命令模块 → HTTP API → services，
+// 签核决策 13）——与工具路径共用 TOOL_DEFS 注册表与命令模块，一处实现两端生效
+// （签核决策 12）。server.js 注入确认服务时使用（baseUrl 显式注入本 server，
+// 避免注册表发现歧义）。返回命令模块原始输出（结构化 { output, ... }）。
+export async function executeToolCommand(name, args = {}, { baseUrl } = {}) {
+  const tool = TOOL_DEFS.find((t) => t.name === name);
+  if (!tool) {
+    throw commandError(`不支持该操作：${name} 不在 agent 工具面内`);
+  }
+  const flags = applyDefaultArgs(tool, normalizeArgs(args));
+  const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
+  const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
+  return data;
 }

@@ -20,12 +20,15 @@ import { handleDashboard } from "./routes/dashboard.js";
 import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
+import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
 import { createAgentRouter } from "../services/agentRouter.js";
 import { createAgentService } from "../services/agentService.js";
 import { createSessionStore } from "../services/sessionStore.js";
 import { createCardRenderer } from "../services/cardRenderer.js";
+import { createConfirmationService } from "../services/confirmationService.js";
+import { executeToolCommand } from "../agent/toolAdapter.js";
 
 const activeServers = new Set();
 
@@ -161,13 +164,45 @@ export function startServer(options = {}) {
         sessionStore: getSessionStore,
         baseUrl: `http://127.0.0.1:${port}`
       });
+      // 绑定状态经 HTTP 暴露（Settings Agent 区：开始绑定/取消/解绑/状态查询，
+      // REQ-AGENT-014）——handleRequest 经 server 引用取路由实例。
+      server._opcAgentRouter = agentRouter;
+      // Slice 8：确认服务（REQ-AGENT-016，b 解耦）——惰性创建（ADR-009：首次
+      // confirm-request / 确认回调才开库）。挂起队列与 agent_sessions 同库
+      // （tech-design 模块图：SQLite：agent_sessions / agent_confirmations）。
+      // - execute：确认回调驱动**同一命令模块**执行（C2 路径，executeToolCommand
+      //   与工具路径共用 TOOL_DEFS 注册表，一处实现两端生效；baseUrl 显式注入本
+      //   server 避免注册表发现歧义）；
+      // - notifyResult：结果经 notify-result IPC 注入 agent 会话 → 自然语言回投
+      //   （W-2，不经过 agent turn——解耦执行）；
+      // - sendCard：确认卡片经通道适配器发送（F1：channelManager 唯一入口）。
+      let serverConfirmationService = null;
+      const getConfirmationService = () => {
+        if (!serverConfirmationService) {
+          serverConfirmationService = createConfirmationService({
+            dbPath: path.join(configDir, "agent-sessions.db"),
+            execute: async (command, args) => executeToolCommand(command, args, { baseUrl: `http://127.0.0.1:${port}` }),
+            notifyResult: async ({ sessionKey, result }) => {
+              const svc = await getAgentService();
+              svc.notifyResult(sessionKey, result);
+            },
+            sendCard: (payload) => channelManager.sendCard("feishu", payload),
+          });
+        }
+        return serverConfirmationService;
+      };
+      // 确认回调 HTTP 端点（/api/agent/confirmations/...）经 server 引用取惰性工厂。
+      server._opcConfirmationServiceFactory = getConfirmationService;
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
           serverAgentService = createAgentService({
             cwd: process.cwd(),
             sessionDir: path.join(configDir, "agent-sessions"),
-            sessionStore: getSessionStore()
+            sessionStore: getSessionStore(),
+            // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面 confirm 级
+            // 工具 → IPC confirm-request → 确认服务入队（pending + 确认卡片）。
+            onConfirmRequest: (req) => getConfirmationService().submit(req),
           });
           await serverAgentService.start();
           server._opcAgentService = serverAgentService;
@@ -343,7 +378,12 @@ async function handleRequest(req, res, server) {
 
   switch (resource) {
     case "settings":
-      return handleSettings(req, res, body, subPath);
+      return handleSettings(req, res, body, subPath, { agentRouter: server._opcAgentRouter });
+    case "agent":
+      // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
+      // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
+      // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
+      return handleAgentConfirmations(req, res, body, subPath, { getConfirmationService: () => server._opcConfirmationServiceFactory?.() });
     case "projects":
       return handleProjects(req, res, body, subPath);
     case "flows":

@@ -61,7 +61,13 @@ function touchSessionFile(ref) {
 }
 
 export function createSessionStore(options = {}) {
-  const db = getDb(options.dbPath ?? defaultDbPath());
+  // 数据库连接按路径每次操作时获取（getDb 单连接缓存，路径一致时零开销）：
+  // 全局 getDb() 单连接按路径切换——其他服务（taskService 等走 data.db）切换会
+  // 关闭本库连接，捕获引用会在切换后失效（"database is not open"）。按操作
+  // 重新获取保证跨服务切换后本库仍可用（Slice 8 接线依赖：确认服务/任务卡片
+  // 与对话存储同库时确认回调/任务事件前后的切换安全）。
+  const dbPath = options.dbPath ?? defaultDbPath();
+  const db = () => getDb(dbPath);
   const baseSessionDir = options.sessionDir;
   const resetListeners = new Set();
 
@@ -88,7 +94,7 @@ export function createSessionStore(options = {}) {
     const ref = sessionRefFor(dir, spaceKey, gen);
     touchSessionFile(ref);
     try {
-      db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
+      db().prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
         ref,
         ts,
         spaceKey
@@ -107,13 +113,13 @@ export function createSessionStore(options = {}) {
     if (!dir) {
       throw Object.assign(new Error("E-SESSION-PERSIST: sessionDir 未提供"), { code: "E-SESSION-PERSIST" });
     }
-    const row = db.prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
+    const row = db().prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
     const ts = nowIso();
     if (!row) {
       const ref = sessionRefFor(dir, spaceKey, 1);
       touchSessionFile(ref);
       try {
-        db.prepare(
+        db().prepare(
           "INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt) VALUES (?, ?, ?, ?)"
         ).run(spaceKey, ref, ts, ts);
       } catch (err) {
@@ -137,7 +143,7 @@ export function createSessionStore(options = {}) {
       };
     }
     try {
-      db.prepare("UPDATE agent_sessions SET lastActiveAt = ? WHERE spaceKey = ?").run(ts, spaceKey);
+      db().prepare("UPDATE agent_sessions SET lastActiveAt = ? WHERE spaceKey = ?").run(ts, spaceKey);
     } catch (err) {
       degradePersistFailure("getOrCreate 活跃时间", err);
     }
@@ -145,17 +151,17 @@ export function createSessionStore(options = {}) {
   }
 
   function get(spaceKey) {
-    return rowToInfo(db.prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey));
+    return rowToInfo(db().prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey));
   }
 
   function list() {
-    return db.prepare("SELECT * FROM agent_sessions ORDER BY createdAt").all().map(rowToInfo);
+    return db().prepare("SELECT * FROM agent_sessions ORDER BY createdAt").all().map(rowToInfo);
   }
 
   // 压缩后更新摘要索引（REQ-AGENT-011 标准 2；ref = 平台侧摘要索引，非消息全文）。
   function updateSummaryRef(spaceKey, ref) {
     try {
-      db.prepare("UPDATE agent_sessions SET summaryRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+      db().prepare("UPDATE agent_sessions SET summaryRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
     } catch (err) {
       // E-SESSION-PERSIST：摘要索引写失败 → 内存态继续（压缩本身不打断对话）。
       degradePersistFailure("updateSummaryRef", err);
@@ -165,7 +171,7 @@ export function createSessionStore(options = {}) {
   // provider/key 变更重建（数据流 7）时同步换代 sessionRef（SQLite 为真相）。
   function updateSessionRef(spaceKey, ref) {
     try {
-      db.prepare("UPDATE agent_sessions SET sessionRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+      db().prepare("UPDATE agent_sessions SET sessionRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
     } catch (err) {
       // E-SESSION-PERSIST：换代写失败 → 内存态继续（本次会话仍可用，仅重启不恢复）。
       degradePersistFailure("updateSessionRef", err);
@@ -176,7 +182,7 @@ export function createSessionStore(options = {}) {
   // 清空 + 通知监听者（agentService 清会话上下文 / 下发 reset-session IPC）。
   // 其他空间行不受影响（按 spaceKey 定位更新）。
   function reset(spaceKey) {
-    const row = db.prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
+    const row = db().prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
     if (!row) return undefined;
     const ts = nowIso();
     const ref = bumpGeneration(spaceKey, row.sessionRef, baseSessionDir, ts, "reset 换代");

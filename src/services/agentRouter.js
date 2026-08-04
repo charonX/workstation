@@ -5,14 +5,22 @@
 // 覆盖 REQ：
 // - REQ-AGENT-002（Slice 1）：命令识别先于 key 检查——斜杠命令未配 key 照常可用
 //   （签核决策 7）；未配 key 且尚无绑定的对话 → reject + E-AGENT-NO-KEY 引导。
-// - REQ-AGENT-014/015（最小绑定检查，Slice 5 范围 + Slice 6 扩展）：in-memory 状态机——
-//   beginBinding() arming → 下一条未绑定消息绑定发送者（一次性）；已有绑定 → 非绑定者
-//   拒绝（E-AUTH-NOT-BOUND，先于命令识别）；**未绑定（无任何绑定态）用户发起斜杠命令
-//   → 仍先过绑定检查拒绝（REQ-AGENT-021 标准 4，签核决策 8）**。settings 持久化 /
-//   有效期 / 解绑 / pendingBind 存 settings JSON 由 Slice 8（REQ-AGENT-014 完整状态机）
-//   接管；「无绑定态未绑定用户的普通消息全量拒绝（REQ-AGENT-015）」归 Slice 8——
-//   agentConfig.test.js REQ-AGENT-002 与 imRouting AC6 均为无绑定态未绑定用户断言
-//   E-AGENT-NO-KEY / 命令直通，契约冲突已登记，Slice 8 裁决（就地补全或接替）。
+// - REQ-AGENT-014/015（Slice 8 完整状态机，E3 + W-1）：绑定状态持久化于 settings
+//   JSON——`boundOpenId`（open_id 字段）与 `pendingBind: { createdAt, expiresAt }`
+//   （一次性 + 10 分钟有效期，签核修订②；createdAt/expiresAt 为 epoch ms，now 时钟
+//   可注入断言）。路由顺序：①绑定检查 → ②命令识别 → ③key 检查 → ④会话分发。
+//   - beginBinding() arming（Settings「开始绑定」入口，置 pendingBind）→ 下一条
+//     未绑定消息绑定发送者（E3「发消息即绑定」，一次性：绑定后清除 pendingBind）；
+//   - 已有绑定 → 非绑定者一切消息拒绝（E-AUTH-NOT-BOUND，先于命令识别，签核决策 8）；
+//   - **无绑定态未绑定用户一切消息（含查询与命令）→ E-AUTH-NOT-BOUND 拒绝**
+//     （REQ-AGENT-015 全量拒绝语义，2026-08-03 拍板；先于命令识别与会话分发，
+//     不创建会话行）——agentConfig.test.js REQ-AGENT-002 与 imRouting AC6 的
+//     无绑定态 E-AGENT-NO-KEY 断言由本语义接替（Slice 8 裁决：绑定检查先于 key）；
+//   - 已绑定用户未配 key → 对话（非命令）回复 E-AGENT-NO-KEY 引导（REQ-AGENT-002，
+//     签核文案「请在设置中配置 Agent API key」），不启动 agent 会话；命令直通
+//     未配 key 照常可用（签核决策 7）；
+//   - unbind()（Settings 解绑）/ cancelBinding()（取消 arming）→ 回未绑定态可重走
+//     引导（签核决策 10）。
 // - REQ-AGENT-017（agent 优先路由，REQ-CHANNEL-002 接替）：会话分发输出
 //   { action: "reject" | "command" | "dialogue", payload }；绑定数据仍可读，
 //   buildToolContext 把绑定 flow 作为 agent 下发任务的默认目标候选（不再直接触发）。
@@ -39,15 +47,14 @@
 // buildConfigMessage 重建 systemPrompt（行为不变，消除链路上 identity 丢失导致的
 // 双源设置读取）。
 //
-// 纯函数、无副作用（会话状态除绑定状态机外不落地）。注入：
-// createAgentRouter({ settings, bindings, commands?, sessionStore?, baseUrl? })
+// 纯函数、无副作用（绑定状态机经 settings 持久化；route 决策本身无副作用）。注入：
+// createAgentRouter({ settings, bindings, commands?, sessionStore?, baseUrl?, now? })
 // ——settings 为配置对象或返回配置的函数（生产传 () => settingsService.loadSettings()
 // 保持实时；缺省按 ADR-009 惰性读 settingsService）；bindings 为绑定读取服务（缺省
 // 真实 channelBindingService）；commands 为命令执行层（缺省 = createCommandExecutor
 // (baseUrl)，C2 路径）；sessionStore 为会话存储对象或惰性工厂（/reset 用，
 // REQ-AGENT-010）；baseUrl 为本地 HTTP API（命令执行层直连 seam，生产由 server.js
-// 注入）。now 时钟注入（Slice 8 pendingBind 有效期断言）随 REQ-AGENT-014 完整状态机
-// 落地。
+// 注入）；now 为时钟注入（pendingBind 有效期断言，缺省 Date.now()）。
 
 import * as settingsService from "./settingsService.js";
 import { getBinding } from "./channelBindingService.js";
@@ -66,9 +73,10 @@ const DEFAULT_PROVIDER = "deepseek";
 const UNCONFIGURED_API_KEY = "NOT_CONFIGURED";
 // 绑定成功回执（E3「发消息即绑定」，payload.reply 由 imRouter 直接回复，不进 agent turn）。
 const BINDING_SUCCESS_REPLY = "绑定成功：已绑定为操作者，可以开始对话了";
-// 未绑定用户命令拒绝回执（REQ-AGENT-021 标准 4 / 签核决策 8；同 E-AUTH-NOT-BOUND 文案族）。
-const UNBOUND_COMMAND_REPLY =
-  "请先在设置中绑定操作者，再使用 agent 命令（E-AUTH-NOT-BOUND）";
+// 未绑定用户拒绝回执（REQ-AGENT-015 全量拒绝：一切消息含查询与命令，先于命令识别；
+// 引导文案指向 Settings——「请先在设置中绑定操作者」，签核决策 8）。
+const UNBOUND_REJECT_REPLY =
+  "请先在设置中绑定操作者，再使用 agent 对话（E-AUTH-NOT-BOUND）";
 
 // 执行 id 格式（签核决策 6）：execution.id = crypto.randomUUID()（非整数）。
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -281,6 +289,7 @@ export function createAgentRouter({
   commands,
   sessionStore,
   baseUrl,
+  now,
 } = {}) {
   // settings 注入优先级：函数（生产实时读取）→ 对象（测试桩）→ 缺省惰性读
   // settingsService（ADR-009：不顶层读 env/磁盘）。
@@ -297,7 +306,43 @@ export function createAgentRouter({
   // 会话存储：对象或惰性工厂（生产共享 agentService 的 store，/reset 用 REQ-AGENT-010）。
   const getStore = () => (typeof sessionStore === "function" ? sessionStore() : sessionStore);
 
-  const state = { boundOpenId: null, pendingBind: false };
+  // 时钟注入（pendingBind 有效期断言，签核修订②；缺省 Date.now()）。
+  const clock = typeof now === "function" ? now : () => Date.now();
+
+  // —— 绑定状态机（REQ-AGENT-014 E3 + W-1；settings JSON 持久化）——
+  // boundOpenId：settings.boundOpenId（open_id 字段）；pendingBind：
+  // settings.pendingBind = { createdAt, expiresAt }（epoch ms，一次性 + 10 分钟）。
+  const PENDING_BIND_TTL_MS = 10 * 60 * 1000;
+
+  // 绑定状态读取：boundOpenId（null = 未绑定）；pendingBind 有效（未过期）时返回
+  // { createdAt, expiresAt }，过期视为未置位（只读判定，不落盘清除——getBindingStatus
+  // 与 route 共用同一判定）。
+  function readBindingStatus() {
+    const s = getSettings() ?? {};
+    const boundOpenId = typeof s.boundOpenId === "string" && s.boundOpenId !== "" ? s.boundOpenId : null;
+    const pending = s.pendingBind;
+    const pendingBind =
+      pending && typeof pending === "object" && typeof pending.expiresAt === "number" && clock() < pending.expiresAt
+        ? { createdAt: pending.createdAt, expiresAt: pending.expiresAt }
+        : null;
+    return { boundOpenId, pendingBind };
+  }
+
+  // 绑定状态写入（settings 注入形态自适应：函数/缺省 → settingsService；对象 → 原地）。
+  // 清除语义：传 null 显式覆盖（saveSettings 只合并，不能删键——null 落盘后
+  // readBindingStatus 视为未绑定/未置位）。
+  function persistBinding({ boundOpenId, pendingBind }) {
+    const patch = {
+      ...(boundOpenId === undefined ? {} : { boundOpenId }),
+      ...(pendingBind === undefined ? {} : { pendingBind }),
+    };
+    if (typeof settings === "function" || settings === undefined) {
+      settingsService.saveSettings(patch);
+    } else if (settings && typeof settings === "object") {
+      Object.assign(settings, patch);
+    }
+  }
+
   const spaceKeyFor = (chatId) => `feishu:${chatId}`;
 
   // dialogue payload 基底（spaceKey/消息/身份四元组）；绑定回执与 session-config
@@ -311,26 +356,24 @@ export function createAgentRouter({
     ...extra,
   });
 
-  // ① 绑定检查（REQ-AGENT-015，先于命令识别——签核决策 8）：
-  // - arming（beginBinding 置 pendingBind）→ 下一条未绑定消息绑定发送者
-  //   （E3「发消息即绑定」，一次性：绑定后清除 pendingBind）；
+  // ① 绑定检查（REQ-AGENT-015，先于命令识别——签核决策 8；Slice 8 全量拒绝语义）：
+  // - arming（beginBinding 置 pendingBind，未过期）→ 下一条未绑定消息绑定发送者
+  //   （E3「发消息即绑定」，一次性：绑定后清除 pendingBind + 回复「绑定成功」）；
   // - 已有绑定 → 非绑定者一切消息拒绝（E-AUTH-NOT-BOUND，含命令）；
-  // - 尚无任何绑定（settings 无绑定态）→ 未绑定用户发起的斜杠命令仍拒绝
-  //   （REQ-AGENT-021 标准 4「未绑定用户发起命令 → 仍先过绑定检查」）；
-  //   普通消息不拦截（Slice 5/6 既定取舍：agentConfig REQ-AGENT-002 与 imRouting
-  //   AC6 断言无绑定态未绑定用户普通消息 → E-AGENT-NO-KEY / 命令直通；REQ-AGENT-015
-  //   全量拒绝语义随 Slice 8 落地，契约冲突已登记）。
-  // 返回路由决策；不构成决策（继续后续步骤）时返回 null。
-  const bindingDecision = ({ message, chatId, senderId, channelType }, parsedCommand) => {
-    if (state.pendingBind && state.boundOpenId === null) {
-      state.boundOpenId = senderId;
-      state.pendingBind = false;
+  // - 无绑定态 → 未绑定用户**一切消息**（含查询与命令）→ E-AUTH-NOT-BOUND 拒绝
+  //   （REQ-AGENT-015 标准 1/2：先于命令识别与会话分发，不启动会话不执行命令；
+  //   引导文案指向 Settings——「请先在设置中绑定操作者」）。
+  // 返回路由决策；已绑定且为绑定者本人时返回 null（继续后续步骤）。
+  const bindingDecision = ({ message, chatId, senderId, channelType }) => {
+    const { boundOpenId, pendingBind } = readBindingStatus();
+    if (pendingBind && boundOpenId === null) {
+      persistBinding({ boundOpenId: senderId, pendingBind: null });
       return {
         action: "dialogue",
         payload: dialoguePayload({ message, chatId, senderId, channelType }, { reply: BINDING_SUCCESS_REPLY }),
       };
     }
-    if (state.boundOpenId !== null && senderId !== state.boundOpenId) {
+    if (boundOpenId !== null && senderId !== boundOpenId) {
       return {
         action: "reject",
         payload: {
@@ -339,10 +382,10 @@ export function createAgentRouter({
         },
       };
     }
-    if (state.boundOpenId === null && parsedCommand) {
+    if (boundOpenId === null) {
       return {
         action: "reject",
-        payload: { error: "E-AUTH-NOT-BOUND", message: UNBOUND_COMMAND_REPLY },
+        payload: { error: "E-AUTH-NOT-BOUND", message: UNBOUND_REJECT_REPLY },
       };
     }
     return null;
@@ -354,7 +397,7 @@ export function createAgentRouter({
       const agentCfg = cfg.agent ?? {};
 
       const command = parseSlashCommand(message);
-      const bound = bindingDecision({ message, chatId, senderId, channelType }, command);
+      const bound = bindingDecision({ message, chatId, senderId, channelType });
       if (bound) return bound;
 
       // ② 命令识别（REQ-AGENT-021/022 直通，不经 LLM；未配 key 可用，签核决策 7）。
@@ -362,9 +405,10 @@ export function createAgentRouter({
         return handleCommand(command, { message, chatId }, { executor, getStore, spaceKeyFor });
       }
 
-      // ③ 会话分发前 key 检查（REQ-AGENT-002 标准 1）：未配 key 且尚无绑定 →
-      // reject + E-AGENT-NO-KEY 引导，不启动会话（agent_sessions 无行）。
-      if (!hasConfiguredKey(agentCfg) && state.boundOpenId === null) {
+      // ③ 会话分发前 key 检查（REQ-AGENT-002 标准 1，Slice 8 裁决后语义）：
+      // 已绑定用户未配 key → 对话（非命令）回复 E-AGENT-NO-KEY 引导，不启动会话
+      // （无绑定态未绑定用户已被 ① E-AUTH-NOT-BOUND 拒绝——绑定检查先于 key）。
+      if (!hasConfiguredKey(agentCfg)) {
         return {
           action: "reject",
           payload: { error: "E-AGENT-NO-KEY", message: "请在设置中配置 Agent API key" },
@@ -383,15 +427,41 @@ export function createAgentRouter({
       };
     },
 
-    // 绑定 arming（E3 + W-1）：Settings「开始绑定」入口置位，下一条未绑定消息即绑定。
-    // 完整状态机（pendingBind 有效期/取消/解绑/存 settings）由 Slice 8 接管。
+    // 绑定 arming（E3 + W-1）：Settings「开始绑定」入口置位（一次性 + 10 分钟有效期，
+    // 签核修订②），下一条未绑定消息即绑定。已绑定状态不重复 arming（Settings 已显示
+    // 已绑定，无入口）。
     beginBinding() {
-      state.pendingBind = true;
+      const { boundOpenId } = readBindingStatus();
+      if (boundOpenId !== null) return;
+      const nowMs = clock();
+      persistBinding({ pendingBind: { createdAt: nowMs, expiresAt: nowMs + PENDING_BIND_TTL_MS } });
+    },
+
+    // 取消 arming（REQ-AGENT-014 标准 5：可取消；取消后不生效）。
+    cancelBinding() {
+      persistBinding({ pendingBind: null });
+    },
+
+    // 解绑（REQ-AGENT-014 标准 4：Settings 解绑 → 回未绑定态，引导流程可重来；
+    // 同时清除残留 pendingBind，回到干净初始态）。
+    unbind() {
+      persistBinding({ boundOpenId: null, pendingBind: null });
+    },
+
+    // 绑定状态（Settings Agent 区展示）：{ bound, openId?, pendingBind? }。
+    getBindingStatus() {
+      const { boundOpenId, pendingBind } = readBindingStatus();
+      return {
+        bound: boundOpenId !== null,
+        ...(boundOpenId !== null ? { openId: boundOpenId } : {}),
+        ...(pendingBind ? { pendingBind } : {}),
+      };
     },
 
     // 绑定 flow 作为 agent 下发任务的默认目标候选（REQ-AGENT-017 标准 2）：
     // channel_bindings 不再直接触发（REQ-CHANNEL-002 接替），数据仍可读，
-    // 供工具上下文注入（Slice 4 toolAdapter 消费方预留）。
+    // 供工具上下文注入（Slice 8 G1 接线：imRouter → session-config toolContext →
+    // worker toolSurface 消费）。
     buildToolContext({ chatId }) {
       const binding = bindings.getBinding("feishu");
       return { defaultTarget: binding ? { flowId: binding.flowId, projectId: binding.projectId } : null };

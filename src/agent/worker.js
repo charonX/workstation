@@ -22,6 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { randomUUID } from "node:crypto";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -49,6 +50,18 @@ fs.mkdirSync(agentHome, { recursive: true });
 // keyRef → 明文 key 仅持内存（一次性注入语义，不落盘/不落日志/不进 JSONL）。
 const sessions = new Map();
 const keySecrets = new Map();
+
+// 会话工具上下文（Slice 8 G1 接线）：sessionKey → { defaultTarget }（绑定默认目标
+// 候选，来自主进程 buildToolContext → session-config toolContext）。独立于会话句柄
+// 惰性读取（toolSurface 按 execute 时取值，session-config 热更新即时生效）。
+const toolContexts = new Map(); // sessionKey → { defaultTarget: { flowId, projectId } | null }
+
+// confirm-request 回执等待（Slice 8 确认接线）：confirmId → resolve(ack)。
+// 主进程确认服务入队（agent_confirmations pending + 确认卡片）后回 confirm-request-ack，
+// 工具侧据此返回待确认（E-CONFIRM-PENDING）——执行由确认回调驱动（b 解耦）。
+const confirmAcks = new Map(); // confirmId → resolve(msg)
+// 确认请求超时兜底（主进程不可达时不悬挂工具调用；PI 自身亦有 tool timeout 兜底）。
+const CONFIRM_TIMEOUT_MS = 30000;
 
 // 串行队列工厂（排队串行，tech-design W-6）：
 // - 每 session 一条队列 → 同 sessionKey 排队串行、跨 session 并行；
@@ -223,6 +236,48 @@ async function disposeSession(entry) {
 //   不重建上下文，REQ-AGENT-004 标准 2）；
 // - 已存在 + provider/key/sessionRef 变更 → 重建会话（新 key 注入，
 //   tech-design 数据流 7 GAP 补全）。
+// 每会话工具面（REQ-AGENT-012 + Slice 8 接线）：
+// - sessionKey / getDefaultTarget：task run 注入 originating spaceKey（GAP 1）与
+//   绑定默认目标候选（G1，REQ-AGENT-017 标准 2——session-config toolContext 下发，
+//   惰性读取热更新即时生效）；
+// - onConfirmRequest：confirm 级工具 → IPC confirm-request → 主进程确认服务入队
+//   （agent_confirmations pending + 确认卡片）→ ack 后返回待确认（解耦：执行由
+//   确认服务回调驱动，不经过 agent turn，REQ-AGENT-016）。
+// 工具事件（REQ-AGENT-012 标准 4）：start/end 由 PI 原生 tool_execution_* 事件承载；
+// 本适配器仅补充 PI 不产生的 tool_execution_error（含工具名与状态，错误回传对话）。
+function createSessionToolSurface(sessionKey) {
+  const toolSurface = createToolSurface({
+    sessionKey,
+    getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
+    onConfirmRequest: async ({ tool, args, riskLevel }) => {
+      const confirmId = randomUUID();
+      send({ type: "confirm-request", confirmId, sessionKey, command: tool, args, riskLevel });
+      const ack = await confirmAck(confirmId);
+      if (ack?.ok === true) return { pending: true, reply: ack.reply };
+      return { pending: false, error: ack?.error ?? "确认请求失败" };
+    },
+  });
+  toolSurface.onEvent((ev) => {
+    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
+  });
+  return toolSurface;
+}
+
+// confirm-request 回执等待（超时兜底 resolve，防工具调用悬挂）。
+function confirmAck(confirmId) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      confirmAcks.delete(confirmId);
+      resolve({ ok: false, error: "确认请求超时" });
+    }, CONFIRM_TIMEOUT_MS);
+    timer.unref?.();
+    confirmAcks.set(confirmId, (msg) => {
+      clearTimeout(timer);
+      resolve(msg);
+    });
+  });
+}
+
 async function handleSessionConfig(msg) {
   const {
     sessionKey,
@@ -232,7 +287,15 @@ async function handleSessionConfig(msg) {
     sessionRef,
     systemPrompt,
     apiKey,
+    toolContext,
   } = msg;
+  // 工具上下文（Slice 8 G1）：随 session-config 更新（新会话与热更新共用；
+  // toolSurface 经 getDefaultTarget 惰性读取，无需重建 PI 会话）。
+  if (toolContext && typeof toolContext === "object") {
+    toolContexts.set(sessionKey, toolContext);
+  } else {
+    toolContexts.delete(sessionKey);
+  }
   const existing = sessions.get(sessionKey);
 
   if (existing) {
@@ -312,14 +375,9 @@ async function createSessionEntry(msg) {
   // 工具面（REQ-AGENT-012 标准 1：除 release 外全量 CLI 命令作为 PI 工具注入；
   // C2：进程内 import 命令模块 → ensureServer 发现主进程 server → HTTP API）。
   // server 发现走注册表（子进程 ppid = 主进程 = server owner）；显式 baseUrl
-  // 注入由工具适配器 seam 支持（测试）。
-  const toolSurface = createToolSurface();
-  // 工具事件（REQ-AGENT-012 标准 4）：start/end 由 PI 原生 tool_execution_*
-  // 事件承载（mapToContractEvent 映射）；本适配器仅补充 PI 不产生的
-  // tool_execution_error（含工具名与状态，错误回传对话、agent 可继续不崩）。
-  toolSurface.onEvent((ev) => {
-    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
-  });
+  // 注入由工具适配器 seam 支持（测试）。Slice 8：确认接线（onConfirmRequest）+
+  // G1/GAP 1（sessionKey/getDefaultTarget）。
+  const toolSurface = createSessionToolSurface(sessionKey);
 
   const { session: agentSession } = await createAgentSession({
     cwd,
@@ -406,6 +464,27 @@ async function handlePrompt(msg) {
   });
 }
 
+// notify-result（REQ-AGENT-016 标准 2 / tech-design IPC）：确认执行结果注入 agent
+// 会话 → agent 生成自然语言回投（W-2：保持对话连贯性）。经会话串行队列排队
+// （与 prompt 同队列，同空间不交错）；回投文本经 session-event 流式回传（回复卡片）。
+async function handleNotifyResult(msg) {
+  const { sessionKey, result } = msg;
+  const entry = sessions.get(sessionKey);
+  if (!entry) {
+    log(`notify-result 跳过 session=${sessionKey}（会话不存在）`);
+    return;
+  }
+  await enqueueSession(sessionKey, async () => {
+    try {
+      if (FAUX_MODE) fauxHandle.appendResponses([fauxEchoFor]);
+      const text = `执行结果已就绪，请用自然语言向用户简要汇报执行结果：${JSON.stringify(result ?? {})}`;
+      await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
+    } catch (err) {
+      log(`notify-result prompt 失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+    }
+  });
+}
+
 async function shutdownAll() {
   for (const entry of sessions.values()) {
     await disposeSession(entry);
@@ -466,6 +545,18 @@ async function handleMessage(msg) {
       break;
     case "reset-session":
       await handleResetSession(msg);
+      break;
+    case "confirm-request-ack": {
+      // 主进程确认服务入队回执（Slice 8）：resolve 工具侧等待（待确认/失败）。
+      const resolve = confirmAcks.get(msg.confirmId);
+      if (resolve) {
+        confirmAcks.delete(msg.confirmId);
+        resolve(msg);
+      }
+      break;
+    }
+    case "notify-result":
+      await handleNotifyResult(msg);
       break;
     case "ping":
       send({ type: "pong" });

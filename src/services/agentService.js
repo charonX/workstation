@@ -123,6 +123,12 @@ function withReply(base, reply) {
   return reply !== undefined ? { ...base, reply } : base;
 }
 
+// notify-result 注入提示词（REQ-AGENT-016 标准 2 / W-2）：确认执行结果 → agent
+// 生成自然语言回投（worker 与内存内核共用同一文案，回投文本基于执行结果）。
+function notifyPromptText(result) {
+  return `执行结果已就绪，请用自然语言向用户简要汇报执行结果：${JSON.stringify(result ?? {})}`;
+}
+
 // 活跃服务实例：HTTP 路由层经广播函数热更新存量会话（REQ-AGENT-004 / 数据流 7）。
 let activeService = null;
 
@@ -291,7 +297,7 @@ function createInMemoryAgentService(options = {}) {
   }
 
   const service = {
-    createSession({ spaceKey, provider, identity, summarize }) {
+    createSession({ spaceKey, provider, identity, summarize, toolContext }) {
       const existing = sessions.get(spaceKey);
       if (existing) return existing;
       const info = store?.getOrCreate ? store.getOrCreate(spaceKey, { sessionDir }) : null;
@@ -302,6 +308,9 @@ function createInMemoryAgentService(options = {}) {
         sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey),
         model: "in-memory",
         context: [],
+        // 工具上下文（Slice 8 G1）：绑定默认目标候选（内存内核无工具面消费，随
+        // 句柄携带以保持与服务形态字段一致；生产消费在 worker 工具面）。
+        toolContext,
         summarize: typeof summarize === "function" ? summarize : defaultSummarize,
         // 仅注入 sessionStore 时持久化 JSONL（无 store 的单元 seam 不落盘）。
         persistJsonl: !!info,
@@ -322,6 +331,13 @@ function createInMemoryAgentService(options = {}) {
         const reply = await runTurn(session, text);
         return withReply({ ok: true, sessionKey: spaceKey }, reply);
       });
+    },
+    // notify-result（REQ-AGENT-016 标准 2 / W-2）：确认执行结果注入会话 → agent
+    // 生成自然语言回投（内存内核：经 provider.respond 跑一轮，事件即结果）。
+    notifyResult(spaceKey, result) {
+      const session = sessions.get(spaceKey);
+      if (!session) return Promise.reject(noSessionError());
+      return enqueue(spaceKey, () => runTurn(session, notifyPromptText(result)));
     },
     broadcastConfigUpdate({ identity }) {
       if (typeof identity !== "string") return;
@@ -644,6 +660,29 @@ function createProcessAgentService(options = {}) {
       case "log":
         log(`[agent] ${msg.message}`);
         break;
+      case "confirm-request": {
+        // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面拦截 confirm 级
+        // 工具 → IPC confirm-request → 主进程确认服务入队（agent_confirmations
+        // pending + 确认卡片）→ confirm-request-ack 回执（工具侧返回待确认，
+        // 不执行——执行由确认回调驱动，b 解耦）。onConfirmRequest 由生产接线
+        // （server.js）注入，指向 confirmationService.submit。
+        const { confirmId, sessionKey, command, args, riskLevel } = msg;
+        const handler = options.onConfirmRequest;
+        Promise.resolve(typeof handler === "function" ? handler({ confirmId, sessionKey, command, args, riskLevel }) : undefined)
+          .then((result) => {
+            sendToChild({
+              type: "confirm-request-ack",
+              confirmId,
+              ok: true,
+              ...(result?.replyText ? { reply: result.replyText } : {}),
+            });
+          })
+          .catch((err) => {
+            log(`confirm-request 处理失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+            sendToChild({ type: "confirm-request-ack", confirmId, ok: false, error: err?.message ?? String(err) });
+          });
+        break;
+      }
       default:
         log(`未知子进程消息 type=${msg.type}`);
     }
@@ -660,6 +699,8 @@ function createProcessAgentService(options = {}) {
       // 一次性注入：key 明文经 IPC 下发子进程（仅内存，不落日志/JSONL）。
       apiKey: keySecrets.get(session.keyRef),
       systemPrompt: buildSystemPrompt(session.identity),
+      // 工具上下文（Slice 8 G1 接线）：绑定默认目标候选 → worker 工具面消费。
+      ...(session.toolContext ? { toolContext: session.toolContext } : {}),
     };
   }
 
@@ -694,9 +735,17 @@ function createProcessAgentService(options = {}) {
     // 创建/复用空间会话。已有空间返回同一会话句柄（不重复下发）。
     // SQLite 为真相：首次对话经 store.getOrCreate 建行 + JSONL 占位
     // （REQ-AGENT-008 标准 2）；sessionRef 以表行为准。
-    createSession({ spaceKey, provider, apiKey, identity }) {
+    createSession({ spaceKey, provider, apiKey, identity, toolContext }) {
       const existing = sessions.get(spaceKey);
-      if (existing) return existing;
+      if (existing) {
+        // 工具上下文变更（Slice 8 G1：绑定默认目标候选）→ 更新句柄 + 重发
+        // session-config（worker 经 toolContexts 惰性读取，热更新即时生效）。
+        if (toolContext && JSON.stringify(toolContext) !== JSON.stringify(existing.toolContext)) {
+          existing.toolContext = toolContext;
+          sendToChild(buildConfigMessage(spaceKey, existing));
+        }
+        return existing;
+      }
       const store = getStore();
       const info = store ? store.getOrCreate(spaceKey, { sessionDir }) : null;
       const gen = info ? generationFromRef(info.sessionRef) : (generation.get(spaceKey) ?? 1);
@@ -710,6 +759,7 @@ function createProcessAgentService(options = {}) {
         keyRef,
         identity: identity ?? settingsService.loadAgentConfig().identity,
         sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey, gen),
+        toolContext,
       });
       applyRecoveryHint(session, info?.recoveryHint);
       sessions.set(spaceKey, session);
@@ -718,6 +768,20 @@ function createProcessAgentService(options = {}) {
     },
     getSession(spaceKey) {
       return sessions.get(spaceKey);
+    },
+    // notify-result（REQ-AGENT-016 标准 2 / W-2）：确认执行结果经 IPC 注入子进程，
+    // worker 侧以会话 prompt 驱动 agent 生成自然语言回投（流式事件回传）。
+    notifyResult(sessionKey, result) {
+      if (state !== "ready") {
+        log(`notify-result 跳过 session=${sessionKey}（子进程未就绪）`);
+        return Promise.resolve({ ok: false, reason: "restarting" });
+      }
+      if (!sessions.has(sessionKey)) {
+        log(`notify-result 跳过 session=${sessionKey}（会话不存在）`);
+        return Promise.resolve({ ok: false, reason: "E-AGENT-NO-SESSION" });
+      }
+      sendToChild({ type: "notify-result", sessionKey, result });
+      return Promise.resolve({ ok: true });
     },
     prompt(spaceKey, text) {
       return new Promise((resolve, reject) => {

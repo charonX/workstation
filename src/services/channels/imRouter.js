@@ -179,6 +179,13 @@ export function createImRouter({
     const config = payload.sessionConfig ?? {};
     try {
       const svc = typeof agentService === "function" ? await agentService() : agentService;
+      // G1 接线（Slice 8，REQ-AGENT-017 标准 2 生产消费）：绑定作为 agent 下发任务
+      // 的默认目标候选注入工具上下文——buildToolContext（绑定 flow）→ createSession
+      // → session-config toolContext → worker 工具面（task run 缺省目标注入）。
+      const toolContext =
+        typeof agentRouter.buildToolContext === "function"
+          ? agentRouter.buildToolContext({ chatId: payload.chatId ?? msg.chatId })
+          : undefined;
       const session = svc.createSession({
         spaceKey,
         provider: config.provider,
@@ -186,7 +193,8 @@ export function createImRouter({
         // U1（Slice 6）：session-config 携带 identity（agentRouter 同源构建——
         // agentService 与路由层从同一 identity 重建 systemPrompt；此前 config.identity
         // 恒 undefined，identity 在链路上丢失，agentService 退化为独立读 settings）。
-        identity: config.identity
+        identity: config.identity,
+        toolContext,
       });
       // Slice 7：会话接线（流式事件监听 / 轮次边界 / 句柄登记）。
       wireSession(spaceKey, session);

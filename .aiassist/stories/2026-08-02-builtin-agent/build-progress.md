@@ -12,8 +12,8 @@
 | 4 | 工具面（riskLevel 注入 + release 拒绝） | REQ-AGENT-012~013 | M1 | complete |
 | 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | complete |
 | 6 | 命令直通 | REQ-AGENT-021~022 | M3 | complete |
-| 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | complete（1 契约冲突待裁决，见 Slice 7 节） |
-| 8 | 绑定与确认 | REQ-AGENT-014~016 | M3 | pending |
+| 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | complete |
+| 8 | 绑定与确认 | REQ-AGENT-014~016 | M3 | complete |
 
 依赖：1→2→3→4→5→{6,7,8}（7 另依赖 4 的下发工具面）。
 
@@ -315,3 +315,55 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 
 
 
+
+### Slice 8：绑定与确认（REQ-AGENT-014~016）——收口
+
+- 状态：**complete**（commit 见下；userBinding 6/6 + confirmation 5/5 + commandReply 2/2（test-gap 补测）全绿；全量 514：509 绿 / 5 红——**5 红 = 父代理已登记裁决的断言级契约冲突（待父代理 [test] 就地补全，见「待父代理 [test] 处置」），无其他回归**；既有零意外回归）
+- 验证记录（2026-08-04）：
+  - **全量拒绝语义裁决落地（父代理拍板：以 userBinding.test.js 断言为准）**：无绑定态未绑定用户一切消息（含查询与命令）→ E-AUTH-NOT-BOUND（先于命令识别与会话分发，不创建会话行）；已绑定用户未配 key → 对话（非命令）回复 E-AGENT-NO-KEY 引导。E-AGENT-NO-KEY 路径语义 = 已绑定操作者未配 key（REQ-AGENT-002 接替）。
+  - **绑定状态机完整化**：pendingBind（一次性 + 10 分钟有效期，签核修订②）与 boundOpenId 持久化于 settings JSON（跨实例可见，冒烟验证）；解绑/取消后重走引导；now 时钟注入断言。
+  - **确认服务 + toolAdapter onConfirmRequest 接线（Slice 4 预留兑现）**：worker 工具面 confirm 级 → IPC confirm-request → 主进程确认服务入队（agent_confirmations pending + 确认卡片）→ confirm-request-ack → 工具返回 E-CONFIRM-PENDING（不执行）；确认回调驱动同一命令模块执行（executeToolCommand，C2）→ notify-result IPC → agent 自然语言回投（真实 spawn 冒烟：text_end 含执行结果）；confirmId 幂等；重启后 pending 可确认。
+  - **G1 接线（Slice 5 登记兑现）**：buildToolContext（绑定默认目标候选）→ imRouter → createSession toolContext → session-config toolContext → worker 工具面 getDefaultTarget 惰性读取（task run 缺省目标注入）。冒烟：无 project-id/flow-id 的 task run 命中绑定 flow + trigger=dialogue。
+  - **GAP 1 接线（Slice 7 登记兑现）**：toolAdapter task run 记录 originating spaceKey 到执行 variables（task.js run 透传 variables）→ 任务卡片路由激活（resolveSessionKey = variables.spaceKey）。冒烟：execution.variables.spaceKey = feishu:<chatId>。
+  - **test-gap 补测（Slice 6 登记兑现）**：commandReply.test.js（imRouter 级）——真实 agentRouter（异步命令执行层）+ 真实 imRouter + mock 通道：查无此执行 / 格式化状态文本经 channel reply 回投。
+  - **生产连接切换隐患修复（Slice 5 遗留，本 slice 接线暴露）**：getDb() 单连接按路径切换会关闭捕获引用（"database is not open"）——sessionStore 与 confirmationService 改为按操作 `getDb(dbPath)` 重取（路径一致时零开销）；确认回调（卡片点击）与任务卡片在跨库切换后仍可用（冒烟：approve 前先走 data.db 请求）。
+  - **beginBinding 生产接线（Slice 6 前置依赖标注兑现）**：POST /api/settings/agent/binding/begin（+ cancel / DELETE 解绑；GET /api/settings/agent 含 binding 状态）——Settings「开始绑定」入口 → agentRouter.beginBinding；绑定成为命令/对话可用的解锁条件。
+
+| PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
+|---|---|---|---|
+| REQ-AGENT-014 AC1 Settings 显示绑定状态 +「开始绑定」入口（置 pendingBind） | src/services/agentRouter.js（beginBinding：pendingBind { createdAt, expiresAt } 落 settings JSON）、src/http/routes/settings.js（POST /api/settings/agent/binding/begin + GET /api/settings/agent 含 binding） | userBinding.test.js「状态机…」（arming 断言）+ 冒烟（HTTP 端点） | COVERED |
+| REQ-AGENT-014 AC2 置位后下一条未绑定消息 → 绑定发送者 + 清除标记 + 回复「绑定成功」；仅此一条生效 | agentRouter.js（bindingDecision：pendingBind 有效 + 未绑定 → boundOpenId=senderId + 清除 + 绑定成功回执；后续未绑定消息拒绝） | userBinding.test.js「状态机…」「pendingBind 一次性」 | COVERED |
+| REQ-AGENT-014 AC3 未置 pendingBind 时未绑定消息 → 拒绝引导卡片（提示去 Settings），不执行绑定 | agentRouter.js（无绑定态 → E-AUTH-NOT-BOUND + 「请先在设置中绑定操作者」） | userBinding.test.js「未 arming 时未绑定消息 → 拒绝 + 引导卡片」 | COVERED |
+| REQ-AGENT-014 AC4 已绑定可解绑（Settings），解绑回未绑定态可重走引导 | agentRouter.js（unbind：boundOpenId/pendingBind 清空）+ routes/settings.js（DELETE /api/settings/agent/binding） | userBinding.test.js「状态机…」（解绑重绑段）+ 冒烟 | COVERED |
+| REQ-AGENT-014 AC5 pendingBind 有效期 10 分钟（签核修订②）/ 可取消 | agentRouter.js（PENDING_BIND_TTL_MS=10min；now 时钟注入；过期不生效；cancelBinding） | userBinding.test.js「pendingBind 有效期 10 分钟 / 取消」（clock 注入断言 ttl=600000） | COVERED |
+| REQ-AGENT-015 AC1 未绑定用户一切消息（含查询）→ E-AUTH-NOT-BOUND，不启动会话不执行命令 | agentRouter.js（bindingDecision 无绑定态分支先于命令识别与 key 检查；agent_sessions 无行） | userBinding.test.js「未绑定用户一切消息（含查询）→ E-AUTH-NOT-BOUND，不启动会话不执行命令」（agent_sessions COUNT=0 断言） | COVERED |
+| REQ-AGENT-015 AC2 拒绝先于命令识别与会话分发 | agentRouter.js（route 顺序 ①绑定检查 → ②命令 → ③key → ④分发；命令模块零调用） | userBinding.test.js「拒绝先于命令识别与会话分发」（commands.called=0） | COVERED |
+| REQ-AGENT-016 AC1 confirm 级命令被工具适配器拦截 → confirm-request → 确认服务入队（pending）+ 确认卡片（命令摘要+确认/拒绝按钮）；agent 回复「操作待确认」 | src/services/confirmationService.js（submit：agent_confirmations INSERT + sendCard + replyText 待确认）、src/agent/toolAdapter.js（onConfirmRequest 拦截：pending → E-CONFIRM-PENDING 返回不执行）、src/agent/worker.js（confirm-request IPC 发送 + ack 等待）、src/services/agentService.js（confirm-request 处理 → 注入的 onConfirmRequest）、src/http/server.js（getConfirmationService 惰性工厂接线） | confirmation.test.js「confirm 级命令拦截 → 挂起队列 + 确认卡片 + agent 回复待确认」 | COVERED |
+| REQ-AGENT-016 AC2 确认回调 → 确认服务驱动同一命令模块执行（不经 agent turn）→ notify-result 注入会话 → agent 自然语言回投 | confirmationService.js（approve：状态 approved → execute(row.command, args) → notifyResult）、toolAdapter.js（executeToolCommand 导出：同一 TOOL_DEFS 注册表 + 同一命令模块，C2）、agentService.js（notifyResult：IPC notify-result）、worker.js（handleNotifyResult：会话 prompt 回投）、server.js（execute=executeToolCommand / notifyResult=agentService） | confirmation.test.js「确认回调驱动执行（不经过 agent turn）+ notify-result 回投自然语言」+ 真实 spawn 冒烟（text_end 含执行结果） | COVERED |
+| REQ-AGENT-016 AC3 拒绝 → 不执行 + 回投「已取消」 | confirmationService.js（reject：状态 rejected + notifyResult cancelled 回执） | confirmation.test.js「拒绝 → 不执行 + 回投已取消」 | COVERED |
+| REQ-AGENT-016 AC4 confirmId 幂等：同一回调只执行一次 | confirmationService.js（approve/reject 非 pending 忽略；submit 重复 confirmId 返回既有状态） | confirmation.test.js「confirmId 幂等：重复回调只执行一次」 | COVERED |
+| REQ-AGENT-016 AC5 挂起队列持久化（SQLite）：重启后 pending 项仍可确认 | db.js（agent_confirmations DDL，initSchema + migrateSchema + resetDb）、confirmationService.js（同库真相，重启新实例同路径可读） | confirmation.test.js「挂起队列持久化：重启后 pending 项仍可确认」（svc1/svc2 同 dbPath） | COVERED |
+| PRD §6 数据流 4（高危确认解耦：拦截 → 挂起 → 确认卡片 → 回调驱动执行 → notify-result 注入 → 自然语言回投） | 见 REQ-AGENT-016 各行（主进程确认服务 + worker IPC + 工具面拦截全链路） | confirmation.test.js + 真实 spawn 冒烟 | COVERED（飞书卡片动作 → HTTP 端点桥接待 QA/REFLECT，见 GAP） |
+| PRD §6 数据流 5（绑定 E3 + arming：Settings 引导 → 开始绑定置 pendingBind → 下一条消息绑定 → 回复成功 → Settings 显示已绑定 + 解绑） | agentRouter.js（完整状态机）+ routes/settings.js（begin/cancel/unbind/状态） | userBinding.test.js（5 例全路径）| COVERED |
+| PRD §8 E-AUTH-NOT-BOUND（未绑定用户消息拒绝，含查询——读也拒） | agentRouter.js（无绑定态 + 已绑定态非绑定者统一拒绝） | userBinding.test.js（两 describe）| COVERED |
+| PRD §8 E-CONFIRM-PENDING（高危确认挂起，操作不执行，幂等） | confirmationService.js（pending 语义）+ toolAdapter.js（E-CONFIRM-PENDING 返回） | confirmation.test.js + toolSurface 回归 | COVERED |
+| PRD §8 E-AGENT-NO-KEY（对话引导文案，不启动会话）——**Slice 8 裁决后语义 = 已绑定用户未配 key** | agentRouter.js（③key 检查在绑定检查之后：已绑定未配 key → 引导） | 无独立绿断言（agentConfig「E-AGENT-NO-KEY」例为未绑定用户——契约冲突登记，待 [test] bindUser 后转绿） | **PARTIAL（实现完成；断言前置绑定待父代理 [test]）** |
+| PRD §8 E-AGENT-CLI-ERROR（确认执行失败 → 错误回投对话） | confirmationService.js（approve 执行失败 → error 结果仍 notifyResult） | 无独立断言（失败注入难；语义经 execute 抛错路径实现） | PARTIAL（实现完成；注入断言待评估） |
+| 签核决策 8（未绑定拒绝先于命令识别）/ 9（pendingBind 一次性 + 10 分钟 + 可取消）/ 10（解绑重绑）/ 18（确认解耦 + confirmId 幂等 + 重启可确认） | agentRouter.js / confirmationService.js | userBinding.test.js + confirmation.test.js | COVERED |
+| tech-design E3（发消息即绑定）/ b（确认与执行解耦，SQLite 真相）/ W-1（pendingBind arming）/ W-2（notify-result 回投自然语言） | 见上各行 | 见上各行 | COVERED |
+| Slice 4 登记（confirm 级拦截未接线 → Slice 8 确认服务） | toolAdapter.js onConfirmRequest（接线）+ worker IPC + server.js 确认服务 | confirmation.test.js + toolSurface 回归（未注入拦截器时行为不变） | COVERED |
+| Slice 6 前置依赖标注（beginBinding 零调用方 → 生产命令全部 E-AUTH-NOT-BOUND）→ 接线解锁 | routes/settings.js（binding begin/cancel/DELETE 端点）+ server.js（agentRouter 上下文传入） | 冒烟（HTTP 端点全流程）+ userBinding.test.js | COVERED |
+| Slice 5 G1 登记（buildToolContext 无生产消费方 → 注入工具上下文） | imRouter.js（dialogue → buildToolContext → createSession toolContext）、agentService.js（toolContext 句柄 + buildConfigMessage 携带 + 变更重发）、worker.js（toolContexts 惰性读取）、toolAdapter.js（getDefaultTarget：task run 缺省目标注入；argsSchema 放宽 project-id/flow-id 非必填） | 冒烟（无目标 task run 命中绑定 flow）| COVERED（无独立业务断言——REQ-AGENT-017 标准 2 断言仅覆盖 buildToolContext 本身；生产消费冒烟验证） |
+| Slice 7 GAP 1 登记（task run 未记录 spaceKey → 任务卡片不路由）→ 接线 | toolAdapter.js（task run 注入 variables.spaceKey）、src/cli/commands/task.js（run 透传 variables） | 冒烟（execution.variables.spaceKey = feishu:<chatId>）| COVERED（生产路径激活；卡片端到端随 QA） |
+| Slice 6 test-gap 登记（U2 commandReply 回投 + 查无此执行无 imRouter 级断言）→ 补测 | 无实现变更（Slice 6 已实现）；新增测试文件 | commandReply.test.js（2 it：异步执行层查无此执行 / 格式化状态文本经 channel reply 回投） | COVERED |
+| Slice 5 遗留隐患（getDb 单连接路径切换关闭捕获引用） | sessionStore.js（db() 按操作重取）、confirmationService.js（同模式） | 冒烟（approve 前跨库切换仍可确认）+ 既有 509 回归全绿 | COVERED（冒烟；无独立业务断言——连接切换难在业务测试注入） |
+
+GAP 说明（本 slice 范围外，后续或 REFLECT 处理）：
+- **【待父代理 [test] 处置，5 例红——父代理裁决的直接后果（断言预期值零变更的接替/前置）】**：
+  1. `agentConfig.test.js`「未配置 key 时 agent 对话回复 E-AGENT-NO-KEY」：无绑定态未绑定用户 → 现为 E-AUTH-NOT-BOUND（REQ-AGENT-015 优先，父代理裁决）。**建议**：route 前加 `bindUser(router, "ou_1")`（同文件已声明 bindUser helper）——测试意图（未配 key → E-AGENT-NO-KEY 引导）在已绑定用户下完整成立。
+  2. `agentRoute.test.js` REQ-AGENT-018 三例（空间 key / 群聊发言 / 下发 session-config）：已绑定用户未配 key → 现为 E-AGENT-NO-KEY（裁决：已绑定未配 key → 引导）。**建议**：beforeEach 内 `PUT /api/settings/agent` 配置 provider+apiKey（session-config 断言改验真实 key）或断言改 E-AGENT-NO-KEY。
+  3. `imRouting.test.js` AC6：未绑定用户 → 现回 E-AUTH-NOT-BOUND「绑定操作者」。**建议**：断言改 E-AUTH-NOT-BOUND 文案（测试意图 = 接替语义：消息进 agent 路由、不 createTask，保持不变）。
+- **飞书卡片动作 → 确认回调端点（POST /api/agent/confirmations/:id/approve|reject）桥接**：卡片按钮 value 已携带 confirmId + decision，HTTP 端点已就绪；WS 事件分发（真实卡片点击）属通道集成，QA/REFLECT 验收。
+- **确认执行失败注入断言**：execute 抛错路径已实现（错误结果仍回投）；失败注入业务断言待评估（参考 E-SESSION-PERSIST 冒烟模式）。
+- **会话工具上下文（G1）变更传播**：toolContext 在会话创建/重发时下发；创建后绑定变更 → 下一次会话重建（provider/key 变更或 /reset）生效（默认目标候选为建议性提示，stale 可接受；REFLECT 可评估热更新）。
+- **真实供应商确认链路联调**（LLM 发起 confirm 工具调用 → 卡片 → 点击）→ QA（faux 模式不调用工具，业务断言在服务层 seam 全覆盖）。

@@ -13,13 +13,39 @@ const AGENT_PROVIDER_ENDPOINTS = {
   "moonshotai-cn": "https://api.moonshot.cn/v1/models"
 };
 
-export async function handleSettings(req, res, body, subPath = []) {
+export async function handleSettings(req, res, body, subPath = [], context = {}) {
+  const { agentRouter } = context;
   if (subPath[0] === "agent") {
     if (subPath[1] === "test-connection" && req.method === "POST") {
       return handleAgentTestConnection(req, res, body);
     }
+    // 绑定（REQ-AGENT-014，E3 + W-1）：Settings Agent 区「开始绑定」入口 →
+    // agentRouter.beginBinding（pendingBind arming，一次性 + 10 分钟有效期）——
+    // Slice 8 生产接线（此前零调用方；绑定是 agent 命令可用/对话可用的解锁条件）。
+    if (subPath[1] === "binding" && subPath[2] === "begin" && req.method === "POST") {
+      if (!agentRouter?.beginBinding) return notFound(res);
+      agentRouter.beginBinding();
+      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+    }
+    // 取消 arming（REQ-AGENT-014 标准 5：可取消）。
+    if (subPath[1] === "binding" && subPath[2] === "cancel" && req.method === "POST") {
+      if (!agentRouter?.cancelBinding) return notFound(res);
+      agentRouter.cancelBinding();
+      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+    }
+    // 解绑（REQ-AGENT-014 标准 4：Settings 解绑 → 回未绑定态，引导流程可重来）。
+    if (subPath[1] === "binding" && req.method === "DELETE") {
+      if (!agentRouter?.unbind) return notFound(res);
+      agentRouter.unbind();
+      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+    }
     if (req.method === "GET") {
-      return ok(res, settingsService.loadAgentConfig());
+      // 绑定状态随配置状态可查（Settings Agent 区展示；未接线 agentRouter 时兜底
+      // 未绑定——agentConfig 等纯配置 seam 不依赖绑定）。
+      return ok(res, {
+        ...settingsService.loadAgentConfig(),
+        binding: agentRouter?.getBindingStatus?.() ?? { bound: false },
+      });
     }
     if (req.method === "PUT") {
       return handleAgentConfigSave(req, res, body);
