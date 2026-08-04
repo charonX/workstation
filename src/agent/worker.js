@@ -30,6 +30,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { createToolSurface } from "./toolAdapter.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
@@ -131,7 +132,16 @@ function limitSize(event) {
 }
 
 // PI 事件 → 签核事件契约（session-event：text_delta/text_end/tool_execution_*）。
+// 工具面适配器事件（REQ-AGENT-012：tool_execution_start/end/error，含 name/status）
+// 已是契约形态 → 直接透传；PI 原生事件（toolName 字段）走下方映射。
 function mapToContractEvent(ev) {
+  if (
+    typeof ev?.type === "string" &&
+    ev.type.startsWith("tool_execution") &&
+    typeof ev.name === "string"
+  ) {
+    return ev;
+  }
   switch (ev.type) {
     case "message_update": {
       const a = ev.assistantMessageEvent;
@@ -299,6 +309,18 @@ async function createSessionEntry(msg) {
   });
   await resourceLoader.reload();
 
+  // 工具面（REQ-AGENT-012 标准 1：除 release 外全量 CLI 命令作为 PI 工具注入；
+  // C2：进程内 import 命令模块 → ensureServer 发现主进程 server → HTTP API）。
+  // server 发现走注册表（子进程 ppid = 主进程 = server owner）；显式 baseUrl
+  // 注入由工具适配器 seam 支持（测试）。
+  const toolSurface = createToolSurface();
+  // 工具事件（REQ-AGENT-012 标准 4）：start/end 由 PI 原生 tool_execution_*
+  // 事件承载（mapToContractEvent 映射）；本适配器仅补充 PI 不产生的
+  // tool_execution_error（含工具名与状态，错误回传对话、agent 可继续不崩）。
+  toolSurface.onEvent((ev) => {
+    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
+  });
+
   const { session: agentSession } = await createAgentSession({
     cwd,
     agentDir: agentHome,
@@ -308,6 +330,7 @@ async function createSessionEntry(msg) {
     model: modelObj,
     resourceLoader,
     noTools: "all",
+    customTools: toolSurface.toPiToolDefinitions(),
   });
 
   const entry = {

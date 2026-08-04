@@ -163,3 +163,35 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
   3. **缺口 4（注释修正）**：内存内核 JSONL 标注为「平台自持轻量记录（非 PI 可恢复格式，无 type:"session" 头，内存内核不接线恢复）」，代码注释 + 追溯表同步。
 - 验证：test:unit 474/36 与基线一致零回归；冒烟脚本（不入库）：a) 注入 SQLite 写失败 → 对话可用 + 告警含 E-SESSION-PERSIST；b) 构造损坏 JSONL → worker open 失败换代重建 + 提示，对话可继续。
 
+### Slice 4：工具面（REQ-AGENT-012~013）
+
+- 状态：**complete**（toolSurface.test.js 5 it 全绿；既有 474 零回归（479/31，31 红 = 5 个后续 slice 测试文件：agentRoute 7 / cardStream 6 / slashCommands 7 / confirmation 5 / userBinding 6）；工具执行真实走命令模块链路，无假工具）
+
+| PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
+|---|---|---|---|
+| REQ-AGENT-012 AC1 除 release 外全部 CLI 命令作为 PI 工具注入 agent（清单 = commands 目录全量）；工具定义含命令、参数 schema、风险等级 | src/agent/toolAdapter.js（TOOL_DEFS 注册表 39 工具 = 10 命令模块全量子命令，release 排除；listTools 返回 name/description/riskLevel/argsSchema；toPiToolDefinitions 生成 PI ToolDefinition）、src/agent/worker.js（createSessionEntry → createAgentSession customTools 注入，noTools:"all" 保持） | toolSurface.test.js「工具清单 = 现有 commands 全量（除 release）」「riskLevel 声明与 PRD §7.2 映射一致」 | COVERED |
+| REQ-AGENT-012 AC2 riskLevel 声明与 PRD §7.2 映射一致（query/dispatch/confirm；release 不注入） | toolAdapter.js（TOOL_DEFS.riskLevel 逐项按 §7.2；抽样断言全过：task run=dispatch、task list/get=query、flow list=query、source delete=confirm、settings set=confirm、channel bind=confirm、schedule create/toggle=confirm） | 同上「riskLevel 声明」 | COVERED |
+| REQ-AGENT-012 AC3 工具执行走 C2 链路（进程内 import 命令模块 → HTTP API（ADR-001）→ services）；返回结构化结果（输出/错误码） | toolAdapter.js（命令模块静态 import + execute → 命令函数（flags 归一化 camelCase→kebab + positionalFrom 位置参数）→ ensureServer 发现主进程 server；显式 baseUrl 经 src/cli/server.js setServerBaseUrlOverride seam 直连（测试「本测试服务器」）→ 结构化 {output, errorCode?, errorMessage?}） | toolSurface.test.js「工具执行走 C2 链路并返回结构化结果」（task list 真实调 HTTP API） | COVERED |
+| REQ-AGENT-012 AC4 工具失败 → tool_execution_* 错误事件回传对话，agent 可继续（不崩） | toolAdapter.js（tool_execution_start/end/error 事件含 name/status；失败 → 结构化错误 + tool_execution_error）、worker.js（适配器事件透传 forwardEvent；PI 原生 start/end 事件承载成功流） | toolSurface.test.js「工具失败 → tool_execution_* 错误事件，agent 可继续」（非法参数触发命令校验错误 → 事件断言 + 失败后下一条正常） | COVERED |
+| REQ-AGENT-013 AC1 release 不在工具面内；尝试执行 → 明确拒绝「不支持该操作」 | toolAdapter.js（release 模块不 import 不登记；execute 未知工具/release → throw Error「不支持该操作：…」+ tool_execution_error 事件） | toolSurface.test.js「release 不在工具面；尝试执行 → 明确拒绝」 | COVERED |
+| PRD §7.2 直跑-查询（task list/get、flow list/get、project list/get、schedule list、skill list/agents、source list、channel binding/status、settings get、notify list/read、dashboard stats） | toolAdapter.js TOOL_DEFS（riskLevel: "query"） | 同上「riskLevel 声明」抽样 + 工具清单 | COVERED |
+| PRD §7.2 直跑-下发（task run） | toolAdapter.js（riskLevel: "dispatch"，trigger 支持 dialogue） | 同上（task run = dispatch） | COVERED |
+| PRD §7.2 高危-确认（project create/update/skill、flow create/import/export、schedule create/toggle、skill install/update/remove、source create/update/toggle/delete、channel bind/credentials/reconnect、settings set） | toolAdapter.js（riskLevel: "confirm"）+ execute 确认拦截点预留（onConfirmRequest 分支，Slice 8 接线） | 同上（source delete/settings set/channel bind/schedule create/schedule toggle = confirm） | COVERED（声明与拦截点；触发确认交互 = Slice 8，见 GAP） |
+| PRD §7.2 永不开放（release）| toolAdapter.js（排除注入 + 执行拒绝） | 「release 不在工具面；尝试执行 → 明确拒绝」 | COVERED |
+| PRD §7.2 表未列的删除类命令（project delete / flow delete / schedule delete） | toolAdapter.js（归入 confirm——按 §7.2 注「删除/配置变更类高危」与 wayfind「删除类」规则，更保守取向；决策记录于代码注释） | 工具清单（删除类含 riskLevel） | COVERED（决策记录：PRD 表未列，扩展归高危-确认） |
+| PRD §8 E-AGENT-CLI-ERROR（CLI 工具失败 → 透传 CLI 错误码，错误回投对话） | toolAdapter.js（execute 捕获命令错误 → { errorCode: err.code \|\| "E-AGENT-CLI-ERROR", errorMessage } + tool_execution_error 事件；PRD §8：无部分写入，CLI 事务性由服务层保证） | 「工具失败 → tool_execution_* 错误事件，agent 可继续」 | COVERED |
+| PRD §8 E-CONFIRM-PENDING / 拒绝（高危确认挂起，操作不执行） | toolAdapter.js（onConfirmRequest 拦截分支：approved !== true → E-CONFIRM-REJECTED 结构化返回 + tool_execution_end(rejected)；pending 语义 = Slice 8 确认服务） | 无独立断言（Slice 8 confirmation.test.js 覆盖） | PARTIAL（拦截点预留；触发确认交互 = Slice 8） |
+| PRD §10 决策 C2（工具面 = 进程内 import 同一 CLI 命令模块；保险层钩子一处实现两端生效；命令经现有 HTTP API（ADR-001）调服务层） | toolAdapter.js + src/cli/server.js（ensureServer 显式 baseUrl 覆盖 seam）+ worker.js | toolSurface.test.js（C2 链路断言：本测试服务器） | COVERED |
+| PRD §10 决策 A2/ADR-014（agent 子进程承载工具面，与主进程服务层经 HTTP API 交互，崩溃隔离） | worker.js（进程内 import 工具面；命令执行走 HTTP API 而非进程内服务调用） | 无独立断言（集成场景随 QA/对话回路） | COVERED（架构接线完成；端到端冒烟见 GAP） |
+| 签核决策 12（riskLevel 映射按 PRD §7.2；release 不注入） | toolAdapter.js TOOL_DEFS | 「riskLevel 声明与 PRD §7.2 映射一致」 | COVERED |
+| 签核决策 13（工具链路 C2：进程内 import 命令模块 → HTTP API（ADR-001）） | toolAdapter.js + worker.js | 「工具执行走 C2 链路并返回结构化结果」 | COVERED |
+| 实现者测试缝契约（工具执行必须真实走命令模块链路，禁止手写假工具） | toolAdapter.js（命令函数真实调用 → HTTP API → services；无 mock） | 「工具执行走 C2 链路」（task list 命中测试服务器真实数据） | COVERED |
+| REQ-AGENT-006 AC4（工具调用事件 tool_execution_* 含工具名与状态——真实工具路径） | worker.js（适配器事件透传 + PI 原生 tool_execution_start/end 映射） | agentDialogue.test.js「工具调用事件含工具名与状态」（回归，内存内核路径） | COVERED |
+
+GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
+- **confirm 级拦截行为未接线**：riskLevel 声明 + onConfirmRequest 拦截点已预留，但未注入拦截器 → confirm 级工具当前与 CLI 路径一致直接执行；触发确认交互（IPC confirm-request → 挂起队列 → 回调驱动执行）归 Slice 8（REQ-AGENT-016，confirmation.test.js）。
+- **PI customTools 注入无独立业务断言**：worker 已注入 39 个 PI ToolDefinition（typebox schema）；对话回路中真实工具调用依赖 LLM 发起（faux 模式不调用工具，agentProcess/agentDialogue 回归全绿验证注入不破坏会话创建）；工具面行为断言由 toolSurface.test.js 覆盖；真实 LLM 工具调用联调待 QA。
+- **打包产物冒烟**：命令模块静态 import 进 agent-worker bundle（vite.worker.config 未 external 本项目模块）；asar 产物中 worker 加载工具面 + 注册表发现主进程 server 的端到端冒烟待 QA（H1 已验 asar require 可用）。
+- **注册表发现依赖 ppid 归属**：生产 agent 子进程按 ppid = 主进程命中 server.json；多实例/异常归属场景由既有单 server 顶替机制兜底（REQ-WORKSPACE-009 回归全绿）。
+
+

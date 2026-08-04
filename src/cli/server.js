@@ -16,6 +16,20 @@ const __dirname = path.dirname(__filename);
 
 let managedServer = null;
 
+// 显式 baseUrl 覆盖（C2 注入 seam）：agent 工具面 / 测试直连指定的 HTTP API
+// （REQ-AGENT-012 标准 3「进程内 import 命令模块 → HTTP API」——命令模块内部
+// 调 ensureServer，覆盖层使其命中注入的 server）。优先级高于注册表发现；
+// null 恢复默认发现（生产 agent 子进程按 ppid 归属经注册表发现主进程 server）。
+let baseUrlOverride = null;
+
+export function setServerBaseUrlOverride(baseUrl) {
+  baseUrlOverride = baseUrl ? String(baseUrl) : null;
+}
+
+export function getServerBaseUrlOverride() {
+  return baseUrlOverride;
+}
+
 export { readServerInfo } from "../serverRegistry.js";
 
 function getOwner() {
@@ -102,6 +116,10 @@ export async function startHeadlessServer() {
 }
 
 export async function ensureServer() {
+  // 显式覆盖优先（agent 工具面注入 / 测试 seam）：跳过注册表发现与 headless 兜底。
+  if (baseUrlOverride) {
+    return { baseUrl: baseUrlOverride, managed: false, owner: "override" };
+  }
   const existing = await discoverServer();
   if (existing) return existing;
 
