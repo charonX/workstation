@@ -83,7 +83,7 @@
 
 **IPC 语义（W-6）**：
 - **并发**：同 sessionKey 的 prompt **排队串行**（PI 原生消息队列，`streamingBehavior: followUp`）；跨空间并行（多 session 协作式交错）。
-- **崩溃/重启中**：prompt 返回 `session-error {code: "restarting"}`，主进程缓存待会话就绪后重投；无法恢复的消息拒绝并提示稍后。
+- **崩溃/重启中**：prompt 返回 `session-error {code: "restarting"}` 并提示稍后重发（2026-08-04 签核补全：不做缓存自动重投——重启窗口短、手动重发可接受）。
 - **大小上限**：单条消息 ≤ 256KB（先行约束来自飞书文本消息 150KB 上限）；超限截断或降级为文件引用。
 - **secret 约束（F-1）**：key 经 `session-config` 一次性注入后**不落日志、不进 JSONL 会话文件**（子进程仅持内存值）。
 

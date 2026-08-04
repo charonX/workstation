@@ -70,7 +70,7 @@
   1. 主进程 spawn agent 子进程（H1 假设：asar 打包路径可 spawn）；子进程就绪后回 `ready`。
   2. 心跳超时或子进程 exit（任何退出码）→ 看门狗判定崩溃 → 自动重启子进程。
   3. 重启后各活跃空间按 `agent_sessions` 引用 + JSONL 恢复（`SessionManager.open`），只丢崩溃时流式中的半条消息（有断言）。
-  4. 重启期间到达的 prompt 返回 `session-error {code:"restarting"}`，主进程缓存、会话就绪后重投；不可恢复则拒绝并提示稍后。
+  4. 重启期间到达的 prompt 返回 `session-error {code:"restarting"}` 并提示稍后重发（2026-08-04 签核就地补全：不做缓存自动重投——重启窗口短、手动重发可接受；原"缓存+就绪后重投"语义由本修订接替）。
   5. 子进程异常日志（stderr）进主进程日志，不包含 key 值。
 - seam/测试：`tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/agentProcess.test.js`（真实 spawn + kill 断言重启恢复）。
 
