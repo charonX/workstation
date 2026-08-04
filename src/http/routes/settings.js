@@ -63,7 +63,9 @@ function loadPublicSettings() {
 // PUT /api/settings/agent：保存供应商/key/身份（校验失败 → E-CONFIG-INVALID）。
 // 变更广播（tech-design 数据流 7）：
 // - identity 变更 → 存量会话热更新（REQ-AGENT-004 标准 2：config-ack，不重建上下文）；
-// - provider/key 变更 → 存量会话重建 + 新 key 一次性注入（GAP 补全，2026-08-03 登记）。
+// - provider/key 变更 → 存量会话重建 + 新 key 一次性注入（GAP 补全，2026-08-03 登记）；
+//   值级变更检测在 agentService.broadcastConfigUpdate 内按会话当前值比较：值相同
+//   （客户端原样保存）→ 不重建（PRD 对齐缺口 3 / REQ-AGENT-004 AC2）。
 // key 明文仅经内存传递（不落日志）。
 function handleAgentConfigSave(req, res, body) {
   try {

@@ -19,7 +19,9 @@
 // GAP 补全（tech-design 数据流 7，2026-08-03 登记）：
 // broadcastConfigUpdate({ identity, provider, apiKey })——identity 变更 → 存量会话
 // 热更新 systemPrompt（不重建，REQ-AGENT-004 标准 2）；provider/key 变更 → 会话
-// 上下文重建（sessionRef 换代）+ 新 key 一次性注入（子进程重建，config-ack）。
+// 上下文重建（sessionRef 换代）+ 新 key 一次性注入（子进程重建，config-ack）；
+// 变更判定按各会话当前值比较（PRD 对齐缺口 3）：provider/apiKey 未实际变化
+// （客户端原样保存）→ 不重建。
 //
 // secret 约束（签核决策 5）：key 明文仅持内存（keySecrets），经 session-config
 // 一次性注入子进程，不落日志（sendToChild 只记消息类型）、不进 JSONL。
@@ -485,12 +487,17 @@ function createProcessAgentService(options = {}) {
     },
     // 配置变更广播（GAP 补全，tech-design 数据流 7）：
     // - identity 变更（仅）→ 存量会话热更新 systemPrompt，不重建（REQ-AGENT-004 标准 2）；
-    // - provider/key 变更 → 会话上下文重建（sessionRef 换代）+ 新 key 一次性注入。
+    // - provider/key 变更 → 会话上下文重建（sessionRef 换代）+ 新 key 一次性注入；
+    // - provider/apiKey 与各会话当前生效值逐一比较：值相同（客户端原样保存）→
+    //   不重建（PRD 对齐缺口 3 / REQ-AGENT-004 AC2「provider/key 未变则不重建」）。
     broadcastConfigUpdate({ identity, provider, apiKey }) {
       const identityChanged = typeof identity === "string";
-      const credsChanged = typeof provider === "string" || typeof apiKey === "string";
       for (const [spaceKey, session] of sessions) {
         if (identityChanged) session.identity = identity;
+        // 变更检测基准 = 会话当前值（provider + 内存明文 key）：均相同才视为未变。
+        const credsChanged =
+          (typeof provider === "string" && provider !== session.provider) ||
+          (typeof apiKey === "string" && apiKey !== keySecrets.get(session.keyRef));
         if (credsChanged) {
           const newProvider = typeof provider === "string" ? provider : session.provider;
           const newKey = typeof apiKey === "string" ? apiKey : keySecrets.get(session.keyRef);
