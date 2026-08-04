@@ -123,29 +123,36 @@ function buildSessionConfig(agentCfg) {
   };
 }
 
+// 命令用法提示（签核决策 6：/status <UUID>、/list [projectId|flowId] 可选过滤、
+// /reset /help 无参；非法参数随 E-CMD-INVALID 下发，payload.code = "E-CMD-INVALID"）。
+const COMMAND_USAGE = {
+  status: "用法：/status <executionId>（E-CMD-INVALID）",
+  list: "用法：/list [projectId|flowId]（E-CMD-INVALID）",
+  reset: "用法：/reset（E-CMD-INVALID）",
+  help: "用法：/help（E-CMD-INVALID）",
+};
+
 // —— 命令参数校验（PRD §7 / 签核决策 6）——
 // 非法 → E-CMD-INVALID 用法提示（payload.code = "E-CMD-INVALID"）；合法 → null。
+// /status 必须恰好 1 参且为 UUID；/list 至多 1 参（过滤）；/reset /help 无参。
 function validateCommand(command) {
-  switch (command.name) {
-    case "status": {
-      if (command.args.length !== 1) return "用法：/status <executionId>（E-CMD-INVALID）";
-      if (!UUID_RE.test(command.args[0])) {
-        return "用法：/status <executionId>（E-CMD-INVALID，executionId 需为 UUID 格式）";
-      }
-      return null;
+  const { name, args } = command;
+  if (name === "status") {
+    if (args.length !== 1) return COMMAND_USAGE.status;
+    if (!UUID_RE.test(args[0])) {
+      return `${COMMAND_USAGE.status}，executionId 需为 UUID 格式`;
     }
-    case "list":
-      if (command.args.length > 1) return "用法：/list [projectId|flowId]（E-CMD-INVALID）";
-      return null;
-    case "reset":
-      if (command.args.length > 0) return "用法：/reset（E-CMD-INVALID）";
-      return null;
-    case "help":
-      if (command.args.length > 0) return "用法：/help（E-CMD-INVALID）";
-      return null;
-    default:
-      return null;
+    return null;
   }
+  const usage = COMMAND_USAGE[name];
+  if (!usage) return null; // 未知命令（parseSlashCommand 已过滤，防御性兜底）
+  return args.length > (name === "list" ? 1 : 0) ? usage : null;
+}
+
+// 命令执行错误归一化（E-AGENT-CLI-ERROR 兜底）：executor 与 handleCommand 共用。
+// 返回结构化结果 { output: null, errorCode, errorMessage }。
+function toCommandError(err) {
+  return { output: null, errorCode: err?.code ?? "E-AGENT-CLI-ERROR", errorMessage: err?.message ?? String(err) };
 }
 
 // —— 命令结果格式化（REQ-AGENT-021：格式化回复）——
@@ -177,9 +184,22 @@ function formatCommandReply(name, args, result) {
   if (filtered.length === 0) {
     return filter ? `没有找到 ${filter} 的执行记录` : "（暂无执行记录）";
   }
-  return filtered
-    .map((e) => `- ${e.id} ${e.status ?? "?"} ${e.flowName ?? e.flowId ?? "?"} ${e.startedAt ?? ""}`.trimEnd())
-    .join("\n");
+  return filtered.map(formatListLine).join("\n");
+}
+
+// 执行列表摘要行（无值的字段省略尾随空格）。
+function formatListLine(e) {
+  return `- ${e.id} ${e.status ?? "?"} ${e.flowName ?? e.flowId ?? "?"} ${e.startedAt ?? ""}`.trimEnd();
+}
+
+// /status 查询（404 → 查无此执行，REQ-AGENT-021 标准 2 明确回复）。
+async function getExecutionOrNotFound(id) {
+  try {
+    return { output: await taskCommand.getExecution({ id }) };
+  } catch (err) {
+    if (err?.status === 404) return { output: null, notFound: true };
+    throw err;
+  }
 }
 
 // —— 生产命令执行层（C2 路径，U2：命令直通不再静默）——
@@ -193,26 +213,66 @@ function createCommandExecutor({ baseUrl } = {}) {
       const prev = getServerBaseUrlOverride();
       setServerBaseUrlOverride(baseUrl ?? null);
       try {
-        if (name === "status") {
-          try {
-            return { output: await taskCommand.getExecution({ id: args[0] }) };
-          } catch (err) {
-            // 404：查无此执行（REQ-AGENT-021 标准 2 明确回复）。
-            if (err?.status === 404) return { output: null, notFound: true };
-            throw err;
-          }
-        }
-        if (name === "list") {
-          return { output: await taskCommand.listExecutions() };
-        }
+        if (name === "status") return await getExecutionOrNotFound(args[0]);
+        if (name === "list") return { output: await taskCommand.listExecutions() };
         return { output: null, errorCode: "E-CMD-UNSUPPORTED", errorMessage: `不支持的命令：${name}` };
       } catch (err) {
-        return { output: null, errorCode: err?.code ?? "E-AGENT-CLI-ERROR", errorMessage: err?.message ?? String(err) };
+        return toCommandError(err);
       } finally {
         setServerBaseUrlOverride(prev);
       }
     },
   };
+}
+
+// 命令决策包装（REQ-AGENT-017 输出模型：payload = { command, message, ...extra }）。
+function commandDecision(command, message, extra = {}) {
+  return { action: "command", payload: { command, message, ...extra } };
+}
+
+// ② 命令识别 → 直通（REQ-AGENT-021/022）：主进程内调命令模块/服务，不经
+// LLM/agent 进程（签核决策 7）；未配 key 可用（REQ-AGENT-002 标准 2）。
+// 校验非法 → E-CMD-INVALID 用法提示（不执行命令）；合法 → 执行：
+// - 同步结果 → 格式化回复（payload.reply）；
+// - 异步结果（生产命令模块路径）→ payload.reply = 受理提示 +
+//   payload.commandReply = 执行完成后的真实格式化回复（imRouter 回投，U2）。
+// 依赖注入：executor（命令执行层）、getStore（会话存储惰性工厂）、spaceKeyFor。
+function handleCommand(command, { message, chatId }, { executor, getStore, spaceKeyFor }) {
+  const invalid = validateCommand(command);
+  if (invalid) {
+    return commandDecision(command, message, { reply: invalid, code: "E-CMD-INVALID" });
+  }
+  if (command.name === "help") {
+    return commandDecision(command, message, { reply: HELP_TEXT });
+  }
+  if (command.name === "reset") {
+    // /reset 复用 REQ-AGENT-010 语义：sessionStore.reset（仅当前空间，签核决策 17）；
+    // agentService 经 store.onReset 清上下文 + IPC reset-session（Slice 3 已接线）。
+    const store = getStore();
+    if (store?.reset) store.reset(spaceKeyFor(chatId));
+    return commandDecision(command, message, { reply: "已重置当前对话空间会话，可以开始新对话了" });
+  }
+  // status / list：命令模块执行层（C2 直通）。
+  let result;
+  try {
+    result = executor.execute(command.name, command.args);
+  } catch (err) {
+    result = toCommandError(err);
+  }
+  if (result && typeof result.then === "function") {
+    // 异步执行：route 同步返回受理提示；真实格式化回复经 commandReply 由 imRouter 回投
+    // （U2：生产 /status /list 命令直通不再静默）。
+    const replyPromise = Promise.resolve(result).then(
+      (r) => formatCommandReply(command.name, command.args, r),
+      (err) => formatCommandReply(command.name, command.args, toCommandError(err))
+    );
+    const argText = command.args.length ? ` ${command.args.join(" ")}` : "";
+    return commandDecision(command, message, {
+      reply: `命令已受理：/${command.name}${argText}`,
+      commandReply: replyPromise,
+    });
+  }
+  return commandDecision(command, message, { reply: formatCommandReply(command.name, command.args, result) });
 }
 
 export function createAgentRouter({
@@ -288,54 +348,6 @@ export function createAgentRouter({
     return null;
   };
 
-  // ② 命令识别 → 直通（REQ-AGENT-021/022）：主进程内调命令模块/服务，不经
-  // LLM/agent 进程（签核决策 7）；未配 key 可用（REQ-AGENT-002 标准 2）。
-  // 校验非法 → E-CMD-INVALID 用法提示（不执行命令）；合法 → 执行：
-  // - 同步结果 → 格式化回复（payload.reply）；
-  // - 异步结果（生产命令模块路径）→ payload.reply = 受理提示 +
-  //   payload.commandReply = 执行完成后的真实格式化回复（imRouter 回投，U2）。
-  const handleCommand = (command, { message, chatId }) => {
-    const invalid = validateCommand(command);
-    if (invalid) {
-      return { action: "command", payload: { command, message, reply: invalid, code: "E-CMD-INVALID" } };
-    }
-    if (command.name === "help") {
-      return { action: "command", payload: { command, message, reply: HELP_TEXT } };
-    }
-    if (command.name === "reset") {
-      // /reset 复用 REQ-AGENT-010 语义：sessionStore.reset（仅当前空间，签核决策 17）；
-      // agentService 经 store.onReset 清上下文 + IPC reset-session（Slice 3 已接线）。
-      const store = getStore();
-      if (store?.reset) store.reset(spaceKeyFor(chatId));
-      return { action: "command", payload: { command, message, reply: "已重置当前对话空间会话，可以开始新对话了" } };
-    }
-    // status / list：命令模块执行层（C2 直通）。
-    let result;
-    try {
-      result = executor.execute(command.name, command.args);
-    } catch (err) {
-      result = { errorCode: err?.code ?? "E-AGENT-CLI-ERROR", errorMessage: err?.message ?? String(err) };
-    }
-    if (result && typeof result.then === "function") {
-      // 异步执行：route 同步返回受理提示；真实格式化回复经 commandReply 由 imRouter 回投
-      // （U2：生产 /status /list 命令直通不再静默）。
-      const replyPromise = Promise.resolve(result).then(
-        (r) => formatCommandReply(command.name, command.args, r),
-        (err) =>
-          formatCommandReply(command.name, command.args, {
-            errorCode: err?.code ?? "E-AGENT-CLI-ERROR",
-            errorMessage: err?.message ?? String(err),
-          })
-      );
-      const argText = command.args.length ? ` ${command.args.join(" ")}` : "";
-      return {
-        action: "command",
-        payload: { command, message, reply: `命令已受理：/${command.name}${argText}`, commandReply: replyPromise },
-      };
-    }
-    return { action: "command", payload: { command, message, reply: formatCommandReply(command.name, command.args, result) } };
-  };
-
   return {
     route({ message, chatId, senderId, channelType }) {
       const cfg = getSettings() ?? {};
@@ -347,7 +359,7 @@ export function createAgentRouter({
 
       // ② 命令识别（REQ-AGENT-021/022 直通，不经 LLM；未配 key 可用，签核决策 7）。
       if (command) {
-        return handleCommand(command, { message, chatId });
+        return handleCommand(command, { message, chatId }, { executor, getStore, spaceKeyFor });
       }
 
       // ③ 会话分发前 key 检查（REQ-AGENT-002 标准 1）：未配 key 且尚无绑定 →
