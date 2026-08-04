@@ -26,15 +26,26 @@
 // secret 约束（签核决策 5）：key 明文仅持内存（keySecrets），经 session-config
 // 一次性注入子进程，不落日志（sendToChild 只记消息类型）、不进 JSONL。
 // ADR-009：惰性初始化，无顶层 env/磁盘读取；模块级仅持有活跃服务引用。
+//
+// Slice 3（REQ-AGENT-008~011）：会话存储与恢复——
+// - sessionStore（SQLite agent_sessions）为真相，本服务注册表仅为活跃句柄缓存；
+//   未显式注入 sessionStore 时按 cwd 派生默认库（测试隔离：随 cwd 临时目录）；
+// - 内存内核维护每空间上下文（getContext）、JSONL 持久化（PI 兼容 message 行）、
+//   滚动摘要压缩（compressionThreshold + summarize 可注入，REQ-AGENT-011）；
+// - 进程形态：start 就绪后按 agent_sessions 行水合会话（SessionManager.open
+//   恢复，JSONL 缺失 → 新建 + recoveryHint，REQ-AGENT-009）；/reset 经
+//   store.onReset 通知 → IPC reset-session + sessionRef 换代（REQ-AGENT-010）。
 
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
+import { createSessionStore, generationFromRef, sessionRefFor } from "./sessionStore.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 const DEFAULT_MODELS = {
@@ -59,6 +70,31 @@ const RETRY_STATUSES = new Set([408, 409, 429]);
 const MAX_LLM_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 50;
 const RETRY_MAX_DELAY_MS = 300;
+
+// 滚动摘要压缩（REQ-AGENT-011）：上下文消息数超过阈值 → 旧消息折叠为摘要注入
+// （平台侧驱动，PI 无原生摘要；实现常量可注入断言——签核决策 17）。
+const DEFAULT_COMPRESSION_THRESHOLD = 30;
+
+// 默认摘要器（确定性截断，无注入 summarize 时的兜底；关键信息保留前 500 字符）。
+function defaultSummarize(folded) {
+  const text = folded
+    .map((m) => (typeof m?.content === "string" ? m.content : ""))
+    .filter(Boolean)
+    .join(" | ");
+  return `[摘要] 较早的 ${folded.length} 条消息已折叠：${text.slice(0, 500)}`;
+}
+
+// PI 兼容 JSONL message 行（message_end 落盘格式；平台侧不复制全文，仅转发文本）。
+function appendJsonlMessage(ref, { role, content }) {
+  const line = JSON.stringify({
+    type: "message",
+    id: randomUUID(),
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message: { role, content: [{ type: "text", text: content }], timestamp: Date.now() },
+  });
+  fs.appendFileSync(ref, `${line}\n`);
+}
 
 // 活跃服务实例：HTTP 路由层经广播函数热更新存量会话（REQ-AGENT-004 / 数据流 7）。
 let activeService = null;
@@ -118,13 +154,9 @@ function createSessionHandle(fields) {
 }
 
 // JSONL 会话引用（REQ-AGENT-008 接口契约：sessionRef = JSONL 路径）。
-// 按空间 key 稳定生成；generation 仅在 provider/key 变更重建时递增
+// 命名规范与 sessionStore 共用（sessionStore.js 导出）：按空间 key 稳定生成；
+// generation 仅在 provider/key 变更重建或 /reset 时递增
 // （tech-design 数据流 7；REQ-AGENT-004 标准 2：未变不重建）。
-function sessionRefFor(sessionDir, spaceKey, generation = 1) {
-  const safeKey = String(spaceKey).replace(/[^a-zA-Z0-9_-]/g, "_");
-  const suffix = generation > 1 ? `.${generation}` : "";
-  return path.join(sessionDir, `${safeKey}${suffix}.jsonl`);
-}
 
 // keyRef 命名（provider + JSONL 世代）：key 明文按 keyRef 索引仅持内存
 // （一次性注入语义，不落盘/不落日志/不进 JSONL）。
@@ -136,13 +168,32 @@ function defaultSessionDir() {
   return path.join(settingsService.configDir(), "agent-sessions");
 }
 
-// —— 内存版对话内核（REQ-AGENT-006/007 单元 seam，不 spawn 真进程）——
+// —— 内存版对话内核（REQ-AGENT-006/007/008/010/011 单元 seam，不 spawn 真进程）——
 // provider = { respond() }：脚本化响应（等价 pi-ai fauxProvider，H3 seam）。
-// 对话内核实现契约行为：排队串行/跨空间并行/流式按序/工具事件/重试/错误结构化/截断。
+// 对话内核实现契约行为：排队串行/跨空间并行/流式按序/工具事件/重试/错误结构化/截断
+// + 每空间上下文（getContext，REQ-AGENT-008 标准 3 隔离）+ JSONL 持久化（B1，
+// 仅当注入 sessionStore）+ 滚动摘要压缩（REQ-AGENT-011，threshold/summarize 可注入）
+// + /reset 监听（REQ-AGENT-010，store.reset → 清当前空间上下文）。
 function createInMemoryAgentService(options = {}) {
   const sessionDir = options.sessionDir ?? defaultSessionDir();
   const sessions = new Map(); // spaceKey → 会话句柄
   const queues = new Map(); // spaceKey → promise 链（排队串行）
+  const store = options.sessionStore;
+  const compressionThreshold = Number.isFinite(Number(options.compressionThreshold))
+    ? Number(options.compressionThreshold)
+    : DEFAULT_COMPRESSION_THRESHOLD;
+
+  // store.reset(spaceKey) → 清当前空间会话上下文（REQ-AGENT-010 标准 1/2：
+  // 仅当前空间，其他空间行/上下文不受影响）。
+  if (store?.onReset) {
+    store.onReset((spaceKey, info) => {
+      const session = sessions.get(spaceKey);
+      if (!session) return;
+      session.context = [];
+      session.summaryRef = undefined;
+      if (info?.sessionRef) session.sessionRef = info.sessionRef;
+    });
+  }
 
   function emitError(session, err = {}) {
     const code =
@@ -152,6 +203,11 @@ function createInMemoryAgentService(options = {}) {
   }
 
   async function runTurn(session, text) {
+    // 上下文追加 + JSONL 持久化（REQ-AGENT-008 标准 4：消息经 JSONL 落盘；
+    // 平台侧不复制全文——SQLite 行无消息列）。
+    session.context.push({ role: "user", content: text });
+    if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role: "user", content: text });
+    let finalText;
     for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
       let result;
       try {
@@ -172,12 +228,33 @@ function createInMemoryAgentService(options = {}) {
           continue;
         }
         emitError(session, err);
-        return;
+        return undefined;
       }
       for (const ev of result) {
+        if (ev.type === "text_end" && typeof ev.content === "string") finalText = ev.content;
         session.emit("session-event", enforceSizeLimit(ev));
       }
-      return;
+      break;
+    }
+    if (finalText !== undefined) {
+      session.context.push({ role: "assistant", content: finalText });
+      if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role: "assistant", content: finalText });
+    }
+    compressIfNeeded(session);
+    return finalText;
+  }
+
+  // 滚动摘要压缩（REQ-AGENT-011）：上下文消息数超过阈值 → 旧消息折叠为摘要注入
+  // 后续 prompt（summarize 注入断言，默认确定性截断）；摘要索引写 agent_sessions
+  // summaryRef；压缩对用户无感（对话不打断）。
+  function compressIfNeeded(session) {
+    if (compressionThreshold <= 0) return;
+    if (session.context.length <= compressionThreshold) return;
+    const folded = session.context.slice(0, session.context.length - compressionThreshold);
+    const summaryText = session.summarize(folded);
+    session.context = [{ role: "summary", content: summaryText }, ...session.context.slice(-compressionThreshold)];
+    if (store?.updateSummaryRef) {
+      store.updateSummaryRef(session.spaceKey, `summary:${folded.length}:${session.context.length}`);
     }
   }
 
@@ -189,16 +266,24 @@ function createInMemoryAgentService(options = {}) {
   }
 
   const service = {
-    createSession({ spaceKey, provider, identity }) {
+    createSession({ spaceKey, provider, identity, summarize }) {
       const existing = sessions.get(spaceKey);
       if (existing) return existing;
+      const info = store?.getOrCreate ? store.getOrCreate(spaceKey, { sessionDir }) : null;
       const session = createSessionHandle({
         spaceKey,
         provider,
         identity: typeof identity === "string" ? identity : undefined,
-        sessionRef: sessionRefFor(sessionDir, spaceKey),
+        sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey),
         model: "in-memory",
+        context: [],
+        summarize: typeof summarize === "function" ? summarize : defaultSummarize,
+        // 仅注入 sessionStore 时持久化 JSONL（无 store 的单元 seam 不落盘）。
+        persistJsonl: !!info,
       });
+      if (info?.recoveryHint) session.recoveryHint = info.recoveryHint;
+      // 会话上下文（REQ-AGENT-008 标准 3 隔离断言 / REQ-AGENT-010 / REQ-AGENT-011）。
+      session.getContext = () => session.context;
       sessions.set(spaceKey, session);
       return session;
     },
@@ -209,8 +294,8 @@ function createInMemoryAgentService(options = {}) {
       const session = sessions.get(spaceKey);
       if (!session) return Promise.reject(noSessionError());
       return enqueue(spaceKey, async () => {
-        await runTurn(session, text);
-        return { ok: true, sessionKey: spaceKey };
+        const reply = await runTurn(session, text);
+        return { ok: true, sessionKey: spaceKey, ...(reply !== undefined ? { reply } : {}) };
       });
     },
     broadcastConfigUpdate({ identity }) {
@@ -240,9 +325,13 @@ function createProcessAgentService(options = {}) {
   const inElectron = typeof process.versions?.electron === "string";
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   // H1：打包 = ELECTRON_RUN_AS_NODE + asar 内 bundle；开发/测试 = node <源码入口>。
-  const entry =
-    options.entry ??
-    (inElectron ? path.join(__dirname, "agent-worker.js") : path.join(__dirname, "../agent/worker.js"));
+  // 显式传入的 entry 路径不存在（测试 seam 常见：仅占位路径）→ 回退内置 worker 入口。
+  const defaultEntry = inElectron
+    ? path.join(__dirname, "agent-worker.js")
+    : path.join(__dirname, "../agent/worker.js");
+  const entry = options.entry
+    ? (fs.existsSync(options.entry) ? options.entry : defaultEntry)
+    : defaultEntry;
 
   const emitter = new EventEmitter();
   const sessions = new Map(); // spaceKey → 会话句柄
@@ -250,6 +339,53 @@ function createProcessAgentService(options = {}) {
   const generation = new Map(); // spaceKey → JSONL 世代（provider/key 变更重建）
   const pendingPrompts = new Map(); // prompt id → { resolve, reject }
   const logs = [];
+
+  // 会话存储（REQ-AGENT-008/009）：SQLite agent_sessions 为真相（W-3），本服务
+  // 注册表仅为活跃句柄缓存。未显式注入时按 cwd 派生默认库（随工作目录隔离，
+  // 测试不污染 ~/.opc-workstation/data.db；生产接线由主进程注入应用库——Slice 5）。
+  // ADR-009：惰性创建——仅首次真正需要（createSession/ready 水合/重建）时开库。
+  let defaultStore = null;
+  let resetListenerRegistered = false;
+
+  function handleReset(spaceKey, info) {
+    // /reset（REQ-AGENT-010）：store 换代后 → IPC reset-session（worker dispose）+
+    // 本地句柄换代 + 重新下发 session-config（新 JSONL，空上下文）。
+    const session = sessions.get(spaceKey);
+    if (!session || !info?.sessionRef) return;
+    sendToChild({ type: "reset-session", sessionKey: spaceKey });
+    const gen = generationFromRef(info.sessionRef);
+    generation.set(spaceKey, gen);
+    const newKeyRef = keyRefFor(session.provider, gen);
+    const oldKey = keySecrets.get(session.keyRef);
+    keySecrets.delete(session.keyRef);
+    session.keyRef = newKeyRef;
+    if (oldKey !== undefined) keySecrets.set(newKeyRef, oldKey);
+    session.sessionRef = info.sessionRef;
+    delete session.recoveryHint;
+    sendToChild(buildConfigMessage(spaceKey, session));
+  }
+
+  function getStore() {
+    if (options.sessionStore) {
+      if (!resetListenerRegistered && options.sessionStore.onReset) {
+        options.sessionStore.onReset(handleReset);
+        resetListenerRegistered = true;
+      }
+      return options.sessionStore;
+    }
+    if (fakeIpc) return null; // 内存版 IPC（Slice 1 单元 seam）：无真实会话存储。
+    if (!defaultStore) {
+      defaultStore = createSessionStore({
+        dbPath: path.join(cwd, ".agent-home", "agent-sessions.db"),
+        sessionDir,
+      });
+      if (defaultStore.onReset) {
+        defaultStore.onReset(handleReset);
+        resetListenerRegistered = true;
+      }
+    }
+    return defaultStore;
+  }
 
   let child = null;
   let state = fakeIpc ? "ready" : "stopped"; // stopped | starting | ready | restarting
@@ -392,6 +528,32 @@ function createProcessAgentService(options = {}) {
         for (const [spaceKey, session] of sessions) {
           sendToChild(buildConfigMessage(spaceKey, session));
         }
+        // 应用/子进程重启后：按 SQLite agent_sessions 行水合会话（SQLite 为真相，
+        // W-3；REQ-AGENT-009 标准 1：SessionManager.open 恢复上下文）。JSONL
+        // 缺失/损坏 → getOrCreate 换代新建 + recoveryHint（REQ-AGENT-009 标准 2）。
+        {
+          const store = getStore();
+          if (store) {
+            for (const row of store.list()) {
+              if (sessions.has(row.spaceKey)) continue;
+              const info = store.getOrCreate(row.spaceKey, { sessionDir });
+              const gen = generationFromRef(info.sessionRef);
+              generation.set(info.spaceKey, gen);
+              const provider = settingsService.loadAgentConfig().provider || "deepseek";
+              const session = createSessionHandle({
+                spaceKey: info.spaceKey,
+                provider,
+                model: DEFAULT_MODELS[provider] ?? provider,
+                keyRef: keyRefFor(provider, gen),
+                identity: settingsService.loadAgentConfig().identity,
+                sessionRef: info.sessionRef,
+              });
+              if (info.recoveryHint) session.recoveryHint = info.recoveryHint;
+              sessions.set(info.spaceKey, session);
+              sendToChild(buildConfigMessage(info.spaceKey, session));
+            }
+          }
+        }
         break;
       case "pong":
         lastPongAt = Date.now();
@@ -420,7 +582,13 @@ function createProcessAgentService(options = {}) {
         if (!pending) break;
         pendingPrompts.delete(msg.id);
         if (msg.ok) {
-          pending.resolve({ ok: true, sessionKey: msg.sessionKey });
+          // reply = 本轮回复最终文本（text_end.content，worker 侧收集）；
+          // 无文本（静默失败等）时缺省，与内存版「事件即结果」语义一致。
+          pending.resolve({
+            ok: true,
+            sessionKey: msg.sessionKey,
+            ...(msg.reply !== undefined ? { reply: msg.reply } : {}),
+          });
         } else {
           // LLM 失败等：错误已以 error 事件回传，prompt 侧 resolve 保持
           // 与内存版一致的「事件即结果」语义（会话存活可继续，REQ-AGENT-007 标准 1）。
@@ -452,6 +620,7 @@ function createProcessAgentService(options = {}) {
 
   // 会话上下文重建（tech-design 数据流 7）：sessionRef 换代 + 新 key 一次性注入
   // （旧 keyRef 明文从内存注销；下轮 session-config 由主进程重新下发）。
+  // SQLite 为真相：换代同步更新 agent_sessions.sessionRef（store 存在时）。
   function rebuildSession(spaceKey, session, newProvider, newKey) {
     const oldKeyRef = session.keyRef;
     const gen = (generation.get(spaceKey) ?? 1) + 1;
@@ -463,6 +632,8 @@ function createProcessAgentService(options = {}) {
     if (newKey !== undefined) keySecrets.set(session.keyRef, newKey);
     keySecrets.delete(oldKeyRef);
     session.rebuilt = true;
+    const store = getStore();
+    if (store?.updateSessionRef) store.updateSessionRef(spaceKey, session.sessionRef);
   }
 
   function startHeartbeat() {
@@ -476,10 +647,15 @@ function createProcessAgentService(options = {}) {
       return service;
     },
     // 创建/复用空间会话。已有空间返回同一会话句柄（不重复下发）。
+    // SQLite 为真相：首次对话经 store.getOrCreate 建行 + JSONL 占位
+    // （REQ-AGENT-008 标准 2）；sessionRef 以表行为准。
     createSession({ spaceKey, provider, apiKey, identity }) {
       const existing = sessions.get(spaceKey);
       if (existing) return existing;
-      const gen = generation.get(spaceKey) ?? 1;
+      const store = getStore();
+      const info = store ? store.getOrCreate(spaceKey, { sessionDir }) : null;
+      const gen = info ? generationFromRef(info.sessionRef) : (generation.get(spaceKey) ?? 1);
+      generation.set(spaceKey, gen);
       const keyRef = keyRefFor(provider, gen);
       if (apiKey) keySecrets.set(keyRef, apiKey);
       const session = createSessionHandle({
@@ -488,8 +664,9 @@ function createProcessAgentService(options = {}) {
         model: DEFAULT_MODELS[provider] ?? provider,
         keyRef,
         identity: identity ?? settingsService.loadAgentConfig().identity,
-        sessionRef: sessionRefFor(sessionDir, spaceKey, gen),
+        sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey, gen),
       });
+      if (info?.recoveryHint) session.recoveryHint = info.recoveryHint;
       sessions.set(spaceKey, session);
       sendToChild(buildConfigMessage(spaceKey, session));
       return session;

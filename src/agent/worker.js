@@ -29,7 +29,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { fauxProvider } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
@@ -137,10 +137,34 @@ function mapToContractEvent(ev) {
   }
 }
 
+// 每会话最近一轮回复最终文本（text_end.content）——prompt-result 回传主进程，
+// 供调用方拿到本轮回复文本（REQ-AGENT-006/009 断言用）。
+const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
+
 function forwardEvent(sessionKey, ev) {
   const mapped = mapToContractEvent(ev);
   if (!mapped) return;
+  if (mapped.type === "text_end") lastReplies.set(sessionKey, mapped.content);
   send({ type: "session-event", sessionKey, event: limitSize(mapped) });
+}
+
+// FAUX 测试 seam（H3）的确定性回复：上下文回声——把本次模型可见的
+// system prompt 与全部消息序列化回传。零网络且可断言「回复引用了恢复前
+// 上下文」（REQ-AGENT-009 恢复语义的对话侧验证）。
+function fauxEchoFor(context) {
+  const parts = [];
+  if (context.systemPrompt) parts.push(`system:${context.systemPrompt}`);
+  for (const m of context.messages) {
+    const content = m.content;
+    if (typeof content === "string") {
+      parts.push(`${m.role}:${content}`);
+    } else if (Array.isArray(content)) {
+      parts.push(`${m.role}:${content.map((b) => (b.type === "text" ? b.text : `[${b.type}]`)).join("")}`);
+    } else {
+      parts.push(`${m.role}:`);
+    }
+  }
+  return fauxAssistantMessage(parts.join("\n"));
 }
 
 // ModelRuntime 单例：authPath 重定向（防 ~/.pi 污染，H2）；faux 注册（H3 seam）。
@@ -297,9 +321,18 @@ async function handlePrompt(msg) {
   }
   await enqueueSession(sessionKey, async () => {
     try {
+      // FAUX 测试 seam：每轮排队一个上下文回声响应（确定性、零网络）。
+      if (FAUX_MODE) fauxHandle.appendResponses([fauxEchoFor]);
       // 回复文本经 message_update 事件回传（session.prompt 返回 void，spike H3）。
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
-      send({ type: "prompt-result", id, sessionKey, ok: true });
+      const reply = lastReplies.get(sessionKey);
+      send({
+        type: "prompt-result",
+        id,
+        sessionKey,
+        ok: true,
+        ...(reply !== undefined ? { reply } : {}),
+      });
     } catch (err) {
       // REQ-AGENT-007：供应商失败/超时/限流 → 结构化错误消息，进程不崩、会话存活。
       const reason = err?.message ?? String(err);
@@ -337,6 +370,18 @@ rl.on("line", (line) => {
   messageQueue.enqueue(() => handleMessage(msg));
 });
 
+// /reset（REQ-AGENT-010）：dispose 并释放当前空间会话；主进程随后以下发的
+// 新 sessionRef（世代 +1）重新 session-config → 新建空上下文会话。
+async function handleResetSession(msg) {
+  const entry = sessions.get(msg.sessionKey);
+  if (entry) {
+    await disposeSession(entry);
+    sessions.delete(msg.sessionKey);
+    lastReplies.delete(msg.sessionKey);
+    log(`reset-session session=${msg.sessionKey}`);
+  }
+}
+
 async function handleMessage(msg) {
   switch (msg.type) {
     case "session-config":
@@ -356,6 +401,9 @@ async function handleMessage(msg) {
       break;
     case "prompt":
       await handlePrompt(msg);
+      break;
+    case "reset-session":
+      await handleResetSession(msg);
       break;
     case "ping":
       send({ type: "pong" });
