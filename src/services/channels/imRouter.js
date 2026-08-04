@@ -74,7 +74,9 @@ export function createImRouter({
   taskService = defaultTaskService,
   channelBindingService = defaultBindingService,
   flowService = defaultFlowService,
-  notificationService = defaultNotificationService
+  notificationService = defaultNotificationService,
+  agentRouter,
+  agentService
 } = {}) {
   const replyFn = async (payload) => {
     if (channelManager && typeof channelManager.reply === "function") {
@@ -94,8 +96,65 @@ export function createImRouter({
     }
   }
 
+  // agent 优先路由（REQ-AGENT-017，REQ-CHANNEL-002 接替，2026-08-03 拍板）：
+  // 去重后全量进 agentRouter（绑定检查 → 命令识别 → 会话分发），不再因命中
+  // channel_bindings 直接 createTask（绑定降级为默认目标候选，agentRouter 侧读取）。
+  // agentService 为服务对象或惰性工厂（生产接线：首次对话才创建并 start() 子进程，
+  // ADR-009）。路由失败 → 回调内直接返回（复用 REQ-CHANNEL-002 3 秒回调语义）。
+  async function routeToAgent(msg) {
+    let decision;
+    try {
+      decision = agentRouter.route({
+        message: msg.text,
+        text: msg.text,
+        chatId: msg.chatId,
+        senderId: msg.senderId,
+        channelType: msg.channelType ?? "feishu"
+      });
+    } catch (err) {
+      console.error("[imRouter] agentRouter 路由失败:", err.message);
+      return;
+    }
+    const payload = decision?.payload ?? {};
+    if (decision.action === "reject") {
+      const text = payload.message ?? `操作被拒绝（${payload.error ?? "E-AGENT-REJECT"}）`;
+      await safeReply({ messageId: msg.messageId, text }, "agent reject");
+      return;
+    }
+    if (decision.action === "command") {
+      // 命令直通（REQ-AGENT-021/022）执行与格式化回复由 Slice 6 落地；此处仅透传
+      // 路由层已附带的回复（如有），避免本 slice 吞掉路由结果。
+      if (payload.reply) {
+        await safeReply({ messageId: msg.messageId, text: payload.reply }, "agent command");
+      }
+      return;
+    }
+    if (payload.reply) {
+      // 绑定成功等系统回执：直接回复，不进 agent turn。
+      await safeReply({ messageId: msg.messageId, text: payload.reply }, "agent reply");
+      return;
+    }
+    if (!agentService) return; // 单元 seam：未接线 agentService 不驱动对话。
+    const spaceKey = payload.spaceKey ?? `feishu:${msg.chatId}`;
+    const config = payload.sessionConfig ?? {};
+    try {
+      const svc = typeof agentService === "function" ? await agentService() : agentService;
+      svc.createSession({
+        spaceKey,
+        provider: config.provider,
+        apiKey: config.apiKey,
+        identity: config.identity
+      });
+      await svc.prompt(spaceKey, payload.message ?? msg.text).catch((err) => {
+        console.error(`[imRouter] agent prompt 失败 session=${spaceKey}:`, err.message);
+      });
+    } catch (err) {
+      console.error("[imRouter] agent dialogue 失败:", err.message);
+    }
+  }
+
   const messageHandler = async (msg) => {
-    const { messageId, chatId, senderId, text } = msg || {};
+    const { messageId } = msg || {};
     if (!messageId) return;
 
     if (!recordInboundMessage(messageId)) {
@@ -103,6 +162,15 @@ export function createImRouter({
       return;
     }
 
+    if (agentRouter) {
+      // agent 优先路由（REQ-AGENT-017）：去重（沿用 channel_messages）→ agentRouter
+      // （绑定检查 → 命令识别 → 会话分发）→ agentService.prompt。
+      await routeToAgent(msg);
+      return;
+    }
+
+    // 未接线 agent 的既有语义（REQ-CHANNEL-002 原样保留：命中绑定 → createTask；
+    // 生产接线后不再到达此路径——本分支服务于未注入 agentRouter 的既有调用方）。
     const binding = channelBindingService.getBinding("feishu");
     if (!binding) {
       await safeReply({ messageId, text: "未绑定链接速存 flow，请先从模板创建" }, "no-binding hint");

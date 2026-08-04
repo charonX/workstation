@@ -9,8 +9,8 @@
 | 1 | 配置与身份（供应商/key/身份 + session-config IPC） | REQ-AGENT-001~004 | M1 | complete |
 | 2 | agent 进程与对话内核（看门狗/回路/LLM 错误） | REQ-AGENT-005~007 | M1 | complete |
 | 3 | 会话存储与恢复（空间模型/恢复/重置/压缩） | REQ-AGENT-008~011 | M1 | complete |
-| 4 | 工具面（riskLevel 注入 + release 拒绝） | REQ-AGENT-012~013 | M1 | pending |
-| 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | pending |
+| 4 | 工具面（riskLevel 注入 + release 拒绝） | REQ-AGENT-012~013 | M1 | complete |
+| 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | implemented*（3 例红 = 签核 helper 契约冲突待裁决） |
 | 6 | 命令直通 | REQ-AGENT-021~022 | M3 | pending |
 | 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | pending |
 | 8 | 绑定与确认 | REQ-AGENT-014~016 | M3 | pending |
@@ -194,5 +194,45 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 - **PI customTools 注入无独立业务断言**：worker 已注入 39 个 PI ToolDefinition（typebox schema）；对话回路中真实工具调用依赖 LLM 发起（faux 模式不调用工具，agentProcess/agentDialogue 回归全绿验证注入不破坏会话创建）；工具面行为断言由 toolSurface.test.js 覆盖；真实 LLM 工具调用联调待 QA。
 - **打包产物冒烟**：命令模块静态 import 进 agent-worker bundle（vite.worker.config 未 external 本项目模块）；asar 产物中 worker 加载工具面 + 注册表发现主进程 server 的端到端冒烟待 QA（H1 已验 asar require 可用）。
 - **注册表发现依赖 ppid 归属**：生产 agent 子进程按 ppid = 主进程命中 server.json；多实例/异常归属场景由既有单 server 顶替机制兜底（REQ-WORKSPACE-009 回归全绿）。
+
+### Slice 5：路由与飞书入口（REQ-AGENT-017~018）
+
+- 状态：**DONE_WITH_CONCERNS**（agentRoute.test.js 4/7 绿；3 例红 = 签核测试 helper 与 REQ-FLOW 校验的契约冲突，登记见下，父代理裁决；既有 479 绿除 imRouting AC6 接替外零回归——基线对比验证：stash 前后 510 总数一致，仅 AC6 由绿转红）
+- 验证记录（2026-08-04）：
+  - agentRoute.test.js 7 it：REQ-AGENT-018 三例 + REQ-AGENT-017「去重进 agentRouter」「命中绑定不再 createTask」「buildToolContext」绿（4/7）；「手动/定时/调试触发回归」+ 其余两例依赖同一 helper，被签核测试冲突阻塞（见下）。
+  - **旧 imRouting 测试接替影响（1 例）**：`imRouting.test.js` AC6（production path——channelManager → eventBus → imRouter 创建 trigger=channel 执行）红。旧语义「生产 IM 消息命中绑定 → createTask」→ 新语义「全量进 agent 对话（本测试未配 key → E-AGENT-NO-KEY 拒绝）」。接替依据：requirements.md 契约修订声明（REQ-CHANNEL-002 接替）+ PRD §13 + REQ-AGENT-017 标准 2。同文件 AC1（去重）/AC2/AC3/AC4×3/AC5 与 REQ-CHANNEL-004 全部保持绿（未接线 agent 的 imRouter 单元 seam 保留旧语义路径）；linkCapture.test.js（REQ-COLL-002）全绿。
+  - **签核测试 helper 契约冲突（3 例，阻塞）**：agentRoute.test.js 的 `createProjectFlow` helper 创建 feishuMessage 节点只声明 1 个 outputVariable（text），而 REQ-FLOW 已签校验（flowService FEISHU_MESSAGE_REQUIRED_OUTPUTS = [text, sender, messageId]；feishuMessageNode.test.js 断言「缺少 messageId 应被拒绝」）要求 3 个 → POST /api/flows 400 → flow.id undefined → 「命中绑定不再直接 createTask」「绑定作为默认目标候选」「手动/定时/调试回归」3 例红。实现侧无合法修复（放宽校验违反 REQ-FLOW 已签契约；测试文件实现者只读）。**建议（父代理裁决）**：`[test]` 就地补全 helper——节点 outputVariables 补 `{name:"sender"}` / `{name:"messageId"}`（与 imRouting.test.js 同款 helper 一致，零断言变更）；此前被缺 seam 掩盖（Slice 1~4 该文件以 seam 缺失快速失败，未暴露 helper 问题）。
+
+| PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
+|---|---|---|---|
+| REQ-AGENT-017 AC1 收到 im.message.receive_v1 → 去重（沿用 channel_messages）→ agentRouter：绑定检查 → 命令识别 → 会话分发 | src/services/channels/imRouter.js（routeToAgent：去重后全量进 agentRouter.route，agentRouter 注入选项；agentRouter 缺省 → 旧语义路径保留） | agentRoute.test.js「消息去重后进 agentRouter」 | COVERED |
+| REQ-AGENT-017 AC2 不再因命中 channel_bindings 直接 createTask（旧 REQ-CHANNEL-002 接替）；绑定数据仍可读，作为默认目标候选注入工具上下文 | imRouter.js（agentRouter 注入后跳过绑定→createTask 路径）+ src/services/agentRouter.js（buildToolContext → { defaultTarget: { flowId, projectId } }） | agentRoute.test.js「命中绑定不再直接 createTask」「绑定作为默认目标候选」 | COVERED（断言绿；「命中绑定」例依赖 helper，见阻塞登记） |
+| REQ-AGENT-017 AC3 消息路由失败（去重/解析异常）→ 复用现有通道错误处理（3 秒内回调返回） | imRouter.js（routeToAgent try/catch，回调内同步返回） | 无独立断言（AC5 回归覆盖回调时延语义） | COVERED |
+| REQ-AGENT-017 AC4 手动/定时/调试触发路径不受影响（回归） | 不动：POST /api/executions（manual）+ /api/flows/:id/debug + scheduler → createTask 保持 | agentRoute.test.js「手动/定时/调试触发路径不受影响」 | BLOCKED（断言依赖 helper 建 flow，见冲突登记；路径本身未改，imRouting/linkCapture 回归全绿佐证） |
+| REQ-AGENT-018 AC1 空间 key = feishu:<chatId>；单聊与每个群聊各自独立 | agentRouter.js（spaceKeyFor(chatId)） | agentRoute.test.js「空间 key = feishu:<chatId>」 | COVERED |
+| REQ-AGENT-018 AC2 绑定用户在群聊发言 → 群空间对话；同群他人 → E-AUTH-NOT-BOUND 拒绝（不影响群空间） | agentRouter.js（最小绑定检查：in-memory 状态机——beginBinding arming → 下一条消息绑定；已有绑定 → 非绑定者 reject E-AUTH-NOT-BOUND，先于命令识别；拒绝 payload 不含 spaceKey） | agentRoute.test.js「绑定用户在群聊发言 → 群空间对话；同群他人 → 拒绝」 | COVERED |
+| REQ-AGENT-018 AC3 空间不存在自动创建（首次对话）；创建时下发 session-config（供应商/key/身份） | agentRouter.js（dialogue payload.sessionConfig = { provider, apiKey, systemPrompt }；apiKey 解密一次性注入，未配置时占位 NOT_CONFIGURED）+ imRouter.js → agentService.createSession（agent_sessions 行 + PI JSONL 自动创建，REQ-AGENT-008） | agentRoute.test.js「空间不存在自动创建 + 下发 session-config」 | COVERED |
+| PRD §13 REQ-CHANNEL-002 修订声明（绑定不再直接触发，降级默认目标候选；去重与 3 秒回调保留复用） | imRouter.js + agentRouter.js（见 AC1/AC2 行）+ src/http/server.js（生产接线 agentRouter） | agentRoute.test.js + imRouting.test.js（AC1/AC5 保留绿，AC6 接替红） | COVERED（接替已落；AC6 接替影响登记见验证记录） |
+| PRD §6 数据流 1（消息对话 happy path：imRouter → agentRouter → 会话分发 → IPC prompt → agent 子进程） | server.js（agentRouter + 惰性 agentService 工厂接线 imRouter）+ imRouter.js（dialogue → createSession + prompt） | agentRoute.test.js（路由层）+ agentProcess/agentDialogue（内核层，回归） | COVERED（链路真实走通，无 mock；卡片回投属 Slice 7） |
+| PRD §10 决策 D1（主进程路由层三纯函数：绑定检查 → 命令识别 → 会话分发；命令直通不占 LLM turn，未配 key 可用） | agentRouter.js（route 顺序：①绑定检查 → ②命令识别 → ③key 检查（无绑定态时）→ ④会话分发） | agentConfig.test.js「未配置 key 时对话 E-AGENT-NO-KEY」「斜杠命令未配 key 可用」（回归）+ agentRoute.test.js | COVERED |
+| PRD §10 决策 E3（发消息即绑定：arming → 下一条消息绑定发送者）——Slice 5 最小形态 | agentRouter.js（beginBinding + route 绑定路径：payload.reply「绑定成功…」由 imRouter 直接回复不进 agent turn） | agentRoute.test.js（bindUser 前置依赖）+ userBinding.test.js（部分转绿：pendingBind 一次性） | COVERED（最小 in-memory 形态；settings 持久化/有效期/解绑归 Slice 8） |
+| PRD §8 E-AUTH-NOT-BOUND（未绑定用户一切消息拒绝，含查询）——Slice 5 范围：已有绑定后拒绝 | agentRouter.js（绑定态存在时非绑定者 reject） | agentRoute.test.js「同群他人 → 拒绝」 | COVERED（无绑定态时的全量拒绝语义归 Slice 8 REQ-AGENT-015） |
+| PRD §8 E-AGENT-NO-KEY（未配 key 对话引导）——回归保持 | agentRouter.js（无绑定态 + 未配 key → reject E-AGENT-NO-KEY） | agentConfig.test.js（回归，全绿） | COVERED |
+| PRD §8 E-AGENT-NO-KEY 语义缝隙（2026-08-04 登记）：绑定用户已绑定但未配 key → 仍进 dialogue + 占位 key（NOT_CONFIGURED）——由已签测试断言强制（agentRoute「下发 session-config」例在无 key 环境断言 apiKey 恒真值）；生产真实供应商会 LLM 失败回投（E-AGENT-LLM-FAIL），REFLECT 人工验收语义 | agentRouter.js（buildSessionConfig 占位） | agentRoute.test.js「空间不存在自动创建 + 下发 session-config」 | PARTIAL（测试强制行为；语义完善随 Slice 8 或 REFLECT） |
+| 签核决策 11（空间 key = feishu:<chatId>；群聊独立空间；绑定用户在群聊进群空间） | agentRouter.js | agentRoute.test.js（两例） | COVERED |
+| 签核决策 8（未绑定拒绝先于命令识别——绑定态存在时） | agentRouter.js（绑定检查在 parseSlashCommand 之前） | agentRoute.test.js「同群他人 → 拒绝」（命令未单独断言，REQ-AGENT-021 标准 4 随 Slice 6） | COVERED（绑定态场景；无绑定态场景随 Slice 8） |
+| 签核决策 5（key 不落日志/IPC 会话文件）——session-config 路径 | agentRouter.js（decryptSecret 明文仅持内存传 agentService；systemPrompt 不含 key） | agentConfig/systemPrompt 回归（key 不进 systemPrompt 断言）+ agentRoute「session-config 含 key」 | COVERED |
+| Slice 2 UNCERTAIN 登记：agentService 生产接线（createAgentService().start()） | src/http/server.js（惰性工厂：首次 dialogue 消息才 createAgentService({ sessionDir, sessionStore }) + await start()——真实 spawn + 心跳看门狗；ADR-009 不启动即不 spawn）+ stopServer（_opcAgentService.stop() 防跨测试泄漏） | 无独立业务断言（生产路径；agentProcess.test.js 覆盖 spawn/看门狗内核，回归） | COVERED（接线完成；真实 spawn 冒烟随 QA） |
+| Slice 3 concern：生产态 store 注入（默认 store 库路径 = 应用库，非 cwd/.agent-home） | server.js（createSessionStore({ dbPath: <configDir>/agent-sessions.db, sessionDir: <configDir>/agent-sessions }) 注入 createAgentService——Electron = userData；headless = OPC_WORKSTATION_CONFIG_DIR） | 无独立断言（生产路径；sessionStore.test.js 覆盖 store 内核，回归） | COVERED |
+| PRD §6 数据流 7 配置变更广播接上（broadcastAgentConfigChange） | routes/settings.js（既有 broadcastAgentConfigChange）+ server.js（惰性服务创建后 activeService 即生效）——接上：配置保存 → 广播到已创建会话 | systemPrompt.test.js「保存后 session-config 热更新」（回归） | COVERED（服务未创建时 no-op 无害：无会话可更新） |
+
+GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
+- **【阻塞】签核测试 helper 契约冲突（3 例红）**：见本 slice 验证记录；待父代理裁决（建议 [test] 就地补全 helper：feishuMessage 节点补 sender/messageId outputVariables）。
+- **无绑定态时的未绑定拒绝（E-AUTH-NOT-BOUND 全量语义）**：本 slice 最小形态仅在「已有绑定」后拒绝非绑定者；「settings 无绑定态 → 未绑定用户也拒绝（先于 key 检查）」归 Slice 8（REQ-AGENT-015）。注意：届时 agentConfig.test.js REQ-AGENT-002「未配 key → E-AGENT-NO-KEY」例（未绑定用户）与 REQ-AGENT-015「未绑定 → E-AUTH-NOT-BOUND」例存在断言级冲突（两例均为无绑定态未绑定用户），Slice 8 需裁决（就地补全或接替）。
+- **agentService 生产接线冒烟**：真实 spawn（NODE_ENV 非 test）路径下首次对话创建子进程 + session-config 下发未做端到端冒烟（QA）。
+- **绑定状态 in-memory（不落 settings）**：pendingBind 有效期/取消/解绑/存 settings JSON 归 Slice 8（REQ-AGENT-014 完整状态机）。
+- **命令直通执行**：route 层 command action 已出，imRouter 仅透传 payload.reply；命令执行与格式化回复归 Slice 6（REQ-AGENT-021/022）。
+- **对话回复回投**：dialogue 后 agent 流式事件 → 回复卡片归 Slice 7（REQ-AGENT-019/020）。
+
 
 

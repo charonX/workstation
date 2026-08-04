@@ -22,6 +22,9 @@ import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
+import { createAgentRouter } from "../services/agentRouter.js";
+import { createAgentService } from "../services/agentService.js";
+import { createSessionStore } from "../services/sessionStore.js";
 
 const activeServers = new Set();
 
@@ -133,7 +136,33 @@ export function startServer(options = {}) {
       await runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
       // REQ-CHANNEL-001/002：凭据存在时自动启动飞书通道与 IM 路由。
       await runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel());
-      createImRouter({ channelManager, baseUrl: `http://127.0.0.1:${port}` });
+      // agent 优先路由（REQ-AGENT-017，REQ-CHANNEL-002 接替）：IM 消息全量进
+      // agentRouter（绑定检查 → 命令识别 → 会话分发），绑定不再直接 createTask。
+      // agentService 惰性接线（ADR-009）：首次对话消息才创建并 start()——不启动即
+      // 不 spawn 子进程；测试环境无对话消息到达 → 零副作用。会话库落应用配置目录
+      // （Electron = userData；headless = OPC_WORKSTATION_CONFIG_DIR）——Slice 3
+      // concern 的生产态 store 注入（默认 store 库路径 = 应用库，非 cwd/.agent-home）。
+      const agentRouter = createAgentRouter({ settings: () => settingsService.loadSettings() });
+      let serverAgentService = null;
+      const getAgentService = async () => {
+        if (!serverAgentService) {
+          const sessionDir = path.join(settingsService.configDir(), "agent-sessions");
+          const sessionStore = createSessionStore({
+            dbPath: path.join(settingsService.configDir(), "agent-sessions.db"),
+            sessionDir
+          });
+          serverAgentService = createAgentService({ cwd: process.cwd(), sessionDir, sessionStore });
+          await serverAgentService.start();
+          server._opcAgentService = serverAgentService;
+        }
+        return serverAgentService;
+      };
+      createImRouter({
+        channelManager,
+        baseUrl: `http://127.0.0.1:${port}`,
+        agentRouter,
+        agentService: getAgentService
+      });
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });
@@ -171,6 +200,15 @@ export function stopServer({ server }) {
       await channelManager.stop();
     } catch {
       // ignore
+    }
+    // Stop the lazily-created agent service (child process + heartbeat watchdog):
+    // prevents leaked subprocesses across tests and on production shutdown.
+    if (server._opcAgentService) {
+      try {
+        server._opcAgentService.stop();
+      } catch {
+        // ignore
+      }
     }
     const purgeTask = purgeTasks.get(server);
     if (purgeTask) {
