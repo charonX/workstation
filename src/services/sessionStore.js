@@ -25,6 +25,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { getDb, defaultDbPath } from "../db.js";
 
+// PRD §8 E-SESSION-PERSIST：SQLite/JSONL 写失败 → 告警日志 + 内存态继续（对话可用，
+// 仅重启不恢复）。只吞持久化类异常（带 err.code：fs E* / SQLite SQLITE_*）；参数错误等
+// 非持久化异常（无 code 的编程/系统错误）仍抛出（缺口 1，2026-08-04 补实现）。
+export function degradePersistFailure(operation, err) {
+  if (!err || typeof err.code !== "string") throw err;
+  process.stderr.write(
+    `E-SESSION-PERSIST: ${operation} 写入失败：${err?.message ?? String(err)}（内存态继续，重启不恢复）\n`
+  );
+}
+
 // 空间 key → 安全文件名片段（与 agentService 历史命名一致）。
 export function safeKeyFor(spaceKey) {
   return String(spaceKey).replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -82,9 +92,14 @@ export function createSessionStore(options = {}) {
     if (!row) {
       const ref = sessionRefFor(dir, spaceKey, 1);
       touchSessionFile(ref);
-      db.prepare(
-        "INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt) VALUES (?, ?, ?, ?)"
-      ).run(spaceKey, ref, ts, ts);
+      try {
+        db.prepare(
+          "INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt) VALUES (?, ?, ?, ?)"
+        ).run(spaceKey, ref, ts, ts);
+      } catch (err) {
+        // SQLite 写失败（E-SESSION-PERSIST）：内存态继续，仅重启不恢复（PRD §8）。
+        degradePersistFailure("getOrCreate 建行", err);
+      }
       return { spaceKey, sessionRef: ref, createdAt: ts, lastActiveAt: ts, summaryRef: null, created: true };
     }
     if (!fs.existsSync(row.sessionRef)) {
@@ -92,11 +107,15 @@ export function createSessionStore(options = {}) {
       const gen = generationFromRef(row.sessionRef) + 1;
       const ref = sessionRefFor(dir, spaceKey, gen);
       touchSessionFile(ref);
-      db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
-        ref,
-        ts,
-        spaceKey
-      );
+      try {
+        db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
+          ref,
+          ts,
+          spaceKey
+        );
+      } catch (err) {
+        degradePersistFailure("getOrCreate 换代", err);
+      }
       return {
         spaceKey,
         sessionRef: ref,
@@ -108,7 +127,11 @@ export function createSessionStore(options = {}) {
         recoveryHint: "历史会话不可恢复，已新建会话",
       };
     }
-    db.prepare("UPDATE agent_sessions SET lastActiveAt = ? WHERE spaceKey = ?").run(ts, spaceKey);
+    try {
+      db.prepare("UPDATE agent_sessions SET lastActiveAt = ? WHERE spaceKey = ?").run(ts, spaceKey);
+    } catch (err) {
+      degradePersistFailure("getOrCreate 活跃时间", err);
+    }
     return { ...rowToInfo(row), lastActiveAt: ts, created: false };
   }
 
@@ -122,12 +145,22 @@ export function createSessionStore(options = {}) {
 
   // 压缩后更新摘要索引（REQ-AGENT-011 标准 2；ref = 平台侧摘要索引，非消息全文）。
   function updateSummaryRef(spaceKey, ref) {
-    db.prepare("UPDATE agent_sessions SET summaryRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+    try {
+      db.prepare("UPDATE agent_sessions SET summaryRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+    } catch (err) {
+      // E-SESSION-PERSIST：摘要索引写失败 → 内存态继续（压缩本身不打断对话）。
+      degradePersistFailure("updateSummaryRef", err);
+    }
   }
 
   // provider/key 变更重建（数据流 7）时同步换代 sessionRef（SQLite 为真相）。
   function updateSessionRef(spaceKey, ref) {
-    db.prepare("UPDATE agent_sessions SET sessionRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+    try {
+      db.prepare("UPDATE agent_sessions SET sessionRef = ?, lastActiveAt = ? WHERE spaceKey = ?").run(ref, nowIso(), spaceKey);
+    } catch (err) {
+      // E-SESSION-PERSIST：换代写失败 → 内存态继续（本次会话仍可用，仅重启不恢复）。
+      degradePersistFailure("updateSessionRef", err);
+    }
   }
 
   // /reset（REQ-AGENT-010）：仅当前空间——JSONL 世代 +1（新文件）+ summaryRef
@@ -140,11 +173,16 @@ export function createSessionStore(options = {}) {
     const gen = generationFromRef(row.sessionRef) + 1;
     const ref = sessionRefFor(baseSessionDir, spaceKey, gen);
     touchSessionFile(ref);
-    db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
-      ref,
-      ts,
-      spaceKey
-    );
+    try {
+      db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
+        ref,
+        ts,
+        spaceKey
+      );
+    } catch (err) {
+      // E-SESSION-PERSIST：换代写失败 → 内存态继续（本次重置仍生效，仅重启不恢复）。
+      degradePersistFailure("reset 换代", err);
+    }
     const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
     for (const listener of resetListeners) {
       try {

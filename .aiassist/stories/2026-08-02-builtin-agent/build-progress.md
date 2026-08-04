@@ -126,9 +126,9 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 | REQ-AGENT-008 AC1 agent_sessions 表结构（spaceKey 唯一/sessionRef/createdAt/lastActiveAt/summaryRef）；SQLite 为真相、注册表为缓存 | src/db.js（DDL，Slice 1 落地）、src/services/sessionStore.js（createSessionStore：getOrCreate/get/list/reset/updateSummaryRef/updateSessionRef/onReset） | sessionStore.test.js「agent_sessions 表结构与 spaceKey 唯一」 | COVERED |
 | REQ-AGENT-008 AC2 空间首次对话 → 建表行 + 创建 PI 会话（JSONL 落自定义目录，H2）；已有空间复用/恢复 | sessionStore.js getOrCreate（建行 + JSONL 占位 + 复用同引用）、agentService.js（createSession 经 store.getOrCreate；sessionRef 以表行为准）、worker.js（session-config 按 sessionRef：存在且非空 → SessionManager.open / 否则 create + setSessionFile） | sessionStore.test.js「首次对话建空间 + 创建 PI 会话；已有空间复用/恢复」 | COVERED |
 | REQ-AGENT-008 AC3 空间间上下文隔离（A 历史不进 B prompt 上下文） | agentService.js 内存内核（每空间 context + getContext；provider 按空间独立） | sessionStore.test.js「空间间上下文隔离」 | COVERED |
-| REQ-AGENT-008 AC4 消息经 PI JSONL 持久化（message_end 落盘）；平台侧不复制全文（B1） | agentService.js 内存内核（appendJsonlMessage：PI 兼容 message 行，仅注入 store 时落盘）、worker.js（PI 原生落盘）、sessionStore.js（表无消息列） | sessionStore.test.js「对话消息经 PI JSONL 持久化，平台侧不复制全文」 | COVERED |
+| REQ-AGENT-008 AC4 消息经 PI JSONL 持久化（message_end 落盘）；平台侧不复制全文（B1） | agentService.js 内存内核（appendJsonlMessage：**平台自持轻量记录——非 PI 可恢复格式（无 type:"session" 头，内存内核不接线恢复，缺口 4 修正 2026-08-04）**，仅注入 store 时落盘）、worker.js（PI 原生落盘）、sessionStore.js（表无消息列） | sessionStore.test.js「对话消息经 PI JSONL 持久化，平台侧不复制全文」 | COVERED |
 | REQ-AGENT-009 AC1 应用/子进程重启后按 agent_sessions.sessionRef + SessionManager.open 恢复；恢复后引用重启前上下文 | agentService.js（ready 水合：store.list → getOrCreate → 重建句柄 + 重发 session-config）、worker.js（已有 JSONL → SessionManager.open） | sessionRestore.test.js「重启后按 agent_sessions + SessionManager.open 恢复上下文」（问「刚才的任务」回复含日报） | COVERED |
-| REQ-AGENT-009 AC2 JSONL 缺失/损坏 → 新建会话 + 提示「历史不可恢复」，不阻塞对话 | sessionStore.js getOrCreate（缺失 → 世代 +1 重建 + recoveryHint）、agentService.js（水合句柄带 recoveryHint） | sessionRestore.test.js「JSONL 缺失/损坏 → 新建会话 + 提示历史不可恢复，不阻塞对话」 | COVERED（缺失路径；损坏 = 存在但不可解析 → worker open 失败回 E-AGENT-RUNTIME 兜底，见 GAP） |
+| REQ-AGENT-009 AC2 JSONL 缺失/损坏 → 新建会话 + 提示「历史不可恢复」，不阻塞对话 | sessionStore.js getOrCreate（缺失 → 世代 +1 重建 + recoveryHint）、agentService.js（水合句柄带 recoveryHint）、worker.js（open 失败 → 换代重建 + session-rebuilt 通知主进程同步行与句柄） | sessionRestore.test.js「JSONL 缺失/损坏 → 新建会话 + 提示历史不可恢复，不阻塞对话」 | COVERED（缺失 + 损坏分支：损坏 = 存在但不可解析 → worker open 失败换代重建 + 提示，缺口 2 补实现 2026-08-04） |
 | REQ-AGENT-010 AC1 /reset 当前空间上下文清空（新建 JSONL/清引用）；AC2 其他空间不受影响；AC3 重置后首条消息无历史 | sessionStore.js reset（世代 +1 + 新 JSONL + summaryRef 清空 + onReset 通知）、agentService.js（内存内核监听清 context；进程路径：IPC reset-session + 句柄换代 + 重新 session-config）、worker.js（reset-session dispose + 删除） | sessionStore.test.js「/reset 清空当前空间上下文，其他空间不受影响」 | COVERED |
 | REQ-AGENT-011 AC1 超过压缩阈值 → 旧消息折叠为摘要注入，关键实体不丢 | agentService.js 内存内核（compressIfNeeded：compressionThreshold 服务级常量可注入 + summarize 会话级注入断言；默认确定性截断） | sessionStore.test.js「超过阈值 → 旧消息折叠为摘要注入，关键信息不丢」 | COVERED（内存内核 seam；worker 平台侧压缩见 GAP） |
 | REQ-AGENT-011 AC2 压缩后 agent_sessions.summaryRef 更新；对用户无感（不打断对话） | sessionStore.js updateSummaryRef、agentService.js compressIfNeeded（折叠后写 summaryRef） | sessionStore.test.js「压缩后 summaryRef 更新且对用户无感」 | COVERED |
@@ -136,8 +136,8 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 | PRD §6 操作流步骤 7（/reset 重置当前对话空间会话） | 见 REQ-AGENT-010 行（存储 + IPC reset-session 已就绪；斜杠命令入口层归 Slice 6） | sessionStore.test.js | COVERED（存储侧；命令直通 Slice 6） |
 | PRD §6 操作流步骤 8（应用重启后继续对话，session 从 SQLite 恢复，上下文延续） | 见 REQ-AGENT-009 行 | sessionRestore.test.js | COVERED |
 | PRD §6.2 分支「对话过长触发压缩 → 旧上下文滚动摘要化（用户无感）」 | 见 REQ-AGENT-011 行 | sessionStore.test.js | COVERED |
-| PRD §8 错误状态：E-SESSION-PERSIST（SQLite 写入失败 → 对话可用、重启不恢复、告警） | sessionStore.js（sessionDir 缺失抛 E-SESSION-PERSIST）、agentService.js（store 异常向上冒泡由调用方降级） | 无独立断言 | PARTIAL（错误码已定义；本地 SQLite 写失败难注入，REFLECT 人工验收） |
-| PRD §8 错误状态：E-AGENT-RUNTIME（恢复失败 → 错误回复 + 会话可重建） | worker.js（session-config 失败 → session-error E-AGENT-RUNTIME，既有） | 无独立断言（看门狗重启覆盖重建路径） | PARTIAL（同 Slice 2 登记；JSONL 损坏分支见 GAP） |
+| PRD §8 错误状态：E-SESSION-PERSIST（SQLite 写入失败 → 对话可用、重启不恢复、告警） | sessionStore.js（写失败降级：getOrCreate/updateSummaryRef/updateSessionRef/reset 捕获 + 告警日志含 E-SESSION-PERSIST 码 + 内存态继续）、agentService.js（appendJsonlMessage 追加失败同降级；非持久化异常仍抛出） | 无独立断言（本地 SQLite 写失败难注入） | COVERED（缺口 1 补实现 2026-08-04；冒烟脚本注入写失败验证降级路径） |
+| PRD §8 错误状态：E-AGENT-RUNTIME（恢复失败 → 错误回复 + 会话可重建） | worker.js（session-config 失败 → session-error E-AGENT-RUNTIME，既有） | 无独立断言（看门狗重启覆盖重建路径） | PARTIAL（同 Slice 2 登记；JSONL 损坏分支已改「换代重建 + 提示」而非 E-AGENT-RUNTIME，见 REQ-AGENT-009 AC2 行） |
 | 签核决策 11（空间 key = feishu:<chatId>，唯一） | sessionStore.js（spaceKey 原样存储 + 主键唯一约束） | sessionStore.test.js（feishu:oc_* 用例） | COVERED |
 | 签核决策 16（SessionManager.open 恢复；JSONL 缺失 → 新建 + 提示） | worker.js（open/create 分派）、sessionStore.js getOrCreate | sessionRestore.test.js 两例 | COVERED |
 | 签核决策 17（/reset 仅当前空间；压缩阈值实现常量可注入断言） | 见 REQ-AGENT-010/011 行 | sessionStore.test.js | COVERED |
@@ -148,10 +148,18 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 | 测试 seam 契约：prompt() 解析值含本轮回复文本（restore 断言「回复引用重启前上下文」） | agentService.js（prompt-result reply 透传 / 内存内核 reply 收集）、worker.js（lastReplies 收集 text_end.content + prompt-result.reply） | sessionRestore.test.js「…恢复上下文」 | COVERED |
 
 GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
-- worker（真实子进程）侧平台压缩未实现：压缩 seam 在内存内核（阈值/summarize 可注入，已测试）；真实路径由 PI 原生 overflow compaction 兜底，平台侧压缩指令（IPC）未建——REQ-AGENT-011 覆盖度 = 内存内核 seam。
-- JSONL 损坏（存在但不可解析）→ worker SessionManager.open 失败 → session-error E-AGENT-RUNTIME（会话不可用），未走「新建 + 提示」路径；REQ-AGENT-009 AC2「缺失/损坏」的损坏分支 PARTIAL（测试仅覆盖缺失）。
+- worker（真实子进程）侧平台压缩未实现：压缩 seam 在内存内核（阈值/summarize 可注入，已测试）。**取舍登记（缺口 3，2026-08-04 拍板）**：接受 PI 原生 auto-compaction 兜底 + summaryRef 延后（平台侧压缩指令 IPC 不建）——REQ-AGENT-011 覆盖度 = 内存内核 seam。
+- ~~JSONL 损坏（存在但不可解析）→ worker SessionManager.open 失败 → session-error E-AGENT-RUNTIME（会话不可用）~~ → **已补（缺口 2，2026-08-04）**：open 失败 → 换代重建（新 sessionRef/新 JSONL）+ session-rebuilt 通知主进程同步行与句柄 + 提示不可恢复，对话可继续。
 - 水合会话的 API key 注入：应用重启后 keySecrets 为空，水合句柄按 settings provider 重建且不带 key（FAUX seam 覆盖测试）；真实供应商恢复对话的凭证注入属生产接线（Slice 5）。
 - 默认 sessionStore 库路径 = `<cwd>/.agent-home/agent-sessions.db`（随 cwd 隔离，测试不污染 ~/.opc-workstation/data.db）；生产接线由主进程注入应用库（Slice 5）。
-- E-SESSION-PERSIST 写失败降级路径无注入断言（本地 SQLite 写失败难注入），REFLECT 人工验收。
+- ~~E-SESSION-PERSIST 写失败降级路径无注入断言（本地 SQLite 写失败难注入），REFLECT 人工验收~~ → **已补实现（缺口 1，2026-08-04）**：store 写失败（getOrCreate/updateSummaryRef/updateSessionRef/reset）与 JSONL 追加失败 → 捕获 + 告警日志（含 E-SESSION-PERSIST 码）+ 内存态继续；非持久化异常（无 err.code）仍抛出。注入断言仍无（写失败难注入），冒烟脚本验证。
 - 修复父代理遗留：Slice 2 追溯表原误挂于「Slice 3」标题下，已改归「Slice 2：可追溯性表」。
+
+### Slice 3 PRD 对齐缺口修复记录（2026-08-04）
+
+- PRD 对齐子代理报告缺口 1/2/4，人拍板补实现，fix 子代理落地（commit 见下）：
+  1. **缺口 1（E-SESSION-PERSIST 降级）**：sessionStore.js 四个写方法 + agentService.js appendJsonlMessage 捕获写失败 → 告警日志（含 E-SESSION-PERSIST 码）+ 内存态继续（对话可用，仅重启不恢复）；非持久化异常（无 err.code，如参数错误）仍抛出。
+  2. **缺口 2（REQ-AGENT-009 AC2 损坏分支）**：worker.js SessionManager.open 失败且文件存在（损坏）→ 换代重建（新 sessionRef/新 JSONL）+ 提示「历史不可恢复」，对话可继续；agentService.js 新增 session-rebuilt 消息处理（同步 agent_sessions 行 + 句柄 + recoveryHint）。
+  3. **缺口 4（注释修正）**：内存内核 JSONL 标注为「平台自持轻量记录（非 PI 可恢复格式，无 type:"session" 头，内存内核不接线恢复）」，代码注释 + 追溯表同步。
+- 验证：test:unit 474/36 与基线一致零回归；冒烟脚本（不入库）：a) 注入 SQLite 写失败 → 对话可用 + 告警含 E-SESSION-PERSIST；b) 构造损坏 JSONL → worker open 失败换代重建 + 提示，对话可继续。
 

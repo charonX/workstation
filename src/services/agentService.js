@@ -30,8 +30,9 @@
 // Slice 3（REQ-AGENT-008~011）：会话存储与恢复——
 // - sessionStore（SQLite agent_sessions）为真相，本服务注册表仅为活跃句柄缓存；
 //   未显式注入 sessionStore 时按 cwd 派生默认库（测试隔离：随 cwd 临时目录）；
-// - 内存内核维护每空间上下文（getContext）、JSONL 持久化（PI 兼容 message 行）、
-//   滚动摘要压缩（compressionThreshold + summarize 可注入，REQ-AGENT-011）；
+// - 内存内核维护每空间上下文（getContext）、JSONL 轻量记录（平台自持、非 PI 可恢复
+//   格式，仅注入 store 时落盘）、滚动摘要压缩（compressionThreshold + summarize 可注入，
+//   REQ-AGENT-011）；
 // - 进程形态：start 就绪后按 agent_sessions 行水合会话（SessionManager.open
 //   恢复，JSONL 缺失 → 新建 + recoveryHint，REQ-AGENT-009）；/reset 经
 //   store.onReset 通知 → IPC reset-session + sessionRef 换代（REQ-AGENT-010）。
@@ -45,7 +46,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
-import { createSessionStore, generationFromRef, sessionRefFor } from "./sessionStore.js";
+import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 const DEFAULT_MODELS = {
@@ -84,7 +85,10 @@ function defaultSummarize(folded) {
   return `[摘要] 较早的 ${folded.length} 条消息已折叠：${text.slice(0, 500)}`;
 }
 
-// PI 兼容 JSONL message 行（message_end 落盘格式；平台侧不复制全文，仅转发文本）。
+// 平台自持轻量记录（非 PI 可恢复格式，缺口 4 修正 2026-08-04）：仅含 message 行、
+// 无 type:"session" 头——PI SessionManager.open 会静默恢复为空，内存内核不接线恢复
+// （重启恢复走真实子进程 PI 原生 JSONL，本记录仅内存内核 seam 落盘）。消息行沿用
+// PI message 结构；平台侧不复制全文（B1），仅转发文本。
 function appendJsonlMessage(ref, { role, content }) {
   const line = JSON.stringify({
     type: "message",
@@ -93,7 +97,13 @@ function appendJsonlMessage(ref, { role, content }) {
     timestamp: new Date().toISOString(),
     message: { role, content: [{ type: "text", text: content }], timestamp: Date.now() },
   });
-  fs.appendFileSync(ref, `${line}\n`);
+  try {
+    fs.appendFileSync(ref, `${line}\n`);
+  } catch (err) {
+    // E-SESSION-PERSIST（PRD §8）：JSONL 追加失败 → 告警日志 + 内存态继续
+    // （对话可用，仅重启不恢复）；非持久化异常（无 err.code）仍抛出。
+    degradePersistFailure("JSONL 追加", err);
+  }
 }
 
 // 活跃服务实例：HTTP 路由层经广播函数热更新存量会话（REQ-AGENT-004 / 数据流 7）。
@@ -171,8 +181,9 @@ function defaultSessionDir() {
 // —— 内存版对话内核（REQ-AGENT-006/007/008/010/011 单元 seam，不 spawn 真进程）——
 // provider = { respond() }：脚本化响应（等价 pi-ai fauxProvider，H3 seam）。
 // 对话内核实现契约行为：排队串行/跨空间并行/流式按序/工具事件/重试/错误结构化/截断
-// + 每空间上下文（getContext，REQ-AGENT-008 标准 3 隔离）+ JSONL 持久化（B1，
-// 仅当注入 sessionStore）+ 滚动摘要压缩（REQ-AGENT-011，threshold/summarize 可注入）
+// + 每空间上下文（getContext，REQ-AGENT-008 标准 3 隔离）+ JSONL 轻量记录（B1，
+// 平台自持非 PI 可恢复格式，仅当注入 sessionStore）+ 滚动摘要压缩（REQ-AGENT-011，
+// threshold/summarize 可注入）
 // + /reset 监听（REQ-AGENT-010，store.reset → 清当前空间上下文）。
 function createInMemoryAgentService(options = {}) {
   const sessionDir = options.sessionDir ?? defaultSessionDir();
@@ -203,8 +214,8 @@ function createInMemoryAgentService(options = {}) {
   }
 
   async function runTurn(session, text) {
-    // 上下文追加 + JSONL 持久化（REQ-AGENT-008 标准 4：消息经 JSONL 落盘；
-    // 平台侧不复制全文——SQLite 行无消息列）。
+    // 上下文追加 + JSONL 轻量记录（REQ-AGENT-008 标准 4：消息落盘；平台侧不复制
+    // 全文——SQLite 行无消息列；记录格式非 PI 可恢复，缺口 4 修正）。
     session.context.push({ role: "user", content: text });
     if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role: "user", content: text });
     let finalText;
@@ -561,6 +572,21 @@ function createProcessAgentService(options = {}) {
       case "config-ack":
         log(`config-ack session=${msg.sessionKey}`);
         break;
+      case "session-rebuilt": {
+        // JSONL 损坏 → worker 换代重建（REQ-AGENT-009 标准 2 损坏分支）：同步
+        // SQLite 行（真相）与本地句柄，提示历史不可恢复（与缺失分支 recoveryHint
+        // 语义一致）。keyRef 不动（worker 侧 keySecrets 仍按原 keyRef 持有 key）。
+        const session = sessions.get(msg.sessionKey);
+        if (!session) break;
+        const gen = generationFromRef(msg.sessionRef);
+        generation.set(msg.sessionKey, gen);
+        session.sessionRef = msg.sessionRef;
+        if (typeof msg.hint === "string") session.recoveryHint = msg.hint;
+        const store = getStore();
+        if (store?.updateSessionRef) store.updateSessionRef(msg.sessionKey, msg.sessionRef);
+        log(`会话换代重建（JSONL 损坏）session=${msg.sessionKey} ref=${msg.sessionRef}`);
+        break;
+      }
       case "session-event": {
         const session = sessions.get(msg.sessionKey);
         if (session) session.emit("session-event", enforceSizeLimit(msg.event));

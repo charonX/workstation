@@ -83,6 +83,18 @@ function safeKeyFor(sessionKey) {
   return String(sessionKey).replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+// JSONL 世代解析/命名（与主进程 sessionStore 规范一致：<safeKey>[.N].jsonl；
+// 子进程零耦合不 import 主进程模块，本处为镜像实现）。
+function generationFromRef(sessionRef) {
+  const m = /\.(\d+)\.jsonl$/.exec(sessionRef ?? "");
+  return m ? Number(m[1]) : 1;
+}
+function sessionRefFor(sessionDir, sessionKey, generation = 1) {
+  const safeKey = safeKeyFor(sessionKey);
+  const suffix = generation > 1 ? `.${generation}` : "";
+  return path.join(sessionDir, `${safeKey}${suffix}.jsonl`);
+}
+
 // stderr 日志红线：任何 key 值不进入日志（签核决策 5 / REQ-AGENT-005 标准 5）。
 function redact(text) {
   let out = String(text);
@@ -247,10 +259,22 @@ async function createSessionEntry(msg) {
 
   const settingsManager = SettingsManager.inMemory();
   const finalRef = sessionRef ?? path.join(sessionDir, `${safeKeyFor(sessionKey)}.jsonl`);
+  let effectiveRef = finalRef;
+  let rebuilt = false;
   let sessionManager;
   if (fs.existsSync(finalRef) && fs.statSync(finalRef).size > 0) {
-    // 重启恢复：SessionManager.open 续上下文（H2；只丢崩溃时流式中的半条）。
-    sessionManager = SessionManager.open(finalRef, sessionDir);
+    try {
+      // 重启恢复：SessionManager.open 续上下文（H2；只丢崩溃时流式中的半条）。
+      sessionManager = SessionManager.open(finalRef, sessionDir);
+    } catch (err) {
+      // JSONL 损坏（存在但不可解析）→ 换代重建 + 提示不可恢复（REQ-AGENT-009 标准 2
+      // 损坏分支；缺失分支由主进程 getOrCreate 处理，此处只管 open 失败）。
+      effectiveRef = sessionRefFor(sessionDir, sessionKey, generationFromRef(finalRef) + 1);
+      rebuilt = true;
+      log(`JSONL 损坏，换代重建 session=${sessionKey} ref=${finalRef} -> ${effectiveRef} err=${err?.message ?? String(err)}`);
+      sessionManager = SessionManager.create(cwd, sessionDir);
+      sessionManager.setSessionFile(effectiveRef);
+    }
   } else {
     sessionManager = SessionManager.create(cwd, sessionDir);
     sessionManager.setSessionFile(finalRef);
@@ -287,14 +311,24 @@ async function createSessionEntry(msg) {
     modelRuntime: runtime,
     resourceLoader,
     config,
-    sessionRef: finalRef,
+    sessionRef: effectiveRef,
     provider,
     model,
     keyRef: keyRef ?? `key:${provider}`,
   };
   agentSession.subscribe((ev) => forwardEvent(sessionKey, ev));
   sessions.set(sessionKey, entry);
-  log(`session-config 完成 session=${sessionKey} ref=${finalRef}`);
+  log(`session-config 完成 session=${sessionKey} ref=${effectiveRef}`);
+  if (rebuilt) {
+    // 通知主进程换代重建（REQ-AGENT-009 标准 2 损坏分支）：主进程同步
+    // agent_sessions 行（SQLite 为真相）与会话句柄，并挂历史不可恢复提示。
+    send({
+      type: "session-rebuilt",
+      sessionKey,
+      sessionRef: effectiveRef,
+      hint: "历史会话不可恢复，已新建会话",
+    });
+  }
   send({ type: "config-ack", sessionKey });
 }
 
