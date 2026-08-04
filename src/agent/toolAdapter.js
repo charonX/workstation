@@ -69,8 +69,12 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const TOOL_DEFS = [
   // task
   { name: "task run", module: "task", fn: "run", riskLevel: "dispatch",
-    description: "下发执行任务（对话下发，直跑；trigger 固定 dialogue）",
-    argsSchema: obj({ "project-id": str("项目 ID（必填）"), "flow-id": str("流程 ID（必填）"), trigger: enumOf(["manual", "dialogue"], "触发来源") }, ["project-id", "flow-id"]) },
+    // PRD §6.1 对话下发 / REQ-AGENT-017 接替声明：工具路径（对话场景）缺省
+    // trigger=dialogue（defaultArgs 注入，见 execute）；manual 保留给手动/定时路径，
+    // 且不覆盖调用方显式传值。命令模块自身默认 manual 面向 CLI 手动路径。
+    description: "下发执行任务（对话下发，直跑；trigger 缺省 dialogue）",
+    argsSchema: obj({ "project-id": str("项目 ID（必填）"), "flow-id": str("流程 ID（必填）"), trigger: enumOf(["manual", "dialogue"], "触发来源（缺省 dialogue：对话下发；manual 保留手动路径）") }, ["project-id", "flow-id"]),
+    defaultArgs: { trigger: "dialogue" } },
   { name: "task list", module: "task", fn: "listExecutions", riskLevel: "query",
     description: "列出执行记录（不含日志详情）",
     argsSchema: obj({}) },
@@ -347,6 +351,13 @@ export function createToolSurface(options = {}) {
         throw new Error(message);
       }
       const flags = normalizeArgs(args);
+      // 工具级默认值注入（仅缺省时，不覆盖调用方显式传值）：
+      // task run 对话场景缺省 trigger=dialogue（PRD §6.1 / REQ-AGENT-017 接替声明），
+      // 不依赖命令模块 CLI 默认 manual（该默认面向手动 CLI 路径）；非对话场景
+      // 未来扩展可各自声明 defaultArgs，互不影响。
+      for (const [key, value] of Object.entries(tool.defaultArgs ?? {})) {
+        if (flags[key] === undefined) flags[key] = value;
+      }
       const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
       surface.emit({ type: "tool_execution_start", name, status: "running" });
       try {
