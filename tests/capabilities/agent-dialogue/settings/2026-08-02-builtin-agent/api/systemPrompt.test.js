@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-02-builtin-agent/REQ-AGENT-003, 2026-08-02-builtin-agent/REQ-AGENT-004
-// REQ-VERSION: v1-hash:1a95cf23677ba5e4cea1a2eb2157896aeef22713b6de03f9c5119c49f3830e2b
+// REQ-VERSION: v1-hash:4ed3c67befef393165738dafca1a9a153b278661403fc6cc06025a430d1bab87
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
@@ -142,6 +142,51 @@ describe("REQ-AGENT-004 全局自定义身份", () => {
     assert.ok(ipc.acks.some((m) => m.type === "config-ack"), "子进程应回 config-ack（REQ-AGENT-004 标准 2）");
     // provider/key 未变 → 不重建会话上下文。
     assert.equal(session.sessionRef, refBefore, "provider/key 未变不应重建会话上下文");
+  });
+
+  it("provider/key 变更 → 会话重建（sessionRef 换代）+ 新 key 注入（数据流 7）", async () => {
+    const createAgentService = await loadAgentService();
+    const ipc = createFakeIpc();
+    const svc = createAgentService({ ipc });
+    const session = svc.createSession({ spaceKey: "feishu:oc_1", provider: "deepseek", apiKey: "sk-old" });
+    const refBefore = session.sessionRef;
+    const keyRefBefore = session.keyRef;
+    const ackCountBefore = ipc.acks.filter((m) => m.type === "config-ack").length;
+    assert.ok(refBefore, "会话应有 sessionRef");
+    // 换 provider/key → 存量会话上下文重建（tech-design 数据流 7：sessionRef 换代 + 新 key 注入）。
+    const res = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "moonshotai", apiKey: "sk-new" })
+    });
+    assert.equal(res.status, 200, "provider/key 保存应成功");
+    assert.notEqual(session.sessionRef, refBefore, "provider/key 变更应重建会话：sessionRef 换代（数据流 7）");
+    assert.notEqual(session.keyRef, keyRefBefore, "重建应生成新 keyRef");
+    const config = ipc.sent.filter((m) => m.type === "session-config" && m.sessionKey === "feishu:oc_1").at(-1);
+    assert.ok(config, "重建后应重新下发 session-config");
+    assert.equal(config.keyRef, session.keyRef, "重建 config 应引用新 keyRef");
+    assert.equal(config.apiKey, "sk-new", "重建应一次性注入新 key（数据流 7）");
+    assert.ok(
+      ipc.acks.filter((m) => m.type === "config-ack").length > ackCountBefore,
+      "重建后子进程应回 config-ack（每次 session-config 均有回执）"
+    );
+  });
+
+  it("保存相同 provider/key 值 → 不重建（REQ-AGENT-004 AC2：未变不重建）", async () => {
+    const createAgentService = await loadAgentService();
+    const ipc = createFakeIpc();
+    const svc = createAgentService({ ipc });
+    const session = svc.createSession({ spaceKey: "feishu:oc_1", provider: "deepseek", apiKey: "sk-1" });
+    const refBefore = session.sessionRef;
+    assert.ok(refBefore, "会话应有 sessionRef");
+    // 相同 provider/apiKey 值再次保存 → 不应触发重建（REQ-AGENT-004 AC2）。
+    const res = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "deepseek", apiKey: "sk-1" })
+    });
+    assert.equal(res.status, 200, "相同配置应可保存");
+    assert.equal(session.sessionRef, refBefore, "provider/key 未变不应重建会话（REQ-AGENT-004 AC2）");
   });
 
   it("内置在前、自定义在后拼接顺序固定", async () => {
