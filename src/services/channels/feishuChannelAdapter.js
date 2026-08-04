@@ -1,7 +1,10 @@
 import { WSClient, EventDispatcher } from "@larksuiteoapi/node-sdk";
+import { randomUUID } from "node:crypto";
 
 const MAX_SEND_ATTEMPTS = 3;
 const FEISHU_APP_ID_RE = /^cli_[0-9a-fA-F]{16}$/;
+// H4（spike-report）：CardKit 流式更新 content 1~100,000 字符；sequence 严格递增（300317）。
+const MAX_CARD_CONTENT_CHARS = 100000;
 
 function createLogger(baseLogger) {
   const sink = baseLogger || console;
@@ -104,6 +107,16 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
   async function postJson(url, body, headers = {}) {
     const res = await fetch(url, {
       method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data.code === 0, status: res.status, data };
+  }
+
+  async function putJson(url, body, headers = {}) {
+    const res = await fetch(url, {
+      method: "PUT",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body)
     });
@@ -293,6 +306,74 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       };
       if (chatId) body.receive_id = chatId;
       return sendWithRetry(async () => postJson(url, body, authorizationHeader()));
+    },
+
+    /**
+     * CardKit 卡片发送（F1 / REQ-AGENT-019，H4 契约）：
+     * 1. 创建卡片实体（卡片 JSON 2.0 + streaming_mode）→ card_id（实体仅发送一次）；
+     * 2. 以交互消息（msg_type=interactive）把 card_id 发出（im/v1/messages）。
+     * 返回 { cardId } 供 updateCardStream 引用。
+     * 真实凭据联调待 QA（signoff H4：契约 PASS / 联调待验证）。
+     */
+    async sendCard({ chatId, cardJson } = {}) {
+      if (!chatId) {
+        throw new Error("E-CHANNEL-SEND: chatId is required");
+      }
+      if (!cardJson || typeof cardJson !== "object") {
+        throw new Error("E-CHANNEL-SEND: cardJson is required");
+      }
+      // 创建卡片实体（CardKit：cardkit:card:write 权限）。
+      const createResult = await sendWithRetry(async () =>
+        postJson(`${baseUrl}/open-apis/cardkit/v1/cards`, cardJson, authorizationHeader())
+      );
+      const cardId = createResult?.card?.card_id ?? createResult?.card_id;
+      if (!cardId) {
+        const err = new Error("E-CHANNEL-SEND: card entity creation returned no card_id");
+        err.code = "E-CHANNEL-SEND";
+        throw err;
+      }
+      // 发送交互消息（im:message:send_as_bot 权限），卡片实体随消息一次性发出。
+      await sendWithRetry(async () =>
+        postJson(
+          `${baseUrl}/open-apis/im/v1/messages?receive_id_type=chat_id`,
+          {
+            receive_id: chatId,
+            msg_type: "interactive",
+            content: JSON.stringify({ card_id: cardId })
+          },
+          authorizationHeader()
+        )
+      );
+      return { cardId };
+    },
+
+    /**
+     * CardKit 卡片流式更新（F1 / REQ-AGENT-019，H4 契约）：
+     * PUT /cardkit/v1/cards/:card_id/elements/:element_id/content——
+     * content = 全量累计文本（1~100,000 字符）、sequence 严格递增（错误码 300317）、
+     * uuid 幂等。流式期间不触发 QPS 限流；10 分钟窗口由调用方（卡片渲染器）自控。
+     * cardId 缺失（sendCard 尚未完成的竞态窗口）→ 跳过（返回 ok，不报错）：
+     * content 为全量累计文本，后续更新不丢内容（渲染器在 cardId 回填后继续携带真实 id）。
+     */
+    async updateCardStream({ cardId, content, sequence, elementId = "content" } = {}) {
+      if (!cardId) {
+        // 竞态窗口：卡片实体尚未创建完成——跳过本次更新（不丢内容，见上注）。
+        return { ok: true, skipped: true };
+      }
+      if (typeof content !== "string" || content.length < 1 || content.length > MAX_CARD_CONTENT_CHARS) {
+        const err = new Error("E-CHANNEL-SEND: content 必须为 1~100,000 字符（H4）");
+        err.code = "E-CHANNEL-SEND";
+        throw err;
+      }
+      if (!Number.isInteger(sequence) || sequence < 1) {
+        const err = new Error("E-CHANNEL-SEND: sequence 必须为正整数且严格递增（H4，错误码 300317）");
+        err.code = "E-CHANNEL-SEND";
+        throw err;
+      }
+      const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/elements/${encodeURIComponent(elementId)}/content`;
+      return sendWithRetry(async () =>
+        putJson(url, { content, sequence, uuid: randomUUID() }, authorizationHeader())
+      );
     },
 
     onMessage(cb) {

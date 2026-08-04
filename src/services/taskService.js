@@ -607,6 +607,17 @@ export async function executeTask(execution, flow, project) {
   // Move from queued to running.
   db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("running", execution.id);
 
+  // REQ-AGENT-020：执行启动事件（任务卡片渲染器消费；sessionKey 由执行上下文
+  // 解析——对话下发需记录 originating spaceKey，见 cardRenderer 接线）。
+  eventBus.publish("execution:started", {
+    executionId: execution.id,
+    projectId: execution.projectId,
+    flowId: execution.flowId,
+    status: "running",
+    trigger: execution.trigger,
+    variables: execution.variables,
+  });
+
   const isScheduled = execution.trigger === "schedule";
   let effectiveFlow = flow;
   if (isScheduled) {
@@ -982,6 +993,15 @@ export function completeExecution(id, { status = "success", duration, nodesRun, 
     artifacts !== undefined ? JSON.stringify(artifacts) : row.artifacts,
     id
   );
+  // REQ-AGENT-020：执行终态事件（任务卡片定型：含执行 id，可 /status 复核；
+  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。
+  eventBus.publish("execution:completed", {
+    executionId: id,
+    status,
+    output,
+    duration,
+    nodesRun,
+  });
   return getExecution(id);
 }
 
@@ -997,6 +1017,13 @@ export function addExecutionLog(id, { node, status, message }) {
     INSERT INTO logs (executionId, at, node, status, message)
     VALUES (?, ?, ?, ?, ?)
   `).run(id, timestamp(), node, status, message);
+  // REQ-AGENT-020：执行进度事件（任务卡片增量更新；不阻塞执行）。
+  eventBus.publish("execution:progress", {
+    executionId: id,
+    status,
+    log: message,
+    node,
+  });
   return getExecution(id);
 }
 

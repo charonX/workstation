@@ -158,3 +158,13 @@ export async function send(channelType, payload) {
 export async function reply(channelType, payload) {
   return dispatchToAdapter(channelType, "reply", payload);
 }
+
+// CardKit 卡片接口（F1 / REQ-AGENT-019~020）：sendCard 建卡 + 发消息 → {cardId}；
+// updateCardStream 流式更新（sequence 严格递增，H4）。
+export async function sendCard(channelType, payload) {
+  return dispatchToAdapter(channelType, "sendCard", payload);
+}
+
+export async function updateCardStream(channelType, payload) {
+  return dispatchToAdapter(channelType, "updateCardStream", payload);
+}

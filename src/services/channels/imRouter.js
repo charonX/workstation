@@ -76,7 +76,8 @@ export function createImRouter({
   flowService = defaultFlowService,
   notificationService = defaultNotificationService,
   agentRouter,
-  agentService
+  agentService,
+  onSessionEvent
 } = {}) {
   const replyFn = async (payload) => {
     if (channelManager && typeof channelManager.reply === "function") {
@@ -149,7 +150,7 @@ export function createImRouter({
     const config = payload.sessionConfig ?? {};
     try {
       const svc = typeof agentService === "function" ? await agentService() : agentService;
-      svc.createSession({
+      const session = svc.createSession({
         spaceKey,
         provider: config.provider,
         apiKey: config.apiKey,
@@ -158,6 +159,11 @@ export function createImRouter({
         // 恒 undefined，identity 在链路上丢失，agentService 退化为独立读 settings）。
         identity: config.identity
       });
+      // Slice 7：agent 流式事件 → 会话卡片渲染器（回复卡片流式，REQ-AGENT-019）。
+      // 事件承载 sessionKey（spaceKey），渲染器按对话空间映射 chatId。
+      if (onSessionEvent && typeof session?.on === "function") {
+        session.on("session-event", (ev) => onSessionEvent(spaceKey, ev));
+      }
       await svc.prompt(spaceKey, payload.message ?? msg.text).catch((err) => {
         console.error(`[imRouter] agent prompt 失败 session=${spaceKey}:`, err.message);
       });

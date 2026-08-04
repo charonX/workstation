@@ -25,6 +25,7 @@ import * as channelManager from "../services/channelManager.js";
 import { createAgentRouter } from "../services/agentRouter.js";
 import { createAgentService } from "../services/agentService.js";
 import { createSessionStore } from "../services/sessionStore.js";
+import { createCardRenderer } from "../services/cardRenderer.js";
 
 const activeServers = new Set();
 
@@ -177,8 +178,60 @@ export function startServer(options = {}) {
         channelManager,
         baseUrl: `http://127.0.0.1:${port}`,
         agentRouter,
-        agentService: getAgentService
+        agentService: getAgentService,
+        // Slice 7：agent 流式事件 → 回复卡片流式（REQ-AGENT-019）。
+        onSessionEvent: (spaceKey, ev) => {
+          getCardRenderer().handleStreamEvent({ sessionKey: spaceKey, ...ev });
+        }
       });
+      // Slice 7：会话卡片渲染器（REQ-AGENT-019~020）——惰性创建（ADR-009）：
+      // 首次流式/执行事件才实例化；adapter 经 channelManager 解析当前飞书通道。
+      // 任务卡片（REQ-AGENT-020）由 eventBus 执行事件驱动；sessionKey 从执行
+      // 上下文解析（对话下发的执行需记录 originating spaceKey——GAP：工具面
+      // task run 未记录 spaceKey，非对话执行（手动/定时）无会话 → 不发送任务卡片；
+      // 接线点已就绪，随 Slice 8 或后续补全映射）。
+      let serverCardRenderer = null;
+      const getCardRenderer = () => {
+        if (!serverCardRenderer) {
+          serverCardRenderer = createCardRenderer({
+            adapter: {
+              sendCard: (payload) => channelManager.sendCard("feishu", payload),
+              updateCardStream: (payload) => channelManager.updateCardStream("feishu", payload),
+              send: (payload) => channelManager.send("feishu", payload)
+            }
+          });
+          const resolveSessionKey = (executionEvent) =>
+            executionEvent?.variables?.spaceKey ?? undefined;
+          eventBus.subscribe("execution:started", (e) => {
+            getCardRenderer().handleExecutionEvent({
+              sessionKey: resolveSessionKey(e),
+              type: "started",
+              executionId: e.executionId,
+              flowId: e.flowId,
+              status: e.status,
+            });
+          });
+          eventBus.subscribe("execution:progress", (e) => {
+            getCardRenderer().handleExecutionEvent({
+              sessionKey: resolveSessionKey(e),
+              type: "progress",
+              executionId: e.executionId,
+              status: e.status,
+              log: e.log,
+            });
+          });
+          eventBus.subscribe("execution:completed", (e) => {
+            getCardRenderer().handleExecutionEvent({
+              sessionKey: resolveSessionKey(e),
+              type: "completed",
+              executionId: e.executionId,
+              status: e.status,
+              output: e.output,
+            });
+          });
+        }
+        return serverCardRenderer;
+      };
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });

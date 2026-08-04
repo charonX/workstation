@@ -12,7 +12,7 @@
 | 4 | 工具面（riskLevel 注入 + release 拒绝） | REQ-AGENT-012~013 | M1 | complete |
 | 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | complete |
 | 6 | 命令直通 | REQ-AGENT-021~022 | M3 | complete |
-| 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | pending |
+| 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | complete（1 契约冲突待裁决，见 Slice 7 节） |
 | 8 | 绑定与确认 | REQ-AGENT-014~016 | M3 | pending |
 
 依赖：1→2→3→4→5→{6,7,8}（7 另依赖 4 的下发工具面）。
@@ -208,9 +208,9 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 | PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
 |---|---|---|---|
 | REQ-AGENT-021 AC1 消息 / 前缀命中命令集 → 主进程路由层直接调命令模块（不经 LLM/agent 进程），结果格式化回复 | src/services/agentRouter.js（parseSlashCommand → handleCommand：校验 → executor.execute → formatCommandReply；payload.reply / commandReply 双形态）+ src/services/channels/imRouter.js（command 分支回投）+ src/http/server.js（baseUrl/sessionStore 接线） | slashCommands.test.js「/ 前缀命中命令集 → 主进程直通命令模块，不经 LLM」 | COVERED |
-| REQ-AGENT-021 AC2 /status <id>：id 必填且 UUID 格式（crypto.randomUUID）；非法 → E-CMD-INVALID 用法提示；未知 id → 查无此执行明确回复 | agentRouter.js（validateCommand：args.length===1 + UUID_RE；E-CMD-INVALID payload { reply, code }；formatCommandReply notFound → 查无此执行；createCommandExecutor 404 → notFound:true） | slashCommands.test.js「/status <id>：UUID 格式校验；未知 id 明确回复」 | PARTIAL（校验/用法/E-CMD-INVALID 全绿；「查无此执行」同步断言 vs async mock seam 矛盾——真实路径冒烟验证可达，登记 1 待裁决） |
+| REQ-AGENT-021 AC2 /status <id>：id 必填且 UUID 格式（crypto.randomUUID）；非法 → E-CMD-INVALID 用法提示；未知 id → 查无此执行明确回复 | agentRouter.js（validateCommand：args.length===1 + UUID_RE；E-CMD-INVALID payload { reply, code }；formatCommandReply notFound → 查无此执行；createCommandExecutor 404 → notFound:true） | slashCommands.test.js「/status <id>：UUID 格式校验；未知 id 明确回复」 | COVERED（2247af7 mock 去 async，同步执行层断言 formatCommandReply notFound 分支；生产 async 路径经 commandReply 到达同一格式化函数；U2 回投链路无独立断言登记 test-gap 随 Slice 8 后补） |
 | REQ-AGENT-021 AC3 /list [projectId|flowId]：可选过滤参数，格式校验；返回执行列表摘要 | agentRouter.js（validateCommand：args ≤ 1；formatCommandReply list 分支：projectId/flowId 过滤 + 摘要行） | slashCommands.test.js「/list 可选过滤参数与格式校验」（过滤参数透传 executor） | COVERED（过滤语义 projectId‖flowId 匹配，冒烟验证） |
-| REQ-AGENT-021 AC4 未绑定用户发起命令 → 仍先过绑定检查（E-AUTH-NOT-BOUND） | agentRouter.js（bindingDecision 第三分支：无绑定态 + parsedCommand → reject E-AUTH-NOT-BOUND，先于命令执行） | slashCommands.test.js「未绑定用户命令仍先过绑定检查」 | COVERED（agentConfig「斜杠命令未配 key 可用」例回归 = 契约冲突登记 2，待裁决） |
+| REQ-AGENT-021 AC4 未绑定用户发起命令 → 仍先过绑定检查（E-AUTH-NOT-BOUND） | agentRouter.js（bindingDecision 第三分支：无绑定态 + parsedCommand → reject E-AUTH-NOT-BOUND，先于命令执行） | slashCommands.test.js「未绑定用户命令仍先过绑定检查」 | COVERED（2247af7 agentConfig 例先 bindUser 隔离绑定与 key 正交语义：绑定用户未配 key → 命令可用；未绑定 → 拒绝） |
 | REQ-AGENT-022 AC1 /reset 复用 REQ-AGENT-010 语义（当前空间重置，其他空间不受影响） | agentRouter.js（handleCommand reset：sessionStore.reset(spaceKeyFor(chatId))；agentService 经 store.onReset 清上下文 + IPC reset-session，Slice 3 既有链路） | slashCommands.test.js「/reset 复用 REQ-AGENT-010 语义」 | COVERED |
 | REQ-AGENT-022 AC2 /help 返回命令集与用法说明 | agentRouter.js（HELP_TEXT：/status /list /reset /help 用法） | slashCommands.test.js「/help 返回命令集与用法说明」 | COVERED |
 | REQ-AGENT-022 AC3 全部命令未配 key 可用（回归 REQ-AGENT-002 标准 2）；命令识别先于会话分发（无空间也响应） | agentRouter.js（route 顺序：绑定检查 → 命令识别 → key 检查 → 会话分发；命令直通不查 key） | slashCommands.test.js「全部命令未配 key 可用；命令先于会话分发」（agent_sessions 无行断言） | COVERED |
@@ -226,8 +226,9 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 | U2（Slice 5 登记）：生产路径斜杠命令静默 | agentRouter.js（route 同步受理 + payload.commandReply）+ imRouter.js（command 分支 await commandReply → channel reply 回投） | 冒烟脚本（生产路径 /status /list /reset /help 真实回复，零 mock） | COVERED（无独立业务断言——imRouter 回投链路经冒烟 + slashCommands route 层断言覆盖；生产端到端随 QA） |
 
 GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
-- **【待裁决 1】slashCommands「查无此执行」同步断言 vs async mock**：见验证记录——建议 [test]（mock 去 async 或断言异步化），父代理裁决后补绿。
-- **【待裁决 2】agentConfig「斜杠命令在未配 key 时照常可用」回归**：与 REQ-AGENT-021 标准 4 断言级互斥（同为无绑定态未绑定用户发命令），与 Slice 5 登记的同根冲突（agentConfig 未配 key 普通消息 vs REQ-AGENT-015）归 Slice 8 统一裁决；建议 agentConfig REQ-AGENT-002 两例先绑定用户。
+- **【待裁决 1/2 —— 已于 2247af7 处置（2026-08-04）】**：① slashCommands「查无此执行」sync/async seam 矛盾 → mock 去 async（断言 formatCommandReply notFound 分支）；② agentConfig「斜杠命令未配 key 可用」回归 → 例先 bindUser（绑定与 key 正交隔离）。两者断言预期值零变更。残留同根冲突（agentConfig 未绑定普通消息 E-AGENT-NO-KEY vs REQ-AGENT-015 全量拒绝）归 **Slice 8 统一裁决**。
+- **【test-gap 登记，Slice 8 后补（2026-08-04）】**：U2 commandReply 回投链路 + 「查无此执行」生产语义无 imRouter 级自动化断言（仅冒烟）——Slice 8 完成后补 imRouter 级测试（注入返回 commandReply promise 的 agentRouter，断言 channel reply 收到格式化文本）。
+- **【Slice 8 前置依赖标注（2026-08-04）】**：beginBinding 生产接线零调用方（绑定态 in-memory 不持久化）→ **生产环境所有命令当前被 E-AUTH-NOT-BOUND 拒绝（fail-closed）**；绑定 arming 接线（REQ-AGENT-014）是 Slice 6 命令可用的解锁条件，Slice 8 必须接线。
 - 无绑定态未绑定用户普通消息全量拒绝（REQ-AGENT-015 完整语义）→ Slice 8（届时 E-AGENT-NO-KEY 路径语义随裁决调整）。
 - 命令执行层（createCommandExecutor）生产接线冒烟已过；Electron 打包态端到端随 QA。
 - /list 过滤语义 = projectId ‖ flowId 匹配（PRD「[projectId|flowId]」字面），格式校验仅限参数个数（≤1）；语义细化（区分 project/flow 前缀等）待 REFLECT 人工确认。
@@ -275,6 +276,42 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 - **绑定状态 in-memory（不落 settings）**：pendingBind 有效期/取消/解绑/存 settings JSON 归 Slice 8（REQ-AGENT-014 完整状态机）。
 - **命令直通执行**：route 层 command action 已出，imRouter 仅透传 payload.reply；命令执行与格式化回复归 Slice 6（REQ-AGENT-021/022）。
 - **对话回复回投**：dialogue 后 agent 流式事件 → 回复卡片归 Slice 7（REQ-AGENT-019/020）。
+
+### Slice 7：卡片流式（REQ-AGENT-019~020）
+
+- 状态：**complete（5/6 绿 + 1 契约冲突登记，见下）**（commit 见下；cardStream.test.js 5/6 全绿；既有 510 全量：499 绿 / 11 红——11 红 = cardStream 1（契约冲突登记 1）+ userBinding 5 + confirmation 5（slice 8 预期），**既有零回归**）
+- 验证记录（2026-08-04）：
+  - REQ-AGENT-019 三例全绿：流式输出 → sendCard 一次 + updateCardStream 按序（sequence 严格递增）/ 流式结束定型 + 错误标注失败 / 10 分钟窗口关闭 → 降级普通消息 + /status 提示。
+  - REQ-AGENT-020 两例绿：执行启动 → 任务卡片 + 进度增量 + 终态含 executionId / 执行结果经对话回投（会话活跃时）。
+  - **【契约冲突登记 1，待父代理裁决】cardStream「卡片更新失败（重试耗尽）→ 告警」同步断言 vs async fake 矛盾**：测试 fake 的 `updateCardStream` 为 `async` 函数（失败 = `throw` → **rejected promise**，微任务才可见），而断言 `renderer.warnings?.some(...)` 在 `handleExecutionEvent` 返回后**同步**执行（同批其他断言强制 `handleExecutionEvent` 同步返回 `{terminal: true}` POJO——`terminal?.terminal === true` 与 async 互斥）。诚实实现 = 重试链 await adapter promise → 告警在微任务中记录；同步断言不可见（实验证实：Node 24 无 `getPromiseDetails`，同步观测 promise 拒绝不可能）。**建议 [test] 处置（断言预期值零变更）**：fake 的 `updateCardStream` 失败路径改为同步抛出（去掉该方法 `async` 关键字即可——渲染器同步重试路径同步告警，诚实成立；sendCard/send 保持 async）。不改则 1 it 恒红。
+  - **【GAP 登记 1，Slice 8 或后续接线】eventBus 执行事件 → 任务卡片端到端缺 sessionKey 映射**：taskService 已补 execution:started/progress/completed 发布（本次新增，既有零回归）；server.js 已接线订阅 + `resolveSessionKey = e.variables?.spaceKey`——但工具面 task run（toolAdapter）未记录 originating spaceKey（执行行无空间字段），非对话执行（手动/定时）本就无会话 → 当前生产路径任务卡片不路由（渲染器 seam 全绿，端到端缺映射；对话下发的任务卡片随 Slice 8 补 spaceKey 记录或 REFLECT 评估）。
+  - 挂起陷阱（Slice 6 教训）：本 slice 无命令执行/服务发现新 seam；server.js 惰性接线（ADR-009：首次事件才 createCardRenderer），imRouting/agentRoute 回归全绿佐证无副作用。
+
+| PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
+|---|---|---|---|
+| REQ-AGENT-019 AC1 agent 流式输出 → 渲染器构建回复卡片 → sendCard → 增量经 updateCardStream 按序更新（sequence 递增，断言请求序列） | src/services/cardRenderer.js（createCardRenderer：handleStreamEvent 同步推进——首次 text_delta 发卡 + 每次增量/结束按累计全文派发更新，sequence 每事件 +1 严格递增）、src/services/channels/feishuChannelAdapter.js（sendCard/updateCardStream，H4 契约） | cardStream.test.js「流式输出 → sendCard + updateCardStream 按序更新」 | COVERED |
+| REQ-AGENT-019 AC2 流式结束 → 卡片定型（停止更新）；流式错误 → 卡片标注失败状态 | cardRenderer.js（text_end → final=true 定型，后续事件丢弃；error → 内容追加【失败】+ reason + 定型） | cardStream.test.js「流式结束卡片定型；错误标注失败状态」 | COVERED |
+| REQ-AGENT-019 AC3 流式窗口 10 分钟自动关闭（H4）→ 降级普通文本消息 + 提示可用 /status 查询 | cardRenderer.js（streamWindowMs 默认 10min 可注入；窗口过期 → adapter.send 降级消息（含 E-CARD-STREAM-CLOSED 提示文案）+ 定型丢弃后续增量） | cardStream.test.js「流式窗口 10 分钟关闭 → 降级普通消息 + /status 提示」 | COVERED |
+| REQ-AGENT-019 接口契约：adapter sendCard({chatId, cardJson}) / updateCardStream({cardId, content, sequence})（sequence 严格递增）；CardKit streaming_mode | feishuChannelAdapter.js（sendCard：cardkit/v1/cards 建实体 + im/v1/messages interactive 发送 → {cardId}；updateCardStream：PUT cardkit/v1/cards/:id/elements/:element_id/content，content 1~100,000 校验 + sequence 正整数校验 + uuid 幂等；cardId 缺失竞态 → 跳过不报错——content 全量累计不丢内容）、channelManager.js（sendCard/updateCardStream 透传） | cardStream.test.js（fake 断言结构 + sequence） | COVERED（真实凭据联调待 QA，H4 已声明） |
+| REQ-AGENT-020 AC1 flow 执行启动（eventBus 执行事件）→ 任务卡片发送；执行进度（状态/日志摘要/产物）增量更新卡片 | cardRenderer.js（handleExecutionEvent：started → 任务卡片（含 executionId）；progress → 追加日志/状态增量更新）、src/services/taskService.js（execution:started/progress 发布） | cardStream.test.js「执行启动 → 任务卡片；进度增量更新」 | COVERED（渲染器 seam + 事件发布；端到端 sessionKey 映射见 GAP 1） |
+| REQ-AGENT-020 AC2 执行成功/失败 → 卡片终态（含执行 id，可 /status 复核） | cardRenderer.js（completed → 终态行含 executionId + status + /status 提示） | cardStream.test.js「…终态含执行 id」 | COVERED |
+| REQ-AGENT-020 AC3 执行结果同时经对话回投（agent 生成摘要，若对话会话活跃） | cardRenderer.js（sessions[sessionKey]?.onExecutionResult(result) 同步调用，result 含 executionId/status/output） | cardStream.test.js「执行结果经对话回投（会话活跃时）」 | COVERED（sessions 注入 seam；agent 摘要生成 = agent turn 语义，REFLECT 人工验收） |
+| REQ-AGENT-020 AC4 卡片更新失败（E-CHANNEL-SEND 重试耗尽）→ 告警日志，不阻断执行（回归 REQ-CHANNEL-003 语义） | cardRenderer.js（updateCardWithRetry：同步抛出 + promise 拒绝双路径重试（≤ retries），耗尽 → warnings 记录 E-CHANNEL-SEND；终态仍返回 {terminal:true}，流式/执行推进不阻断） | cardStream.test.js「卡片更新失败（重试耗尽）→ 告警不阻断执行」 | **PARTIAL（诚实实现下告警异步记录；测试同步断言 vs async fake 契约冲突——登记见验证记录，待父代理 [test] 裁决）** |
+| PRD §6 数据流 3（下发任务 + 流式：对话 → task run → 执行开始 → eventBus 执行事件 + agent 流式事件 → 卡片渲染器 → 任务卡片流式更新 → 完成卡片） | cardRenderer.js + taskService.js（执行事件）+ imRouter.js（onSessionEvent：session-event → handleStreamEvent）+ server.js（惰性接线：执行事件订阅 + 回复卡片转发） | cardStream.test.js（渲染器 seam）+ imRouting/agentRoute 回归 | PARTIAL（数据流接线完整落地；执行→spaceKey 映射缺口见 GAP 1；真实飞书联调待 QA） |
+| PRD §8 E-CARD-STREAM-CLOSED（流式窗口关闭 → 降级普通消息 + 提示 /status） | cardRenderer.js（窗口过期降级文案含 /status） | cardStream.test.js「流式窗口 10 分钟关闭 → 降级」 | COVERED |
+| PRD §8 E-CHANNEL-SEND（卡片更新失败 → 告警重试 ≤3，不阻断对话/执行） | cardRenderer.js（retries 默认 3 + warnings 告警）+ feishuChannelAdapter.js（sendWithRetry ≤3 复用） | cardStream.test.js「告警不阻断执行」 | PARTIAL（同 AC4 冲突登记） |
+| PRD §10 决策 F1（卡片能力入通道适配器：sendCard/updateCardStream；channelManager 唯一入口） | feishuChannelAdapter.js + channelManager.js（sendCard/updateCardStream 透传） | cardStream.test.js（fake 契约对齐）+ feishuChannel.test.js 回归 | COVERED |
+| 签核决策 19（回复卡片：sendCard + sequence 严格递增；10 分钟窗口降级普通消息 + /status 提示） | cardRenderer.js + feishuChannelAdapter.js | cardStream.test.js（REQ-AGENT-019 三例） | COVERED |
+| 签核决策 20（任务卡片：事件驱动、终态含 executionId；卡片失败不阻断执行（E-CHANNEL-SEND 告警）） | cardRenderer.js + taskService.js | cardStream.test.js（REQ-AGENT-020 三例） | PARTIAL（同 AC4 冲突登记） |
+| H4 契约（spike-report）：cardkit.v1 端点、content 1~100,000、sequence 严格递增（300317）、流式期间不限流、10 分钟自动关闭 | feishuChannelAdapter.js（端点/校验按 H4）+ cardRenderer.js（窗口/上限常量） | 无独立断言（fake 断言结构；真实端点联调待 QA） | COVERED（实现按契约；联调 QA） |
+| tech-design 会话卡片渲染器 → adapter（两类卡片：回复卡片、任务卡片；10 分钟窗口降级） | cardRenderer.js（两类卡片 + 降级路径） | cardStream.test.js | COVERED |
+
+GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
+- **【待裁决 1】cardStream「告警不阻断执行」warnings 同步断言 vs async fake 矛盾**：见验证记录契约冲突登记 1——诚实实现 = 异步告警；测试同步断言需 [test] 处置（fake updateCardStream 改同步抛出），断言预期值零变更。不改则 1 it 恒红。
+- **【GAP 1】执行 → 对话空间（spaceKey）映射缺失**：taskService 执行事件已发布、server.js 已订阅，但工具面 task run 未记录 originating spaceKey（执行行无空间字段）→ 生产路径任务卡片不路由（`resolveSessionKey` 恒 undefined 时静默跳过，无副作用）。补法：toolAdapter task run 变量注入 spaceKey（Slice 8 或独立补全）。
+- **真实飞书凭据联调**（sendCard/updateCardStream 端点、sequence 300317、10 分钟窗口行为）→ QA（H4 已声明「契约 PASS / 联调待 QA」）。
+- **执行结果回投的 agent 摘要生成**：onExecutionResult seam 已就绪（回投含 executionId/status/output），「agent 生成自然语言摘要」属 agent turn 语义，REFLECT 人工验收。
+- **卡片视觉/流式打字机效果**：纯审美判断，REFLECT 人工验收（test-plan.md 已显式接受）。
 
 
 
