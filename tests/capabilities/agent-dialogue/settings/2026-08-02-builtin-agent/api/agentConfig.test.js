@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-02-builtin-agent/REQ-AGENT-001, 2026-08-02-builtin-agent/REQ-AGENT-002
-// REQ-VERSION: v1-hash:1a95cf23677ba5e4cea1a2eb2157896aeef22713b6de03f9c5119c49f3830e2b
+// REQ-VERSION: v1-hash:4ed3c67befef393165738dafca1a9a153b278661403fc6cc06025a430d1bab87
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
