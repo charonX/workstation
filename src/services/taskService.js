@@ -994,13 +994,15 @@ export function completeExecution(id, { status = "success", duration, nodesRun, 
     id
   );
   // REQ-AGENT-020：执行终态事件（任务卡片定型：含执行 id，可 /status 复核；
-  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。
+  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。Slice 7 补（缺口 4）：
+  // artifacts 随事件承载（任务卡片终态产物行——REQ-AGENT-020 标准 1：产物增量）。
   eventBus.publish("execution:completed", {
     executionId: id,
     status,
     output,
     duration,
     nodesRun,
+    artifacts,
   });
   return getExecution(id);
 }

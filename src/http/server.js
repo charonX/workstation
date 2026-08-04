@@ -174,6 +174,32 @@ export function startServer(options = {}) {
         }
         return serverAgentService;
       };
+      // Slice 7：会话卡片渲染器（REQ-AGENT-019~020）——惰性创建（ADR-009）：
+      // 首次流式/执行事件才实例化；adapter 经 channelManager 解析当前飞书通道。
+      // 任务卡片（REQ-AGENT-020）由 eventBus 执行事件驱动；sessionKey 从执行
+      // 上下文解析（对话下发的执行需记录 originating spaceKey——GAP：工具面
+      // task run 未记录 spaceKey，非对话执行（手动/定时）无会话 → 不发送任务卡片；
+      // 接线点已就绪，随 Slice 8 或后续补全映射）。
+      let serverCardRenderer = null;
+      // Slice 7 补（缺口 3）：会话句柄注册表（REQ-AGENT-020 标准 3 执行结果回投）——
+      // imRouter 创建会话时登记句柄（句柄挂 onExecutionResult 回投钩子），渲染器
+      // 终态事件经 sessions[sessionKey].onExecutionResult 驱动 agent 生成执行摘要，
+      // 摘要回复经流式事件回投（回复卡片，同一渲染器实例）。修复前 createCardRenderer
+      // 未传 sessions → 生产路径回投永不触发。
+      const sessionRegistry = {};
+      const getCardRenderer = () => {
+        if (!serverCardRenderer) {
+          serverCardRenderer = createCardRenderer({
+            adapter: {
+              sendCard: (payload) => channelManager.sendCard("feishu", payload),
+              updateCardStream: (payload) => channelManager.updateCardStream("feishu", payload),
+              send: (payload) => channelManager.send("feishu", payload)
+            },
+            sessions: sessionRegistry
+          });
+        }
+        return serverCardRenderer;
+      };
       createImRouter({
         channelManager,
         baseUrl: `http://127.0.0.1:${port}`,
@@ -182,56 +208,64 @@ export function startServer(options = {}) {
         // Slice 7：agent 流式事件 → 回复卡片流式（REQ-AGENT-019）。
         onSessionEvent: (spaceKey, ev) => {
           getCardRenderer().handleStreamEvent({ sessionKey: spaceKey, ...ev });
+        },
+        // Slice 7 补（缺口 3）：会话句柄登记 + 执行结果回投钩子（REQ-AGENT-020
+        // 标准 3：执行完成 → agent 生成摘要 → 摘要经流式事件回投 → 回复卡片）。
+        onSessionCreated: (spaceKey, session) => {
+          if (!session || typeof session !== "object") return;
+          if (typeof session.onExecutionResult !== "function") {
+            session.onExecutionResult = (result) => {
+              const summaryPrompt = `请用不超过 200 字总结本次执行结果，直接输出总结：${JSON.stringify(result ?? {})}`;
+              return getAgentService()
+                .then((svc) => {
+                  // 摘要回投是新一轮对话：先经会话事件通道宣告 stream_start（轮次
+                  // 边界，REQ-AGENT-019 每轮各一张回复卡片），否则上一轮 final 状态
+                  // 会把摘要流式事件全部丢弃（code-defect 1 同机制）。
+                  if (typeof session.emit === "function") {
+                    session.emit("session-event", { type: "stream_start" });
+                  }
+                  return svc.prompt(spaceKey, summaryPrompt);
+                })
+                .catch(() => undefined);
+            };
+          }
+          sessionRegistry[spaceKey] = session;
         }
       });
-      // Slice 7：会话卡片渲染器（REQ-AGENT-019~020）——惰性创建（ADR-009）：
-      // 首次流式/执行事件才实例化；adapter 经 channelManager 解析当前飞书通道。
-      // 任务卡片（REQ-AGENT-020）由 eventBus 执行事件驱动；sessionKey 从执行
-      // 上下文解析（对话下发的执行需记录 originating spaceKey——GAP：工具面
-      // task run 未记录 spaceKey，非对话执行（手动/定时）无会话 → 不发送任务卡片；
-      // 接线点已就绪，随 Slice 8 或后续补全映射）。
-      let serverCardRenderer = null;
-      const getCardRenderer = () => {
-        if (!serverCardRenderer) {
-          serverCardRenderer = createCardRenderer({
-            adapter: {
-              sendCard: (payload) => channelManager.sendCard("feishu", payload),
-              updateCardStream: (payload) => channelManager.updateCardStream("feishu", payload),
-              send: (payload) => channelManager.send("feishu", payload)
-            }
-          });
-          const resolveSessionKey = (executionEvent) =>
-            executionEvent?.variables?.spaceKey ?? undefined;
-          eventBus.subscribe("execution:started", (e) => {
-            getCardRenderer().handleExecutionEvent({
-              sessionKey: resolveSessionKey(e),
-              type: "started",
-              executionId: e.executionId,
-              flowId: e.flowId,
-              status: e.status,
-            });
-          });
-          eventBus.subscribe("execution:progress", (e) => {
-            getCardRenderer().handleExecutionEvent({
-              sessionKey: resolveSessionKey(e),
-              type: "progress",
-              executionId: e.executionId,
-              status: e.status,
-              log: e.log,
-            });
-          });
-          eventBus.subscribe("execution:completed", (e) => {
-            getCardRenderer().handleExecutionEvent({
-              sessionKey: resolveSessionKey(e),
-              type: "completed",
-              executionId: e.executionId,
-              status: e.status,
-              output: e.output,
-            });
-          });
-        }
-        return serverCardRenderer;
-      };
+      // Slice 7 补（缺口 5）：执行事件订阅移出渲染器惰性创建（修复前订阅在首次
+      // 流式事件触发 getCardRenderer 时才注册 → 先于惰性创建的执行事件丢失，任务
+      // 卡片缺头——execution:started 未达即无卡）。订阅在启动路径立即注册，渲染器
+      // 仍按事件到达惰性创建（ADR-009）；无会话的执行（非对话下发）→ sessionKey
+      // 解析为空 → 渲染器不动作。
+      const resolveSessionKey = (executionEvent) => executionEvent?.variables?.spaceKey ?? undefined;
+      eventBus.subscribe("execution:started", (e) => {
+        getCardRenderer().handleExecutionEvent({
+          sessionKey: resolveSessionKey(e),
+          type: "started",
+          executionId: e.executionId,
+          flowId: e.flowId,
+          status: e.status,
+        });
+      });
+      eventBus.subscribe("execution:progress", (e) => {
+        getCardRenderer().handleExecutionEvent({
+          sessionKey: resolveSessionKey(e),
+          type: "progress",
+          executionId: e.executionId,
+          status: e.status,
+          log: e.log,
+        });
+      });
+      eventBus.subscribe("execution:completed", (e) => {
+        getCardRenderer().handleExecutionEvent({
+          sessionKey: resolveSessionKey(e),
+          type: "completed",
+          executionId: e.executionId,
+          status: e.status,
+          output: e.output,
+          artifacts: e.artifacts,
+        });
+      });
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     });
   });

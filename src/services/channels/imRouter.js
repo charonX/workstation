@@ -77,8 +77,13 @@ export function createImRouter({
   notificationService = defaultNotificationService,
   agentRouter,
   agentService,
-  onSessionEvent
+  onSessionEvent,
+  onSessionCreated
 } = {}) {
+  // 监听器去重（code-defect 2 修复）：同一会话句柄（生产 createSession 按 spaceKey
+  // 缓存，同空间复用同一句柄）只挂一次 session-event 监听器——修复前每条消息无条件
+  // 挂载 → 监听器随消息数累积，单条事件触发 N 次（每轮 sendCard N 次）。
+  const sessionListeners = new WeakSet();
   const replyFn = async (payload) => {
     if (channelManager && typeof channelManager.reply === "function") {
       return channelManager.reply("feishu", payload);
@@ -162,7 +167,22 @@ export function createImRouter({
       // Slice 7：agent 流式事件 → 会话卡片渲染器（回复卡片流式，REQ-AGENT-019）。
       // 事件承载 sessionKey（spaceKey），渲染器按对话空间映射 chatId。
       if (onSessionEvent && typeof session?.on === "function") {
-        session.on("session-event", (ev) => onSessionEvent(spaceKey, ev));
+        // code-defect 2：同一会话句柄只挂一次监听器（WeakSet 按句柄去重）。
+        if (!sessionListeners.has(session)) {
+          sessionListeners.add(session);
+          session.on("session-event", (ev) => onSessionEvent(spaceKey, ev));
+        }
+        // 轮次边界（code-defect 1 生产接线）：每条新消息 = 新一轮对话 → 经会话事件
+        // 通道宣告 stream_start（worker 尚未映射 PI turn_start/turn_end，边界由路由
+        // 层宣告），渲染器重置上一轮定型状态并为本轮重新发卡（每轮各一张回复卡片）。
+        if (typeof session.emit === "function") {
+          session.emit("session-event", { type: "stream_start" });
+        }
+      }
+      // Slice 7 补（缺口 3）：会话句柄登记（REQ-AGENT-020 标准 3 执行结果回投——
+      // 会话活跃时 execution 终态经 onExecutionResult 驱动 agent 生成摘要回投）。
+      if (onSessionCreated && session && typeof session === "object") {
+        onSessionCreated(spaceKey, session);
       }
       await svc.prompt(spaceKey, payload.message ?? msg.text).catch((err) => {
         console.error(`[imRouter] agent prompt 失败 session=${spaceKey}:`, err.message);

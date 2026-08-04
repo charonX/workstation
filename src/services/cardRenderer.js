@@ -39,9 +39,28 @@ function streamClosedHint() {
   return "流式输出已中断（流式窗口关闭），可用 /status 查询执行状态。";
 }
 
-// 任务卡片终态标注（REQ-AGENT-020 标准 2：终态含执行 id，可 /status 复核）。
-function taskTerminalLine(executionId, status) {
-  return `\n\n状态：${status ?? "completed"}\n执行 ID：${executionId ?? ""}\n可用 /status ${executionId ?? ""} 复核`;
+// 任务卡片终态标注（REQ-AGENT-020 标准 2：终态含执行 id，可 /status 复核；
+// 标准 1/AC1：产物与输出一并呈现——artifacts 路径登记行 + output 摘要行，
+// 缺口 4 补全 2026-08-04）。
+function taskTerminalLine(executionId, status, { output, artifacts } = {}) {
+  let line = `\n\n状态：${status ?? "completed"}\n执行 ID：${executionId ?? ""}\n可用 /status ${executionId ?? ""} 复核`;
+  const artifactList = Array.isArray(artifacts) ? artifacts.filter(Boolean) : [];
+  if (artifactList.length > 0) {
+    line += `\n产物：${artifactList.join("；")}`;
+  }
+  if (output !== undefined && output !== null) {
+    let text = "";
+    if (typeof output === "string") text = output;
+    else {
+      try {
+        text = JSON.stringify(output);
+      } catch {
+        text = "";
+      }
+    }
+    if (text) line += `\n输出：${text}`;
+  }
+  return line;
 }
 
 export function createCardRenderer({
@@ -87,7 +106,9 @@ export function createCardRenderer({
       Promise.resolve(adapter.sendCard({ chatId, cardJson })).then(
         (r) => {
           const current = registry.get(state.sessionKey);
-          if (current) current.cardId = r?.cardId;
+          // 轮次边界守卫（code-defect 1 修复配套）：条目已被新一轮替换（stream_start
+          // 重置）→ 旧轮 sendCard 回填不写进新轮，防跨轮串卡（cardId 张冠李戴）。
+          if (current && current === state) current.cardId = r?.cardId;
         },
         (err) => {
           recordWarning(err?.message ?? String(err));
@@ -139,6 +160,15 @@ export function createCardRenderer({
     if (!sessionKey) return;
     const chatId = chatIdOf(sessionKey);
     let stream = streams.get(sessionKey);
+
+    // 轮次边界（REQ-AGENT-019：每轮对话各发一张回复卡片）——stream_start（新一轮
+    // 开始）重置上一轮流状态：上一轮已定型（text_end/error）的卡片让位，本轮重新
+    // 发卡。code-defect 1 修复：修复前 text_end/error 只置 final=true 不清理 streams
+    // 条目 → 下一轮首个事件被下方 if (stream?.final) 丢弃（第二轮零产出）。
+    if (type === "stream_start") {
+      streams.delete(sessionKey);
+      stream = undefined;
+    }
 
     // 卡片已定型（流式结束 / 已降级）：停止一切更新（REQ-AGENT-019 标准 2）。
     if (stream?.final) return;
@@ -208,7 +238,7 @@ export function createCardRenderer({
 
   // —— 任务卡片（REQ-AGENT-020）——
 
-  function handleExecutionEvent({ sessionKey, type, executionId, status, log, output, flowId } = {}) {
+  function handleExecutionEvent({ sessionKey, type, executionId, status, log, output, flowId, artifacts } = {}) {
     if (!sessionKey) return {};
     const chatId = chatIdOf(sessionKey);
     let task = tasks.get(sessionKey);
@@ -261,7 +291,10 @@ export function createCardRenderer({
 
     if (type === "completed") {
       if (task) {
-        task.text += taskTerminalLine(executionId ?? task.executionId, status);
+        // 终态含执行 id + 产物/输出（REQ-AGENT-020 标准 1/2；缺口 4：任务卡片
+        // 终态补产物行——execution 记录 output/artifacts 字段，经 execution:completed
+        // 事件承载；事件未带则保持原终态行不变）。
+        task.text += taskTerminalLine(executionId ?? task.executionId, status, { output, artifacts });
         task.sequence += 1;
         task.terminal = true;
         // 终态更新（含执行 id，可 /status 复核）；失败 → 告警，不阻断执行。
@@ -279,6 +312,7 @@ export function createCardRenderer({
             executionId: executionId ?? task?.executionId,
             status,
             output,
+            artifacts,
           });
           if (result && typeof result.catch === "function") result.catch(() => {});
         } catch {
