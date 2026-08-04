@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { startServer, stopServer } from "../../../../../../src/http/server.js";
 
 // seam：确认服务状态机（agent_confirmations 表，临时 SQLite）+ 真 IPC 集成（notify-result 回投，W-2）。
 
@@ -135,5 +136,53 @@ describe("REQ-AGENT-016 高危确认挂起与解耦执行", () => {
     assert.ok(pending.some((p) => p.confirmId === req.confirmId), "重启后 pending 项应仍在队列（挂起可稍后处理）");
     await svc2.approve(req.confirmId);
     assert.equal(executed.length, 1, "重启后 pending 项仍可确认");
+  });
+});
+
+describe("REQ-AGENT-016 HTTP 端点路由（文档化契约：/api/agent/confirmations[...]）", () => {
+  let workdir;
+  let serverCtx;
+  let svc;
+  const executed = [];
+
+  beforeEach(async () => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "confirmation-http-"));
+    serverCtx = await startServer();
+    // 用 mock 背书确认服务替换 server 惰性工厂（ADR-009 惰性创建）：
+    // 文档化端点路径解析走真实 handleRequest → 路由层，执行层与现有服务级用例同模式。
+    const createConfirmationService = await loadConfirmationService();
+    executed.length = 0;
+    svc = createConfirmationService({
+      dbPath: path.join(workdir, "confirm.db"),
+      execute: async (command, args) => { executed.push({ command, args }); return { output: "内容源已删除" }; },
+      notifyResult: async () => {}
+    });
+    serverCtx.server._opcConfirmationServiceFactory = () => svc;
+  });
+
+  afterEach(async () => {
+    await stopServer(serverCtx);
+    fs.rmSync(workdir, { recursive: true, force: true });
+  });
+
+  it("GET /api/agent/confirmations 返回挂起队列（文档化端点可达）", async () => {
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "source delete", args: { id: "src_1" }, riskLevel: "confirm" };
+    svc.submit(req);
+    const res = await fetch(`${serverCtx.baseUrl}/api/agent/confirmations`);
+    assert.equal(res.status, 200, "GET /api/agent/confirmations 应 200（文档化端点可达，挂起队列可见）");
+    const body = await res.json();
+    assert.ok(Array.isArray(body.pending), "响应应含 pending 数组");
+    const hit = body.pending.find((p) => p.confirmId === req.confirmId);
+    assert.ok(hit, "挂起队列应含刚 submit 的 confirmId");
+    assert.equal(hit.status, "pending", "队列项状态应为 pending");
+  });
+
+  it("POST /api/agent/confirmations/:confirmId/approve 驱动执行（文档化端点可达）", async () => {
+    const req = { confirmId: crypto.randomUUID(), sessionKey: "feishu:oc_1", command: "source delete", args: { id: "src_1" }, riskLevel: "confirm" };
+    svc.submit(req);
+    const res = await fetch(`${serverCtx.baseUrl}/api/agent/confirmations/${req.confirmId}/approve`, { method: "POST" });
+    assert.equal(res.status, 200, "POST /api/agent/confirmations/:confirmId/approve 应 200（文档化端点可达）");
+    assert.deepEqual(executed, [{ command: "source delete", args: { id: "src_1" } }], "确认回调应驱动同一命令模块执行（不经过 agent turn）");
+    assert.equal(svc.get(req.confirmId).status, "approved", "状态应转 approved");
   });
 });
