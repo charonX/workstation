@@ -3,6 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "../hooks/useSettings.jsx";
 import DirectoryInput from "../components/shared/DirectoryInput.jsx";
 import { getChannelStatus, saveChannelCredentials, reconnectChannel } from "../api/channel.js";
+import {
+  getAgentConfig,
+  saveAgentConfig,
+  testConnection,
+  bindingBegin,
+  bindingCancel,
+  bindingDelete,
+} from "../api/agent.js";
 
 const DEFAULT_FORM = {
   workspaceRoot: "",
@@ -13,6 +21,14 @@ const DEFAULT_FORM = {
 };
 
 const DEFAULT_CHANNEL_STATUS = { status: "offline", error: null };
+
+// Agent 配置区常量（REQ-AGENT-001/004）：身份长度上限（签核决策 4）+ 供应商枚举。
+const AGENT_IDENTITY_MAX_LEN = 2000;
+const AGENT_PROVIDER_OPTIONS = [
+  { value: "deepseek", labelKey: "settings.agent.providerDeepseek" },
+  { value: "moonshotai", labelKey: "settings.agent.providerMoonshotai" },
+  { value: "moonshotai-cn", labelKey: "settings.agent.providerMoonshotaiCn" },
+];
 
 // 检查更新状态区：checking=检查中 / hasUpdate=发现新版 / upToDate=已是最新 / error=检查失败
 const STATUS_CHECKING = "checking";
@@ -68,6 +84,25 @@ export default function Settings() {
   const [channelSuccess, setChannelSuccess] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ appId: false, appSecret: false });
 
+  // Agent 配置区（独立 state 模式，与主表单/Feishu 通道区互不影响；REQ-AGENT-001/004/014）。
+  const [agentConfig, setAgentConfig] = useState(null); // { provider, configured, identity, binding }
+  const [agentProvider, setAgentProvider] = useState("");
+  const [agentApiKey, setAgentApiKey] = useState(""); // 永不回显（签核决策 5），保存后清空
+  const [agentShowSecret, setAgentShowSecret] = useState(false);
+  const [agentIdentity, setAgentIdentity] = useState("");
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [agentError, setAgentError] = useState(null);
+  const [agentSuccess, setAgentSuccess] = useState(null);
+  const [agentFieldErrors, setAgentFieldErrors] = useState({ provider: false, apiKey: false, identity: false });
+  const [agentTesting, setAgentTesting] = useState(false);
+  const [agentTestResult, setAgentTestResult] = useState(null); // { ok, message }
+  const [agentBindingAction, setAgentBindingAction] = useState(false);
+
+  // 绑定状态派生（GET binding 形态：{ bound, openId?, pendingBind? }，未接线 agentRouter 时兜底未绑定）。
+  const agentBinding = agentConfig?.binding;
+  const agentIsBound = agentBinding?.bound === true;
+  const agentBindingPending = !agentIsBound && !!agentBinding?.pendingBind;
+
   // 关于/更新区：当前版本（经 IPC 获取，禁止硬编码——REQ-DIST-003）+ 检查更新状态
   const [appVersion, setAppVersion] = useState(null);
   const [updateStatus, setUpdateStatus] = useState(null); // { kind, latestVersion, error }
@@ -109,6 +144,29 @@ export default function Settings() {
         if (creds?.appSecret) setChannelAppSecret(creds.appSecret);
       } catch {
         if (!cancelled) setChannelStatus(DEFAULT_CHANNEL_STATUS);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load agent config and binding status when the settings page mounts
+  // (GET /api/settings/agent never returns the key — signed-off decision 5).
+  // t is accessed via a ref (same pattern as reloadSettingsRef) so a language
+  // switch does not re-run this effect and clobber in-progress edits.
+  const agentTRef = useRef(t);
+  agentTRef.current = t;
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const config = await getAgentConfig();
+        if (cancelled) return;
+        setAgentConfig(config);
+        setAgentProvider(config.provider || "");
+        setAgentIdentity(config.identity || "");
+      } catch {
+        if (!cancelled) setAgentError(agentTRef.current("settings.agent.loadFailed"));
       }
     }
     load();
@@ -269,6 +327,139 @@ export default function Settings() {
     }
   }
 
+  // —— Agent 配置区（REQ-AGENT-001/004/014）——
+
+  // 供应商显示名（i18n 键，语言切换即时生效）。
+  function providerLabel(value) {
+    const option = AGENT_PROVIDER_OPTIONS.find((o) => o.value === value);
+    return option ? t(option.labelKey) : "";
+  }
+
+  // openId 脱敏显示（如 ou_***）：仅保留前 3 字符，避免完整 open_id 泄露。
+  function maskOpenId(openId) {
+    if (!openId) return "";
+    return openId.length > 3 ? `${openId.slice(0, 3)}***` : openId;
+  }
+
+  // 保存 Agent 配置：provider+apiKey 成对提交（PRD §7）；已配置且未输入新 key 时
+  // 省略 apiKey 字段以保留现有 key（key 永不回显——签核决策 5）；身份独立可存。
+  async function handleSaveAgent() {
+    setAgentSuccess(null);
+    setAgentError(null);
+    setAgentTestResult(null);
+    const provider = agentProvider.trim();
+    const hasKey = agentApiKey.trim() !== "";
+    // 已配置 + 未更换供应商 + 未输入新 key → 保留现有 key（只存身份）。
+    const keepExistingKey = agentConfig?.configured === true && agentConfig?.provider === provider && !hasKey;
+    const errors = { provider: false, apiKey: false, identity: false };
+    if (hasKey && !provider) {
+      errors.provider = true;
+    } else if (provider && !hasKey && !keepExistingKey) {
+      errors.apiKey = true;
+    }
+    if (agentIdentity.length > AGENT_IDENTITY_MAX_LEN) {
+      errors.identity = true;
+    }
+    setAgentFieldErrors(errors);
+    if (errors.provider) {
+      setAgentError(t("settings.agent.providerRequired"));
+      return;
+    }
+    if (errors.apiKey) {
+      setAgentError(t("settings.agent.apiKeyRequired"));
+      return;
+    }
+    if (errors.identity) {
+      setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
+      return;
+    }
+
+    const body = {
+      identity: agentIdentity,
+      ...(hasKey ? { provider, apiKey: agentApiKey.trim() } : {}),
+    };
+    setAgentSaving(true);
+    try {
+      const saved = await saveAgentConfig(body);
+      setAgentConfig((prev) => ({
+        ...prev,
+        provider: saved.provider,
+        configured: saved.configured,
+        identity: saved.identity,
+      }));
+      setAgentApiKey("");
+      setAgentSuccess(t("settings.agent.saved"));
+    } catch (err) {
+      // E-CONFIG-INVALID（400）透传后端文案（如「API key 不能为空」）。
+      setAgentError(err.message || t("settings.agent.saveFailed"));
+    } finally {
+      setAgentSaving(false);
+    }
+  }
+
+  // 测试连接（REQ-AGENT-001 AC4）：失败透传供应商原因（E-AGENT-LLM-FAIL），不阻止保存。
+  async function handleTestConnection() {
+    setAgentSuccess(null);
+    setAgentError(null);
+    setAgentTestResult(null);
+    const provider = agentProvider.trim();
+    const apiKey = agentApiKey.trim();
+    const errors = { provider: !provider, apiKey: !apiKey, identity: false };
+    setAgentFieldErrors(errors);
+    if (errors.provider) {
+      setAgentError(t("settings.agent.providerRequired"));
+      return;
+    }
+    if (errors.apiKey) {
+      setAgentError(t("settings.agent.apiKeyRequired"));
+      return;
+    }
+    setAgentTesting(true);
+    try {
+      const result = await testConnection({ provider, apiKey });
+      setAgentTestResult(
+        result.ok
+          ? { ok: true, message: t("settings.agent.testSuccess") }
+          : { ok: false, message: t("settings.agent.testFailed", { reason: result.message || "" }) }
+      );
+    } catch (err) {
+      // 400 E-CONFIG-INVALID（前端已拦截）或网络错误。
+      setAgentTestResult({ ok: false, message: t("settings.agent.testFailed", { reason: err.message || "" }) });
+    } finally {
+      setAgentTesting(false);
+    }
+  }
+
+  // 绑定动作（REQ-AGENT-014）：begin 置 pendingBind（10 分钟一次性）/ cancel 取消 / unbind 解绑；
+  // 响应回传最新绑定状态供展示。
+  async function runBindingAction(action) {
+    setAgentError(null);
+    setAgentSuccess(null);
+    setAgentBindingAction(true);
+    try {
+      const result = await action();
+      if (result?.binding) {
+        setAgentConfig((prev) => ({ ...prev, binding: result.binding }));
+      }
+    } catch (err) {
+      setAgentError(err.message || t("settings.agent.actionFailed"));
+    } finally {
+      setAgentBindingAction(false);
+    }
+  }
+
+  async function handleBeginBinding() {
+    runBindingAction(bindingBegin);
+  }
+
+  async function handleCancelBinding() {
+    runBindingAction(bindingCancel);
+  }
+
+  async function handleUnbind() {
+    runBindingAction(bindingDelete);
+  }
+
   if (loading) {
     return (
       <div className="page" data-testid="settings-page">
@@ -303,6 +494,273 @@ export default function Settings() {
       <form id="settings-form" data-testid="settings-form" onSubmit={handleSubmit}>
         <div className="settings-grid">
           <div className="settings-main">
+            <div className="card" data-testid="agent-settings-card">
+              <div className="card-header">
+                <h2 className="card-title">{t("settings.agent.title")}</h2>
+                <p className="card-subtitle">{t("settings.agent.subtitle")}</p>
+              </div>
+              <div className="card-body">
+                <div className="agent-status-row" style={STATUS_ROW_STYLE}>
+                  <span
+                    className={`status ${agentConfig?.configured ? "status-success" : "status-error"}`}
+                    data-testid="agent-config-status-badge"
+                    data-status={agentConfig?.configured ? "configured" : "unconfigured"}
+                  >
+                    <span className="status-dot"></span>
+                    <span>
+                      {agentConfig?.configured ? t("settings.agent.configured") : t("settings.agent.unconfigured")}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "var(--ch-text-xs)",
+                      color: "var(--ch-text-secondary)",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    {providerLabel(agentConfig?.provider || "")}
+                  </span>
+                </div>
+
+                {agentError && (
+                  <div
+                    className="alert-error show"
+                    data-testid="agent-settings-error"
+                    style={{
+                      background: "var(--ch-error-soft)",
+                      border: "1px solid var(--ch-error)",
+                      borderRadius: "var(--ch-radius-md)",
+                      padding: "var(--ch-space-3)",
+                      fontSize: "var(--ch-text-sm)",
+                      color: "var(--ch-text)",
+                      marginBottom: "var(--ch-space-5)",
+                    }}
+                  >
+                    <strong style={{ color: "var(--ch-error)" }}>{agentError}</strong>
+                  </div>
+                )}
+
+                {agentSuccess && (
+                  <div
+                    className="alert-success show"
+                    data-testid="agent-settings-success"
+                    style={{
+                      background: "var(--ch-success-soft)",
+                      border: "1px solid var(--ch-success)",
+                      borderRadius: "var(--ch-radius-md)",
+                      padding: "var(--ch-space-3)",
+                      fontSize: "var(--ch-text-sm)",
+                      color: "var(--ch-text)",
+                      marginBottom: "var(--ch-space-5)",
+                    }}
+                  >
+                    {agentSuccess}
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="agent-provider-select">
+                    {t("settings.agent.provider")}
+                  </label>
+                  <select
+                    id="agent-provider-select"
+                    className={`form-select form-input ${agentFieldErrors.provider ? "invalid" : ""}`}
+                    data-testid="agent-provider-select"
+                    value={agentProvider}
+                    onChange={(e) => {
+                      setAgentProvider(e.target.value);
+                      setAgentFieldErrors((prev) => ({ ...prev, provider: false }));
+                      setAgentError(null);
+                    }}
+                  >
+                    <option value="">{t("settings.agent.selectProvider")}</option>
+                    {AGENT_PROVIDER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="agent-api-key-input">
+                    {t("settings.agent.apiKey")}
+                  </label>
+                  <div
+                    className="secret-row"
+                    style={{ display: "flex", gap: "var(--ch-space-2)" }}
+                  >
+                    <input
+                      id="agent-api-key-input"
+                      className={`form-input ${agentFieldErrors.apiKey ? "invalid" : ""}`}
+                      data-testid="agent-api-key-input"
+                      type={agentShowSecret ? "text" : "password"}
+                      value={agentApiKey}
+                      onChange={(e) => {
+                        setAgentApiKey(e.target.value);
+                        setAgentFieldErrors((prev) => ({ ...prev, apiKey: false }));
+                        setAgentError(null);
+                      }}
+                      autoComplete="off"
+                      spellCheck={false}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm secret-toggle"
+                      onClick={() => setAgentShowSecret((prev) => !prev)}
+                    >
+                      {agentShowSecret ? t("settings.hide") : t("settings.show")}
+                    </button>
+                  </div>
+                  <p className="help-text">{t("settings.agent.apiKeyHelp")}</p>
+                </div>
+
+                <div className="form-group">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    data-testid="agent-test-connection-button"
+                    onClick={handleTestConnection}
+                    disabled={agentTesting}
+                  >
+                    {agentTesting ? t("settings.agent.testing") : t("settings.agent.testConnection")}
+                  </button>
+                  {agentTestResult && (
+                    <p
+                      className="help-text"
+                      data-testid="agent-test-connection-result"
+                      data-ok={agentTestResult.ok}
+                      style={{
+                        marginTop: "var(--ch-space-2)",
+                        marginBottom: 0,
+                        color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
+                      }}
+                    >
+                      {agentTestResult.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="agent-identity-input">
+                    {t("settings.agent.identity")}
+                  </label>
+                  <textarea
+                    id="agent-identity-input"
+                    className={`form-input ${agentFieldErrors.identity ? "invalid" : ""}`}
+                    data-testid="agent-identity-input"
+                    value={agentIdentity}
+                    onChange={(e) => {
+                      setAgentIdentity(e.target.value);
+                      if (e.target.value.length > AGENT_IDENTITY_MAX_LEN) {
+                        setAgentFieldErrors((prev) => ({ ...prev, identity: true }));
+                        setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
+                      } else {
+                        setAgentFieldErrors((prev) => ({ ...prev, identity: false }));
+                        setAgentError(null);
+                      }
+                    }}
+                    rows={4}
+                    spellCheck={false}
+                    style={{ fontFamily: "var(--ch-font-sans)", resize: "vertical" }}
+                  />
+                  <p className="help-text">
+                    {t("settings.agent.identityHelp", { max: AGENT_IDENTITY_MAX_LEN })}
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">{t("settings.agent.binding")}</label>
+                  <div
+                    className="agent-binding-row"
+                    style={{ ...STATUS_ROW_STYLE, marginBottom: 0, flexWrap: "wrap" }}
+                  >
+                    {agentIsBound ? (
+                      <>
+                        <span
+                          className="status status-success"
+                          data-testid="agent-binding-status"
+                          data-bound="true"
+                          style={{ marginRight: "auto" }}
+                        >
+                          <span className="status-dot"></span>
+                          <span>
+                            {t("settings.agent.bound", { openId: maskOpenId(agentBinding?.openId) })}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          data-testid="agent-unbind-button"
+                          onClick={handleUnbind}
+                          disabled={agentBindingAction}
+                        >
+                          {t("settings.agent.unbind")}
+                        </button>
+                      </>
+                    ) : agentBindingPending ? (
+                      <>
+                        <span
+                          className="status status-running"
+                          data-testid="agent-binding-pending"
+                          style={{ marginRight: "auto" }}
+                        >
+                          <span className="status-dot"></span>
+                          <span>{t("settings.agent.bindingPending")}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          data-testid="agent-cancel-binding-button"
+                          onClick={handleCancelBinding}
+                          disabled={agentBindingAction}
+                        >
+                          {t("common.cancel")}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="status status-error"
+                          data-testid="agent-binding-status"
+                          data-bound="false"
+                          style={{ marginRight: "auto" }}
+                        >
+                          <span className="status-dot"></span>
+                          <span>
+                            {t("settings.agent.unbound")} — {t("settings.agent.bindingGuide")}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          data-testid="agent-begin-binding-button"
+                          onClick={handleBeginBinding}
+                          disabled={agentBindingAction}
+                        >
+                          {t("settings.agent.beginBinding")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    data-testid="save-agent-config-button"
+                    onClick={handleSaveAgent}
+                    disabled={agentSaving}
+                  >
+                    {agentSaving ? t("settings.agent.saving") : t("settings.agent.save")}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="card" data-testid="channel-settings-card">
               <div className="card-header">
                 <h2 className="card-title">{t("settings.channel")}</h2>
