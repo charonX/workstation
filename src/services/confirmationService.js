@@ -110,6 +110,28 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
     );
   }
 
+  // 幂等认领（REQ-AGENT-016 标准 4，approve/reject 共用）：仅 pending 行可认领
+  // （置状态并返回行）；非 pending/不存在 → 返回当前状态（重复回调忽略，不执行）。
+  function claimPending(confirmId, status) {
+    const row = getRow(confirmId);
+    if (!row || row.status !== "pending") {
+      return { ok: false, status: row?.status ?? "not-found" };
+    }
+    setStatus(confirmId, status);
+    return { ok: true, row };
+  }
+
+  // 执行结果回投（approve/reject 共用）：注入 agent 会话 → 自然语言回投（W-2）。
+  // 回投失败不阻断确认本身（会话侧自行处理）。
+  async function notifyIfPresent(payload) {
+    if (typeof notifyResult !== "function") return;
+    try {
+      await notifyResult(payload);
+    } catch {
+      // 回投失败不阻断（会话侧自行处理）。
+    }
+  }
+
   // 入队（pending）+ 确认卡片（REQ-AGENT-016 标准 1）。同步完成（better-sqlite3）：
   // submit 立即返回 { status, replyText }，agent 该轮据此回复「操作待确认」。
   // sendCard 为 fire-and-forget（卡片发送失败不阻断入队——操作仍挂起，可稍后处理）。
@@ -142,11 +164,9 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
   // - 非 pending（已处理/不存在）→ 幂等忽略（标准 4：同一回调只执行一次）；
   // - 执行结果经 notifyResult 注入会话（W-2：agent 生成自然语言回投）。
   async function approve(confirmId) {
-    const row = getRow(confirmId);
-    if (!row || row.status !== "pending") {
-      return { status: row?.status ?? "not-found", executed: false };
-    }
-    setStatus(confirmId, "approved");
+    const claim = claimPending(confirmId, "approved");
+    if (!claim.ok) return { status: claim.status, executed: false };
+    const { row } = claim;
     let result;
     if (typeof execute === "function") {
       try {
@@ -162,33 +182,18 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
         };
       }
     }
-    if (typeof notifyResult === "function") {
-      try {
-        await notifyResult({ sessionKey: row.sessionKey, result });
-      } catch {
-        // 回投失败不阻断确认本身（会话侧自行处理）。
-      }
-    }
+    await notifyIfPresent({ sessionKey: row.sessionKey, result });
     return { status: "approved", executed: true, result };
   }
 
   // 拒绝 → 不执行 + 回投「已取消」（REQ-AGENT-016 标准 3）。
   async function reject(confirmId) {
-    const row = getRow(confirmId);
-    if (!row || row.status !== "pending") {
-      return { status: row?.status ?? "not-found", executed: false };
-    }
-    setStatus(confirmId, "rejected");
-    if (typeof notifyResult === "function") {
-      try {
-        await notifyResult({
-          sessionKey: row.sessionKey,
-          result: { cancelled: true, message: "操作已取消", command: row.command },
-        });
-      } catch {
-        // 回投失败不阻断（会话侧自行处理）。
-      }
-    }
+    const claim = claimPending(confirmId, "rejected");
+    if (!claim.ok) return { status: claim.status, executed: false };
+    await notifyIfPresent({
+      sessionKey: claim.row.sessionKey,
+      result: { cancelled: true, message: "操作已取消", command: claim.row.command },
+    });
     return { status: "rejected", executed: false };
   }
 

@@ -373,16 +373,9 @@ export function createAgentRouter({
         payload: dialoguePayload({ message, chatId, senderId, channelType }, { reply: BINDING_SUCCESS_REPLY }),
       };
     }
-    if (boundOpenId !== null && senderId !== boundOpenId) {
-      return {
-        action: "reject",
-        payload: {
-          error: "E-AUTH-NOT-BOUND",
-          message: "请先在设置中绑定操作者，再使用 agent 对话（E-AUTH-NOT-BOUND）",
-        },
-      };
-    }
-    if (boundOpenId === null) {
+    // boundOpenId 为 null（无绑定态）或非绑定者本人 → 全量拒绝
+    // （E-AUTH-NOT-BOUND，先于命令识别与会话分发；文案指向 Settings）。
+    if (boundOpenId !== senderId) {
       return {
         action: "reject",
         payload: { error: "E-AUTH-NOT-BOUND", message: UNBOUND_REJECT_REPLY },

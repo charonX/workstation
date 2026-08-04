@@ -142,6 +142,24 @@ const EXECUTION_NODES_DDL = `
   CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution ON execution_nodes(executionId);
 `;
 
+// REQ-AGENT-016 接口契约：agent_confirmations（确认挂起队列，SQLite 为真相）。
+// confirmId 唯一（幂等：同一确认回调只执行一次）；状态 pending|approved|rejected；
+// args 为命令参数 JSON（LLM flags 归一化后的 kebab-case 形式）。initSchema 与
+// migrateSchema（旧库补建）共用同一 DDL（CREATE IF NOT EXISTS 幂等，防漂移）。
+const CONFIRMATIONS_DDL = `
+  CREATE TABLE IF NOT EXISTS agent_confirmations (
+    confirmId TEXT PRIMARY KEY,
+    sessionKey TEXT NOT NULL,
+    command TEXT NOT NULL,
+    args TEXT NOT NULL DEFAULT '{}',
+    riskLevel TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_confirmations_status ON agent_confirmations(status);
+`;
+
 function initSchema(database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -263,17 +281,7 @@ function initSchema(database) {
     -- REQ-AGENT-016 接口契约：agent_confirmations（确认挂起队列，SQLite 为真相）。
     -- confirmId 唯一（幂等：同一确认回调只执行一次）；状态 pending|approved|rejected；
     -- args 为命令参数 JSON（LLM flags 归一化后的 kebab-case 形式）。
-    CREATE TABLE IF NOT EXISTS agent_confirmations (
-      confirmId TEXT PRIMARY KEY,
-      sessionKey TEXT NOT NULL,
-      command TEXT NOT NULL,
-      args TEXT NOT NULL DEFAULT '{}',
-      riskLevel TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_agent_confirmations_status ON agent_confirmations(status);
+    ${CONFIRMATIONS_DDL}
 
     ${EXECUTION_NODES_DDL}
   `);
@@ -352,17 +360,5 @@ function migrateSchema(database) {
     CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
   `);
   // REQ-AGENT-016: confirmation pending queue (legacy DBs get the table on migration).
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS agent_confirmations (
-      confirmId TEXT PRIMARY KEY,
-      sessionKey TEXT NOT NULL,
-      command TEXT NOT NULL,
-      args TEXT NOT NULL DEFAULT '{}',
-      riskLevel TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_agent_confirmations_status ON agent_confirmations(status);
-  `);
+  database.exec(CONFIRMATIONS_DDL);
 }

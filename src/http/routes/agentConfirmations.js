@@ -26,12 +26,10 @@ export async function handleAgentConfirmations(req, res, body, subPath = [], con
 
   const confirmId = rest[0];
   const action = rest[1];
-  if (req.method === "POST" && confirmId && action === "approve") {
-    const result = await svc.approve(confirmId);
-    return ok(res, result);
-  }
-  if (req.method === "POST" && confirmId && action === "reject") {
-    const result = await svc.reject(confirmId);
+  // 确认/拒绝回调（approve → 驱动同一命令模块执行；reject → 不执行）：同一分发
+  // 形态（svc[action]，action 限定在确认服务接口 approve/reject 内——文件头契约）。
+  if (req.method === "POST" && confirmId && (action === "approve" || action === "reject")) {
+    const result = await svc[action](confirmId);
     return ok(res, result);
   }
 

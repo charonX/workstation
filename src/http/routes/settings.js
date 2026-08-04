@@ -22,22 +22,15 @@ export async function handleSettings(req, res, body, subPath = [], context = {})
     // 绑定（REQ-AGENT-014，E3 + W-1）：Settings Agent 区「开始绑定」入口 →
     // agentRouter.beginBinding（pendingBind arming，一次性 + 10 分钟有效期）——
     // Slice 8 生产接线（此前零调用方；绑定是 agent 命令可用/对话可用的解锁条件）。
+    // 取消 arming（标准 5）/ 解绑（标准 4）端点同形态，runBindingAction 统一分发。
     if (subPath[1] === "binding" && subPath[2] === "begin" && req.method === "POST") {
-      if (!agentRouter?.beginBinding) return notFound(res);
-      agentRouter.beginBinding();
-      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+      return runBindingAction(res, agentRouter, "beginBinding");
     }
-    // 取消 arming（REQ-AGENT-014 标准 5：可取消）。
     if (subPath[1] === "binding" && subPath[2] === "cancel" && req.method === "POST") {
-      if (!agentRouter?.cancelBinding) return notFound(res);
-      agentRouter.cancelBinding();
-      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+      return runBindingAction(res, agentRouter, "cancelBinding");
     }
-    // 解绑（REQ-AGENT-014 标准 4：Settings 解绑 → 回未绑定态，引导流程可重来）。
     if (subPath[1] === "binding" && req.method === "DELETE") {
-      if (!agentRouter?.unbind) return notFound(res);
-      agentRouter.unbind();
-      return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
+      return runBindingAction(res, agentRouter, "unbind");
     }
     if (req.method === "GET") {
       // 绑定状态随配置状态可查（Settings Agent 区展示；未接线 agentRouter 时兜底
@@ -71,6 +64,14 @@ export async function handleSettings(req, res, body, subPath = [], context = {})
   }
 
   return notFound(res);
+}
+
+// 绑定动作分发（REQ-AGENT-014：begin/cancel/unbind 三端点共用同一形态——
+// 未接线 agentRouter 时 404；执行后回传最新绑定状态供 Settings 展示）。
+function runBindingAction(res, agentRouter, method) {
+  if (typeof agentRouter?.[method] !== "function") return notFound(res);
+  agentRouter[method]();
+  return ok(res, { ok: true, binding: agentRouter.getBindingStatus() });
 }
 
 // 通用 GET /api/settings：剥离 agent 密钥字段——明文或密文均不返回（签核决策 5）。

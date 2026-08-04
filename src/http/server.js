@@ -383,7 +383,9 @@ async function handleRequest(req, res, server) {
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
       // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
       // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
-      return handleAgentConfirmations(req, res, body, subPath, { getConfirmationService: () => server._opcConfirmationServiceFactory?.() });
+      return handleAgentConfirmations(req, res, body, subPath, {
+        getConfirmationService: () => server._opcConfirmationServiceFactory?.(),
+      });
     case "projects":
       return handleProjects(req, res, body, subPath);
     case "flows":

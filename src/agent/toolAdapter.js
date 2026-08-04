@@ -335,6 +335,16 @@ function applyDefaultArgs(tool, flags) {
   return flags;
 }
 
+// LLM 参数 → 命令 flags（camelCase 归一化 + 缺省注入）与位置参数——surface.execute
+// 与 executeToolCommand（确认流程主进程侧执行，C2 路径）共用同一调用形态，一处
+// 实现两端生效。
+function prepareInvocation(tool, args) {
+  return {
+    flags: applyDefaultArgs(tool, normalizeArgs(args)),
+    positional: (tool.positionalFrom ?? []).map((key) => args[key]),
+  };
+}
+
 // 失败的结构化结果（REQ-AGENT-012 标准 4：错误事件已回传，调用方/agent 可继续）。
 function errorResult(errorCode, errorMessage) {
   return { output: undefined, errorCode, errorMessage };
@@ -391,8 +401,7 @@ export function createToolSurface(options = {}) {
         emitToolError(surface.emit, name, "E-AGENT-UNSUPPORTED", message);
         throw new Error(message);
       }
-      const flags = applyDefaultArgs(tool, normalizeArgs(args));
-      const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
+      const { flags, positional } = prepareInvocation(tool, args);
       surface.emit({ type: "tool_execution_start", name, status: "running" });
       try {
         // 确认拦截点（Slice 8 接线）：confirm 级工具在注入 onConfirmRequest 时先请求
@@ -480,8 +489,7 @@ export async function executeToolCommand(name, args = {}, { baseUrl } = {}) {
   if (!tool) {
     throw commandError(`不支持该操作：${name} 不在 agent 工具面内`);
   }
-  const flags = applyDefaultArgs(tool, normalizeArgs(args));
-  const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
+  const { flags, positional } = prepareInvocation(tool, args);
   const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
   return data;
 }
