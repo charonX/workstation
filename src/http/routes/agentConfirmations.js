@@ -13,12 +13,19 @@ export async function handleAgentConfirmations(req, res, body, subPath = [], con
   const svc = getConfirmationService?.();
   if (!svc) return notFound(res);
 
-  if (req.method === "GET" && subPath.length === 0) {
+  // server.js 剥掉 /api/ 后 resource="agent"、subPath 形如
+  // ["confirmations", confirmId, action]（GET /api/agent/confirmations → ["confirmations"]）。
+  // 按文件头文档化端点契约解析：首段必须为 "confirmations"，否则 404——
+  // 非文档形态（如 /api/agent/<confirmId>/approve）不再可达。
+  if (subPath[0] !== "confirmations") return notFound(res);
+  const rest = subPath.slice(1);
+
+  if (req.method === "GET" && rest.length === 0) {
     return ok(res, { pending: svc.listPending() });
   }
 
-  const confirmId = subPath[0];
-  const action = subPath[1];
+  const confirmId = rest[0];
+  const action = rest[1];
   if (req.method === "POST" && confirmId && action === "approve") {
     const result = await svc.approve(confirmId);
     return ok(res, result);
