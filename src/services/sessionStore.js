@@ -80,6 +80,26 @@ export function createSessionStore(options = {}) {
     };
   }
 
+  // 换代：JSONL 世代 +1（新文件）+ agent_sessions 行更新（sessionRef 换代 +
+  // summaryRef 清空）。getOrCreate（JSONL 缺失重建）与 reset（/reset）共用；
+  // SQLite 写失败按 E-SESSION-PERSIST 降级（内存态继续，仅重启不恢复）。
+  function bumpGeneration(spaceKey, currentRef, dir, ts, operation) {
+    const gen = generationFromRef(currentRef) + 1;
+    const ref = sessionRefFor(dir, spaceKey, gen);
+    touchSessionFile(ref);
+    try {
+      db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
+        ref,
+        ts,
+        spaceKey
+      );
+    } catch (err) {
+      // E-SESSION-PERSIST：换代写失败 → 内存态继续（本次会话仍可用，仅重启不恢复）。
+      degradePersistFailure(operation, err);
+    }
+    return ref;
+  }
+
   // 空间首次对话 → 建表行 + JSONL 占位；已有空间 → 复用/恢复；JSONL 缺失 →
   // 新建会话（世代 +1）+ 提示历史不可恢复，不阻塞对话（REQ-AGENT-009 标准 2）。
   function getOrCreate(spaceKey, { sessionDir } = {}) {
@@ -104,18 +124,7 @@ export function createSessionStore(options = {}) {
     }
     if (!fs.existsSync(row.sessionRef)) {
       // 恢复失败（JSONL 缺失）→ 新建会话（旧引用作废），提示历史不可恢复。
-      const gen = generationFromRef(row.sessionRef) + 1;
-      const ref = sessionRefFor(dir, spaceKey, gen);
-      touchSessionFile(ref);
-      try {
-        db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
-          ref,
-          ts,
-          spaceKey
-        );
-      } catch (err) {
-        degradePersistFailure("getOrCreate 换代", err);
-      }
+      const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "getOrCreate 换代");
       return {
         spaceKey,
         sessionRef: ref,
@@ -170,19 +179,7 @@ export function createSessionStore(options = {}) {
     const row = db.prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
     if (!row) return undefined;
     const ts = nowIso();
-    const gen = generationFromRef(row.sessionRef) + 1;
-    const ref = sessionRefFor(baseSessionDir, spaceKey, gen);
-    touchSessionFile(ref);
-    try {
-      db.prepare("UPDATE agent_sessions SET sessionRef = ?, summaryRef = NULL, lastActiveAt = ? WHERE spaceKey = ?").run(
-        ref,
-        ts,
-        spaceKey
-      );
-    } catch (err) {
-      // E-SESSION-PERSIST：换代写失败 → 内存态继续（本次重置仍生效，仅重启不恢复）。
-      degradePersistFailure("reset 换代", err);
-    }
+    const ref = bumpGeneration(spaceKey, row.sessionRef, baseSessionDir, ts, "reset 换代");
     const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
     for (const listener of resetListeners) {
       try {

@@ -251,6 +251,13 @@ async function hotUpdateSystemPrompt(entry, systemPrompt) {
   await entry.resourceLoader.reload();
 }
 
+// 新建 PI SessionManager 并绑定 JSONL 引用（首建与 JSONL 损坏换代重建共用）。
+function createFreshSessionManager(ref) {
+  const sm = SessionManager.create(cwd, sessionDir);
+  sm.setSessionFile(ref);
+  return sm;
+}
+
 // 新建会话（含 provider/key 变更后的重建路径）：PI AgentSession 创建 + 订阅 + 注册。
 async function createSessionEntry(msg) {
   const { sessionKey, provider, model, keyRef, sessionRef, systemPrompt, apiKey } = msg;
@@ -258,7 +265,7 @@ async function createSessionEntry(msg) {
   const modelObj = await resolveModel(runtime, provider, model, apiKey);
 
   const settingsManager = SettingsManager.inMemory();
-  const finalRef = sessionRef ?? path.join(sessionDir, `${safeKeyFor(sessionKey)}.jsonl`);
+  const finalRef = sessionRef ?? sessionRefFor(sessionDir, sessionKey);
   let effectiveRef = finalRef;
   let rebuilt = false;
   let sessionManager;
@@ -272,12 +279,10 @@ async function createSessionEntry(msg) {
       effectiveRef = sessionRefFor(sessionDir, sessionKey, generationFromRef(finalRef) + 1);
       rebuilt = true;
       log(`JSONL 损坏，换代重建 session=${sessionKey} ref=${finalRef} -> ${effectiveRef} err=${err?.message ?? String(err)}`);
-      sessionManager = SessionManager.create(cwd, sessionDir);
-      sessionManager.setSessionFile(effectiveRef);
+      sessionManager = createFreshSessionManager(effectiveRef);
     }
   } else {
-    sessionManager = SessionManager.create(cwd, sessionDir);
-    sessionManager.setSessionFile(finalRef);
+    sessionManager = createFreshSessionManager(finalRef);
   }
 
   const config = { systemPrompt: systemPrompt ?? "" };

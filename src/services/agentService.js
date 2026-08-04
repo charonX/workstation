@@ -106,6 +106,23 @@ function appendJsonlMessage(ref, { role, content }) {
   }
 }
 
+// 对话消息入上下文 + JSONL 轻量记录（REQ-AGENT-008 标准 4：消息落盘；仅注入
+// store 时落盘——无 store 的单元 seam 不写盘）。
+function pushContextMessage(session, role, content) {
+  session.context.push({ role, content });
+  if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role, content });
+}
+
+// 恢复失败提示（REQ-AGENT-009 标准 2）：JSONL 缺失/损坏重建后挂用户可见提示。
+function applyRecoveryHint(session, hint) {
+  if (hint) session.recoveryHint = hint;
+}
+
+// prompt 结果附带本轮回复文本（text_end.content；无文本时缺省，「事件即结果」）。
+function withReply(base, reply) {
+  return reply !== undefined ? { ...base, reply } : base;
+}
+
 // 活跃服务实例：HTTP 路由层经广播函数热更新存量会话（REQ-AGENT-004 / 数据流 7）。
 let activeService = null;
 
@@ -216,8 +233,7 @@ function createInMemoryAgentService(options = {}) {
   async function runTurn(session, text) {
     // 上下文追加 + JSONL 轻量记录（REQ-AGENT-008 标准 4：消息落盘；平台侧不复制
     // 全文——SQLite 行无消息列；记录格式非 PI 可恢复，缺口 4 修正）。
-    session.context.push({ role: "user", content: text });
-    if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role: "user", content: text });
+    pushContextMessage(session, "user", text);
     let finalText;
     for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
       let result;
@@ -248,8 +264,7 @@ function createInMemoryAgentService(options = {}) {
       break;
     }
     if (finalText !== undefined) {
-      session.context.push({ role: "assistant", content: finalText });
-      if (session.persistJsonl) appendJsonlMessage(session.sessionRef, { role: "assistant", content: finalText });
+      pushContextMessage(session, "assistant", finalText);
     }
     compressIfNeeded(session);
     return finalText;
@@ -259,8 +274,7 @@ function createInMemoryAgentService(options = {}) {
   // 后续 prompt（summarize 注入断言，默认确定性截断）；摘要索引写 agent_sessions
   // summaryRef；压缩对用户无感（对话不打断）。
   function compressIfNeeded(session) {
-    if (compressionThreshold <= 0) return;
-    if (session.context.length <= compressionThreshold) return;
+    if (compressionThreshold <= 0 || session.context.length <= compressionThreshold) return;
     const folded = session.context.slice(0, session.context.length - compressionThreshold);
     const summaryText = session.summarize(folded);
     session.context = [{ role: "summary", content: summaryText }, ...session.context.slice(-compressionThreshold)];
@@ -292,7 +306,7 @@ function createInMemoryAgentService(options = {}) {
         // 仅注入 sessionStore 时持久化 JSONL（无 store 的单元 seam 不落盘）。
         persistJsonl: !!info,
       });
-      if (info?.recoveryHint) session.recoveryHint = info.recoveryHint;
+      applyRecoveryHint(session, info?.recoveryHint);
       // 会话上下文（REQ-AGENT-008 标准 3 隔离断言 / REQ-AGENT-010 / REQ-AGENT-011）。
       session.getContext = () => session.context;
       sessions.set(spaceKey, session);
@@ -306,7 +320,7 @@ function createInMemoryAgentService(options = {}) {
       if (!session) return Promise.reject(noSessionError());
       return enqueue(spaceKey, async () => {
         const reply = await runTurn(session, text);
-        return { ok: true, sessionKey: spaceKey, ...(reply !== undefined ? { reply } : {}) };
+        return withReply({ ok: true, sessionKey: spaceKey }, reply);
       });
     },
     broadcastConfigUpdate({ identity }) {
@@ -358,30 +372,43 @@ function createProcessAgentService(options = {}) {
   let defaultStore = null;
   let resetListenerRegistered = false;
 
+  // 换代后同步本地句柄：sessionRef 世代 → generation map + 句柄引用更新。
+  // handleReset 与 worker session-rebuilt（JSONL 损坏重建）共用。
+  function adoptSessionRef(session, ref) {
+    const gen = generationFromRef(ref);
+    generation.set(session.spaceKey, gen);
+    session.sessionRef = ref;
+    return gen;
+  }
+
   function handleReset(spaceKey, info) {
     // /reset（REQ-AGENT-010）：store 换代后 → IPC reset-session（worker dispose）+
     // 本地句柄换代 + 重新下发 session-config（新 JSONL，空上下文）。
     const session = sessions.get(spaceKey);
     if (!session || !info?.sessionRef) return;
     sendToChild({ type: "reset-session", sessionKey: spaceKey });
-    const gen = generationFromRef(info.sessionRef);
-    generation.set(spaceKey, gen);
+    const gen = adoptSessionRef(session, info.sessionRef);
+    // keyRef 按新世代轮换（key 明文不动，仅按新 keyRef 重索引——一次注入语义）。
     const newKeyRef = keyRefFor(session.provider, gen);
     const oldKey = keySecrets.get(session.keyRef);
     keySecrets.delete(session.keyRef);
     session.keyRef = newKeyRef;
     if (oldKey !== undefined) keySecrets.set(newKeyRef, oldKey);
-    session.sessionRef = info.sessionRef;
     delete session.recoveryHint;
     sendToChild(buildConfigMessage(spaceKey, session));
   }
 
+  // store 的 /reset 通知 → 本服务 handleReset（注入 store 与默认 store 共用，
+  // 每实例只注册一次）。
+  function registerResetListener(store) {
+    if (resetListenerRegistered || !store?.onReset) return;
+    store.onReset(handleReset);
+    resetListenerRegistered = true;
+  }
+
   function getStore() {
     if (options.sessionStore) {
-      if (!resetListenerRegistered && options.sessionStore.onReset) {
-        options.sessionStore.onReset(handleReset);
-        resetListenerRegistered = true;
-      }
+      registerResetListener(options.sessionStore);
       return options.sessionStore;
     }
     if (fakeIpc) return null; // 内存版 IPC（Slice 1 单元 seam）：无真实会话存储。
@@ -390,10 +417,7 @@ function createProcessAgentService(options = {}) {
         dbPath: path.join(cwd, ".agent-home", "agent-sessions.db"),
         sessionDir,
       });
-      if (defaultStore.onReset) {
-        defaultStore.onReset(handleReset);
-        resetListenerRegistered = true;
-      }
+      registerResetListener(defaultStore);
     }
     return defaultStore;
   }
@@ -545,21 +569,22 @@ function createProcessAgentService(options = {}) {
         {
           const store = getStore();
           if (store) {
+            const agentConfig = settingsService.loadAgentConfig();
             for (const row of store.list()) {
               if (sessions.has(row.spaceKey)) continue;
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
               const gen = generationFromRef(info.sessionRef);
               generation.set(info.spaceKey, gen);
-              const provider = settingsService.loadAgentConfig().provider || "deepseek";
+              const provider = agentConfig.provider || "deepseek";
               const session = createSessionHandle({
                 spaceKey: info.spaceKey,
                 provider,
                 model: DEFAULT_MODELS[provider] ?? provider,
                 keyRef: keyRefFor(provider, gen),
-                identity: settingsService.loadAgentConfig().identity,
+                identity: agentConfig.identity,
                 sessionRef: info.sessionRef,
               });
-              if (info.recoveryHint) session.recoveryHint = info.recoveryHint;
+              applyRecoveryHint(session, info.recoveryHint);
               sessions.set(info.spaceKey, session);
               sendToChild(buildConfigMessage(info.spaceKey, session));
             }
@@ -578,9 +603,7 @@ function createProcessAgentService(options = {}) {
         // 语义一致）。keyRef 不动（worker 侧 keySecrets 仍按原 keyRef 持有 key）。
         const session = sessions.get(msg.sessionKey);
         if (!session) break;
-        const gen = generationFromRef(msg.sessionRef);
-        generation.set(msg.sessionKey, gen);
-        session.sessionRef = msg.sessionRef;
+        adoptSessionRef(session, msg.sessionRef);
         if (typeof msg.hint === "string") session.recoveryHint = msg.hint;
         const store = getStore();
         if (store?.updateSessionRef) store.updateSessionRef(msg.sessionKey, msg.sessionRef);
@@ -610,11 +633,7 @@ function createProcessAgentService(options = {}) {
         if (msg.ok) {
           // reply = 本轮回复最终文本（text_end.content，worker 侧收集）；
           // 无文本（静默失败等）时缺省，与内存版「事件即结果」语义一致。
-          pending.resolve({
-            ok: true,
-            sessionKey: msg.sessionKey,
-            ...(msg.reply !== undefined ? { reply: msg.reply } : {}),
-          });
+          pending.resolve(withReply({ ok: true, sessionKey: msg.sessionKey }, msg.reply));
         } else {
           // LLM 失败等：错误已以 error 事件回传，prompt 侧 resolve 保持
           // 与内存版一致的「事件即结果」语义（会话存活可继续，REQ-AGENT-007 标准 1）。
@@ -692,7 +711,7 @@ function createProcessAgentService(options = {}) {
         identity: identity ?? settingsService.loadAgentConfig().identity,
         sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey, gen),
       });
-      if (info?.recoveryHint) session.recoveryHint = info.recoveryHint;
+      applyRecoveryHint(session, info?.recoveryHint);
       sessions.set(spaceKey, session);
       sendToChild(buildConfigMessage(spaceKey, session));
       return session;
