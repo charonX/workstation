@@ -71,9 +71,11 @@ describe("REQ-AGENT-021 命令识别直通（/status /list）", () => {
   it("/status <id>：UUID 格式校验；未知 id 明确回复", async () => {
     const createAgentRouter = await loadAgentRouter();
     const invoked = [];
+    // 同步执行层（route() 必须同步返回决策，异步结果同步不可得）：
+    // 同步 execute 下格式化回复（含「查无此执行」）在 route() 返回时即可断言。
     const router = createAgentRouter({
       commands: {
-        async execute(name, args) {
+        execute(name, args) {
           invoked.push({ name, args });
           // 未知 id：查无此执行。
           return { output: null, notFound: true };

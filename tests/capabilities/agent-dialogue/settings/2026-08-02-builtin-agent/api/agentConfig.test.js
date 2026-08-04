@@ -26,6 +26,15 @@ async function loadAgentRouter() {
   return mod.createAgentRouter;
 }
 
+// 前置：把 senderId 绑定为操作者（走真实 arming 流程，参照 agentRoute.test.js bindUser）。
+// 绑定检查先于命令识别（REQ-AGENT-021 标准 4 / 签核决策 8）——无绑定态未绑定用户的
+// 命令先被 E-AUTH-NOT-BOUND 拒绝；先绑定可隔离「未配 key 命令可用」语义（REQ-AGENT-002）。
+function bindUser(router, senderId) {
+  router.beginBinding();
+  const res = router.route({ message: "绑定", chatId: "oc_0", senderId, channelType: "p2p" });
+  assert.ok(JSON.stringify(res.payload).includes("绑定成功"), "前置：绑定用户");
+}
+
 describe("REQ-AGENT-001 供应商与 API key 配置", () => {
   let server;
   let baseUrl;
@@ -166,7 +175,13 @@ describe("REQ-AGENT-002 key 缺失引导", () => {
 
   it("斜杠命令在未配 key 时照常可用", async () => {
     const createAgentRouter = await loadAgentRouter();
-    const router = createAgentRouter({}); // 未配置 key
+    // 注入同步 mock 命令执行层（本文件声明的 test seam；生产缺省 = C2 真实命令模块）。
+    const router = createAgentRouter({
+      commands: { execute() { return { output: "ok" }; } }
+    }); // 未配置 key
+    // 无绑定态未绑定用户的命令先被绑定检查拒绝（REQ-AGENT-021 标准 4 / 签核决策 8）——
+    // 先绑定操作者，再验证「未配 key 命令可用」与绑定无关（REQ-AGENT-002 标准 2）。
+    bindUser(router, "ou_1");
     const result = router.route({
       message: "/status 00000000-0000-0000-0000-000000000000",
       chatId: "oc_1",
