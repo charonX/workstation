@@ -130,8 +130,16 @@ export function createImRouter({
       return;
     }
     if (decision.action === "command") {
-      // 命令直通（REQ-AGENT-021/022）执行与格式化回复由 Slice 6 落地；此处仅透传
-      // 路由层已附带的回复（如有），避免本 slice 吞掉路由结果。
+      // 命令直通（REQ-AGENT-021/022，Slice 6）：路由层已附带回复（用法提示 / help /
+      // reset / 同步结果）或异步执行回执（commandReply = 命令执行完成后的真实格式化
+      // 回复——生产 /status /list 路径，U2：命令直通不再静默，不经 LLM/agent turn）。
+      if (payload.commandReply) {
+        const text = await payload.commandReply.catch(() => null);
+        if (typeof text === "string" && text.length > 0) {
+          await safeReply({ messageId: msg.messageId, text }, "agent command result");
+          return;
+        }
+      }
       await replyIfAttached(msg, payload, "agent command");
       return;
     }
@@ -145,6 +153,9 @@ export function createImRouter({
         spaceKey,
         provider: config.provider,
         apiKey: config.apiKey,
+        // U1（Slice 6）：session-config 携带 identity（agentRouter 同源构建——
+        // agentService 与路由层从同一 identity 重建 systemPrompt；此前 config.identity
+        // 恒 undefined，identity 在链路上丢失，agentService 退化为独立读 settings）。
         identity: config.identity
       });
       await svc.prompt(spaceKey, payload.message ?? msg.text).catch((err) => {

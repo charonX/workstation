@@ -142,17 +142,32 @@ export function startServer(options = {}) {
       // 不 spawn 子进程；测试环境无对话消息到达 → 零副作用。会话库落应用配置目录
       // （Electron = userData；headless = OPC_WORKSTATION_CONFIG_DIR）——Slice 3
       // concern 的生产态 store 注入（默认 store 库路径 = 应用库，非 cwd/.agent-home）。
-      const agentRouter = createAgentRouter({ settings: () => settingsService.loadSettings() });
+      // Slice 6：sessionStore 与 baseUrl 注入 agentRouter——/reset 命令（REQ-AGENT-010）
+      // 与命令执行层直连（C2 路径：命令模块 → 本地 HTTP API → services，U2）。
+      const configDir = settingsService.configDir();
+      let sharedSessionStore = null;
+      const getSessionStore = () => {
+        if (!sharedSessionStore) {
+          sharedSessionStore = createSessionStore({
+            dbPath: path.join(configDir, "agent-sessions.db"),
+            sessionDir: path.join(configDir, "agent-sessions")
+          });
+        }
+        return sharedSessionStore;
+      };
+      const agentRouter = createAgentRouter({
+        settings: () => settingsService.loadSettings(),
+        sessionStore: getSessionStore,
+        baseUrl: `http://127.0.0.1:${port}`
+      });
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
-          const configDir = settingsService.configDir();
-          const sessionDir = path.join(configDir, "agent-sessions");
-          const sessionStore = createSessionStore({
-            dbPath: path.join(configDir, "agent-sessions.db"),
-            sessionDir
+          serverAgentService = createAgentService({
+            cwd: process.cwd(),
+            sessionDir: path.join(configDir, "agent-sessions"),
+            sessionStore: getSessionStore()
           });
-          serverAgentService = createAgentService({ cwd: process.cwd(), sessionDir, sessionStore });
           await serverAgentService.start();
           server._opcAgentService = serverAgentService;
         }

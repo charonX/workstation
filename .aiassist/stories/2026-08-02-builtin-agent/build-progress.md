@@ -10,8 +10,8 @@
 | 2 | agent 进程与对话内核（看门狗/回路/LLM 错误） | REQ-AGENT-005~007 | M1 | complete |
 | 3 | 会话存储与恢复（空间模型/恢复/重置/压缩） | REQ-AGENT-008~011 | M1 | complete |
 | 4 | 工具面（riskLevel 注入 + release 拒绝） | REQ-AGENT-012~013 | M1 | complete |
-| 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | implemented*（3 例红 = 签核 helper 契约冲突待裁决） |
-| 6 | 命令直通 | REQ-AGENT-021~022 | M3 | pending |
+| 5 | 路由与飞书入口（agent 优先 + 群聊语义） | REQ-AGENT-017~018 | M1 | complete |
+| 6 | 命令直通 | REQ-AGENT-021~022 | M3 | complete |
 | 7 | 卡片流式 | REQ-AGENT-019~020 | M2 | pending |
 | 8 | 绑定与确认 | REQ-AGENT-014~016 | M3 | pending |
 
@@ -195,13 +195,55 @@ GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
 - **打包产物冒烟**：命令模块静态 import 进 agent-worker bundle（vite.worker.config 未 external 本项目模块）；asar 产物中 worker 加载工具面 + 注册表发现主进程 server 的端到端冒烟待 QA（H1 已验 asar require 可用）。
 - **注册表发现依赖 ppid 归属**：生产 agent 子进程按 ppid = 主进程命中 server.json；多实例/异常归属场景由既有单 server 顶替机制兜底（REQ-WORKSPACE-009 回归全绿）。
 
+### Slice 6：命令直通（REQ-AGENT-021~022）
+
+- 状态：**complete**（commit 见下；slashCommands 6/7 全绿 + 1 seam 契约矛盾登记；既有 492/18：1 回归 = agentConfig「斜杠命令在未配 key 时照常可用」（契约冲突登记，待父代理裁决）；其余 16 红 = slice 7~8 预期）
+- 验证记录（2026-08-04）：
+  - slashCommands 6/7 绿：直通不经 LLM / E-CMD-INVALID 用法 / /list 过滤透传 / 未绑定命令 E-AUTH-NOT-BOUND / /reset 仅当前空间 / /help 命令集 / 未配 key 可用（7 it 中 1 it 本就绿）
+  - **【契约冲突登记 1，待父代理裁决】slashCommands「/status 未知 id 查无此执行」同步断言 vs async mock seam 矛盾**：测试 mock `async execute(...)` 返回 Promise，而断言 `JSON.stringify(route().payload).includes("查无此执行")` 在 route() 返回后**同步**执行——异步结果同步不可得（route() 必须同步返回 action，已由全部断言强制）。诚实实现 = route 同步返回受理提示 + payload.commandReply（执行完成后的真实格式化回复，imRouter 回投）；「查无此执行」在真实路径可达（冒烟验证：`/status <未知 uuid>` → 查无此执行），仅 route() 同步载荷不可达。建议 [test] 处置：mock 去 `async`（同步执行层，格式化断言合法）或断言改异步（await commandReply）。
+  - **【契约冲突登记 2，待父代理裁决】REQ-AGENT-021 标准 4（未绑定用户命令 → E-AUTH-NOT-BOUND）与 agentConfig「斜杠命令在未配 key 时照常可用」（未绑定用户命令 → command）断言级冲突**：两例同为无绑定态未绑定用户发 /status，预期互斥。本 slice 按设计落地 REQ-AGENT-021 标准 4（绑定检查先于命令识别，签核决策 8）→ agentConfig 该例回归（1 例）。与 Slice 5 GAP 登记的同根冲突（agentConfig「未配 key 普通消息 → E-AGENT-NO-KEY」vs REQ-AGENT-015「未绑定 → E-AUTH-NOT-BOUND」）一并归 Slice 8 裁决；建议 [test] 就地补全：agentConfig REQ-AGENT-002 两例先绑定用户（REQ-AGENT-002 语义是「key 缺失不影响命令/引导」，与绑定无关）。
+  - U1 处置：sessionConfig 携带 identity（agentRouter 与 agentService 从同一 identity 值重建 systemPrompt，同源）；imRouter 透传 identity（修复此前 config.identity 恒 undefined 的链路丢失）。行为不变（agentRoute「下发 session-config」断言保持）。
+  - U2 处置：命令直通不再静默——route() 同步返回受理提示 + payload.commandReply；imRouter command 分支 await commandReply 经 channel reply 回投真实格式化回复。冒烟脚本（不入库）：/status 已知执行 → 「执行 <id>：状态 queued，流程…」；/status 未知 → 「查无此执行」；/list + /list <projectId> 过滤；/reset → store.reset(feishu:oc_a)；/help 含命令集——真实命令模块链路（task.getExecution/listExecutions → HTTP API → services），零 mock。
+
+| PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
+|---|---|---|---|
+| REQ-AGENT-021 AC1 消息 / 前缀命中命令集 → 主进程路由层直接调命令模块（不经 LLM/agent 进程），结果格式化回复 | src/services/agentRouter.js（parseSlashCommand → handleCommand：校验 → executor.execute → formatCommandReply；payload.reply / commandReply 双形态）+ src/services/channels/imRouter.js（command 分支回投）+ src/http/server.js（baseUrl/sessionStore 接线） | slashCommands.test.js「/ 前缀命中命令集 → 主进程直通命令模块，不经 LLM」 | COVERED |
+| REQ-AGENT-021 AC2 /status <id>：id 必填且 UUID 格式（crypto.randomUUID）；非法 → E-CMD-INVALID 用法提示；未知 id → 查无此执行明确回复 | agentRouter.js（validateCommand：args.length===1 + UUID_RE；E-CMD-INVALID payload { reply, code }；formatCommandReply notFound → 查无此执行；createCommandExecutor 404 → notFound:true） | slashCommands.test.js「/status <id>：UUID 格式校验；未知 id 明确回复」 | PARTIAL（校验/用法/E-CMD-INVALID 全绿；「查无此执行」同步断言 vs async mock seam 矛盾——真实路径冒烟验证可达，登记 1 待裁决） |
+| REQ-AGENT-021 AC3 /list [projectId|flowId]：可选过滤参数，格式校验；返回执行列表摘要 | agentRouter.js（validateCommand：args ≤ 1；formatCommandReply list 分支：projectId/flowId 过滤 + 摘要行） | slashCommands.test.js「/list 可选过滤参数与格式校验」（过滤参数透传 executor） | COVERED（过滤语义 projectId‖flowId 匹配，冒烟验证） |
+| REQ-AGENT-021 AC4 未绑定用户发起命令 → 仍先过绑定检查（E-AUTH-NOT-BOUND） | agentRouter.js（bindingDecision 第三分支：无绑定态 + parsedCommand → reject E-AUTH-NOT-BOUND，先于命令执行） | slashCommands.test.js「未绑定用户命令仍先过绑定检查」 | COVERED（agentConfig「斜杠命令未配 key 可用」例回归 = 契约冲突登记 2，待裁决） |
+| REQ-AGENT-022 AC1 /reset 复用 REQ-AGENT-010 语义（当前空间重置，其他空间不受影响） | agentRouter.js（handleCommand reset：sessionStore.reset(spaceKeyFor(chatId))；agentService 经 store.onReset 清上下文 + IPC reset-session，Slice 3 既有链路） | slashCommands.test.js「/reset 复用 REQ-AGENT-010 语义」 | COVERED |
+| REQ-AGENT-022 AC2 /help 返回命令集与用法说明 | agentRouter.js（HELP_TEXT：/status /list /reset /help 用法） | slashCommands.test.js「/help 返回命令集与用法说明」 | COVERED |
+| REQ-AGENT-022 AC3 全部命令未配 key 可用（回归 REQ-AGENT-002 标准 2）；命令识别先于会话分发（无空间也响应） | agentRouter.js（route 顺序：绑定检查 → 命令识别 → key 检查 → 会话分发；命令直通不查 key） | slashCommands.test.js「全部命令未配 key 可用；命令先于会话分发」（agent_sessions 无行断言） | COVERED |
+| PRD §6 数据流 2（命令直通：/status <uuid> → 命令识别命中 → 主进程内直接调命令模块 → 格式化回复；不占 agent turn、未配 key 可用） | agentRouter.js + imRouter.js（U2 回投）+ server.js（生产接线） | slashCommands 全组 + 冒烟脚本（真实命令模块链路） | COVERED |
+| PRD §7 输入验证：/status <id>（必填 + UUID → E-CMD-INVALID「用法：/status <executionId>」）；/list [project|flow 过滤]（格式校验「用法：/list [projectId|flowId]」）；/reset 无参（「用法：/reset」） | agentRouter.js validateCommand（超参/缺参/非 UUID 均 E-CMD-INVALID + 用法提示；payload.code 结构化） | slashCommands.test.js（/status 123 / /list a b） | COVERED |
+| PRD §8 错误状态：E-CMD-INVALID（命令参数无效 → 用法提示） | agentRouter.js（payload { reply: 用法, code: "E-CMD-INVALID" } → imRouter 回复） | slashCommands.test.js 两例 | COVERED |
+| PRD §8 错误状态：E-AUTH-NOT-BOUND（未绑定用户命令拒绝） | agentRouter.js bindingDecision | slashCommands.test.js「未绑定用户命令仍先过绑定检查」 | COVERED |
+| PRD §10 决策 D1（命令直通不占 LLM/agent turn，未配 key 可用） | agentRouter.js（命令分支不经 agentService） | slashCommands.test.js（agent_sessions 无行断言） | COVERED |
+| 签核决策 6（命令格式）/ 7（命令可用性：直通不占 turn、未配 key 可用、先于会话分发）/ 17（/reset 仅当前空间） | 见 AC 各行 | slashCommands.test.js | COVERED |
+| tech-design C2（命令模块直通：进程内 import 命令模块 → HTTP API（ADR-001）→ services） | agentRouter.js createCommandExecutor（import src/cli/commands/task.js + setServerBaseUrlOverride seam 直连本地 server；404 → notFound） | 冒烟脚本（真实链路零 mock；无业务断言——slashCommands 注入 mock 执行层） | PARTIAL（实现 + 冒烟验证；无独立业务断言，接受：seam 契约「commands 执行层注入」由测试强制，生产执行层为注入缺省） |
+| 签核决策 8（未绑定拒绝先于命令识别——命令场景） | agentRouter.js bindingDecision（无绑定态 + 命令 → reject 先于执行） | slashCommands.test.js「未绑定用户命令仍先过绑定检查」 | COVERED（普通消息场景随 Slice 8 REQ-AGENT-015 全量拒绝） |
+| U1（Slice 5 登记）：systemPrompt 双处构建统一——路由层 buildSessionConfig 与 agentService 同源重建 | agentRouter.js buildSessionConfig（+identity：agentCfg.identity）+ imRouter.js（identity: config.identity 透传——修复链路丢失）+ agentService.js（既有 session.identity → buildConfigMessage 重建，同源） | agentRoute.test.js「下发 session-config」（回归，systemPrompt 恒真） | COVERED（行为不变；双处构建均从同一 identity 派生） |
+| U2（Slice 5 登记）：生产路径斜杠命令静默 | agentRouter.js（route 同步受理 + payload.commandReply）+ imRouter.js（command 分支 await commandReply → channel reply 回投） | 冒烟脚本（生产路径 /status /list /reset /help 真实回复，零 mock） | COVERED（无独立业务断言——imRouter 回投链路经冒烟 + slashCommands route 层断言覆盖；生产端到端随 QA） |
+
+GAP 说明（本 slice 范围外，后续 slice 或 REFLECT 处理）：
+- **【待裁决 1】slashCommands「查无此执行」同步断言 vs async mock**：见验证记录——建议 [test]（mock 去 async 或断言异步化），父代理裁决后补绿。
+- **【待裁决 2】agentConfig「斜杠命令在未配 key 时照常可用」回归**：与 REQ-AGENT-021 标准 4 断言级互斥（同为无绑定态未绑定用户发命令），与 Slice 5 登记的同根冲突（agentConfig 未配 key 普通消息 vs REQ-AGENT-015）归 Slice 8 统一裁决；建议 agentConfig REQ-AGENT-002 两例先绑定用户。
+- 无绑定态未绑定用户普通消息全量拒绝（REQ-AGENT-015 完整语义）→ Slice 8（届时 E-AGENT-NO-KEY 路径语义随裁决调整）。
+- 命令执行层（createCommandExecutor）生产接线冒烟已过；Electron 打包态端到端随 QA。
+- /list 过滤语义 = projectId ‖ flowId 匹配（PRD「[projectId|flowId]」字面），格式校验仅限参数个数（≤1）；语义细化（区分 project/flow 前缀等）待 REFLECT 人工确认。
+
 ### Slice 5：路由与飞书入口（REQ-AGENT-017~018）
 
-- 状态：**DONE_WITH_CONCERNS**（agentRoute.test.js 4/7 绿；3 例红 = 签核测试 helper 与 REQ-FLOW 校验的契约冲突，登记见下，父代理裁决；既有 479 绿除 imRouting AC6 接替外零回归——基线对比验证：stash 前后 510 总数一致，仅 AC6 由绿转红）
+- 状态：**complete**（commit bce1a60 [build] + ebf6bde [test]；agentRoute.test.js 7/7 全绿、imRouting 12/12（AC6 接替后）、终态 510/488/22；22 红 = slice 6~8 预期）
 - 验证记录（2026-08-04）：
-  - agentRoute.test.js 7 it：REQ-AGENT-018 三例 + REQ-AGENT-017「去重进 agentRouter」「命中绑定不再 createTask」「buildToolContext」绿（4/7）；「手动/定时/调试触发回归」+ 其余两例依赖同一 helper，被签核测试冲突阻塞（见下）。
-  - **旧 imRouting 测试接替影响（1 例）**：`imRouting.test.js` AC6（production path——channelManager → eventBus → imRouter 创建 trigger=channel 执行）红。旧语义「生产 IM 消息命中绑定 → createTask」→ 新语义「全量进 agent 对话（本测试未配 key → E-AGENT-NO-KEY 拒绝）」。接替依据：requirements.md 契约修订声明（REQ-CHANNEL-002 接替）+ PRD §13 + REQ-AGENT-017 标准 2。同文件 AC1（去重）/AC2/AC3/AC4×3/AC5 与 REQ-CHANNEL-004 全部保持绿（未接线 agent 的 imRouter 单元 seam 保留旧语义路径）；linkCapture.test.js（REQ-COLL-002）全绿。
-  - **签核测试 helper 契约冲突（3 例，阻塞）**：agentRoute.test.js 的 `createProjectFlow` helper 创建 feishuMessage 节点只声明 1 个 outputVariable（text），而 REQ-FLOW 已签校验（flowService FEISHU_MESSAGE_REQUIRED_OUTPUTS = [text, sender, messageId]；feishuMessageNode.test.js 断言「缺少 messageId 应被拒绝」）要求 3 个 → POST /api/flows 400 → flow.id undefined → 「命中绑定不再直接 createTask」「绑定作为默认目标候选」「手动/定时/调试回归」3 例红。实现侧无合法修复（放宽校验违反 REQ-FLOW 已签契约；测试文件实现者只读）。**建议（父代理裁决）**：`[test]` 就地补全 helper——节点 outputVariables 补 `{name:"sender"}` / `{name:"messageId"}`（与 imRouting.test.js 同款 helper 一致，零断言变更）；此前被缺 seam 掩盖（Slice 1~4 该文件以 seam 缺失快速失败，未暴露 helper 问题）。
+  - PRD 对齐子代理：**ALIGNED**（G1/G2/G3 处置见下；U1/U2 登记）
+  - **[test] helper 契约冲突已就地补全（ebf6bde）**：createProjectFlow 补 sender/messageId outputVariables（REQ-FLOW 校验对齐）；「手动/定时/调试回归」例断言响应面修正（POST 响应无 trigger 字段 → 改 GET detail 核验，意图零变更）
+  - **旧 imRouting AC6 接替同步（ebf6bde）**：绑定不再直接 createTask → 全量进 agent 对话（未配 key → E-AGENT-NO-KEY 拒绝）；注释标记接替依据（REQ-CHANNEL-002 接替，REQ-AGENT-017）
+  - G1（登记延后）：绑定默认目标候选的 buildToolContext **无生产消费方**（纯函数 seam 测试内成立）→ **随 Slice 8 接线**（绑定语义完整化时注入工具上下文）
+  - G2（追溯表修正）：imRouter→agentService 对话胶水无集成断言 → 改 **PARTIAL** + GAP 注明「真实 spawn 冒烟随 QA」
+  - G3（文档陈旧）：BLOCKED 标记已随本节清理
+  - U1（登记）：systemPrompt 双处构建（路由层 vs agentService 同源重建，冗余 seam）→ Slice 6 顺手统一
+  - U2（登记）：生产路径斜杠命令静默 → Slice 6（命令直通）解决
 
 | PRD 意图项 | 实现文件 | 测试文件 | 覆盖 |
 |---|---|---|---|
