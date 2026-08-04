@@ -224,16 +224,27 @@ const TOOL_DEFS = [
     argsSchema: obj({}) },
 ];
 
-// —— 命令模块加载（静态 import 已就绪；缓存命名空间供 execute 复用）——
-const moduleCache = new Map(); // module 名 → 命令模块命名空间
+// —— 命令层错误（统一 code：E-AGENT-CLI-ERROR，REQ-AGENT-012 错误契约）——
+function commandError(message) {
+  return Object.assign(new Error(message), { code: "E-AGENT-CLI-ERROR" });
+}
 
-function loadCommandModule(moduleName) {
-  const mod = COMMAND_MODULES[moduleName];
-  if (!mod) {
-    throw Object.assign(new Error(`未知命令模块：${moduleName}`), { code: "E-AGENT-CLI-ERROR" });
+// —— C2 命令调用 ——
+// COMMAND_MODULES 为静态注册表（静态 import 已就绪），按 module/fn 直接取导出函数；
+// 命令函数内部 ensureServer 发现 server（agent 子进程按 ppid 归属命中注册表主进程
+// server）；显式注入 baseUrl 时临时覆盖为直连指定 server（执行完恢复，不污染后续调用）。
+async function invokeCommandHandler(tool, flags, positional, baseUrl) {
+  const handler = COMMAND_MODULES[tool.module]?.[tool.fn];
+  if (typeof handler !== "function") {
+    throw commandError(`命令模块 ${tool.module} 缺少导出 ${tool.fn}`);
   }
-  if (!moduleCache.has(moduleName)) moduleCache.set(moduleName, mod);
-  return moduleCache.get(moduleName);
+  const prevOverride = getServerBaseUrlOverride();
+  setServerBaseUrlOverride(baseUrl ?? null);
+  try {
+    return await handler(flags, positional);
+  } finally {
+    setServerBaseUrlOverride(prevOverride);
+  }
 }
 
 // LLM 参数归一化：camelCase → kebab-case（与 CLI flags 命名一致，
@@ -302,6 +313,27 @@ function formatToolOutput(output) {
   return typeof output === "string" ? output : JSON.stringify(output, null, 2);
 }
 
+// 工具级默认值注入（仅缺省时，不覆盖调用方显式传值）：
+// task run 对话场景缺省 trigger=dialogue（PRD §6.1 / REQ-AGENT-017 接替声明），
+// 不依赖命令模块 CLI 默认 manual（该默认面向手动 CLI 路径）；非对话场景
+// 未来扩展可各自声明 defaultArgs，互不影响。
+function applyDefaultArgs(tool, flags) {
+  for (const [key, value] of Object.entries(tool.defaultArgs ?? {})) {
+    if (flags[key] === undefined) flags[key] = value;
+  }
+  return flags;
+}
+
+// 失败的结构化结果（REQ-AGENT-012 标准 4：错误事件已回传，调用方/agent 可继续）。
+function errorResult(errorCode, errorMessage) {
+  return { output: undefined, errorCode, errorMessage };
+}
+
+// 工具错误事件（REQ-AGENT-012 标准 4：结构化错误事件，含工具名与状态）。
+function emitToolError(emit, name, errorCode, errorMessage) {
+  emit({ type: "tool_execution_error", name, status: "error", errorCode, errorMessage });
+}
+
 // —— 工具面 ——
 // createToolSurface({ commandsDir, baseUrl, onConfirmRequest }) →
 // { listTools, execute, onEvent, toPiToolDefinitions }。
@@ -341,23 +373,10 @@ export function createToolSurface(options = {}) {
       if (!tool) {
         // 拒绝（REQ-AGENT-013）：release 不注入；未知工具同样明确拒绝。
         const message = `不支持该操作：${name} 不在 agent 工具面内`;
-        surface.emit({
-          type: "tool_execution_error",
-          name,
-          status: "error",
-          errorCode: "E-AGENT-UNSUPPORTED",
-          errorMessage: message,
-        });
+        emitToolError(surface.emit, name, "E-AGENT-UNSUPPORTED", message);
         throw new Error(message);
       }
-      const flags = normalizeArgs(args);
-      // 工具级默认值注入（仅缺省时，不覆盖调用方显式传值）：
-      // task run 对话场景缺省 trigger=dialogue（PRD §6.1 / REQ-AGENT-017 接替声明），
-      // 不依赖命令模块 CLI 默认 manual（该默认面向手动 CLI 路径）；非对话场景
-      // 未来扩展可各自声明 defaultArgs，互不影响。
-      for (const [key, value] of Object.entries(tool.defaultArgs ?? {})) {
-        if (flags[key] === undefined) flags[key] = value;
-      }
+      const flags = applyDefaultArgs(tool, normalizeArgs(args));
       const positional = (tool.positionalFrom ?? []).map((key) => args[key]);
       surface.emit({ type: "tool_execution_start", name, status: "running" });
       try {
@@ -368,26 +387,10 @@ export function createToolSurface(options = {}) {
           const decision = await onConfirmRequest({ tool: name, args: flags, riskLevel: tool.riskLevel });
           if (decision?.approved !== true) {
             surface.emit({ type: "tool_execution_end", name, status: "rejected" });
-            return { output: undefined, errorCode: "E-CONFIRM-REJECTED", errorMessage: "操作已拒绝" };
+            return errorResult("E-CONFIRM-REJECTED", "操作已拒绝");
           }
         }
-        const mod = loadCommandModule(tool.module);
-        const handler = mod[tool.fn];
-        if (typeof handler !== "function") {
-          throw Object.assign(new Error(`命令模块 ${tool.module} 缺少导出 ${tool.fn}`), {
-            code: "E-AGENT-CLI-ERROR",
-          });
-        }
-        // C2：命令函数内部 ensureServer 发现 server；显式注入 baseUrl 时
-        // 临时覆盖为直连指定 server（执行完恢复）。
-        const prevOverride = getServerBaseUrlOverride();
-        setServerBaseUrlOverride(baseUrl ?? null);
-        let data;
-        try {
-          data = await handler(flags, positional);
-        } finally {
-          setServerBaseUrlOverride(prevOverride);
-        }
+        const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
         surface.emit({ type: "tool_execution_end", name, status: "completed" });
         return { output: data };
       } catch (err) {
@@ -395,8 +398,8 @@ export function createToolSurface(options = {}) {
         // （REQ-AGENT-012 标准 4：agent 可继续，不崩）。
         const errorCode = err?.code || "E-AGENT-CLI-ERROR";
         const errorMessage = err?.message ?? String(err);
-        surface.emit({ type: "tool_execution_error", name, status: "error", errorCode, errorMessage });
-        return { output: undefined, errorCode, errorMessage };
+        emitToolError(surface.emit, name, errorCode, errorMessage);
+        return errorResult(errorCode, errorMessage);
       }
     },
     // PI 工具注入形态（REQ-AGENT-012 标准 1：CLI 命令作为 PI 工具注入 agent；
