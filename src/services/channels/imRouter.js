@@ -96,6 +96,14 @@ export function createImRouter({
     }
   }
 
+  // 路由决策已附带回执（绑定成功等系统回执 / 命令回复）：直接回复，不进 agent turn。
+  // 返回是否已回复（供调用方决定是否继续分发）。
+  async function replyIfAttached(msg, payload, context) {
+    if (!payload?.reply) return false;
+    await safeReply({ messageId: msg.messageId, text: payload.reply }, context);
+    return true;
+  }
+
   // agent 优先路由（REQ-AGENT-017，REQ-CHANNEL-002 接替，2026-08-03 拍板）：
   // 去重后全量进 agentRouter（绑定检查 → 命令识别 → 会话分发），不再因命中
   // channel_bindings 直接 createTask（绑定降级为默认目标候选，agentRouter 侧读取）。
@@ -124,16 +132,10 @@ export function createImRouter({
     if (decision.action === "command") {
       // 命令直通（REQ-AGENT-021/022）执行与格式化回复由 Slice 6 落地；此处仅透传
       // 路由层已附带的回复（如有），避免本 slice 吞掉路由结果。
-      if (payload.reply) {
-        await safeReply({ messageId: msg.messageId, text: payload.reply }, "agent command");
-      }
+      await replyIfAttached(msg, payload, "agent command");
       return;
     }
-    if (payload.reply) {
-      // 绑定成功等系统回执：直接回复，不进 agent turn。
-      await safeReply({ messageId: msg.messageId, text: payload.reply }, "agent reply");
-      return;
-    }
+    if (await replyIfAttached(msg, payload, "agent reply")) return;
     if (!agentService) return; // 单元 seam：未接线 agentService 不驱动对话。
     const spaceKey = payload.spaceKey ?? `feishu:${msg.chatId}`;
     const config = payload.sessionConfig ?? {};

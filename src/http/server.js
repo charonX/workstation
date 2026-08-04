@@ -146,9 +146,10 @@ export function startServer(options = {}) {
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
-          const sessionDir = path.join(settingsService.configDir(), "agent-sessions");
+          const configDir = settingsService.configDir();
+          const sessionDir = path.join(configDir, "agent-sessions");
           const sessionStore = createSessionStore({
-            dbPath: path.join(settingsService.configDir(), "agent-sessions.db"),
+            dbPath: path.join(configDir, "agent-sessions.db"),
             sessionDir
           });
           serverAgentService = createAgentService({ cwd: process.cwd(), sessionDir, sessionStore });

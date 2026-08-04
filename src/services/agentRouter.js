@@ -47,12 +47,22 @@ function parseSlashCommand(message) {
   return { name, args };
 }
 
+// key 已加密存储（非空密文）——路由 key 检查与 session-config 解密的共同前置条件。
+function hasEncryptedApiKey(agentCfg) {
+  return typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0;
+}
+
+// 完整已配置判定（REQ-AGENT-001 configured 标记 + 非空密文）。
+function hasConfiguredKey(agentCfg) {
+  return agentCfg.configured === true && hasEncryptedApiKey(agentCfg);
+}
+
 // session-config（REQ-AGENT-018 标准 3：供应商/key/身份，一次性注入语义——
 // key 明文仅经本函数解密进入内存，不落盘/不落日志，签核决策 5）。
 function buildSessionConfig(agentCfg) {
   const provider = agentCfg.provider || DEFAULT_PROVIDER;
   let apiKey = UNCONFIGURED_API_KEY;
-  if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
+  if (hasEncryptedApiKey(agentCfg)) {
     try {
       apiKey = decryptSecret(agentCfg.apiKeyEncrypted);
     } catch {
@@ -68,49 +78,64 @@ function buildSessionConfig(agentCfg) {
 }
 
 export function createAgentRouter({ settings, bindings = { getBinding } } = {}) {
-  const getSettings =
-    typeof settings === "function"
-      ? settings
-      : settings && typeof settings === "object"
-        ? () => settings
-        : () => settingsService.loadSettings();
+  // settings 注入优先级：函数（生产实时读取）→ 对象（测试桩）→ 缺省惰性读
+  // settingsService（ADR-009：不顶层读 env/磁盘）。
+  let getSettings;
+  if (typeof settings === "function") {
+    getSettings = settings;
+  } else if (settings && typeof settings === "object") {
+    getSettings = () => settings;
+  } else {
+    getSettings = () => settingsService.loadSettings();
+  }
   const state = { boundOpenId: null, pendingBind: false };
   const spaceKeyFor = (chatId) => `feishu:${chatId}`;
+
+  // dialogue payload 基底（spaceKey/消息/身份四元组）；绑定回执与 session-config
+  // 经 extra 扩展，避免两处分发重复构建。
+  const dialoguePayload = ({ message, chatId, senderId, channelType }, extra) => ({
+    spaceKey: spaceKeyFor(chatId),
+    message,
+    senderId,
+    chatId,
+    channelType,
+    ...extra,
+  });
+
+  // ① 绑定检查（REQ-AGENT-015，先于命令识别——签核决策 8）：
+  // - arming（beginBinding 置 pendingBind）→ 下一条未绑定消息绑定发送者
+  //   （E3「发消息即绑定」，一次性：绑定后清除 pendingBind）；
+  // - 已有绑定 → 非绑定者一切消息拒绝（E-AUTH-NOT-BOUND，含命令）；
+  // - 尚无任何绑定（settings 无绑定态）→ 不拦截，交给后续检查（Slice 5 最小形态）。
+  // 返回路由决策；不构成决策（继续后续步骤）时返回 null。
+  const bindingDecision = ({ message, chatId, senderId, channelType }) => {
+    if (state.pendingBind && state.boundOpenId === null) {
+      state.boundOpenId = senderId;
+      state.pendingBind = false;
+      return {
+        action: "dialogue",
+        payload: dialoguePayload({ message, chatId, senderId, channelType }, { reply: BINDING_SUCCESS_REPLY }),
+      };
+    }
+    if (state.boundOpenId !== null && senderId !== state.boundOpenId) {
+      return {
+        action: "reject",
+        payload: {
+          error: "E-AUTH-NOT-BOUND",
+          message: "请先在设置中绑定操作者，再使用 agent 对话（E-AUTH-NOT-BOUND）",
+        },
+      };
+    }
+    return null;
+  };
 
   return {
     route({ message, chatId, senderId, channelType }) {
       const cfg = getSettings() ?? {};
       const agentCfg = cfg.agent ?? {};
 
-      // ① 绑定检查（REQ-AGENT-015，先于命令识别——签核决策 8）：
-      // - arming（beginBinding 置 pendingBind）→ 下一条未绑定消息绑定发送者
-      //   （E3「发消息即绑定」，一次性：绑定后清除 pendingBind）；
-      // - 已有绑定 → 非绑定者一切消息拒绝（E-AUTH-NOT-BOUND，含命令）；
-      // - 尚无任何绑定（settings 无绑定态）→ 不拦截，交给后续检查（Slice 5 最小形态）。
-      if (state.pendingBind && state.boundOpenId === null) {
-        state.boundOpenId = senderId;
-        state.pendingBind = false;
-        return {
-          action: "dialogue",
-          payload: {
-            spaceKey: spaceKeyFor(chatId),
-            message,
-            senderId,
-            chatId,
-            channelType,
-            reply: BINDING_SUCCESS_REPLY,
-          },
-        };
-      }
-      if (state.boundOpenId !== null && senderId !== state.boundOpenId) {
-        return {
-          action: "reject",
-          payload: {
-            error: "E-AUTH-NOT-BOUND",
-            message: "请先在设置中绑定操作者，再使用 agent 对话（E-AUTH-NOT-BOUND）",
-          },
-        };
-      }
+      const bound = bindingDecision({ message, chatId, senderId, channelType });
+      if (bound) return bound;
 
       // ② 命令识别（REQ-AGENT-021/022 直通，不经 LLM；未配 key 可用，签核决策 7）。
       const command = parseSlashCommand(message);
@@ -120,11 +145,7 @@ export function createAgentRouter({ settings, bindings = { getBinding } } = {}) 
 
       // ③ 会话分发前 key 检查（REQ-AGENT-002 标准 1）：未配 key 且尚无绑定 →
       // reject + E-AGENT-NO-KEY 引导，不启动会话（agent_sessions 无行）。
-      const hasKey =
-        agentCfg.configured === true &&
-        typeof agentCfg.apiKeyEncrypted === "string" &&
-        agentCfg.apiKeyEncrypted.length > 0;
-      if (!hasKey && state.boundOpenId === null) {
+      if (!hasConfiguredKey(agentCfg) && state.boundOpenId === null) {
         return {
           action: "reject",
           payload: { error: "E-AGENT-NO-KEY", message: "请在设置中配置 Agent API key" },
@@ -136,14 +157,10 @@ export function createAgentRouter({ settings, bindings = { getBinding } } = {}) 
       // createSession 自动创建（SQLite agent_sessions 行 + PI JSONL，REQ-AGENT-008）。
       return {
         action: "dialogue",
-        payload: {
-          spaceKey: spaceKeyFor(chatId),
-          message,
-          senderId,
-          chatId,
-          channelType,
-          sessionConfig: buildSessionConfig(agentCfg),
-        },
+        payload: dialoguePayload(
+          { message, chatId, senderId, channelType },
+          { sessionConfig: buildSessionConfig(agentCfg) }
+        ),
       };
     },
 
