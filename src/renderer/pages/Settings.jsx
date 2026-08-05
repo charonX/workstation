@@ -74,6 +74,22 @@ const SETTINGS_TABS = [
   { name: "about", labelKey: "settings.aboutUpdate" },
 ];
 
+// 面板容器（REQ-AGENT-023 AC1）：role=tabpanel + aria-labelledby 关联对应 tab；
+// 未选中 hidden 但保持 DOM 挂载（REQ-AGENT-025：切换保留未保存编辑、不触发请求）。
+// 四个面板共用此容器，契约属性（data-tab-panel / aria-labelledby）只写一份。
+function TabPanel({ name, activeTab, children }) {
+  return (
+    <section
+      data-tab-panel={name}
+      role="tabpanel"
+      aria-labelledby={`settings-tab-${name}`}
+      hidden={activeTab !== name}
+    >
+      {children}
+    </section>
+  );
+}
+
 export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, reloadSettings, loading] = useSettings();
@@ -511,440 +527,425 @@ export default function Settings() {
         ))}
       </div>
 
-      <section
-        data-tab-panel="agent"
-        role="tabpanel"
-        aria-labelledby="settings-tab-agent"
-        hidden={activeTab !== "agent"}
-      >
-            <div className="card" data-testid="agent-settings-card">
-              <div className="card-header">
-                <h2 className="card-title">{t("settings.agent.title")}</h2>
-                <p className="card-subtitle">{t("settings.agent.subtitle")}</p>
-              </div>
-              <div className="card-body">
-                <div className="agent-status-row" style={STATUS_ROW_STYLE}>
-                  <span
-                    className={`status ${agentConfig?.configured ? "status-success" : "status-error"}`}
-                    data-testid="agent-config-status-badge"
-                    data-status={agentConfig?.configured ? "configured" : "unconfigured"}
-                  >
-                    <span className="status-dot"></span>
-                    <span>
-                      {agentConfig?.configured ? t("settings.agent.configured") : t("settings.agent.unconfigured")}
-                    </span>
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "var(--ch-text-xs)",
-                      color: "var(--ch-text-secondary)",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    {providerLabel(agentConfig?.provider || "")}
-                  </span>
-                </div>
-
-                {agentError && (
-                  <div
-                    className="alert-error show"
-                    data-testid="agent-settings-error"
-                    style={{
-                      background: "var(--ch-error-soft)",
-                      border: "1px solid var(--ch-error)",
-                      borderRadius: "var(--ch-radius-md)",
-                      padding: "var(--ch-space-3)",
-                      fontSize: "var(--ch-text-sm)",
-                      color: "var(--ch-text)",
-                      marginBottom: "var(--ch-space-5)",
-                    }}
-                  >
-                    <strong style={{ color: "var(--ch-error)" }}>{agentError}</strong>
-                  </div>
-                )}
-
-                {agentSuccess && (
-                  <div
-                    className="alert-success show"
-                    data-testid="agent-settings-success"
-                    style={{
-                      background: "var(--ch-success-soft)",
-                      border: "1px solid var(--ch-success)",
-                      borderRadius: "var(--ch-radius-md)",
-                      padding: "var(--ch-space-3)",
-                      fontSize: "var(--ch-text-sm)",
-                      color: "var(--ch-text)",
-                      marginBottom: "var(--ch-space-5)",
-                    }}
-                  >
-                    {agentSuccess}
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="agent-provider-select">
-                    {t("settings.agent.provider")}
-                  </label>
-                  <select
-                    id="agent-provider-select"
-                    className={`form-select form-input ${agentFieldErrors.provider ? "invalid" : ""}`}
-                    data-testid="agent-provider-select"
-                    value={agentProvider}
-                    onChange={(e) => {
-                      setAgentProvider(e.target.value);
-                      setAgentFieldErrors((prev) => ({ ...prev, provider: false }));
-                      setAgentError(null);
-                    }}
-                  >
-                    <option value="">{t("settings.agent.selectProvider")}</option>
-                    {AGENT_PROVIDER_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="agent-api-key-input">
-                    {t("settings.agent.apiKey")}
-                  </label>
-                  <div
-                    className="secret-row"
-                    style={{ display: "flex", gap: "var(--ch-space-2)" }}
-                  >
-                    <input
-                      id="agent-api-key-input"
-                      className={`form-input ${agentFieldErrors.apiKey ? "invalid" : ""}`}
-                      data-testid="agent-api-key-input"
-                      type={agentShowSecret ? "text" : "password"}
-                      placeholder={t("settings.agent.apiKeyPlaceholder")}
-                      value={agentApiKey}
-                      onChange={(e) => {
-                        setAgentApiKey(e.target.value);
-                        setAgentFieldErrors((prev) => ({ ...prev, apiKey: false }));
-                        setAgentError(null);
-                      }}
-                      autoComplete="off"
-                      spellCheck={false}
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm secret-toggle"
-                      onClick={() => setAgentShowSecret((prev) => !prev)}
-                    >
-                      {agentShowSecret ? t("settings.hide") : t("settings.show")}
-                    </button>
-                  </div>
-                  <p className="help-text">{t("settings.agent.apiKeyHelp")}</p>
-                </div>
-
-                <div className="form-group">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    data-testid="agent-test-connection-button"
-                    onClick={handleTestConnection}
-                    disabled={agentTesting}
-                  >
-                    {agentTesting ? t("settings.agent.testing") : t("settings.agent.testConnection")}
-                  </button>
-                  {agentTestResult && (
-                    <p
-                      className="help-text"
-                      data-testid="agent-test-connection-result"
-                      data-ok={agentTestResult.ok}
-                      style={{
-                        marginTop: "var(--ch-space-2)",
-                        marginBottom: 0,
-                        color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
-                      }}
-                    >
-                      {agentTestResult.message}
-                    </p>
-                  )}
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="agent-identity-input">
-                    {t("settings.agent.identity")}
-                  </label>
-                  <textarea
-                    id="agent-identity-input"
-                    className={`form-input ${agentFieldErrors.identity ? "invalid" : ""}`}
-                    data-testid="agent-identity-input"
-                    value={agentIdentity}
-                    onChange={(e) => {
-                      setAgentIdentity(e.target.value);
-                      if (e.target.value.length > AGENT_IDENTITY_MAX_LEN) {
-                        setAgentFieldErrors((prev) => ({ ...prev, identity: true }));
-                        setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
-                      } else {
-                        setAgentFieldErrors((prev) => ({ ...prev, identity: false }));
-                        setAgentError(null);
-                      }
-                    }}
-                    rows={4}
-                    spellCheck={false}
-                    style={{ fontFamily: "var(--ch-font-sans)", resize: "vertical" }}
-                  />
-                  <p className="help-text">
-                    {t("settings.agent.identityHelp", { max: AGENT_IDENTITY_MAX_LEN })}
-                  </p>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">{t("settings.agent.binding")}</label>
-                  <div
-                    className="agent-binding-row"
-                    style={{ ...STATUS_ROW_STYLE, marginBottom: 0, flexWrap: "wrap" }}
-                  >
-                    {agentIsBound ? (
-                      <>
-                        <span
-                          className="status status-success"
-                          data-testid="agent-binding-status"
-                          data-bound="true"
-                          style={{ marginRight: "auto" }}
-                        >
-                          <span className="status-dot"></span>
-                          <span>
-                            {t("settings.agent.bound", { openId: maskOpenId(agentBinding?.openId) })}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          data-testid="agent-unbind-button"
-                          onClick={handleUnbind}
-                          disabled={agentBindingAction}
-                        >
-                          {t("settings.agent.unbind")}
-                        </button>
-                      </>
-                    ) : agentBindingPending ? (
-                      <>
-                        <span
-                          className="status status-running"
-                          data-testid="agent-binding-pending"
-                          style={{ marginRight: "auto" }}
-                        >
-                          <span className="status-dot"></span>
-                          <span>{t("settings.agent.bindingPending")}</span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          data-testid="agent-cancel-binding-button"
-                          onClick={handleCancelBinding}
-                          disabled={agentBindingAction}
-                        >
-                          {t("common.cancel")}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="status status-error"
-                          data-testid="agent-binding-status"
-                          data-bound="false"
-                          style={{ marginRight: "auto" }}
-                        >
-                          <span className="status-dot"></span>
-                          <span>
-                            {t("settings.agent.unbound")} — {t("settings.agent.bindingGuide")}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          data-testid="agent-begin-binding-button"
-                          onClick={handleBeginBinding}
-                          disabled={agentBindingAction}
-                        >
-                          {t("settings.agent.beginBinding")}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    data-testid="save-agent-config-button"
-                    onClick={handleSaveAgent}
-                    disabled={agentSaving}
-                  >
-                    {agentSaving ? t("settings.agent.saving") : t("settings.agent.save")}
-                  </button>
-                </div>
-              </div>
+      <TabPanel name="agent" activeTab={activeTab}>
+        <div className="card" data-testid="agent-settings-card">
+          <div className="card-header">
+            <h2 className="card-title">{t("settings.agent.title")}</h2>
+            <p className="card-subtitle">{t("settings.agent.subtitle")}</p>
+          </div>
+          <div className="card-body">
+            <div className="agent-status-row" style={STATUS_ROW_STYLE}>
+              <span
+                className={`status ${agentConfig?.configured ? "status-success" : "status-error"}`}
+                data-testid="agent-config-status-badge"
+                data-status={agentConfig?.configured ? "configured" : "unconfigured"}
+              >
+                <span className="status-dot"></span>
+                <span>
+                  {agentConfig?.configured ? t("settings.agent.configured") : t("settings.agent.unconfigured")}
+                </span>
+              </span>
+              <span
+                style={{
+                  fontSize: "var(--ch-text-xs)",
+                  color: "var(--ch-text-secondary)",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {providerLabel(agentConfig?.provider || "")}
+              </span>
             </div>
-      </section>
 
-      <section
-        data-tab-panel="channel"
-        role="tabpanel"
-        aria-labelledby="settings-tab-channel"
-        hidden={activeTab !== "channel"}
-      >
-            <div className="card" data-testid="channel-settings-card">
-              <div className="card-header">
-                <h2 className="card-title">{t("settings.channel")}</h2>
-                <p className="card-subtitle">{t("settings.channelSubtitle")}</p>
+            {agentError && (
+              <div
+                className="alert-error show"
+                data-testid="agent-settings-error"
+                style={{
+                  background: "var(--ch-error-soft)",
+                  border: "1px solid var(--ch-error)",
+                  borderRadius: "var(--ch-radius-md)",
+                  padding: "var(--ch-space-3)",
+                  fontSize: "var(--ch-text-sm)",
+                  color: "var(--ch-text)",
+                  marginBottom: "var(--ch-space-5)",
+                }}
+              >
+                <strong style={{ color: "var(--ch-error)" }}>{agentError}</strong>
               </div>
-              <div className="card-body">
-                <div
-                  className="channel-status-row"
-                  style={STATUS_ROW_STYLE}
+            )}
+
+            {agentSuccess && (
+              <div
+                className="alert-success show"
+                data-testid="agent-settings-success"
+                style={{
+                  background: "var(--ch-success-soft)",
+                  border: "1px solid var(--ch-success)",
+                  borderRadius: "var(--ch-radius-md)",
+                  padding: "var(--ch-space-3)",
+                  fontSize: "var(--ch-text-sm)",
+                  color: "var(--ch-text)",
+                  marginBottom: "var(--ch-space-5)",
+                }}
+              >
+                {agentSuccess}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="agent-provider-select">
+                {t("settings.agent.provider")}
+              </label>
+              <select
+                id="agent-provider-select"
+                className={`form-select form-input ${agentFieldErrors.provider ? "invalid" : ""}`}
+                data-testid="agent-provider-select"
+                value={agentProvider}
+                onChange={(e) => {
+                  setAgentProvider(e.target.value);
+                  setAgentFieldErrors((prev) => ({ ...prev, provider: false }));
+                  setAgentError(null);
+                }}
+              >
+                <option value="">{t("settings.agent.selectProvider")}</option>
+                {AGENT_PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="agent-api-key-input">
+                {t("settings.agent.apiKey")}
+              </label>
+              <div
+                className="secret-row"
+                style={{ display: "flex", gap: "var(--ch-space-2)" }}
+              >
+                <input
+                  id="agent-api-key-input"
+                  className={`form-input ${agentFieldErrors.apiKey ? "invalid" : ""}`}
+                  data-testid="agent-api-key-input"
+                  type={agentShowSecret ? "text" : "password"}
+                  placeholder={t("settings.agent.apiKeyPlaceholder")}
+                  value={agentApiKey}
+                  onChange={(e) => {
+                    setAgentApiKey(e.target.value);
+                    setAgentFieldErrors((prev) => ({ ...prev, apiKey: false }));
+                    setAgentError(null);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm secret-toggle"
+                  onClick={() => setAgentShowSecret((prev) => !prev)}
                 >
-                  <span
-                    className={`status ${statusClass(channelStatus.status)}`}
-                    data-testid="channel-status-badge"
-                    data-status={channelStatus.status}
-                  >
-                    <span className="status-dot"></span>
-                    <span>{statusText(channelStatus.status)}</span>
-                  </span>
-                  <span
-                    className="channel-status-meta"
-                    style={{
-                      fontSize: "var(--ch-text-xs)",
-                      color: "var(--ch-text-secondary)",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    {t("settings.channel")}
-                  </span>
-                  <span className="channel-status-actions" style={{ display: "flex", gap: "var(--ch-space-2)", flexShrink: 0 }}>
+                  {agentShowSecret ? t("settings.hide") : t("settings.show")}
+                </button>
+              </div>
+              <p className="help-text">{t("settings.agent.apiKeyHelp")}</p>
+            </div>
+
+            <div className="form-group">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="agent-test-connection-button"
+                onClick={handleTestConnection}
+                disabled={agentTesting}
+              >
+                {agentTesting ? t("settings.agent.testing") : t("settings.agent.testConnection")}
+              </button>
+              {agentTestResult && (
+                <p
+                  className="help-text"
+                  data-testid="agent-test-connection-result"
+                  data-ok={agentTestResult.ok}
+                  style={{
+                    marginTop: "var(--ch-space-2)",
+                    marginBottom: 0,
+                    color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
+                  }}
+                >
+                  {agentTestResult.message}
+                </p>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="agent-identity-input">
+                {t("settings.agent.identity")}
+              </label>
+              <textarea
+                id="agent-identity-input"
+                className={`form-input ${agentFieldErrors.identity ? "invalid" : ""}`}
+                data-testid="agent-identity-input"
+                value={agentIdentity}
+                onChange={(e) => {
+                  setAgentIdentity(e.target.value);
+                  if (e.target.value.length > AGENT_IDENTITY_MAX_LEN) {
+                    setAgentFieldErrors((prev) => ({ ...prev, identity: true }));
+                    setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
+                  } else {
+                    setAgentFieldErrors((prev) => ({ ...prev, identity: false }));
+                    setAgentError(null);
+                  }
+                }}
+                rows={4}
+                spellCheck={false}
+                style={{ fontFamily: "var(--ch-font-sans)", resize: "vertical" }}
+              />
+              <p className="help-text">
+                {t("settings.agent.identityHelp", { max: AGENT_IDENTITY_MAX_LEN })}
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t("settings.agent.binding")}</label>
+              <div
+                className="agent-binding-row"
+                style={{ ...STATUS_ROW_STYLE, marginBottom: 0, flexWrap: "wrap" }}
+              >
+                {agentIsBound ? (
+                  <>
+                    <span
+                      className="status status-success"
+                      data-testid="agent-binding-status"
+                      data-bound="true"
+                      style={{ marginRight: "auto" }}
+                    >
+                      <span className="status-dot"></span>
+                      <span>
+                        {t("settings.agent.bound", { openId: maskOpenId(agentBinding?.openId) })}
+                      </span>
+                    </span>
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
-                      data-testid="reconnect-channel-button"
-                      onClick={handleReconnect}
-                      disabled={channelSaving}
+                      data-testid="agent-unbind-button"
+                      onClick={handleUnbind}
+                      disabled={agentBindingAction}
                     >
-                      {t("settings.reconnect")}
+                      {t("settings.agent.unbind")}
                     </button>
-                  </span>
-                </div>
-
-                {channelError && (
-                  <div
-                    className="alert-error show"
-                    data-testid="channel-status-error"
-                    style={{
-                      background: "var(--ch-error-soft)",
-                      border: "1px solid var(--ch-error)",
-                      borderRadius: "var(--ch-radius-md)",
-                      padding: "var(--ch-space-3)",
-                      fontSize: "var(--ch-text-sm)",
-                      color: "var(--ch-text)",
-                      marginBottom: "var(--ch-space-5)",
-                    }}
-                  >
-                    <strong style={{ color: "var(--ch-error)" }}>{channelError}</strong>
-                  </div>
-                )}
-
-                {channelSuccess && (
-                  <div
-                    className="alert-success show"
-                    data-testid="channel-status-success"
-                    style={{
-                      background: "var(--ch-success-soft)",
-                      border: "1px solid var(--ch-success)",
-                      borderRadius: "var(--ch-radius-md)",
-                      padding: "var(--ch-space-3)",
-                      fontSize: "var(--ch-text-sm)",
-                      color: "var(--ch-text)",
-                      marginBottom: "var(--ch-space-5)",
-                    }}
-                  >
-                    {channelSuccess}
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="channel-app-id-input">
-                    {t("settings.appId")}
-                  </label>
-                  <input
-                    id="channel-app-id-input"
-                    className={`form-input ${fieldErrors.appId ? "invalid" : ""}`}
-                    data-testid="channel-app-id-input"
-                    value={channelAppId}
-                    onChange={(e) => {
-                      setChannelAppId(e.target.value);
-                      setFieldErrors((prev) => ({ ...prev, appId: false }));
-                      setChannelError(null);
-                    }}
-                    placeholder="cli_xxxxxxxxxxxxxxxx"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="channel-app-secret-input">
-                    {t("settings.appSecret")}
-                  </label>
-                  <div
-                    className="secret-row"
-                    style={{ display: "flex", gap: "var(--ch-space-2)" }}
-                  >
-                    <input
-                      id="channel-app-secret-input"
-                      className={`form-input ${fieldErrors.appSecret ? "invalid" : ""}`}
-                      data-testid="channel-app-secret-input"
-                      type={showSecret ? "text" : "password"}
-                      value={channelAppSecret}
-                      onChange={(e) => {
-                        setChannelAppSecret(e.target.value);
-                        setFieldErrors((prev) => ({ ...prev, appSecret: false }));
-                        setChannelError(null);
-                      }}
-                      autoComplete="off"
-                      spellCheck={false}
-                      style={{ flex: 1 }}
-                    />
+                  </>
+                ) : agentBindingPending ? (
+                  <>
+                    <span
+                      className="status status-running"
+                      data-testid="agent-binding-pending"
+                      style={{ marginRight: "auto" }}
+                    >
+                      <span className="status-dot"></span>
+                      <span>{t("settings.agent.bindingPending")}</span>
+                    </span>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-sm secret-toggle"
-                      onClick={() => setShowSecret((prev) => !prev)}
+                      className="btn btn-secondary btn-sm"
+                      data-testid="agent-cancel-binding-button"
+                      onClick={handleCancelBinding}
+                      disabled={agentBindingAction}
                     >
-                      {showSecret ? t("settings.hide") : t("settings.show")}
+                      {t("common.cancel")}
                     </button>
-                  </div>
-                  <p className="help-text">{t("settings.channelHelp")}</p>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    data-testid="save-channel-credentials-button"
-                    onClick={handleSaveChannel}
-                    disabled={channelSaving}
-                  >
-                    {channelSaving ? "Connecting..." : t("settings.saveCredentials")}
-                  </button>
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className="status status-error"
+                      data-testid="agent-binding-status"
+                      data-bound="false"
+                      style={{ marginRight: "auto" }}
+                    >
+                      <span className="status-dot"></span>
+                      <span>
+                        {t("settings.agent.unbound")} — {t("settings.agent.bindingGuide")}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      data-testid="agent-begin-binding-button"
+                      onClick={handleBeginBinding}
+                      disabled={agentBindingAction}
+                    >
+                      {t("settings.agent.beginBinding")}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
-      </section>
 
-      <section
-        data-tab-panel="general"
-        role="tabpanel"
-        aria-labelledby="settings-tab-general"
-        hidden={activeTab !== "general"}
-      >
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                data-testid="save-agent-config-button"
+                onClick={handleSaveAgent}
+                disabled={agentSaving}
+              >
+                {agentSaving ? t("settings.agent.saving") : t("settings.agent.save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </TabPanel>
+
+      <TabPanel name="channel" activeTab={activeTab}>
+        <div className="card" data-testid="channel-settings-card">
+          <div className="card-header">
+            <h2 className="card-title">{t("settings.channel")}</h2>
+            <p className="card-subtitle">{t("settings.channelSubtitle")}</p>
+          </div>
+          <div className="card-body">
+            <div
+              className="channel-status-row"
+              style={STATUS_ROW_STYLE}
+            >
+              <span
+                className={`status ${statusClass(channelStatus.status)}`}
+                data-testid="channel-status-badge"
+                data-status={channelStatus.status}
+              >
+                <span className="status-dot"></span>
+                <span>{statusText(channelStatus.status)}</span>
+              </span>
+              <span
+                className="channel-status-meta"
+                style={{
+                  fontSize: "var(--ch-text-xs)",
+                  color: "var(--ch-text-secondary)",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {t("settings.channel")}
+              </span>
+              <span className="channel-status-actions" style={{ display: "flex", gap: "var(--ch-space-2)", flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  data-testid="reconnect-channel-button"
+                  onClick={handleReconnect}
+                  disabled={channelSaving}
+                >
+                  {t("settings.reconnect")}
+                </button>
+              </span>
+            </div>
+
+            {channelError && (
+              <div
+                className="alert-error show"
+                data-testid="channel-status-error"
+                style={{
+                  background: "var(--ch-error-soft)",
+                  border: "1px solid var(--ch-error)",
+                  borderRadius: "var(--ch-radius-md)",
+                  padding: "var(--ch-space-3)",
+                  fontSize: "var(--ch-text-sm)",
+                  color: "var(--ch-text)",
+                  marginBottom: "var(--ch-space-5)",
+                }}
+              >
+                <strong style={{ color: "var(--ch-error)" }}>{channelError}</strong>
+              </div>
+            )}
+
+            {channelSuccess && (
+              <div
+                className="alert-success show"
+                data-testid="channel-status-success"
+                style={{
+                  background: "var(--ch-success-soft)",
+                  border: "1px solid var(--ch-success)",
+                  borderRadius: "var(--ch-radius-md)",
+                  padding: "var(--ch-space-3)",
+                  fontSize: "var(--ch-text-sm)",
+                  color: "var(--ch-text)",
+                  marginBottom: "var(--ch-space-5)",
+                }}
+              >
+                {channelSuccess}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="channel-app-id-input">
+                {t("settings.appId")}
+              </label>
+              <input
+                id="channel-app-id-input"
+                className={`form-input ${fieldErrors.appId ? "invalid" : ""}`}
+                data-testid="channel-app-id-input"
+                value={channelAppId}
+                onChange={(e) => {
+                  setChannelAppId(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, appId: false }));
+                  setChannelError(null);
+                }}
+                placeholder="cli_xxxxxxxxxxxxxxxx"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="channel-app-secret-input">
+                {t("settings.appSecret")}
+              </label>
+              <div
+                className="secret-row"
+                style={{ display: "flex", gap: "var(--ch-space-2)" }}
+              >
+                <input
+                  id="channel-app-secret-input"
+                  className={`form-input ${fieldErrors.appSecret ? "invalid" : ""}`}
+                  data-testid="channel-app-secret-input"
+                  type={showSecret ? "text" : "password"}
+                  value={channelAppSecret}
+                  onChange={(e) => {
+                    setChannelAppSecret(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, appSecret: false }));
+                    setChannelError(null);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm secret-toggle"
+                  onClick={() => setShowSecret((prev) => !prev)}
+                >
+                  {showSecret ? t("settings.hide") : t("settings.show")}
+                </button>
+              </div>
+              <p className="help-text">{t("settings.channelHelp")}</p>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                data-testid="save-channel-credentials-button"
+                onClick={handleSaveChannel}
+                disabled={channelSaving}
+              >
+                {channelSaving ? "Connecting..." : t("settings.saveCredentials")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </TabPanel>
+
+      <TabPanel name="general" activeTab={activeTab}>
         {saveError && (
           <div className="card" style={{ marginBottom: "var(--ch-space-4)", borderColor: "var(--ch-error)" }}>
             <div className="card-body" style={{ color: "var(--ch-error)" }}>
@@ -954,185 +955,180 @@ export default function Settings() {
         )}
 
         <form id="settings-form" data-testid="settings-form" onSubmit={handleSubmit}>
-            <div className="card">
-              <div className="card-header">
-                <h2 className="card-title">{t("settings.workspace")}</h2>
-                <p className="card-subtitle">{t("settings.workspaceSubtitle")}</p>
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">{t("settings.workspace")}</h2>
+              <p className="card-subtitle">{t("settings.workspaceSubtitle")}</p>
+            </div>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label" htmlFor="workspace-root-input">
+                  {t("settings.workspaceRoot")}
+                </label>
+                <DirectoryInput
+                  id="workspace-root-input"
+                  value={form.workspaceRoot}
+                  onChange={(value) => handleChange("workspaceRoot", value)}
+                  placeholder={t("settings.workspaceRoot")}
+                  pickerTitle={t("settings.workspaceRoot")}
+                  data-testid="workspace-root-input"
+                />
+                <p className="help-text">{t("settings.workspaceRootHelp")}</p>
               </div>
-              <div className="card-body">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="workspace-root-input">
-                    {t("settings.workspaceRoot")}
-                  </label>
-                  <DirectoryInput
-                    id="workspace-root-input"
-                    value={form.workspaceRoot}
-                    onChange={(value) => handleChange("workspaceRoot", value)}
-                    placeholder={t("settings.workspaceRoot")}
-                    pickerTitle={t("settings.workspaceRoot")}
-                    data-testid="workspace-root-input"
-                  />
-                  <p className="help-text">{t("settings.workspaceRootHelp")}</p>
-                </div>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="skill-repo-path-input">
-                    {t("settings.skillRepoPath")}
-                  </label>
-                  <DirectoryInput
-                    id="skill-repo-path-input"
-                    value={form.skillRepoPath}
-                    onChange={(value) => handleChange("skillRepoPath", value)}
-                    placeholder={t("settings.skillRepoPath")}
-                    pickerTitle={t("settings.skillRepoPath")}
-                    data-testid="skill-repo-path-input"
-                  />
-                  <p className="help-text">{t("settings.skillRepoPathHelp")}</p>
-                </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="skill-repo-path-input">
+                  {t("settings.skillRepoPath")}
+                </label>
+                <DirectoryInput
+                  id="skill-repo-path-input"
+                  value={form.skillRepoPath}
+                  onChange={(value) => handleChange("skillRepoPath", value)}
+                  placeholder={t("settings.skillRepoPath")}
+                  pickerTitle={t("settings.skillRepoPath")}
+                  data-testid="skill-repo-path-input"
+                />
+                <p className="help-text">{t("settings.skillRepoPathHelp")}</p>
               </div>
             </div>
+          </div>
 
-            <div className="card">
-              <div className="card-header">
-                <h2 className="card-title">{t("settings.appearance")}</h2>
-                <p className="card-subtitle">{t("settings.appearanceSubtitle")}</p>
-              </div>
-              <div className="card-body">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="theme-select">
-                    {t("settings.theme")}
-                  </label>
-                  <select
-                    id="theme-select"
-                    className="form-select"
-                    data-testid="theme-select"
-                    value={form.theme}
-                    onChange={(e) => handleChange("theme", e.target.value)}
-                  >
-                    <option value="dark">{t("settings.dark")}</option>
-                    <option value="light">{t("settings.light")}</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="language-select">
-                    {t("settings.language")}
-                  </label>
-                  <select
-                    id="language-select"
-                    className="form-select"
-                    data-testid="language-select"
-                    value={form.language}
-                    onChange={(e) => handleChange("language", e.target.value)}
-                  >
-                    <option value="en-US">{t("settings.english")}</option>
-                    <option value="zh-CN">{t("settings.chinese")}</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="density-select">
-                    {t("settings.density")}
-                  </label>
-                  <select
-                    id="density-select"
-                    className="form-select"
-                    data-testid="density-select"
-                    value={form.density}
-                    onChange={(e) => handleChange("density", e.target.value)}
-                  >
-                    <option value="compact">{t("settings.compact")}</option>
-                    <option value="comfortable">{t("settings.comfortable")}</option>
-                  </select>
-                </div>
-              </div>
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">{t("settings.appearance")}</h2>
+              <p className="card-subtitle">{t("settings.appearanceSubtitle")}</p>
             </div>
-
-            {/* REQ-AGENT-024 AC1/AC2：通用 tab 区内独立保存（替代原右上角全局保存） */}
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--ch-space-3)" }}>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                data-testid="save-general-settings-button"
-                disabled={saving}
-              >
-                {saving ? t("settings.saving") : t("settings.saveChanges")}
-              </button>
-              {generalSuccess && (
-                <span
-                  data-testid="general-settings-success"
-                  style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-success)" }}
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label" htmlFor="theme-select">
+                  {t("settings.theme")}
+                </label>
+                <select
+                  id="theme-select"
+                  className="form-select"
+                  data-testid="theme-select"
+                  value={form.theme}
+                  onChange={(e) => handleChange("theme", e.target.value)}
                 >
-                  {t("settings.saved")}
-                </span>
+                  <option value="dark">{t("settings.dark")}</option>
+                  <option value="light">{t("settings.light")}</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="language-select">
+                  {t("settings.language")}
+                </label>
+                <select
+                  id="language-select"
+                  className="form-select"
+                  data-testid="language-select"
+                  value={form.language}
+                  onChange={(e) => handleChange("language", e.target.value)}
+                >
+                  <option value="en-US">{t("settings.english")}</option>
+                  <option value="zh-CN">{t("settings.chinese")}</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="density-select">
+                  {t("settings.density")}
+                </label>
+                <select
+                  id="density-select"
+                  className="form-select"
+                  data-testid="density-select"
+                  value={form.density}
+                  onChange={(e) => handleChange("density", e.target.value)}
+                >
+                  <option value="compact">{t("settings.compact")}</option>
+                  <option value="comfortable">{t("settings.comfortable")}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* REQ-AGENT-024 AC1/AC2：通用 tab 区内独立保存（替代原右上角全局保存） */}
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--ch-space-3)" }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              data-testid="save-general-settings-button"
+              disabled={saving}
+            >
+              {saving ? t("settings.saving") : t("settings.saveChanges")}
+            </button>
+            {generalSuccess && (
+              <span
+                data-testid="general-settings-success"
+                style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-success)" }}
+              >
+                {t("settings.saved")}
+              </span>
+            )}
+          </div>
+        </form>
+      </TabPanel>
+
+      <TabPanel name="about" activeTab={activeTab}>
+        <div className="card" data-testid="update-section">
+          <div className="card-header">
+            <h2 className="card-title">{t("settings.aboutUpdate")}</h2>
+          </div>
+          <div className="card-body">
+            <div className="form-group">
+              <label className="form-label">{t("settings.version")}</label>
+              {appVersion !== null && (
+                <div className="form-static" data-testid="update-version">
+                  {appVersion}
+                </div>
               )}
             </div>
-        </form>
-      </section>
-
-      <section
-        data-tab-panel="about"
-        role="tabpanel"
-        aria-labelledby="settings-tab-about"
-        hidden={activeTab !== "about"}
-      >
-            <div className="card" data-testid="update-section">
-              <div className="card-header">
-                <h2 className="card-title">{t("settings.aboutUpdate")}</h2>
-              </div>
-              <div className="card-body">
-                <div className="form-group">
-                  <label className="form-label">{t("settings.version")}</label>
-                  {appVersion !== null && (
-                    <div className="form-static" data-testid="update-version">
-                      {appVersion}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="form-label">{t("settings.dataDirectory")}</label>
-                  <div className="form-static form-static-mono">
-                    ~/.opc-workstation
-                  </div>
-                </div>
-                <div className="form-group">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    data-testid="update-check-button"
-                    onClick={handleCheckUpdates}
-                    disabled={checking}
-                  >
-                    {checking ? t("settings.checkingUpdates") : t("settings.checkForUpdates")}
-                  </button>
-                </div>
-                {updateStatus && (
-                  <div
-                    className="update-status-row"
-                    data-testid="update-status"
-                    style={UPDATE_STATUS_ROW_STYLE}
-                  >
-                    <span style={{ flex: 1, minWidth: 0 }}>{updateStatusText(updateStatus)}</span>
-                    {updateStatus.kind === STATUS_HAS_UPDATE && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        data-testid="update-download-button"
-                        onClick={handleDownload}
-                      >
-                        {t("settings.download")}
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <p className="help-text" data-testid="update-guide">
-                    {t("settings.updateGuide")}
-                  </p>
-                </div>
+            <div className="form-group">
+              <label className="form-label">{t("settings.dataDirectory")}</label>
+              <div className="form-static form-static-mono">
+                ~/.opc-workstation
               </div>
             </div>
-      </section>
+            <div className="form-group">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="update-check-button"
+                onClick={handleCheckUpdates}
+                disabled={checking}
+              >
+                {checking ? t("settings.checkingUpdates") : t("settings.checkForUpdates")}
+              </button>
+            </div>
+            {updateStatus && (
+              <div
+                className="update-status-row"
+                data-testid="update-status"
+                style={UPDATE_STATUS_ROW_STYLE}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>{updateStatusText(updateStatus)}</span>
+                {updateStatus.kind === STATUS_HAS_UPDATE && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    data-testid="update-download-button"
+                    onClick={handleDownload}
+                  >
+                    {t("settings.download")}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <p className="help-text" data-testid="update-guide">
+                {t("settings.updateGuide")}
+              </p>
+            </div>
+          </div>
+        </div>
+      </TabPanel>
     </div>
   );
 }

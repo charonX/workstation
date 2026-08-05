@@ -196,19 +196,6 @@ body {
   flex-shrink: 0;
 }
 
-/* Settings grid */
-.settings-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--ch-space-5);
-}
-
-@media (max-width: 960px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Settings tab 栏（REQ-AGENT-023，ux/settings-tabs.html 拍板样式） */
 .tab-bar {
   display: flex;
