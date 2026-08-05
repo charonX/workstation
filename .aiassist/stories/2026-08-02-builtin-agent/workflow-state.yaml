@@ -37,13 +37,13 @@ blocks: {}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
-  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
-  compiled: false           # 是否已跑过 compile-design-system
-  preview: ""               # 当前有效的 preview.html 路径
+  slug: "global"            # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true            # 是否已跑过 compile-design-system
+  preview: ".aiassist/stories/2026-08-02-builtin-agent/ux/preview.html"               # 当前有效的 preview.html 路径
 
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
-  recorded: []              # [flow-a.html, flow-b.html, ...]
+  recorded: [settings-tabs.html]              # [flow-a.html, flow-b.html, ...]
 
 # 已生成的变体(按需)。
 variants:

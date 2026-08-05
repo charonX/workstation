@@ -1,0 +1,381 @@
+<!-- @dsCard group="设置" name="Settings Tab 化" viewport="desktop" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置 — Tab 化原型</title>
+<link rel="stylesheet" href="_ds/global/tokens.css">
+<link rel="stylesheet" href="_ds/global/styles.css">
+<style>
+  /* 页面骨架：复刻 src/renderer/index.css 的 app 视觉语言（卡片/表单/按钮/徽标），
+     全部落在设计系统 token 上；tab 组件为本原型新增（候选入全局组件库）。 */
+  body {
+    margin: 0;
+    background: var(--ch-bg);
+    color: var(--ch-text);
+    font-family: var(--ch-font-sans);
+    font-size: var(--ch-text-sm);
+    line-height: var(--ch-leading-normal);
+  }
+  .page { max-width: 860px; margin: 0 auto; padding: var(--ch-space-6) var(--ch-space-5); }
+  .page-header { margin-bottom: var(--ch-space-4); }
+  .page-title { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-semibold); margin: 0; }
+
+  /* —— Tab 栏（新增组件）—— */
+  .tab-bar {
+    display: flex;
+    gap: var(--ch-space-1);
+    border-bottom: 1px solid var(--ch-border);
+    margin-bottom: var(--ch-space-5);
+  }
+  .tab-btn {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: var(--ch-space-2) var(--ch-space-3);
+    font-family: var(--ch-font-sans);
+    font-size: var(--ch-text-sm);
+    font-weight: var(--ch-weight-medium);
+    color: var(--ch-text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s ease;
+  }
+  .tab-btn:hover { color: var(--ch-text); }
+  .tab-btn[aria-selected="true"] {
+    color: var(--ch-accent);
+    border-bottom-color: var(--ch-accent);
+    font-weight: var(--ch-weight-semibold);
+  }
+  .tab-btn .tab-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ch-warning);
+    margin-left: var(--ch-space-1);
+    vertical-align: middle;
+  }
+
+  /* —— 卡片/表单（复刻 app）—— */
+  .card {
+    background: var(--ch-surface);
+    border: 1px solid var(--ch-border);
+    border-radius: var(--ch-radius-lg);
+    overflow: hidden;
+    margin-bottom: var(--ch-space-4);
+  }
+  .card-header { padding: var(--ch-space-4); border-bottom: 1px solid var(--ch-border); display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); margin: 0 0 2px; }
+  .card-subtitle { font-size: var(--ch-text-xs); color: var(--ch-text-secondary); margin: 0; }
+  .card-body { padding: var(--ch-space-4); }
+  .form-group { margin-bottom: var(--ch-space-5); }
+  .form-label {
+    display: block;
+    font-size: var(--ch-text-xs);
+    font-weight: var(--ch-weight-medium);
+    color: var(--ch-text-secondary);
+    margin-bottom: var(--ch-space-2);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .form-input, .form-select, .form-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--ch-surface-highest);
+    border: 1px solid var(--ch-border);
+    border-radius: var(--ch-radius-md);
+    color: var(--ch-text);
+    font-size: var(--ch-text-sm);
+    outline: none;
+    font-family: var(--ch-font-mono);
+    box-sizing: border-box;
+  }
+  .form-textarea { min-height: 88px; resize: vertical; font-family: var(--ch-font-sans); }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--ch-accent); }
+  .form-help { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: var(--ch-space-1); }
+  .directory-input { display: flex; gap: var(--ch-space-3); }
+  .directory-input .form-input { flex: 1; min-width: 0; }
+  .directory-input .btn { flex-shrink: 0; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: var(--ch-space-2);
+    padding: 6px 14px;
+    border-radius: var(--ch-radius-md);
+    font-weight: var(--ch-weight-semibold);
+    font-size: var(--ch-text-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.15s ease;
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn-primary { background: var(--ch-accent); color: var(--ch-accent-text); }
+  .btn-secondary { background: transparent; border-color: var(--ch-border); color: var(--ch-text); }
+  .btn-danger { background: var(--ch-error); color: #fff; }
+
+  .status-badge {
+    display: inline-flex; align-items: center; gap: var(--ch-space-2);
+    padding: 2px 10px;
+    border-radius: var(--ch-radius-full);
+    font-size: var(--ch-text-xs);
+    font-weight: var(--ch-weight-medium);
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .status-success { background: var(--ch-success-soft); color: var(--ch-success); }
+  .status-success .status-dot { background: var(--ch-success); }
+  .status-muted { background: var(--ch-surface-high); color: var(--ch-text-secondary); }
+  .status-muted .status-dot { background: var(--ch-text-tertiary); }
+
+  .key-row { display: flex; gap: var(--ch-space-3); }
+  .key-row .form-input { flex: 1; }
+  .subsection { border-top: 1px solid var(--ch-border); padding-top: var(--ch-space-4); margin-top: var(--ch-space-4); }
+  .inline-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ch-space-3); }
+  .save-row { display: flex; align-items: center; gap: var(--ch-space-3); margin-top: var(--ch-space-5); }
+  .save-feedback { font-size: var(--ch-text-xs); color: var(--ch-success); opacity: 0; transition: opacity 0.3s ease; }
+  .save-feedback.show { opacity: 1; }
+  .test-result { font-size: var(--ch-text-xs); margin-top: var(--ch-space-2); }
+  .test-result.ok { color: var(--ch-success); }
+  .test-result.fail { color: var(--ch-error); }
+  .about-row { display: flex; align-items: center; justify-content: space-between; padding: var(--ch-space-3) 0; border-bottom: 1px solid var(--ch-border); }
+  .about-row:last-child { border-bottom: none; }
+  .about-label { color: var(--ch-text-secondary); font-size: var(--ch-text-sm); }
+  .about-value { font-family: var(--ch-font-mono); font-size: var(--ch-text-sm); }
+  [data-tab-panel][hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <h1 class="page-title">设置</h1>
+    <!-- 改造点 3：右上角全局保存已移除——每个 tab 内聚自己的保存 -->
+  </div>
+
+  <!-- 改造点 1：tab 切换（通用 / Agent 配置 / 飞书通道 / 关于与更新） -->
+  <div class="tab-bar" role="tablist" aria-label="设置分区">
+    <button class="tab-btn" role="tab" aria-selected="true" data-tab="general" id="tab-general">通用</button>
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="agent" id="tab-agent">Agent 配置</button>
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="channel" id="tab-channel">飞书通道</button>
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="about" id="tab-about">关于与更新</button>
+  </div>
+
+  <!-- ========== Tab：通用 ========== -->
+  <section data-tab-panel="general" role="tabpanel" aria-labelledby="tab-general">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">通用</h2>
+          <p class="card-subtitle">工作区、技能库与界面偏好</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="ws-root">工作区根目录</label>
+          <div class="directory-input">
+            <input class="form-input" id="ws-root" value="~/charon/code/workspace">
+            <button class="btn btn-secondary" type="button">浏览…</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="skill-repo">技能仓库路径</label>
+          <div class="directory-input">
+            <input class="form-input" id="skill-repo" value="/Users/zhanglei/charon/code/workspace/skills">
+            <button class="btn btn-secondary" type="button">浏览…</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="theme">主题</label>
+          <select class="form-select" id="theme">
+            <option selected>亮色</option>
+            <option>暗色</option>
+            <option>跟随系统</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="lang">语言</label>
+          <select class="form-select" id="lang">
+            <option selected>简体中文</option>
+            <option>English (US)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="density">密度</label>
+          <select class="form-select" id="density">
+            <option selected>舒适</option>
+            <option>紧凑</option>
+          </select>
+        </div>
+        <!-- 改造点 2：通用 tab 自己的保存（替代原右上角全局保存） -->
+        <div class="save-row">
+          <button class="btn btn-primary" type="button" data-save="general">保存</button>
+          <span class="save-feedback" data-feedback="general">已保存</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Tab：Agent 配置 ========== -->
+  <section data-tab-panel="agent" role="tabpanel" aria-labelledby="tab-agent" hidden>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Agent 配置</h2>
+          <p class="card-subtitle">配置内置 Agent 的 LLM 供应商、自定义身份与飞书绑定</p>
+        </div>
+        <span class="status-badge status-success"><span class="status-dot"></span>已配置 · DeepSeek</span>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="provider">供应商</label>
+          <select class="form-select" id="provider">
+            <option selected>DeepSeek</option>
+            <option>Kimi（海外）</option>
+            <option>Kimi（国内）</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="api-key">API Key</label>
+          <div class="key-row">
+            <input class="form-input" id="api-key" type="password" placeholder="已加密存储，输入则更换">
+            <button class="btn btn-secondary" type="button" data-toggle-key>显示</button>
+          </div>
+          <p class="form-help">密钥加密存储于系统钥匙串，保存后不再显示；保存前可先「测试连接」验证。</p>
+        </div>
+        <div class="form-group">
+          <button class="btn btn-secondary" type="button" data-test-conn>测试连接</button>
+          <p class="test-result" data-test-result hidden></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="identity">自定义身份</label>
+          <textarea class="form-textarea" id="identity" placeholder=""></textarea>
+          <p class="form-help">名称、语气或额外指令（最多 2000 字符）。留空则仅使用内置身份。</p>
+        </div>
+        <div class="subsection">
+          <div class="inline-row">
+            <div>
+              <div class="form-label" style="margin-bottom: 4px;">飞书绑定</div>
+              <span class="status-badge status-success"><span class="status-dot"></span>已绑定：Ou_***</span>
+            </div>
+            <button class="btn btn-secondary" type="button">解绑</button>
+          </div>
+        </div>
+        <!-- 改造点 2：Agent tab 自己的保存（逻辑与现状一致：未输新 key 保留原 key） -->
+        <div class="save-row">
+          <button class="btn btn-primary" type="button" data-save="agent">保存</button>
+          <span class="save-feedback" data-feedback="agent">已保存</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Tab：飞书通道 ========== -->
+  <section data-tab-panel="channel" role="tabpanel" aria-labelledby="tab-channel" hidden>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">飞书通道</h2>
+          <p class="card-subtitle">飞书应用凭据与连接状态</p>
+        </div>
+        <span class="status-badge status-success"><span class="status-dot"></span>在线</span>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="app-id">App ID</label>
+          <input class="form-input" id="app-id" value="cli_a95e0d11553cdbef">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="app-secret">App Secret</label>
+          <div class="key-row">
+            <input class="form-input" id="app-secret" type="password" value="KzRzCt8d23iP7tjKgRJRFdvUoC81NqeW">
+            <button class="btn btn-secondary" type="button" data-toggle-key>显示</button>
+          </div>
+        </div>
+        <!-- 改造点 2：飞书 tab 自己的保存（与现状一致）+ 重连动作保留 -->
+        <div class="save-row">
+          <button class="btn btn-primary" type="button" data-save="channel">保存</button>
+          <button class="btn btn-secondary" type="button">重新连接</button>
+          <span class="save-feedback" data-feedback="channel">已保存</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Tab：关于与更新 ========== -->
+  <section data-tab-panel="about" role="tabpanel" aria-labelledby="tab-about" hidden>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">关于与更新</h2>
+          <p class="card-subtitle">版本信息与更新检查（只读，无保存）</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="about-row">
+          <span class="about-label">当前版本</span>
+          <span class="about-value">0.1.0</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">更新</span>
+          <span>
+            <button class="btn btn-secondary" type="button" data-check-update>检查更新</button>
+            <button class="btn btn-secondary" type="button" style="margin-left: 8px;">去下载</button>
+          </span>
+        </div>
+        <p class="test-result" data-update-result hidden></p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // —— Tab 切换（aria-selected + hidden 面板；未保存编辑随 DOM 状态自然保留，切换不丢）——
+  const tabs = document.querySelectorAll('[role="tab"]');
+  const panels = document.querySelectorAll('[data-tab-panel]');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+      panels.forEach((p) => { p.hidden = p.dataset.tabPanel !== tab.dataset.tab; });
+    });
+  });
+
+  // —— 保存反馈（原型假交互：按钮 → 区内成功提示，2s 淡出）——
+  document.querySelectorAll('[data-save]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const fb = document.querySelector(`[data-feedback="${btn.dataset.save}"]`);
+      btn.textContent = '保存中…';
+      setTimeout(() => {
+        btn.textContent = '保存';
+        fb.classList.add('show');
+        setTimeout(() => fb.classList.remove('show'), 2000);
+      }, 400);
+    });
+  });
+
+  // —— key 显隐切换 ——
+  document.querySelectorAll('[data-toggle-key]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = btn.parentElement.querySelector('.form-input');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? '隐藏' : '显示';
+    });
+  });
+
+  // —— 测试连接 / 检查更新（假交互）——
+  document.querySelector('[data-test-conn]').addEventListener('click', (e) => {
+    const r = document.querySelector('[data-test-result]');
+    r.hidden = false;
+    r.className = 'test-result';
+    r.textContent = '测试中…';
+    setTimeout(() => { r.classList.add('ok'); r.textContent = '连接成功：供应商可达'; }, 600);
+  });
+  document.querySelector('[data-check-update]').addEventListener('click', () => {
+    const r = document.querySelector('[data-update-result]');
+    r.hidden = false;
+    r.className = 'test-result';
+    r.textContent = '检查中…';
+    setTimeout(() => { r.classList.add('ok'); r.textContent = '已是最新版本'; }, 600);
+  });
+</script>
+</body>
+</html>
