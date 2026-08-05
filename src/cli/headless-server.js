@@ -1,3 +1,7 @@
+// BUG-001: stdio EPIPE 防护最先安装（副作用即装，见 src/stdioGuard.js）——
+// 本进程以 stdio: pipe detached 方式 spawn，父进程退出后管道读端关闭，
+// 后续 console.* 必 EPIPE；防护先于其它模块的 import 期日志生效。
+import "../stdioGuard.js";
 import { startServer } from "../http/server.js";
 import { unregisterServerRecord, readServerInfoRaw, takeoverExistingServer } from "../serverRegistry.js";
 

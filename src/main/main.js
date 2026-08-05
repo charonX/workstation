@@ -1,3 +1,7 @@
+// BUG-001: stdio EPIPE 防护须最先安装（副作用即装，见 src/stdioGuard.js）——
+// 不依赖 env/db，不影响下方 bootstrap-env「首个设置 env」的 BUG-007 不变量；
+// 位置最前可覆盖包括 bootstrap-env 在内的所有 import 期 console.*。
+import "../stdioGuard.js";
 // BUG-007: bootstrap-env MUST be the first project import. It sets
 // OPC_WORKSTATION_CONFIG_DIR and DB_PATH to app.getPath("userData") before any
 // module that transitively loads settingsService/db.js runs its top-level
