@@ -75,9 +75,10 @@ function taskStartLine(executionId, flowId) {
 // BUG-006（code-defect）：print_frequency_ms / print_step 官方 schema 为**分端 object**
 // （{default: 70}），发数字会 400 field validation failed；元素标识应为 element_id
 // （字母开头≤20字符，供 PUT .../elements/:element_id/content 引用），非官方字段 id。
-// 修复为官方 schema。
+// summary 官方 schema 在 **config 层**且为 { content: string }（聊天栏预览文案），
+// 误放 streaming_config 且为字符串 → 200621 parse card json err。修复为官方 schema。
 function buildStreamingCard(content, { summary, printFrequencyMs, printStep } = {}) {
-  const streamingConfig = { summary };
+  const streamingConfig = {};
   if (printFrequencyMs !== undefined) {
     streamingConfig.print_frequency_ms = {
       default: printFrequencyMs,
@@ -94,9 +95,13 @@ function buildStreamingCard(content, { summary, printFrequencyMs, printStep } = 
     // 官方 schema：流式更新策略枚举 fast/delay，默认 fast。
     streamingConfig.print_strategy = "fast";
   }
+  const config = { streaming_mode: true };
+  // summary 是 config 层字段（聊天栏预览），值为 { content: string }。
+  if (summary !== undefined) config.summary = { content: summary };
+  config.streaming_config = streamingConfig;
   return {
     schema: "2.0",
-    config: { streaming_mode: true, streaming_config: streamingConfig },
+    config,
     body: {
       elements: [{ tag: "markdown", element_id: "content", content }],
     },
