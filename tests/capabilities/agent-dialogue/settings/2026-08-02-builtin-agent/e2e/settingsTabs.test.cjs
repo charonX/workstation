@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true (2026-08-05 incremental assertion signoff)
 
 // REQ-AGENT-023~025：Settings 页 tab 化与分区保存（PRD 稳定块 S10，
 // UX 参照 .aiassist/stories/2026-08-02-builtin-agent/ux/settings-tabs.html）。
@@ -22,8 +22,8 @@
 // 说明：
 // - 默认语言 en-US（settingsService 默认）；中文文案断言统一先 PATCH language=zh-CN
 //   再 reload（S10 拍板文案为中文原型）。
-// - TODO: HUMAN ASSERTION — en-US 下四个 tab 与 API key placeholder 的英文译文
-//   （i18n key 英文文案）需签核拍板；本文件只签 zh-CN 文案。
+// - en-US 下四个 tab 与 API key placeholder 的英文译文：签核裁决 2（2026-08-05）——
+//   实现按 i18n 惯例直译，英文观感入 REFLECT 人工验收；本文件只签 zh-CN 文案。
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
@@ -257,7 +257,7 @@ test.describe("Settings 页 tab 化与分区保存", () => {
     await firstWindow.click("[data-testid='save-agent-config-button']");
 
     await expect(panel(firstWindow, "agent").locator("[data-testid='agent-settings-error']")).toBeVisible();
-    // TODO: HUMAN ASSERTION — 错误文案透传（如「API key 不能为空」）由 API 层测试断言，
+    // 错误文案透传（如「API key 不能为空」）由 API 层测试断言（签核裁决 1），
     // 本用例只签「错误显示在对应 tab 区内」这一结构行为。
   });
 
