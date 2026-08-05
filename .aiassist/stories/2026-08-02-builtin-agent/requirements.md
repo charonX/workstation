@@ -250,8 +250,8 @@
   1. 设置页主体改为 tab 导航，四个 tab：「通用」「Agent 配置」「飞书通道」「关于与更新」；tab 栏具 aria 语义（`role="tablist"` / `role="tab"`，当前 tab `aria-selected="true"`）；点击 tab 切换显示对应面板，其余面板不可见。
   2. 默认显示「通用」tab；现有各区内容归入对应 tab：通用（工作区根目录/技能仓库路径/主题/语言/密度）、Agent 配置（供应商/API key/测试连接/自定义身份/飞书绑定）、飞书通道（App ID/App Secret/重新连接）、关于与更新（版本信息/检查更新）。
   3. Agent 配置 tab 的 API key 输入框 placeholder 为「已加密存储，输入则更换」；key 不回显不变（REQ-AGENT-001 标准 2、签核决策 5 不变）。
-  4. 本 REQ 仅改变 Settings 页导航结构，REQ-AGENT-001/004/014 的配置语义不变；其 E2E 用例适配 tab 导航（测试侧接替，REQ 语义不修订）。
-- seam/测试：`tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/e2e/settingsTabs.spec.js`（Playwright：tab 栏存在性、aria-selected 切换、面板显隐、placeholder 断言）。
+  4. 本 REQ 仅改变 Settings 页导航结构，REQ-AGENT-001/004/014 的配置语义不变；所有现存 Settings 页 E2E 用例适配 tab 导航（测试侧接替，REQ 语义不修订）：REQ-AGENT-001/004/014（本 story）、REQ-I18N-001/002（themeLanguage）、REQ-DIST-002~004（versionDisplay）、REQ-WORKSPACE 相关（onboarding）。
+- seam/测试：`tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/e2e/settingsTabs.test.cjs`（Playwright：tab 栏存在性、aria-selected 切换、面板显隐、placeholder 断言）。
 
 ## REQ-AGENT-024 分区独立保存（移除全局保存）
 
@@ -272,7 +272,6 @@
   1. 任一可编辑 tab 内修改表单未保存 → 切换到其他 tab → 切回 → 修改值仍在（未丢失、未重置为已保存值）。
   2. tab 切换本身不触发任何保存请求（网络断言：切换过程无 PATCH 发出）。
 - seam/测试：同 REQ-AGENT-023 文件。
-
 ## REFLECT 人工验收备注（不进自动化测试）
 
 - 卡片视觉效果（配色/间距/动效曲线）——纯审美判断，REFLECT 人工验收。

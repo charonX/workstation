@@ -1,7 +1,27 @@
 # 测试计划 — 2026-08-02-builtin-agent
 
 > 生成：/test-author（2026-08-03）
-> 输入：requirements.md v1（22 REQ）+ tech-design v1.1 + business-capabilities.md（agent-dialogue）
+> 增量：REQ-AGENT-023~025 E2E 骨架（2026-08-05，S10 Settings tab 化）
+> 输入：requirements.md v1（22 REQ + 023~025 增量）+ tech-design v1.1 + business-capabilities.md（agent-dialogue）+ ux/settings-tabs.html
+
+## 增量：Settings tab 化（2026-08-05，REQ-AGENT-023~025）
+
+| 测试文件 | seam | REQ-ID | 测试类型 | 依赖处理 |
+|---|---|---|---|---|
+| `settings/.../e2e/settingsTabs.test.cjs` | Playwright Electron + HTTP API 拦截 | REQ-AGENT-023~025 | E2E | 临时 userData；channel 保存 mock 201（避免真实外连飞书）；agent 保存失败 mock 400 |
+
+**UX 原型映射**（ux/settings-tabs.html → 测试）：tab 栏结构/aria 语义（AC1）→ 结构断言 2 例；四 tab 中文文案（拍板稿）→ zh-CN 文案断言；面板显隐联动 → 切换遍历断言；分区归属 → 各区 testid 存在性断言；placeholder「已加密存储，输入则更换」→ 属性断言；分区保存/去全局保存 → 按钮存在性 + 请求体隔离断言；编辑保留 → 跨 tab 值断言 + 零变更请求网络断言。
+
+**测试侧接替**（REQ-AGENT-023 AC4，导航适配、断言语义不变）：
+- `themeLanguage.test.cjs`（REQ-I18N-001/002）：全局保存 → 通用 tab 区内保存（6 处 locator 替换）。
+- `onboarding.test.cjs`（REQ-WORKSPACE-003/004/007/008 等）：同上（7 处）。
+- `versionDisplay.test.cjs`（REQ-DIST-002~004）：关于/更新区断言前切「关于与更新」tab（3 处）。
+
+**待签核占位**：
+- `TODO: HUMAN ASSERTION` — en-US 下四 tab 名称与 API key placeholder 的英文译文（i18n 英文文案，本文件只签 zh-CN 拍板文案）。
+- `TODO: HUMAN ASSERTION` — Agent 保存失败错误文案透传内容由 API 层覆盖，E2E 只签「错误显示在对应 tab 区内」。
+
+**留给 REFLECT 人工验收**（纯审美，合法跳过）：tab 栏视觉细节（下划线样式、选中态、间距），已登记 requirements.md REFLECT 备注。
 
 ## 测试文件总览
 

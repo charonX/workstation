@@ -94,7 +94,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| settings | `tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/api/`, `.../e2e/` | REQ-AGENT-001~004, REQ-AGENT-023~025 | `agentConfig.test.js`, `systemPrompt.test.js`, `settingsTabs.spec.js` (E2E) |
+| settings | `tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/api/`, `.../e2e/` | REQ-AGENT-001~004, REQ-AGENT-023~025 | `agentConfig.test.js`, `systemPrompt.test.js`, `settingsTabs.test.cjs` (E2E) |
 | conversation-space | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/` | REQ-AGENT-005~013 | `agentProcess.test.js`, `agentDialogue.test.js`, `sessionStore.test.js`, `toolSurface.test.js` |
 | user-binding | `tests/capabilities/agent-dialogue/user-binding/2026-08-02-builtin-agent/api/` | REQ-AGENT-014~015 | `userBinding.test.js` |
 | confirmation | `tests/capabilities/agent-dialogue/confirmation/2026-08-02-builtin-agent/api/` | REQ-AGENT-016 | `confirmation.test.js` |
