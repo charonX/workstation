@@ -11,14 +11,14 @@
   ],
   "primaryDesignSystem": "global",
   "createdAt": "2026-08-05T06:23:59.869Z",
-  "updatedAt": "2026-08-05T06:30:29.796Z",
+  "updatedAt": "2026-08-05T06:38:35.940Z",
   "assets": {
     "Settings Tab 化": {
       "versions": [
         {
           "path": "settings-tabs.html",
           "createdAt": "2026-08-05T06:30:29.796Z",
-          "status": "needs-review"
+          "status": "approved"
         }
       ]
     }
