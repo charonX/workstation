@@ -72,17 +72,33 @@ function taskStartLine(executionId, flowId) {
 
 // CardKit 流式卡片 JSON（F1/H4：schema 2.0 + streaming_mode 开启）；回复卡片带打印
 // 节奏配置（print_frequency_ms/print_step），任务卡片仅 summary。
+// BUG-006（code-defect）：print_frequency_ms / print_step 官方 schema 为**分端 object**
+// （{default: 70}），发数字会 400 field validation failed；元素标识应为 element_id
+// （字母开头≤20字符，供 PUT .../elements/:element_id/content 引用），非官方字段 id。
+// 修复为官方 schema。
 function buildStreamingCard(content, { summary, printFrequencyMs, printStep } = {}) {
   const streamingConfig = { summary };
   if (printFrequencyMs !== undefined) {
-    streamingConfig.print_frequency_ms = printFrequencyMs;
-    streamingConfig.print_step = printStep ?? 1;
+    streamingConfig.print_frequency_ms = {
+      default: printFrequencyMs,
+      android: printFrequencyMs,
+      ios: printFrequencyMs,
+      pc: printFrequencyMs,
+    };
+    streamingConfig.print_step = {
+      default: printStep ?? 1,
+      android: printStep ?? 1,
+      ios: printStep ?? 1,
+      pc: printStep ?? 1,
+    };
+    // 官方 schema：流式更新策略枚举 fast/delay，默认 fast。
+    streamingConfig.print_strategy = "fast";
   }
   return {
     schema: "2.0",
     config: { streaming_mode: true, streaming_config: streamingConfig },
     body: {
-      elements: [{ tag: "markdown", id: "content", content }],
+      elements: [{ tag: "markdown", element_id: "content", content }],
     },
   };
 }

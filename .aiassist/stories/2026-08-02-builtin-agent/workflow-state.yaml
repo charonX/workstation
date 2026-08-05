@@ -9,7 +9,7 @@ intention: >-
 
 phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 6    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -32,6 +32,7 @@ history:
   - {at: 2026-08-05, from: BUG, to: QA, note: "Slice 9（Settings tab 化 REQ-AGENT-023~025）完成：5e3efd9 [build] + 0259f7f [refactor]（TabPanel 提取）；父代理独立验证单元 525/525 + E2E 五套件 28/28；PRD 对齐 ALIGNED 零缺口；清单外 settingsChannel 回归由 [test] ce90cc4 AC4 同模式适配收口；与 BUG-004 修复并行推进，工作树已汇合。待 /qa-runner 全量回归"}
   - {at: 2026-08-05, from: QA, to: BUG, note: "BUG-005 code-defect（人拍板 code-defect + 保留加密）：BUG-004 修复后重启应用，飞书发消息仍无回复。诊断日志（用户要求补链路过检日志）定位：prompt 到达 worker、会话存在，但 LLM 报 E-AGENT-LLM-FAIL「No API key found for deepseek」。根因：ready 水合路径（按 agent_sessions 重建会话）只建句柄、不注入 keySecrets，且 loadAgentConfig 不返回 apiKeyEncrypted → buildConfigMessage 下发 apiKey=undefined → worker resolveModel 不 setRuntimeApiKey（违反 REQ-AGENT-009 标准 1 恢复后可对话）。既有测试全绿因 FAUX 模式绕过 key 校验。修复：水合从 loadSettings().agent.apiKeyEncrypted 解密注入 keySecrets；回归测试 agentRestartKey.test.js 用自建 fake worker 捕获 session-config 断言携带 key，先红后绿；agent-dialogue 87/87。同场补链路诊断日志（imRouter 路由决策/agentService 子进程生命周期+worker stderr 落控制台/cardRenderer 流式事件+sendCard 失败/feishuAdapter sendCard，均 NODE_ENV!=test 输出）"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-005 同场观察项：sendCard 飞书 API 返回 400（错误卡片也发不出，与 LLM key 问题叠加导致完全无感）。已登记，待本 bug 提交后单独处理（可能 CardKit 权限/格式/凭据问题）。人决策：key 存储策略保留 safeStorage 加密（不入本 bug；去加密是门 1 契约变更）"}
+  - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 code-defect（人拍板 code-defect）：BUG-005 修复后 agent 已生成回复（text_end 收到内容），但 sendCard 返回 400 code=99992402 field validation failed → 回复卡片发不出（REQ-AGENT-019 回复卡片送达）。根因对照官方 schema 跨两层：① feishuChannelAdapter.sendCard 创建请求体缺 { type: card_json, data: <转义卡片JSON> } 包装 + card_id 在响应 data.card_id 解析路径错；② cardRenderer.buildStreamingCard 的 print_frequency_ms/print_step 应为分端 object（{default:70}）而非数字、元素标识应 element_id 而非 id。修复：adapter 请求体按官方包装 + 解析 data.card_id；buildStreamingCard 改分端 object + print_strategy:fast + element_id。回归测试 sendCardSchema.test.js 分两层（adapter mock fetch 断言请求体外层 / cardRenderer adapter fake 断言卡片内部），4 例先红后绿；agent-dialogue+channel-integration 118/118。链路诊断日志顺带增强：sendWithRetry 带出飞书 code/msg"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

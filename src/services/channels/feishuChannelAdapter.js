@@ -137,7 +137,13 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       try {
         const result = await operation();
         if (result.ok) return result.data;
-        lastError = new Error(`feishu API error: ${result.status}`);
+        // 诊断：带出飞书 API 返回体的错误码与 msg（此前只留 status，丢了具体原因）。
+        const code = result?.data?.code;
+        const msg = result?.data?.msg;
+        const detail = [result.status, code !== undefined ? `code=${code}` : "", msg ? `msg=${msg}` : ""]
+          .filter(Boolean)
+          .join(" ");
+        lastError = new Error(`feishu API error: ${detail}`);
       } catch (err) {
         lastError = err;
       }
@@ -332,10 +338,17 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       // 诊断：卡片发送开始（回复回传的最后一步）。
       log.info(`[feishuChannelAdapter] sendCard chatId=${chatId}`);
       // 创建卡片实体（CardKit：cardkit:card:write 权限）。
+      // BUG-006（code-defect）：创建接口要求外层 { type: "card_json", data: "<转义卡片JSON>" }，
+      // 直接 POST 卡片 JSON 本体会 400 field validation failed（99992402）。
       const createResult = await sendWithRetry(async () =>
-        postJson(`${baseUrl}/open-apis/cardkit/v1/cards`, cardJson, authorizationHeader())
+        postJson(
+          `${baseUrl}/open-apis/cardkit/v1/cards`,
+          { type: "card_json", data: JSON.stringify(cardJson) },
+          authorizationHeader()
+        )
       );
-      const cardId = createResult?.card?.card_id ?? createResult?.card_id;
+      // 官方响应 { code, msg, data: { card_id } }：requestJson 解包后 data 为整个响应体。
+      const cardId = createResult?.data?.card_id;
       if (!cardId) {
         throw channelSendError("card entity creation returned no card_id");
       }
