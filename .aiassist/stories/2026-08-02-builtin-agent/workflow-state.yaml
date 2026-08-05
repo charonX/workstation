@@ -9,7 +9,7 @@ intention: >-
 
 phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 6    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 7    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -34,6 +34,7 @@ history:
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-005 同场观察项：sendCard 飞书 API 返回 400（错误卡片也发不出，与 LLM key 问题叠加导致完全无感）。已登记，待本 bug 提交后单独处理（可能 CardKit 权限/格式/凭据问题）。人决策：key 存储策略保留 safeStorage 加密（不入本 bug；去加密是门 1 契约变更）"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 code-defect（人拍板 code-defect）：BUG-005 修复后 agent 已生成回复（text_end 收到内容），但 sendCard 返回 400 code=99992402 field validation failed → 回复卡片发不出（REQ-AGENT-019 回复卡片送达）。根因对照官方 schema 跨两层：① feishuChannelAdapter.sendCard 创建请求体缺 { type: card_json, data: <转义卡片JSON> } 包装 + card_id 在响应 data.card_id 解析路径错；② cardRenderer.buildStreamingCard 的 print_frequency_ms/print_step 应为分端 object（{default:70}）而非数字、元素标识应 element_id 而非 id。修复：adapter 请求体按官方包装 + 解析 data.card_id；buildStreamingCard 改分端 object + print_strategy:fast + element_id。回归测试 sendCardSchema.test.js 分两层（adapter mock fetch 断言请求体外层 / cardRenderer adapter fake 断言卡片内部），4 例先红后绿；agent-dialogue+channel-integration 118/118。链路诊断日志顺带增强：sendWithRetry 带出飞书 code/msg"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 补（二轮）：首次修复后飞书仍报 400 code=230099 ext=200621 parse card json err。根因：buildStreamingCard 把 summary 放进 streaming_config 且为字符串；官方 schema 要求 summary 在 config 层、值为 { content: string }（聊天栏预览）。修复：summary 移至 config.summary={content}，streaming_config 层仅保留 print_frequency_ms/print_step/print_strategy。回归测试层 2 补 summary 位置/类型断言，先红后绿；agent-dialogue+channel-integration 119/119"}
+  - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 补（三轮，真根因）：变体脚本证明 create 接口全部变体都成功（含当前结构），但 sendCard 仍报 200621——real-sendcard 脚本定位：**创建卡片实体成功，是第二步 im/v1/messages 发送交互消息报 200621**。根因：content 应为 { type: card, data: { card_id } }，实现只传 { card_id } → parse card json err。修复：sendCard 第二步 content 改官方格式。回归测试层 1 补「发送消息 content 格式」断言，先红后绿（临时还原验证）；real-sendcard 真实调用 SUCCESS（cardId 返回）；agent-dialogue+channel-integration 120/120"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

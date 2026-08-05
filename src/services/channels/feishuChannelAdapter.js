@@ -337,6 +337,9 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       }
       // 诊断：卡片发送开始（回复回传的最后一步）。
       log.info(`[feishuChannelAdapter] sendCard chatId=${chatId}`);
+      // 诊断（BUG-006 排查）：打印实际发送的 data 字段（转义后的卡片 JSON 前 300 字符），
+      // 对比 create 接口能否通过——用于定位 200621 parse card json err 的触发点。
+      log.info(`[feishuChannelAdapter] sendCard data前300=${JSON.stringify(cardJson).slice(0, 300)}`);
       // 创建卡片实体（CardKit：cardkit:card:write 权限）。
       // BUG-006（code-defect）：创建接口要求外层 { type: "card_json", data: "<转义卡片JSON>" }，
       // 直接 POST 卡片 JSON 本体会 400 field validation failed（99992402）。
@@ -354,13 +357,15 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       }
       log.info(`[feishuChannelAdapter] sendCard 卡片实体创建成功 cardId=${cardId}`);
       // 发送交互消息（im:message:send_as_bot 权限），卡片实体随消息一次性发出。
+      // BUG-006（code-defect）：content 官方格式为 { type: "card", data: { card_id } }，
+      // 直接传 { card_id } 会 200621 parse card json err（创建成功但发送失败）。
       await sendWithRetry(async () =>
         postJson(
           `${baseUrl}/open-apis/im/v1/messages?receive_id_type=chat_id`,
           {
             receive_id: chatId,
             msg_type: "interactive",
-            content: JSON.stringify({ card_id: cardId })
+            content: JSON.stringify({ type: "card", data: { card_id: cardId } })
           },
           authorizationHeader()
         )
