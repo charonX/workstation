@@ -7,7 +7,7 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: TEST      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
@@ -27,6 +27,7 @@ history:
   - {at: 2026-08-05, from: BUG, to: CRYSTALLIZE, note: "Settings tab 化 UX 原型拍板 approved（ux/settings-tabs.html 四 tab + 分区保存 + 去全局保存）；C.10 收割：PRD 稳定块 S10 落入。压缩后续接：/crystallize 把 S10 结晶为 REQ 增量 → /test-author 补测试（tab 切换/分区保存/无全局保存）→ 增量断言签核 → /implementer 改 Settings.jsx → /qa-runner"}
   - {at: 2026-08-05, from: CRYSTALLIZE, to: CRYSTALLIZE, note: "S10 结晶为 REQ 增量 REQ-AGENT-023~025（tab 化结构 / 分区独立保存去全局保存 / 切换保留未保存编辑；P1 应该，E2E seam=settingsTabs.test.cjs）；完整性审查通过（错误码/验证规则复用现有，无 gap report）；hash 重算 16f30c7b；能力地图 settings 行更新。待人确认 REQ 增量后 /test-author"}
   - {at: 2026-08-05, from: CRYSTALLIZE, to: TEST, note: "REQ 增量人确认；test-author 完成：settingsTabs.test.cjs 11 例（tab 结构/文案/切换/分区归属/分区保存请求体隔离/keepExistingKey/通道保存 mock/失败区内显示/编辑保留/零变更请求）；测试侧接替适配 themeLanguage/onboarding/versionDisplay 三签名套件（导航适配，断言语义不变）；agent-dialogue REQ-VERSION 头扫到 16f30c7b。待增量断言签核（en-US tab 译文为待签占位）"}
+  - {at: 2026-08-05, from: TEST, to: BUILD, note: "门 1 增量断言签核通过（3 裁决：11 例全签 / en-US 译文授权 i18n 直译入 REFLECT / 三套件导航适配免重签）；signoff.md 增量回写 + 实现者测试缝契约（tab 属性契约 + save-general-settings-button 新增 + save-settings-button 移除）。进 /implementer 改 Settings.jsx"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

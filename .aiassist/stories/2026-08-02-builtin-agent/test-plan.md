@@ -62,5 +62,5 @@
 
 ## 断言签核状态
 
-- 全部骨架 `ASSERTIONS-SIGNED: false`——预期值占位（`TODO: HUMAN ASSERTION`），待门 1 人签核。
-- 占位点总计：各文件 `it()` 内的 TODO 断言 = 待签核的断言清单。
+- 首轮 22 REQ 骨架：已签（2026-08-03，20 项决策回写）。
+- 增量 REQ-AGENT-023~025：已签（2026-08-05，3 项裁决：11 例全签 / en-US 译文授权 i18n 直译入 REFLECT / 三签名套件导航适配免重签原 REQ），`settingsTabs.test.cjs` 头 `ASSERTIONS-SIGNED: true`。

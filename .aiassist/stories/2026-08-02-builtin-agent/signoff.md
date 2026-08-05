@@ -86,3 +86,24 @@
 - 事件契约：`session.prompt()` 返回 void，回复文本从 `message_update.assistantMessageEvent`（`text_delta.delta` / `text_end.content`）提取；流式中 prompt 需 `streamingBehavior: "followUp"`。
 - 测试 seam：对话回路 = `fauxProvider`（`registerNativeProvider` + `model: faux.getModel()`）+ 事件断言，零网络。
 - REQ-CHANNEL-002 接替：路由层不再直接 createTask；去重与 3 秒回调保留复用。
+
+## Assertion 增量（阶段 1 增补：REQ-AGENT-023~025 Settings tab 化）
+
+- 签核日期：2026-08-05
+- 签核方式：增量过 `settingsTabs.test.cjs` 11 例断言（预期值来自已拍板原型 `ux/settings-tabs.html` 与 PRD S10，非从代码抄写）+ 3 项裁决，人确认"没问题"
+- REQ 版本：`v1-hash:16f30c7bbd781fb9f86f573f3c92dc0c96a1aa38aecf3bd08c54caa0cdb712f4`
+
+### 3 项裁决
+
+1. **11 例断言全签**：tab 结构/aria 语义/zh-CN 文案与 placeholder（S10 原文）/切换联动/分区归属/全局保存移除 + 分区保存/通用 PATCH 体隔离/keepExistingKey（无 apiKey）/通道保存 mock 201/保存失败区内显示/未保存编辑跨 tab 保留且不生效/切换零变更请求。
+2. **en-US 英文译文**：授权实现按 i18n 惯例直译；自动化只签 zh-CN 拍板文案，英文观感入 REFLECT 人工验收（不移交机器断言）。
+3. **三签名套件导航适配**（themeLanguage REQ-I18N-001/002、onboarding REQ-WORKSPACE、versionDisplay REQ-DIST-002~004）：仅换保存按钮/加切 tab，断言本体不动——确认为 REQ-AGENT-023 AC4 测试侧接替，**无需重签原 REQ**。
+
+### 实现者测试缝契约（新增，BUILD 必须满足）
+
+- tab 栏：`[role='tablist']` 容器 + 四 `[role='tab'][data-tab='general|agent|channel|about']`，当前 tab `aria-selected="true"`。
+- 面板：`[data-tab-panel='<name>']`，未选中面板不可见（hidden）。
+- 新增 testid：`save-general-settings-button`（通用 tab 区内保存）、`general-settings-success`（通用保存成功反馈）。
+- 移除：`save-settings-button`（右上角全局保存，页面任何位置不再存在）。
+- 沿用：`settings-form`（通用表单容器）及全部 `agent-*` / `channel-*` / `update-*` testid 不变。
+- API key 输入框 placeholder（zh-CN）：「已加密存储，输入则更换」。
