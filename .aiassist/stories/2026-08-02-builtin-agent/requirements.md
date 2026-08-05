@@ -2,6 +2,7 @@
 
 > Story: `2026-08-02-builtin-agent`
 > 版本: v1（2026-08-03，/crystallize）
+> 增量: REQ-AGENT-023~025（2026-08-05，PRD 稳定块 S10「Settings 页 tab 化与分区保存」结晶，UX 参照 ux/settings-tabs.html 已拍板）
 > 输入: PRD v0.3 + tech-design v1.1 + ADR-013/014 + CONTEXT.md（2026-08-03 登记）
 
 ## 契约修订声明（REQ-CHANNEL-002 接替）
@@ -241,8 +242,40 @@
   3. 全部命令在未配 key 时可用（回归 REQ-AGENT-002 标准 2）；命令识别先于会话分发（无空间也响应命令）。
 - seam/测试：同上目录。
 
+## REQ-AGENT-023 Settings 页 tab 化结构
+
+- 优先级 P1 / 应该 / intra-module / renderer Settings 页 / agent-dialogue / settings / E2E（浏览器）
+- UX 参照：`ux/settings-tabs.html`（2026-08-05 拍板 approved）。
+- 验收标准：
+  1. 设置页主体改为 tab 导航，四个 tab：「通用」「Agent 配置」「飞书通道」「关于与更新」；tab 栏具 aria 语义（`role="tablist"` / `role="tab"`，当前 tab `aria-selected="true"`）；点击 tab 切换显示对应面板，其余面板不可见。
+  2. 默认显示「通用」tab；现有各区内容归入对应 tab：通用（工作区根目录/技能仓库路径/主题/语言/密度）、Agent 配置（供应商/API key/测试连接/自定义身份/飞书绑定）、飞书通道（App ID/App Secret/重新连接）、关于与更新（版本信息/检查更新）。
+  3. Agent 配置 tab 的 API key 输入框 placeholder 为「已加密存储，输入则更换」；key 不回显不变（REQ-AGENT-001 标准 2、签核决策 5 不变）。
+  4. 本 REQ 仅改变 Settings 页导航结构，REQ-AGENT-001/004/014 的配置语义不变；其 E2E 用例适配 tab 导航（测试侧接替，REQ 语义不修订）。
+- seam/测试：`tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/e2e/settingsTabs.spec.js`（Playwright：tab 栏存在性、aria-selected 切换、面板显隐、placeholder 断言）。
+
+## REQ-AGENT-024 分区独立保存（移除全局保存）
+
+- 优先级 P1 / 应该 / intra-module / renderer Settings 页 + settings HTTP API / agent-dialogue / settings / E2E
+- 接口契约：沿用现有 settings HTTP API（PATCH 分区字段），不新增端点、不新增错误码。
+- 验收标准：
+  1. 页面右上角不存在全局保存按钮；「通用」「Agent 配置」「飞书通道」三个可编辑 tab 各自区内有独立保存按钮；「关于与更新」tab 只读，无保存按钮。
+  2. 通用 tab 保存仅提交通用字段（workspaceRoot/skillRepoPath/theme/language/density），请求体不携带 agent / channelCredentials 字段（请求体断言）。
+  3. Agent 配置 tab 保存语义不变：keepExistingKey（provider 未变且未输入新 key → 请求体不含 apiKey，服务端保留原密文）；identity 一并保存；保存后配置状态徽章与实际一致。
+  4. 飞书通道 tab 保存语义不变（提交 appId/appSecret）；三个可编辑 tab 保存成功后区内显示反馈（「已保存」类文案）。
+  5. 保存失败沿用各区现有错误提示路径（E-CONFIG-INVALID 等），不引入新错误码。
+- seam/测试：同 REQ-AGENT-023 文件（拦截 PATCH /api/settings 断言请求体分 tab 隔离 + 全局保存按钮不存在断言）。
+
+## REQ-AGENT-025 tab 切换保留未保存编辑
+
+- 优先级 P1 / 应该 / intra-module / renderer Settings 页 / agent-dialogue / settings / E2E
+- 验收标准：
+  1. 任一可编辑 tab 内修改表单未保存 → 切换到其他 tab → 切回 → 修改值仍在（未丢失、未重置为已保存值）。
+  2. tab 切换本身不触发任何保存请求（网络断言：切换过程无 PATCH 发出）。
+- seam/测试：同 REQ-AGENT-023 文件。
+
 ## REFLECT 人工验收备注（不进自动化测试）
 
 - 卡片视觉效果（配色/间距/动效曲线）——纯审美判断，REFLECT 人工验收。
+- Settings tab 栏视觉细节（下划线样式、选中态、间距）——纯审美判断，REFLECT 人工验收；结构/行为已由 REQ-AGENT-023~025 自动化覆盖。
 - 绑定 flow 用户在 agent 场景下的行为变化（旧 REQ-CHANNEL-002 接替后的体验确认）。
 - agent 回复的语言风格/语气自然度。
