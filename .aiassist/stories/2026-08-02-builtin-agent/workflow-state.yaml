@@ -7,7 +7,7 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: CRYSTALLIZE      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
@@ -24,6 +24,7 @@ history:
   - {at: 2026-08-05, from: QA, to: BUG, note: "BUG-001 code-defect：主进程 stdio 无 EPIPE 防护——飞书消息 routeToAgent 失败处理路径 console.error 写断管 → uncaughtException 崩主进程（违反 REQ-AGENT-017 AC3 优雅降级）。修复：src/stdioGuard.js + main.js/headless-server.js 首行接线；回归测试先红后绿，全量 521/521"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-002 code-defect：vite.worker.config.js external 漏配——better-sqlite3 等 CJS 运行时依赖内联进 ESM bundle，bare require 走 __require shim → worker import 期即崩 → 看门狗报「反复崩溃」（违反 REQ-AGENT-005 AC1 spawn→ready 打包形态）。修复：external 补齐 5 依赖（regex 含子路径）；回归测试走 forge 管线保真构建 + spawn 断言 ready，先红后绿，全量 523/523"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-003 not-a-bug 关闭（人拍板）：「保存后重启 provider 配置没有了」实为签核决策 5 设计行为——key 永不回显，徽章「已配置 DeepSeek」即持久化指示；证据：settings.json agent 区完整、读路径忠实、渲染层无 agent clobber。空 KEY 框 ≠ 配置丢失，不修代码。同场登记 UX 诉求：Settings 页 tab 化 + 独立保存（去右上角全局保存）→ 走 /design 设计迭代"}
+  - {at: 2026-08-05, from: BUG, to: CRYSTALLIZE, note: "Settings tab 化 UX 原型拍板 approved（ux/settings-tabs.html 四 tab + 分区保存 + 去全局保存）；C.10 收割：PRD 稳定块 S10 落入。压缩后续接：/crystallize 把 S10 结晶为 REQ 增量 → /test-author 补测试（tab 切换/分区保存/无全局保存）→ 增量断言签核 → /implementer 改 Settings.jsx → /qa-runner"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

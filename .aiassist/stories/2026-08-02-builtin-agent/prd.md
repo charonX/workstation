@@ -50,6 +50,7 @@ UI copilot 面板（`2026-08-02-ui-copilot`）消费同一内核，本 story 不
 | S7 | 飞书对话入口 | wayfind 02 拍板 + tech-design D1：飞书 = 第一入口（与 UI copilot 独立 story 并行）；复用现有通道（REQ-CHANNEL-001~005、ADR-007）接收/发送/去重；**路由 = agent 优先**：主进程路由层 = 绑定检查 + 斜杠命令识别 + 会话分发三纯函数；绑定 flow 不再直接触发（**修订 REQ-CHANNEL-002**），绑定成为 agent 下发任务的默认目标候选 |
 | S8 | CardKit 卡片流式输出 | wayfind 04 调研拍板：卡片流式更新（streaming_mode）是唯一可行路径；约束：流式核心需客户端 7.20+（自定义打印参数需 7.23+）、流式窗口 10 分钟自动关闭、卡片实体一次发送 |
 | S9 | 斜杠命令 | wayfind 08 拍板：双轨——/status /list /reset /help 确定性直通（不走 LLM）+ 自然语言走 agent；飞书指令菜单呈现（待验证）；/run /cancel 明确不做 |
+| S10 | Settings 页 tab 化与分区保存 | 2026-08-05 UX 原型拍板（`ux/settings-tabs.html`，源自 BUG-003 会话登记的 UX 诉求）：设置页改四 tab——通用 / Agent 配置 / 飞书通道 / 关于与更新；每 tab 区内独立保存（原右上角全局保存移除）；tab 切换保留未保存编辑；关于 tab 只读无保存；Agent 区 keepExistingKey 逻辑不变（未输新 key 保留原 key）；API key 输入框 placeholder 强化为「已加密存储，输入则更换」（回应"空框=丢配置"观察误读） |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
