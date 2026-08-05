@@ -7,10 +7,12 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 8    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
+completed: true
+completed_at: 2026-08-05
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -36,6 +38,7 @@ history:
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 补（二轮）：首次修复后飞书仍报 400 code=230099 ext=200621 parse card json err。根因：buildStreamingCard 把 summary 放进 streaming_config 且为字符串；官方 schema 要求 summary 在 config 层、值为 { content: string }（聊天栏预览）。修复：summary 移至 config.summary={content}，streaming_config 层仅保留 print_frequency_ms/print_step/print_strategy。回归测试层 2 补 summary 位置/类型断言，先红后绿；agent-dialogue+channel-integration 119/119"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-006 补（三轮，真根因）：变体脚本证明 create 接口全部变体都成功（含当前结构），但 sendCard 仍报 200621——real-sendcard 脚本定位：**创建卡片实体成功，是第二步 im/v1/messages 发送交互消息报 200621**。根因：content 应为 { type: card, data: { card_id } }，实现只传 { card_id } → parse card json err。修复：sendCard 第二步 content 改官方格式。回归测试层 1 补「发送消息 content 格式」断言，先红后绿（临时还原验证）；real-sendcard 真实调用 SUCCESS（cardId 返回）；agent-dialogue+channel-integration 120/120"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-008 code-defect（人拍板）：飞书流式回复发一半卡死（卡片停「生成中...」，短回复正常长回复必现）。根因：worker 全局串行队列把 ping 排在 await 整个 LLM 生成的 prompt 后面 → 6s 无 pong → 看门狗 SIGKILL 健康忙碌进程（REQ-AGENT-005 标准 2 意图是检测真崩溃；误杀直接导致 REQ-AGENT-019 流式中途断裂）。修复：worker ping 带外即时回 pong 不进队列 + 主进程任何子进程消息（含流式 session-event）即刷新 lastPongAt；补 OPC_AGENT_FAUX_TPS seam 调慢 faux 流式。回归测试 agentHeartbeatBusy.test.js（真实 worker spawn，生成横跨 6s 超时窗口断言不重启）先红（pid 被换）后绿；全量 533/533"}
+  - {at: 2026-08-05, from: BUG, to: REFLECT, note: "门 2 最终验收：人「接受」。前置核验：全量单元 533/533 + E2E 127/127（BUG-005/006/008 后最新一轮）；bug 8 起（7 修 1 关，BUG-007 跳号无记录）；归档重做 0 次。沉淀：ADR-015（看门狗心跳带外）；engineering-lessons +6（seam 绕过差异/机制级断言/bundle 保真管线/外部 API 分层+变体脚本/恢复路径等价/时序速率 seam）；testing.md 反模式 +6；STANDARDS.md 跨进程监督节；能力地图 agent-dialogue 116 测试。story 完成"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
