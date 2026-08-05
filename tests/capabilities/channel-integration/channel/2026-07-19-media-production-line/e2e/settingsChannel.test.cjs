@@ -12,6 +12,10 @@
  *  - 卡片内包含 App ID / App Secret 输入框、「保存凭据并连接」按钮、
  *    状态徽标与「重新连接」按钮。
  *  - 保存错误凭据后显示离线/错误状态（不阻塞保存）。
+ *
+ * 2026-08-05 适配：Settings tab 化（REQ-AGENT-023 AC4 测试侧接替）——飞书通道区
+ * 移入「飞书通道」tab，操作/断言前先切 tab；返回设置页默认选中通用 tab，需再切；
+ * 断言语义不变。
  */
 
 const { test, expect } = require("@playwright/test");
@@ -49,6 +53,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
 
   test("设置页包含飞书通道配置区块", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
     await expect(firstWindow.locator("[data-testid='channel-settings-card']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='channel-app-id-input']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='channel-app-secret-input']")).toBeVisible();
@@ -58,6 +63,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
 
   test("保存无效凭据后显示离线/错误状态", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
 
     await firstWindow.locator("[data-testid='channel-app-id-input']").fill("cli_test_invalid");
     await firstWindow.locator("[data-testid='channel-app-secret-input']").fill("invalid-secret");
@@ -75,6 +81,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
     const savedSecret = "persisted-secret-42";
 
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
     await firstWindow.locator("[data-testid='channel-app-id-input']").fill(savedAppId);
     await firstWindow.locator("[data-testid='channel-app-secret-input']").fill(savedSecret);
     await firstWindow.locator("[data-testid='save-channel-credentials-button']").click();
@@ -83,6 +90,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
     // 离开设置页再返回，验证凭据已从 settings.json 回显到输入框。
     await firstWindow.click(locators.DASHBOARD_LINK);
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
 
     await expect(firstWindow.locator("[data-testid='channel-app-id-input']")).toHaveValue(savedAppId);
     await expect(firstWindow.locator("[data-testid='channel-app-secret-input']")).toHaveValue(savedSecret);
