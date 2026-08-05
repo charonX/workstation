@@ -45,6 +45,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
+import { decryptSecret } from "./secretStore.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 
@@ -454,6 +455,11 @@ function createProcessAgentService(options = {}) {
 
   function log(line) {
     logs.push(String(line));
+    // 诊断用：agent 子进程 stderr / 生命周期日志同步打到主进程控制台，
+    // 让 dev 终端可见（测试 NODE_ENV=test 不输出，避免污染测试流）。
+    if (process.env.NODE_ENV !== "test") {
+      console.log(`[agent] ${line}`);
+    }
   }
 
   // 日志红线：出站消息只记类型与 sessionKey，绝不含 key 值（签核决策 5）。
@@ -589,21 +595,38 @@ function createProcessAgentService(options = {}) {
         {
           const store = getStore();
           if (store) {
-            const agentConfig = settingsService.loadAgentConfig();
+            const settings = settingsService.loadSettings();
+            const agentCfg = settings.agent ?? {};
+            const provider = agentCfg.provider || "deepseek";
+            // 水合会话必须携带解密 key（BUG-005 code-defect）：ready 水合路径
+            // 只建句柄、不注入 keySecrets → 下发 session-config apiKey=undefined →
+            // worker resolveModel 不 setRuntimeApiKey → LLM 报 No API key found。
+            // 与 createSession 一致：key 明文仅持内存（一次性注入语义，不落盘/不落日志）。
+            let hydratedKey;
+            if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
+              try {
+                hydratedKey = decryptSecret(agentCfg.apiKeyEncrypted);
+              } catch {
+                // 解密失败（后端不可用）→ 不注入，保持「未配置」语义（后续引导配置）。
+                hydratedKey = undefined;
+              }
+            }
             for (const row of store.list()) {
               if (sessions.has(row.spaceKey)) continue;
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
               const gen = generationFromRef(info.sessionRef);
               generation.set(info.spaceKey, gen);
-              const provider = agentConfig.provider || "deepseek";
               const session = createSessionHandle({
                 spaceKey: info.spaceKey,
                 provider,
                 model: DEFAULT_MODELS[provider] ?? provider,
                 keyRef: keyRefFor(provider, gen),
-                identity: agentConfig.identity,
+                identity: agentCfg.identity,
                 sessionRef: info.sessionRef,
               });
+              if (hydratedKey !== undefined) {
+                keySecrets.set(session.keyRef, hydratedKey);
+              }
               applyRecoveryHint(session, info.recoveryHint);
               sessions.set(info.spaceKey, session);
               sendToChild(buildConfigMessage(info.spaceKey, session));

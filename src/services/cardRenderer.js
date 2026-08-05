@@ -128,6 +128,10 @@ export function createCardRenderer({
   function dispatchSendCard(state, chatId, cardJson, registry) {
     const onFailure = (err) => {
       recordWarning(err?.message ?? String(err));
+      // 诊断：卡片发送失败是「回复未到达飞书」的关键信号。
+      if (process.env.NODE_ENV !== "test") {
+        console.error(`[cardRenderer] sendCard 失败 sessionKey=${state.sessionKey} chatId=${chatId}:`, err?.message ?? String(err));
+      }
       registry.delete(state.sessionKey);
     };
     try {
@@ -184,6 +188,11 @@ export function createCardRenderer({
     if (!sessionKey) return;
     const chatId = chatIdOf(sessionKey);
     let stream = streams.get(sessionKey);
+
+    // 诊断：流式事件到达卡片渲染器（回复回传的最后一环）。
+    if (process.env.NODE_ENV !== "test") {
+      console.log(`[cardRenderer] 流式事件 sessionKey=${sessionKey} type=${type} delta=${typeof delta === "string" ? delta.slice(0, 40) : ""} content=${typeof content === "string" ? content.slice(0, 40) : ""} code=${code ?? ""} userMessage=${userMessage ?? ""}`);
+    }
 
     // 轮次边界（REQ-AGENT-019：每轮对话各发一张回复卡片）——stream_start（新一轮
     // 开始）重置上一轮流状态：上一轮已定型（text_end/error）的卡片让位，本轮重新

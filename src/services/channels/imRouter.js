@@ -141,6 +141,8 @@ export function createImRouter({
   // ADR-009）。路由失败 → 回调内直接返回（复用 REQ-CHANNEL-002 3 秒回调语义）。
   async function routeToAgent(msg) {
     let decision;
+    // 诊断：消息到达 agent 路由入口（含 3 秒回调语义的原始消息）。
+    console.log(`[imRouter] routeToAgent 进入 messageId=${msg.messageId} chatId=${msg.chatId} senderId=${msg.senderId} text=${String(msg.text ?? "").slice(0, 60)}`);
     try {
       decision = agentRouter.route({
         message: msg.text,
@@ -149,6 +151,8 @@ export function createImRouter({
         senderId: msg.senderId,
         channelType: msg.channelType ?? "feishu"
       });
+      // 诊断：路由决策（reject/command/dialogue）。
+      console.log(`[imRouter] agentRouter.route 决策 action=${decision?.action} 有回复=${!!decision?.payload?.reply} 有sessionConfig=${!!decision?.payload?.sessionConfig}`);
     } catch (err) {
       console.error("[imRouter] agentRouter 路由失败:", err.message);
       return;
@@ -196,11 +200,15 @@ export function createImRouter({
         identity: config.identity,
         toolContext,
       });
+      // 诊断：会话创建结果（句柄是否就绪）。
+      console.log(`[imRouter] createSession 完成 spaceKey=${spaceKey} provider=${config.provider} session存在=${!!session}`);
       // Slice 7：会话接线（流式事件监听 / 轮次边界 / 句柄登记）。
       wireSession(spaceKey, session);
+      console.log(`[imRouter] 开始 prompt spaceKey=${spaceKey} text=${String(payload.message ?? msg.text ?? "").slice(0, 60)}`);
       await svc.prompt(spaceKey, payload.message ?? msg.text).catch((err) => {
         console.error(`[imRouter] agent prompt 失败 session=${spaceKey}:`, err.message);
       });
+      console.log(`[imRouter] prompt 已返回（事件即结果，回复经 session-event 流式回传）spaceKey=${spaceKey}`);
     } catch (err) {
       console.error("[imRouter] agent dialogue 失败:", err.message);
     }
@@ -210,8 +218,12 @@ export function createImRouter({
     const { messageId } = msg || {};
     if (!messageId) return;
 
+    // 诊断：消息到达 imRouter（WS/事件总线之后的入口）。
+    console.log(`[imRouter] 收到消息 messageId=${messageId} chatId=${msg.chatId} senderId=${msg.senderId} text=${String(msg.text ?? "").slice(0, 60)}`);
+
     if (!recordInboundMessage(messageId)) {
       // Duplicate message: already processed.
+      console.log(`[imRouter] 重复消息跳过 messageId=${messageId}`);
       return;
     }
 

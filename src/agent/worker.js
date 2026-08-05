@@ -289,6 +289,8 @@ async function handleSessionConfig(msg) {
     apiKey,
     toolContext,
   } = msg;
+  // 诊断：worker 收到 session-config。
+  log(`session-config 进入 session=${sessionKey} provider=${provider} model=${model} hasKey=${!!apiKey}`);
   // 工具上下文（Slice 8 G1）：随 session-config 更新（新会话与热更新共用；
   // toolSurface 经 getDefaultTarget 惰性读取，无需重建 PI 会话）。
   if (toolContext && typeof toolContext === "object") {
@@ -433,6 +435,8 @@ async function resolveModel(runtime, provider, model, apiKey) {
 async function handlePrompt(msg) {
   const { id, sessionKey, text } = msg;
   const entry = sessions.get(sessionKey);
+  // 诊断：worker 收到 prompt。
+  log(`prompt 进入 session=${sessionKey} id=${id} session存在=${!!entry} text=${String(text ?? "").slice(0, 60)}`);
   if (!entry) {
     const error = { code: "E-AGENT-NO-SESSION", reason: "会话不存在" };
     send({ type: "session-error", sessionKey, ...error, userMessage: "会话不存在，请重试" });

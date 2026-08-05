@@ -329,6 +329,8 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       if (!cardJson || typeof cardJson !== "object") {
         throw channelSendError("cardJson is required");
       }
+      // 诊断：卡片发送开始（回复回传的最后一步）。
+      log.info(`[feishuChannelAdapter] sendCard chatId=${chatId}`);
       // 创建卡片实体（CardKit：cardkit:card:write 权限）。
       const createResult = await sendWithRetry(async () =>
         postJson(`${baseUrl}/open-apis/cardkit/v1/cards`, cardJson, authorizationHeader())
@@ -337,6 +339,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       if (!cardId) {
         throw channelSendError("card entity creation returned no card_id");
       }
+      log.info(`[feishuChannelAdapter] sendCard 卡片实体创建成功 cardId=${cardId}`);
       // 发送交互消息（im:message:send_as_bot 权限），卡片实体随消息一次性发出。
       await sendWithRetry(async () =>
         postJson(

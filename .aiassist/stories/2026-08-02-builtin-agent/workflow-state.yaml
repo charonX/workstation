@@ -7,9 +7,9 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: QA      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -30,6 +30,8 @@ history:
   - {at: 2026-08-05, from: TEST, to: BUILD, note: "门 1 增量断言签核通过（3 裁决：11 例全签 / en-US 译文授权 i18n 直译入 REFLECT / 三套件导航适配免重签）；signoff.md 增量回写 + 实现者测试缝契约（tab 属性契约 + save-general-settings-button 新增 + save-settings-button 移除）。进 /implementer 改 Settings.jsx"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-004 code-defect（人拍板 code-defect + 最小修复先解锁）：BUG-002 worker 构建修复后启动不报错，但飞书发消息无回复。根因：agentService DEFAULT_MODELS 硬编码 deepseek-chat / kimi-latest 在 pi 运行时模型目录不存在（deepseek provider 仅 deepseek-v4-flash/deepseek-v4-pro，moonshotai 仅 kimi-k2.x/kimi-k3）→ worker resolveModel 抛 E-AGENT-MODEL → session-config 失败 → 会话建不起来 → 无回复（违反 REQ-AGENT-006 AC1）。修复：DEFAULT_MODELS 改 deepseek-v4-flash / kimi-k2.5 + 导出供测试 seam；回归测试 agentDefaultModel.test.js 以 resolveModel 同构 seam（ModelRuntime.getModel）先红后绿；worker 级复现 config-ack 验证；全量 525/525。模型配置化（供应商拉取列表选默认模型）登记为后续 feature"}
   - {at: 2026-08-05, from: BUG, to: QA, note: "Slice 9（Settings tab 化 REQ-AGENT-023~025）完成：5e3efd9 [build] + 0259f7f [refactor]（TabPanel 提取）；父代理独立验证单元 525/525 + E2E 五套件 28/28；PRD 对齐 ALIGNED 零缺口；清单外 settingsChannel 回归由 [test] ce90cc4 AC4 同模式适配收口；与 BUG-004 修复并行推进，工作树已汇合。待 /qa-runner 全量回归"}
+  - {at: 2026-08-05, from: QA, to: BUG, note: "BUG-005 code-defect（人拍板 code-defect + 保留加密）：BUG-004 修复后重启应用，飞书发消息仍无回复。诊断日志（用户要求补链路过检日志）定位：prompt 到达 worker、会话存在，但 LLM 报 E-AGENT-LLM-FAIL「No API key found for deepseek」。根因：ready 水合路径（按 agent_sessions 重建会话）只建句柄、不注入 keySecrets，且 loadAgentConfig 不返回 apiKeyEncrypted → buildConfigMessage 下发 apiKey=undefined → worker resolveModel 不 setRuntimeApiKey（违反 REQ-AGENT-009 标准 1 恢复后可对话）。既有测试全绿因 FAUX 模式绕过 key 校验。修复：水合从 loadSettings().agent.apiKeyEncrypted 解密注入 keySecrets；回归测试 agentRestartKey.test.js 用自建 fake worker 捕获 session-config 断言携带 key，先红后绿；agent-dialogue 87/87。同场补链路诊断日志（imRouter 路由决策/agentService 子进程生命周期+worker stderr 落控制台/cardRenderer 流式事件+sendCard 失败/feishuAdapter sendCard，均 NODE_ENV!=test 输出）"}
+  - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-005 同场观察项：sendCard 飞书 API 返回 400（错误卡片也发不出，与 LLM key 问题叠加导致完全无感）。已登记，待本 bug 提交后单独处理（可能 CardKit 权限/格式/凭据问题）。人决策：key 存储策略保留 safeStorage 加密（不入本 bug；去加密是门 1 契约变更）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
