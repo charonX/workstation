@@ -49,10 +49,14 @@ import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
-const DEFAULT_MODELS = {
-  deepseek: "deepseek-chat",
-  moonshotai: "kimi-latest",
-  "moonshotai-cn": "kimi-latest",
+// BUG-004（code-defect）：deepseek-chat / kimi-latest 在 pi 运行时模型目录里不存在
+// （deepseek provider 仅 deepseek-v4-flash/deepseek-v4-pro，moonshotai 仅 kimi-k2.x/
+// kimi-k3）→ worker resolveModel 抛 E-AGENT-MODEL → 会话建不起来 → 飞书无回复。
+// 修正为目录真实存在的模型 ID；模型配置化（供应商拉取列表选默认模型）为后续 feature。
+export const DEFAULT_MODELS = {
+  deepseek: "deepseek-v4-flash",
+  moonshotai: "kimi-k2.5",
+  "moonshotai-cn": "kimi-k2.5",
   faux: "faux-1",
 };
 
