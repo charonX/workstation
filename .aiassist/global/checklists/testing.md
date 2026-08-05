@@ -91,3 +91,14 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 外部工具输出形态靠源码推演 | forge 7 makeDir=out/make/ 前缀漏推，产物定位错误，真实发布 upload 失败 | 构建链/外部工具的产物布局做一次真实实测（跑真实 make + find 产物），把实测结果写进实现注释 |
 | dry-run 校验语义不显式定义 | "dry-run 应该全查一遍"的直觉 vs 签核测试约束（跳过递增校验、tag 防重仅 make 失败时）冲突 | REQ/测试逐条列出 dry-run 执行与跳过的校验；实现者推导多约束唯一自洽解并记录 |
 | 远程资源创建失败无收尾路径 | create 成功 upload 失败 → 半发布状态（Release 0 资产） | 外部副作用命令设计"半发布状态恢复"路径（如 gh release upload 手工补传）并写入 REQ 失败场景 |
+
+## 反模式（2026-08-05 补充：2026-08-02-builtin-agent）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 用环境依赖的故障复现当回归测试 | stdio EPIPE 在 Node v24 容忍（复现不红）、Electron 主进程崩——同一复现写法换运行时失效 | 机制级断言：手动 `stream.emit("error", EPIPE)` 走同一代码路径 + 子进程对照实验（装防护 vs 不装比 exit code），与运行时版本解耦 |
+| bundle 回归用裸构建工具验证 | 裸 `vite build` 产物是浏览器语义，与 forge 打包产物（node conditions + builtins external）不是一个东西，测了等于没测 | 构建入口与生产完全一致（forge ViteConfigGenerator）；断言产物真实行为（spawn 到 ready）而非仅构建成功；临时 outDir 置于 repo 内供 node_modules walk-up |
+| 外部 API 只单层 mock 断言 | sendCard 400 修三轮才到真根因：创建接口与发送接口是两层 schema，单层测试定位不到 | 请求构建层（结构/字段，fake）与传输层（端点/包装/响应解析，mock fetch）分 seam；真实 schema 报错先用变体脚本对真实 API 二分定位再修 |
+| 测试 seam 绕过清单不显式 | fauxProvider 绕过 key 校验 → 水合不注 key 全绿假象（BUG-005）；开发入口 spawn 源码 → bundle 崩溃全绿假象（BUG-002） | 写 seam 时显式注释「本 seam 绕过了什么环境差异」；绕过清单即真实联调检查清单；跨进程 story 在 QA 做最小真实链路冒烟 |
+| 时序类行为用固定快速依赖测试 | faux 秒级流式永不触发 6s 心跳超时，看门狗误杀潜伏（BUG-008） | 时序相关测试留可调速率 seam（如 OPC_AGENT_FAUX_TPS）；用「横跨超时窗口」的慢速用例断言 |
+| E2E/单元混跑不管原生模块 ABI | test:unit 把 better-sqlite3 重建为 Node ABI → 紧跟 E2E 报 E-DB-UNWRITABLE（项目创建类挂） | 混跑顺序：`npm run rebuild:electron` → E2E → unit（即 `npm run test:e2e` 惯例）；ABI 冲突失败属环境顺序问题，不误判为产品缺陷 |

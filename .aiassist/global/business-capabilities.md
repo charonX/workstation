@@ -95,10 +95,10 @@
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | settings | `tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/api/`, `.../e2e/` | REQ-AGENT-001~004, REQ-AGENT-023~025 | `agentConfig.test.js`, `systemPrompt.test.js`, `settingsTabs.test.cjs` (E2E) |
-| conversation-space | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/` | REQ-AGENT-005~013 | `agentProcess.test.js`, `agentDialogue.test.js`, `sessionStore.test.js`, `toolSurface.test.js` |
+| conversation-space | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/` | REQ-AGENT-005~013 | `agentProcess.test.js`, `agentDialogue.test.js`, `sessionStore.test.js`, `sessionRestore.test.js`, `toolSurface.test.js`, `agentWorkerBundle.test.js`, `agentDefaultModel.test.js`, `agentRestartKey.test.js`, `agentHeartbeatBusy.test.js` |
 | user-binding | `tests/capabilities/agent-dialogue/user-binding/2026-08-02-builtin-agent/api/` | REQ-AGENT-014~015 | `userBinding.test.js` |
 | confirmation | `tests/capabilities/agent-dialogue/confirmation/2026-08-02-builtin-agent/api/` | REQ-AGENT-016 | `confirmation.test.js` |
-| channel | `tests/capabilities/agent-dialogue/channel/2026-08-02-builtin-agent/api/` | REQ-AGENT-017~022 | `agentRoute.test.js`, `cardStream.test.js`, `slashCommands.test.js` |
+| channel | `tests/capabilities/agent-dialogue/channel/2026-08-02-builtin-agent/api/` | REQ-AGENT-017~022 | `agentRoute.test.js`, `cardStream.test.js`, `slashCommands.test.js`, `commandReply.test.js`, `stdioGuard.test.js`, `sendCardSchema.test.js` |
 
 ## 能力依赖图
 
@@ -129,4 +129,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
-| agent-dialogue | 5 | 0 | 2026-08-03 |
+| agent-dialogue | 5 | 116 | 2026-08-05 |

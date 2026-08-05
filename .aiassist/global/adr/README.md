@@ -22,5 +22,6 @@
 | ADR-010 | 统一节点输出模型与节点类型注册表 | 已接受 | 2026-07-27 | REQ-FLOW-042、REQ-FLOW-043、REQ-FLOW-047 |
 | ADR-011 | Agent skill 分发由 workstation 自持，第三方库仅作 registry 数据源 | 已接受 | 2026-07-29 | 待结晶（2026-07-29-multi-agent-skills） |
 | ADR-012 | macOS 分发走未签名 + 公开 GitHub Release + 手动重装 + 轻量检查更新 | 已接受 | 2026-08-02 | REQ-DIST-001 ~ REQ-DIST-004 |
-| ADR-013 | 内置 agent 运行时采用 PI，与 flow 节点 Claude Agent SDK 双运行时并存 | 已接受 | 2026-08-02 | 待结晶（builtin-agent） |
-| ADR-014 | 内置 agent 运行时采用"SDK 独立子进程"形态（偏离官方进程内推荐，换取崩溃隔离） | 已接受 | 2026-08-03 | 待结晶（2026-08-02-builtin-agent） |
+| ADR-013 | 内置 agent 运行时采用 PI，与 flow 节点 Claude Agent SDK 双运行时并存 | 已接受 | 2026-08-02 | REQ-AGENT-003、REQ-AGENT-006 |
+| ADR-014 | 内置 agent 运行时采用"SDK 独立子进程"形态（偏离官方进程内推荐，换取崩溃隔离） | 已接受 | 2026-08-03 | REQ-AGENT-005、REQ-AGENT-009 |
+| ADR-015 | 跨进程看门狗的心跳控制面必须带外处理，任何入站消息均计为存活证据 | 已接受 | 2026-08-05 | REQ-AGENT-005（BUG-008） |
