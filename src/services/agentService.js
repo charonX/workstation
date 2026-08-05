@@ -576,6 +576,9 @@ function createProcessAgentService(options = {}) {
   }
 
   function handleChildMessage(msg) {
+    // 有流量即存活（BUG-008 补强）：任何子进程消息（含流式 session-event）
+    // 都证明进程健康，刷新心跳基线，避免长生成期间被看门狗误判崩溃。
+    lastPongAt = Date.now();
     switch (msg.type) {
       case "ready":
         state = "ready";

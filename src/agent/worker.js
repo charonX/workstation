@@ -212,7 +212,9 @@ function getModelRuntime() {
         authPath: path.join(agentHome, "auth.json"),
       });
       if (FAUX_MODE) {
-        fauxHandle = fauxProvider({ tokensPerSecond: 1000 });
+        // 测试 seam：OPC_AGENT_FAUX_TPS 调慢 faux 流式（模拟长生成，覆盖心跳超时窗口）。
+        const tps = Number(process.env.OPC_AGENT_FAUX_TPS);
+        fauxHandle = fauxProvider({ tokensPerSecond: tps > 0 ? tps : 1000 });
         runtime.registerNativeProvider(fauxHandle.provider);
       }
       return runtime;
@@ -512,6 +514,14 @@ rl.on("line", (line) => {
     log(`收到非法 IPC 行，忽略`);
     return;
   }
+  // 心跳带外响应（BUG-008）：ping 不进串行队列。长 prompt 期间队列被
+  // await 的生成占住，ping 若排队 → 主进程 6s 收不到 pong → 看门狗误杀
+  // 健康忙碌的进程（REQ-AGENT-005 标准 2 的意图是检测真崩溃）。事件循环
+  // 能读行就能回 pong；真崩溃（事件循环卡死/进程退出）才答不出。
+  if (msg.type === "ping") {
+    send({ type: "pong" });
+    return;
+  }
   messageQueue.enqueue(() => handleMessage(msg));
 });
 
@@ -561,9 +571,6 @@ async function handleMessage(msg) {
     }
     case "notify-result":
       await handleNotifyResult(msg);
-      break;
-    case "ping":
-      send({ type: "pong" });
       break;
     case "shutdown":
       await shutdownAll();
