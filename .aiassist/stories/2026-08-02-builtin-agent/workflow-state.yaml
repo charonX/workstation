@@ -7,7 +7,7 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
@@ -29,6 +29,7 @@ history:
   - {at: 2026-08-05, from: CRYSTALLIZE, to: TEST, note: "REQ 增量人确认；test-author 完成：settingsTabs.test.cjs 11 例（tab 结构/文案/切换/分区归属/分区保存请求体隔离/keepExistingKey/通道保存 mock/失败区内显示/编辑保留/零变更请求）；测试侧接替适配 themeLanguage/onboarding/versionDisplay 三签名套件（导航适配，断言语义不变）；agent-dialogue REQ-VERSION 头扫到 16f30c7b。待增量断言签核（en-US tab 译文为待签占位）"}
   - {at: 2026-08-05, from: TEST, to: BUILD, note: "门 1 增量断言签核通过（3 裁决：11 例全签 / en-US 译文授权 i18n 直译入 REFLECT / 三套件导航适配免重签）；signoff.md 增量回写 + 实现者测试缝契约（tab 属性契约 + save-general-settings-button 新增 + save-settings-button 移除）。进 /implementer 改 Settings.jsx"}
   - {at: 2026-08-05, from: BUG, to: BUG, note: "BUG-004 code-defect（人拍板 code-defect + 最小修复先解锁）：BUG-002 worker 构建修复后启动不报错，但飞书发消息无回复。根因：agentService DEFAULT_MODELS 硬编码 deepseek-chat / kimi-latest 在 pi 运行时模型目录不存在（deepseek provider 仅 deepseek-v4-flash/deepseek-v4-pro，moonshotai 仅 kimi-k2.x/kimi-k3）→ worker resolveModel 抛 E-AGENT-MODEL → session-config 失败 → 会话建不起来 → 无回复（违反 REQ-AGENT-006 AC1）。修复：DEFAULT_MODELS 改 deepseek-v4-flash / kimi-k2.5 + 导出供测试 seam；回归测试 agentDefaultModel.test.js 以 resolveModel 同构 seam（ModelRuntime.getModel）先红后绿；worker 级复现 config-ack 验证；全量 525/525。模型配置化（供应商拉取列表选默认模型）登记为后续 feature"}
+  - {at: 2026-08-05, from: BUG, to: QA, note: "Slice 9（Settings tab 化 REQ-AGENT-023~025）完成：5e3efd9 [build] + 0259f7f [refactor]（TabPanel 提取）；父代理独立验证单元 525/525 + E2E 五套件 28/28；PRD 对齐 ALIGNED 零缺口；清单外 settingsChannel 回归由 [test] ce90cc4 AC4 同模式适配收口；与 BUG-004 修复并行推进，工作树已汇合。待 /qa-runner 全量回归"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

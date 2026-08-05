@@ -367,3 +367,46 @@ GAP 说明（本 slice 范围外，后续或 REFLECT 处理）：
 - **确认执行失败注入断言**：execute 抛错路径已实现（错误结果仍回投）；失败注入业务断言待评估（参考 E-SESSION-PERSIST 冒烟模式）。
 - **会话工具上下文（G1）变更传播**：toolContext 在会话创建/重发时下发；创建后绑定变更 → 下一次会话重建（provider/key 变更或 /reset）生效（默认目标候选为建议性提示，stale 可接受；REFLECT 可评估热更新）。
 - **真实供应商确认链路联调**（LLM 发起 confirm 工具调用 → 卡片 → 点击）→ QA（faux 模式不调用工具，业务断言在服务层 seam 全覆盖）。
+
+---
+
+## Slice 9: Settings 页 tab 化与分区保存（REQ-AGENT-023~025，S10）
+
+- 开始：2026-08-05
+- REQ：REQ-AGENT-023（tab 化结构）/ REQ-AGENT-024（分区独立保存去全局保存）/ REQ-AGENT-025（切换保留未保存编辑）
+- 测试契约：`tests/capabilities/agent-dialogue/settings/2026-08-02-builtin-agent/e2e/settingsTabs.test.cjs`（11 例，ASSERTIONS-SIGNED: true）+ 三签名套件导航适配（themeLanguage/onboarding/versionDisplay）
+- UX 参照：`ux/settings-tabs.html`（approved）
+- 实现范围：`src/renderer/pages/Settings.jsx` + i18n 文案 + （如需）样式
+- 完成：2026-08-05（implementer subagent）
+
+### PRD→代码 可追溯性表（Slice 9）
+
+| 验收标准 | 实现 | 测试 | 状态 |
+|---|---|---|---|
+| REQ-AGENT-023 AC1 四 tab + tablist/tab aria 语义 + aria-selected 联动 + 面板显隐 | Settings.jsx（SETTINGS_TABS 常量 + activeTab state + [role='tablist']/[role='tab'][data-tab]/[data-tab-panel] hidden 渲染）；index.css（.tab-bar/.tab-btn/[data-tab-panel][hidden]） | settingsTabs「tab 栏四 tab + aria 语义 + 默认通用选中」「点击 tab 切换面板显隐与 aria-selected 联动」 | COVERED |
+| REQ-AGENT-023 AC2 默认通用 tab + 各区归入对应 tab | Settings.jsx（activeTab 初值 "general"；workspace/appearance 卡片入 general 面板、agent-settings-card 入 agent、channel-settings-card 入 channel、update-section 入 about） | settingsTabs「各区内容归入对应 tab」+ 上两条 | COVERED |
+| REQ-AGENT-023 AC3 API key placeholder「已加密存储，输入则更换」（zh-CN）+ key 不回显不变 | i18n zh-CN/en-US `settings.agent.apiKeyPlaceholder`；Settings.jsx agent-api-key-input placeholder（en-US 按惯例直译："Encrypted and stored; enter a new key to replace it"） | settingsTabs「tab 中文文案与 API key placeholder（zh-CN）」 | COVERED（en-US 译文观感 → REFLECT 人工验收，签核裁决 2） |
+| REQ-AGENT-023 AC4 现存 Settings E2E 适配 tab 导航 | （测试侧接替，无实现改动） | themeLanguage 4/4、onboarding 7/7、versionDisplay 3/3（95c2e0a 适配）+ settingsChannel 3/3（ce90cc4 父代理补 SETTINGS_TAB_CHANNEL 点击，同一 AC4 模式，断言语义不变）——四套件父代理独立复跑全绿 | COVERED |
+| REQ-AGENT-024 AC1 全局保存移除 + 三可编辑 tab 区内独立保存 + 关于 tab 只读 | Settings.jsx（删除 page-header 内 save-settings-button；general 面板底部 save-general-settings-button；agent/channel 区沿用 save-agent-config-button/save-channel-credentials-button；about 面板无任何 save 按钮） | settingsTabs「全局保存移除，分区保存各就各位，关于 tab 只读」 | COVERED |
+| REQ-AGENT-024 AC2 通用保存仅提交通用字段（无 agent/channelCredentials/apiKey）+ 区内成功反馈 | Settings.jsx handleSubmit（PATCH 体 = workspaceRoot/skillRepoPath/theme/language/density 五字段）+ generalSuccess state + general-settings-success 元素（i18n settings.saved） | settingsTabs「通用保存请求体仅含通用字段，区内显示成功反馈」（拦截 PATCH 断言请求体） | COVERED |
+| REQ-AGENT-024 AC3 Agent 保存 keepExistingKey（未输新 key 不含 apiKey）+ 身份一并保存 + 徽章一致 | 未动（handleSaveAgent 一行未改，slice 4 实现沿用） | settingsTabs「Agent 保存 keepExistingKey——未输新 key 请求体不含 apiKey」 | COVERED |
+| REQ-AGENT-024 AC4 飞书通道保存语义不变（appId/appSecret）+ 区内成功反馈 | 未动（handleSaveChannel 沿用） | settingsTabs「飞书通道保存提交 appId/appSecret，区内显示成功反馈」（mock 201） | COVERED |
+| REQ-AGENT-024 AC5 保存失败沿用各区现有错误提示路径，无新错误码 | 未动（agentError/channelError/saveError 均沿用；saveError 随通用区迁入 general 面板内显示） | settingsTabs「Agent 保存失败，错误显示在 Agent tab 区内」 | COVERED |
+| REQ-AGENT-025 AC1 未保存编辑跨 tab 保留且不生效 | Settings.jsx（四面板常驻挂载、仅 hidden 切显隐；表单 state 全在组件内；主题等仅在保存后经 useSettings applyToDocument 生效） | settingsTabs「未保存编辑跨 tab 切换保留且不生效」（主题/身份双区断言 + data-theme 不变） | COVERED |
+| REQ-AGENT-025 AC2 tab 切换不触发任何保存请求 | Settings.jsx（tab onClick 仅 setActiveTab，零网络副作用） | settingsTabs「tab 切换不触发任何保存请求」（request 监听非 GET = []） | COVERED |
+
+### 已知 UX 偏差（对照 ux/settings-tabs.html；均非结构/行为偏差，归 REFLECT 人工验收）
+
+1. **通用 tab 保留两张现有卡片**（工作区 + 外观），未按原型合并为单张「通用」卡片；字段集合与 AC2 完全一致，卡片合并属观感优化。
+2. **关于 tab 保留现有 update-section 布局**（版本/数据目录/检查更新/引导文案），未改原型 about-row 两列样式；结构与旧版一致。
+3. **通用保存成功反馈为持久显示**（再次编辑或保存时清除），未实现原型 2s 淡出动效。
+4. **面板 DOM 顺序为 agent/channel/general/about**（边界编辑保卡片原样所致）；任一时刻仅一个面板可见，无用户可见影响。
+5. tab 栏下划线选中态已按原型落 --ch-* token（.tab-bar/.tab-btn），间距/动效曲线细节属签核备注的 REFLECT 人工验收项。
+
+### 环境备注
+
+- E2E 前置：better-sqlite3 需 Electron ABI（`npm run rebuild:electron`）；test:unit 会重建为 Node ABI，混跑前需按 `npm run test:e2e` 惯例先 rebuild，否则 E2E 报 E-DB-UNWRITABLE（本 slice 验证期间实测，与实现无关，基线可复现）。
+
+Slice 9: complete (1a10f46..5e3efd9, 父代理独立验证：单元 525/525 + E2E 五套件 28/28 绿；settingsChannel 清单外回归由父代理 [test] ce90cc4 适配收口)
+Slice 9: PRD alignment passed (ALIGNED，REQ-AGENT-023~025 全 AC COVERED，零缺口；S10 决策 7/7；既有保存语义 diff 零触碰)
+Slice 9: refactor pass done (5e3efd9..0259f7f, TabPanel 容器提取 + 缩进对齐 + 死 CSS 删除；父代理复验 E2E 28/28 + 单元 525/525，无回滚)
