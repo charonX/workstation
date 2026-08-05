@@ -209,6 +209,44 @@ body {
   }
 }
 
+/* Settings tab 栏（REQ-AGENT-023，ux/settings-tabs.html 拍板样式） */
+.tab-bar {
+  display: flex;
+  gap: var(--ch-space-1);
+  border-bottom: 1px solid var(--ch-border);
+  margin-bottom: var(--ch-space-5);
+}
+
+.tab-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: var(--ch-space-2) var(--ch-space-3);
+  font-family: var(--ch-font-sans);
+  font-size: var(--ch-text-sm);
+  font-weight: var(--ch-weight-medium);
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease;
+}
+
+.tab-btn:hover {
+  color: var(--ch-text);
+}
+
+.tab-btn[aria-selected="true"] {
+  color: var(--ch-accent);
+  border-bottom-color: var(--ch-accent);
+  font-weight: var(--ch-weight-semibold);
+}
+
+/* 未选中面板不可见但保持 DOM 挂载（REQ-AGENT-025：保留未保存编辑） */
+[data-tab-panel][hidden] {
+  display: none;
+}
+
 /* Card */
 .card {
   background: var(--ch-surface);

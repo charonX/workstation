@@ -65,6 +65,15 @@ const UPDATE_STATUS_ROW_STYLE = {
   fontSize: "var(--ch-text-sm)",
 };
 
+// Settings 页四 tab（REQ-AGENT-023 AC1/AC2，ux/settings-tabs.html 拍板）：
+// 通用 / Agent 配置 / 飞书通道 / 关于与更新；label 复用既有 i18n 键。
+const SETTINGS_TABS = [
+  { name: "general", labelKey: "settings.general" },
+  { name: "agent", labelKey: "settings.agent.title" },
+  { name: "channel", labelKey: "settings.channel" },
+  { name: "about", labelKey: "settings.aboutUpdate" },
+];
+
 export default function Settings() {
   const { t } = useTranslation();
   const [settings, updateSettings, reloadSettings, loading] = useSettings();
@@ -73,6 +82,10 @@ export default function Settings() {
   const initializedRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [generalSuccess, setGeneralSuccess] = useState(false);
+  // Settings 页 tab 化（REQ-AGENT-023）：默认选中「通用」；切换只改显隐、面板保持
+  // DOM 挂载（REQ-AGENT-025：未保存编辑跨 tab 保留；切换不触发任何保存请求）。
+  const [activeTab, setActiveTab] = useState("general");
 
   // Feishu channel configuration state (independent from the main settings form).
   const [channelStatus, setChannelStatus] = useState(DEFAULT_CHANNEL_STATUS);
@@ -231,8 +244,10 @@ export default function Settings() {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
+    setGeneralSuccess(false);
     try {
       const current = formRef.current;
+      // 通用 tab 保存（REQ-AGENT-024 AC2）：仅提交通用字段，不携带 agent/channelCredentials。
       await updateSettings({
         workspaceRoot: current.workspaceRoot,
         skillRepoPath: current.skillRepoPath,
@@ -240,6 +255,7 @@ export default function Settings() {
         language: current.language,
         density: current.density,
       });
+      setGeneralSuccess(true);
     } catch (err) {
       setSaveError(err.message || "Failed to save settings");
     } finally {
@@ -254,6 +270,7 @@ export default function Settings() {
       return next;
     });
     setSaveError(null);
+    setGeneralSuccess(false);
   }
 
   function statusClass(status) {
@@ -472,28 +489,34 @@ export default function Settings() {
     <div className="page" data-testid="settings-page">
       <div className="page-header">
         <h1 className="page-title">{t("settings.title")}</h1>
-        <button
-          type="submit"
-          form="settings-form"
-          className="btn btn-primary"
-          data-testid="save-settings-button"
-          disabled={saving}
-        >
-          {saving ? "Saving..." : t("settings.saveChanges")}
-        </button>
       </div>
 
-      {saveError && (
-        <div className="card" style={{ marginBottom: "var(--ch-space-4)", borderColor: "var(--ch-error)" }}>
-          <div className="card-body" style={{ color: "var(--ch-error)" }}>
-            {saveError}
-          </div>
-        </div>
-      )}
+      {/* REQ-AGENT-023 AC1：tab 栏（右上角全局保存已移除——REQ-AGENT-024 AC1）。
+          面板 DOM 顺序与 tab 顺序不同属实现细节：任一时刻仅一个面板可见，
+          未选中面板 hidden 但保持挂载（REQ-AGENT-025）。 */}
+      <div className="tab-bar" role="tablist" aria-label={t("settings.tabsAriaLabel")}>
+        {SETTINGS_TABS.map((tabDef) => (
+          <button
+            key={tabDef.name}
+            type="button"
+            role="tab"
+            id={`settings-tab-${tabDef.name}`}
+            className="tab-btn"
+            data-tab={tabDef.name}
+            aria-selected={activeTab === tabDef.name}
+            onClick={() => setActiveTab(tabDef.name)}
+          >
+            {t(tabDef.labelKey)}
+          </button>
+        ))}
+      </div>
 
-      <form id="settings-form" data-testid="settings-form" onSubmit={handleSubmit}>
-        <div className="settings-grid">
-          <div className="settings-main">
+      <section
+        data-tab-panel="agent"
+        role="tabpanel"
+        aria-labelledby="settings-tab-agent"
+        hidden={activeTab !== "agent"}
+      >
             <div className="card" data-testid="agent-settings-card">
               <div className="card-header">
                 <h2 className="card-title">{t("settings.agent.title")}</h2>
@@ -596,6 +619,7 @@ export default function Settings() {
                       className={`form-input ${agentFieldErrors.apiKey ? "invalid" : ""}`}
                       data-testid="agent-api-key-input"
                       type={agentShowSecret ? "text" : "password"}
+                      placeholder={t("settings.agent.apiKeyPlaceholder")}
                       value={agentApiKey}
                       onChange={(e) => {
                         setAgentApiKey(e.target.value);
@@ -760,7 +784,14 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+      </section>
 
+      <section
+        data-tab-panel="channel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-channel"
+        hidden={activeTab !== "channel"}
+      >
             <div className="card" data-testid="channel-settings-card">
               <div className="card-header">
                 <h2 className="card-title">{t("settings.channel")}</h2>
@@ -906,7 +937,23 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+      </section>
 
+      <section
+        data-tab-panel="general"
+        role="tabpanel"
+        aria-labelledby="settings-tab-general"
+        hidden={activeTab !== "general"}
+      >
+        {saveError && (
+          <div className="card" style={{ marginBottom: "var(--ch-space-4)", borderColor: "var(--ch-error)" }}>
+            <div className="card-body" style={{ color: "var(--ch-error)" }}>
+              {saveError}
+            </div>
+          </div>
+        )}
+
+        <form id="settings-form" data-testid="settings-form" onSubmit={handleSubmit}>
             <div className="card">
               <div className="card-header">
                 <h2 className="card-title">{t("settings.workspace")}</h2>
@@ -1000,9 +1047,35 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="settings-side">
+            {/* REQ-AGENT-024 AC1/AC2：通用 tab 区内独立保存（替代原右上角全局保存） */}
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--ch-space-3)" }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                data-testid="save-general-settings-button"
+                disabled={saving}
+              >
+                {saving ? t("settings.saving") : t("settings.saveChanges")}
+              </button>
+              {generalSuccess && (
+                <span
+                  data-testid="general-settings-success"
+                  style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-success)" }}
+                >
+                  {t("settings.saved")}
+                </span>
+              )}
+            </div>
+        </form>
+      </section>
+
+      <section
+        data-tab-panel="about"
+        role="tabpanel"
+        aria-labelledby="settings-tab-about"
+        hidden={activeTab !== "about"}
+      >
             <div className="card" data-testid="update-section">
               <div className="card-header">
                 <h2 className="card-title">{t("settings.aboutUpdate")}</h2>
@@ -1059,9 +1132,7 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </form>
+      </section>
     </div>
   );
 }

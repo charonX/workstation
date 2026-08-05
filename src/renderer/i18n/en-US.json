@@ -22,6 +22,7 @@
   },
   "settings": {
     "title": "Settings",
+    "general": "General",
     "saveChanges": "Save Changes",
     "workspace": "Workspace",
     "workspaceSubtitle": "Configure project and skill storage locations",
@@ -98,8 +99,12 @@
       "saved": "Saved",
       "saveFailed": "Failed to save agent config",
       "actionFailed": "Action failed, please retry",
-      "loadFailed": "Failed to load agent config"
-    }
+      "loadFailed": "Failed to load agent config",
+      "apiKeyPlaceholder": "Encrypted and stored; enter a new key to replace it"
+    },
+    "saving": "Saving...",
+    "saved": "Saved",
+    "tabsAriaLabel": "Settings sections"
   },
   "sources": {
     "title": "Sources",

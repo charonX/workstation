@@ -22,6 +22,7 @@
   },
   "settings": {
     "title": "设置",
+    "general": "通用",
     "saveChanges": "保存更改",
     "workspace": "工作区",
     "workspaceSubtitle": "配置项目和技能存储位置",
@@ -98,8 +99,12 @@
       "saved": "已保存",
       "saveFailed": "Agent 配置保存失败",
       "actionFailed": "操作失败，请重试",
-      "loadFailed": "Agent 配置加载失败"
-    }
+      "loadFailed": "Agent 配置加载失败",
+      "apiKeyPlaceholder": "已加密存储，输入则更换"
+    },
+    "saving": "保存中...",
+    "saved": "已保存",
+    "tabsAriaLabel": "设置分区"
   },
   "sources": {
     "title": "内容源",
