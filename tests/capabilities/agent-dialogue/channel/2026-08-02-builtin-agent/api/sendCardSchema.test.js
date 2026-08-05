@@ -166,4 +166,28 @@ describe("BUG-006 层 2：buildStreamingCard 构造的卡片 JSON 符合官方 s
       `流式更新元素应含 element_id（字母开头≤20字符，供 PUT .../elements/:element_id/content 引用），实际字段: ${JSON.stringify(Object.keys(el))}`
     );
   });
+
+  it("summary 在 config 层为 {content} 对象（修复前红：误放 streaming_config 且为字符串 → parse card json err）", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "你好" });
+    const card = adapter.calls.sendCard[0];
+    assert.ok(card?.cardJson, "流式开始应发卡");
+    // 官方 schema：summary 是 config 层字段，值为 { content: string }；
+    // streaming_config 层不含 summary（误放会 200621 parse card json err）。
+    const config = card.cardJson.config ?? {};
+    assert.equal(
+      typeof config.summary,
+      "object",
+      `summary 应在 config 层且为 {content} 对象，实际: ${JSON.stringify(config.summary)}`
+    );
+    assert.equal(typeof config.summary?.content, "string", "config.summary.content 应为字符串");
+    // streaming_config 层不得残留 summary（官方该层无此字段）。
+    const sc = config.streaming_config ?? {};
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(sc, "summary"),
+      `streaming_config 层不应含 summary（官方 schema 无此字段），实际: ${JSON.stringify(Object.keys(sc))}`
+    );
+  });
 });
