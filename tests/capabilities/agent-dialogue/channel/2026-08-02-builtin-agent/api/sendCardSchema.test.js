@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 function mockFeishuOpenPlatform() {
   const originalFetch = global.fetch;
   const cardCreateBodies = [];
+  const messageBodies = [];
   global.fetch = async (url, init) => {
     const urlStr = String(url);
     if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
@@ -35,12 +36,15 @@ function mockFeishuOpenPlatform() {
       return new Response(JSON.stringify({ code: 0, msg: "success", data: { card_id: "card_fake_1" } }), { status: 200 });
     }
     if (urlStr.includes("open.feishu.cn/open-apis/im/v1/messages")) {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      messageBodies.push({ url: urlStr, body });
       return new Response(JSON.stringify({ code: 0, msg: "success", data: { message_id: "om_fake_1" } }), { status: 200 });
     }
     return originalFetch(url, init);
   };
   return {
     cardCreateBodies,
+    messageBodies,
     restore() {
       global.fetch = originalFetch;
     },
@@ -104,6 +108,30 @@ describe("BUG-006 层 1：sendCard 请求体符合 CardKit 创建接口（REQ-AG
     };
     const result = await adapter.sendCard({ chatId: "oc_1", cardJson });
     assert.equal(result?.cardId, "card_fake_1", "sendCard 应返回 data.card_id 供 updateCardStream 引用");
+  });
+
+  it("发送交互消息的 content 为 { type: card, data: { card_id } }（修复前红：裸 {card_id} → 200621 parse card json err）", async () => {
+    const create = await loadAdapter();
+    const adapter = create({
+      domain: "https://open.feishu.cn",
+      credentials: { appId: "cli_test00000000000001", appSecret: "secret" },
+    });
+    await adapter.start();
+
+    const cardJson = {
+      schema: "2.0",
+      config: { streaming_mode: true, streaming_config: { summary: "[生成中...]" } },
+      body: { elements: [{ tag: "markdown", element_id: "content", content: "你好" }] },
+    };
+    await adapter.sendCard({ chatId: "oc_1", cardJson });
+
+    assert.equal(mock.messageBodies.length, 1, "应调用一次 im/v1/messages 发送卡片实体");
+    const msg = mock.messageBodies[0].body;
+    assert.equal(msg.msg_type, "interactive", "发送卡片应为 interactive 消息");
+    const content = JSON.parse(msg.content);
+    // 官方 schema：content 为 { type: "card", data: { card_id } }。
+    assert.equal(content.type, "card", "content.type 应为 card（官方 schema，裸 {card_id} 会 200621）");
+    assert.equal(typeof content.data?.card_id, "string", "content.data.card_id 应为卡片实体 ID");
   });
 });
 
