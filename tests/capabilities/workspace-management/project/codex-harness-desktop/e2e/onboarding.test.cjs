@@ -8,6 +8,9 @@
 // 2026-07-29-multi-agent-skills：旧"Project Detail 复选框关联 skill"测试（REQ-WORKSPACE-006）
 // 与 npm fixture 播种已随旧关联模型移除，由
 // skill-management/skill/2026-07-29-multi-agent-skills/e2e/skillLibrary.test.cjs 接替。
+//
+// 2026-08-05 适配：Settings tab 化（REQ-AGENT-023 AC4 测试侧接替）——右上角全局
+// 保存移除，改用通用 tab（默认选中）区内保存按钮；断言语义不变。
 
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
@@ -52,7 +55,7 @@ test.describe("Onboarding", () => {
 
     await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
     await firstWindow.fill(locators.SKILL_REPO_PATH_INPUT, `${userDataDir}/skills`);
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     // Expected: settings persisted and reflected in the form after reload
     await firstWindow.reload();
@@ -79,7 +82,7 @@ test.describe("Onboarding", () => {
 
     await firstWindow.click(locators.SETTINGS_LINK);
     await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     await firstWindow.click(locators.WORKSPACE_LINK);
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
@@ -138,33 +141,33 @@ test.describe("Onboarding", () => {
   test("theme toggle updates document data-theme", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     await firstWindow.selectOption(locators.THEME_SELECT, "dark");
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     // Expected: root html attribute reflects dark theme
     await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", "dark");
 
     await firstWindow.selectOption(locators.THEME_SELECT, "light");
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
     await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", "light");
   });
 
   test("language toggle updates html lang", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "zh-CN");
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     // Expected: html lang attribute changes and UI text reflects Chinese
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "zh-CN");
 
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "en-US");
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "en-US");
   });
 
   test("density toggle updates data-density", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     await firstWindow.selectOption(locators.DENSITY_SELECT, "compact");
-    await firstWindow.click(locators.SAVE_SETTINGS_BUTTON);
+    await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     // Expected: root html attribute reflects compact density
     await expect(firstWindow.locator("html")).toHaveAttribute("data-density", "compact");

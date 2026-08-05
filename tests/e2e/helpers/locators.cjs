@@ -40,7 +40,20 @@ module.exports = {
   THEME_SELECT: "[data-testid='theme-select']",
   LANGUAGE_SELECT: "[data-testid='language-select']",
   DENSITY_SELECT: "[data-testid='density-select']",
-  SAVE_SETTINGS_BUTTON: "[data-testid='save-settings-button']",
+
+  // Settings tab 化（2026-08-02-builtin-agent REQ-AGENT-023~025；右上角全局
+  // 保存 save-settings-button 已移除，由通用 tab 区内保存接替）
+  SETTINGS_TABBAR: "[role='tablist']",
+  SETTINGS_TAB_GENERAL: "[role='tab'][data-tab='general']",
+  SETTINGS_TAB_AGENT: "[role='tab'][data-tab='agent']",
+  SETTINGS_TAB_CHANNEL: "[role='tab'][data-tab='channel']",
+  SETTINGS_TAB_ABOUT: "[role='tab'][data-tab='about']",
+  SETTINGS_PANEL_GENERAL: "[data-tab-panel='general']",
+  SETTINGS_PANEL_AGENT: "[data-tab-panel='agent']",
+  SETTINGS_PANEL_CHANNEL: "[data-tab-panel='channel']",
+  SETTINGS_PANEL_ABOUT: "[data-tab-panel='about']",
+  SAVE_GENERAL_SETTINGS_BUTTON: "[data-testid='save-general-settings-button']",
+  GENERAL_SETTINGS_SUCCESS: "[data-testid='general-settings-success']",
 
   // Settings 关于/更新区 (2026-08-01-macos-distribution)
   UPDATE_SECTION: "[data-testid='update-section']",

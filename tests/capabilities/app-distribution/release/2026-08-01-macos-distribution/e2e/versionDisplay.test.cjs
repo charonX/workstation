@@ -20,6 +20,9 @@ const locators = require("../../../../../e2e/helpers/locators.cjs");
 //
 // 说明：检查更新的"有新版/无新版"具体状态依赖真实 GitHub release（E2E 无法稳定
 // 复现），E2E 只断言结构与交互存在性；状态逻辑由 api/checkUpdates.test.js 单元覆盖。
+//
+// 2026-08-05 适配：Settings tab 化（REQ-AGENT-023 AC4 测试侧接替）——关于/更新区
+// 移入「关于与更新」tab，断言前先切 tab；断言语义不变。
 
 test.describe("Settings 关于/更新区", () => {
   let electronApp;
@@ -42,6 +45,7 @@ test.describe("Settings 关于/更新区", () => {
   test("REQ-DIST-003: 当前版本号可见且非空", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
     await expect(firstWindow.locator(locators.SETTINGS_PAGE)).toBeVisible();
+    await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     const version = firstWindow.locator(locators.UPDATE_VERSION);
     await expect(version).toBeVisible();
     // 断言（签核 2026-08-02）：版本号文本非空；与 package.json 一致由实现保证（弱断言）
@@ -50,6 +54,7 @@ test.describe("Settings 关于/更新区", () => {
 
   test("REQ-DIST-002 AC8: 检查更新按钮存在，点击后出现状态区", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     await expect(firstWindow.locator(locators.UPDATE_SECTION)).toBeVisible();
     await firstWindow.locator(locators.UPDATE_CHECK_BUTTON).click();
     // 三种状态之一（有新版/已最新/检查失败）——宽松断言：状态区可见
@@ -58,6 +63,7 @@ test.describe("Settings 关于/更新区", () => {
 
   test("REQ-DIST-004 AC2: 首次安装引导文案存在", async () => {
     await firstWindow.click(locators.SETTINGS_LINK);
+    await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     const guide = firstWindow.locator(locators.UPDATE_GUIDE);
     await expect(guide).toBeVisible();
     // 断言（签核 2026-08-02）：引导文案含批准路径关键词（System Settings/Privacy &
