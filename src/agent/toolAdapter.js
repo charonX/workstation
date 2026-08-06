@@ -35,10 +35,14 @@
 //   生效，签核决策 12/13）。
 
 import fs from "node:fs";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
 // 保证 ToolDefinition.parameters 与 pi 会话工具注册的 schema 兼容。
 import { Type } from "@earendil-works/pi-ai";
 import { setServerBaseUrlOverride, getServerBaseUrlOverride } from "../cli/server.js";
+import { comparisonKey, isInsideOrEqual, realpathBestEffort } from "../services/pathUtils.js";
 import * as channel from "../cli/commands/channel.js";
 import * as dashboard from "../cli/commands/dashboard.js";
 import * as flow from "../cli/commands/flow.js";
@@ -492,4 +496,194 @@ export async function executeToolCommand(name, args = {}, { baseUrl } = {}) {
   const { flags, positional } = prepareInvocation(tool, args);
   const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
   return data;
+}
+
+// —— M2（REQ-AGENT-032）FS/脚本工具（read / write / bash）——
+// 命名小写（signoff 裁决 6）；仅 project 空间挂载（PRD §10.2 工具面分级硬边界：
+// 通用/飞书空间 = CLI-only，不可获得 FS/脚本工具）。cwd 边界判定（signoff 裁决
+// 18：realpath 归一化比较）：cwd 外路径的写/执行 fail-closed 为工具错误
+// （E-AGENT-BOUNDARY，agent 收到工具错误可转述，副作用不发生）。授权放行链
+// （cwd 外 ask → approve）随 Slice 7 gotgenes 接入——本切片先实现工具面挂载与
+// cwd 边界判定接口。
+
+const READ_TOOL = {
+  name: "read",
+  description: "读取项目目录内文件内容（cwd 外路径被权限层拦截）",
+  argsSchema: obj({ path: str("项目内文件绝对路径（必填）") }, ["path"]),
+};
+const WRITE_TOOL = {
+  name: "write",
+  description: "写入项目目录内文件（cwd 外路径被权限层拦截）",
+  argsSchema: obj(
+    { path: str("项目内文件绝对路径（必填）"), content: str("文件内容（必填）") },
+    ["path", "content"]
+  ),
+};
+const BASH_TOOL = {
+  name: "bash",
+  description: "在项目目录内执行 shell 命令（cwd 外路径被权限层拦截）",
+  argsSchema: obj({ command: str("shell 命令（必填）") }, ["command"]),
+};
+const FS_TOOLS = [READ_TOOL, WRITE_TOOL, BASH_TOOL];
+
+const BOUNDARY_ERROR_CODE = "E-AGENT-BOUNDARY";
+const BOUNDARY_ERROR_MESSAGE = "拒绝：目标路径在项目目录之外";
+
+// realpath 归一化判定：target 位于 cwd 内（含等于，signoff 裁决 18）→ 返回
+// realpath 后的目标路径；否则 null。realpathBestEffort 对不存在的尾部沿父链
+// 取最近存在祖先归一化（写入目标常尚未创建）。
+function resolveInsideCwd(cwd, targetPath) {
+  const targetAbs = path.resolve(String(targetPath ?? ""));
+  const targetReal = realpathBestEffort(targetAbs);
+  return isInsideOrEqual(comparisonKey(targetReal), comparisonKey(cwd)) ? targetReal : null;
+}
+
+// 命令中绝对路径抽取（引号内/外 /-根路径 token；相对路径不判定——执行以 cwd
+// 为基目录。启发式边界判定，完整策略评估（external_directory 等）随 Slice 7）。
+// 任一解析路径在 cwd 外 → 判定越界（fail-closed）。
+const ABS_PATH_IN_COMMAND = /(?:"|')?(\/[^\s"']+)(?:"|')?/g;
+
+function commandViolatesCwd(cwd, command) {
+  for (const m of String(command ?? "").matchAll(ABS_PATH_IN_COMMAND)) {
+    if (resolveInsideCwd(cwd, m[1]) === null) return true;
+  }
+  return false;
+}
+
+// bash 执行（execFile 无 shell 中间层；cwd 限定项目目录；超时兜底防悬挂）。
+const execFileAsync = promisify(execFile);
+
+async function runBash(command, cwd) {
+  const shell = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
+  const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
+  try {
+    const { stdout, stderr } = await execFileAsync(shell, args, { cwd, timeout: 30000 });
+    const out = `${stdout ?? ""}${stderr ? `\n${stderr}` : ""}`.trim();
+    return out;
+  } catch (err) {
+    const detail = String(err?.stderr ?? err?.message ?? "命令执行失败").trim();
+    throw Object.assign(new Error(detail || "命令执行失败"), { code: "E-AGENT-BASH" });
+  }
+}
+
+async function executeFsTool(name, args, { cwd }) {
+  switch (name) {
+    case "read": {
+      const target = resolveInsideCwd(cwd, args.path);
+      if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
+      if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+        return errorResult("E-AGENT-FS-ERROR", `文件不存在或不可读：${args.path}`);
+      }
+      return { output: fs.readFileSync(target, "utf8") };
+    }
+    case "write": {
+      const target = resolveInsideCwd(cwd, args.path);
+      if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, String(args.content ?? ""));
+      return { output: `已写入 ${args.path}` };
+    }
+    case "bash": {
+      if (commandViolatesCwd(cwd, args.command)) {
+        return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
+      }
+      return { output: await runBash(String(args.command ?? ""), cwd) };
+    }
+    default:
+      throw commandError(`不支持该操作：${name} 不在 agent 工具面内`);
+  }
+}
+
+// —— 会话工具面（REQ-AGENT-032 public seam）——
+// createSessionToolSurface({ profile, cwd, commandsDir, baseUrl, sessionKey,
+//   getDefaultTarget, onConfirmRequest }) → { listTools, execute, onEvent,
+//   emit, toPiToolDefinitions }（形态与 createToolSurface 一致）。
+// - profile="default"（通用/飞书空间）= CLI 基线（createToolSurface 等价，无
+//   read/write/bash——分级硬边界）；
+// - profile="project"（项目空间）= CLI + read/write/bash（cwd 限定项目目录；
+//   cwd 外写/执行 fail-closed 为工具错误，授权放行链随 Slice 7）。
+export function createSessionToolSurface(options = {}) {
+  const { profile = "default", cwd, commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest } = options;
+  const cli = createToolSurface({ commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest });
+  if (profile !== "project") return cli;
+
+  // 组合面事件桥：CLI 与 FS 工具事件统一进同一监听器集（worker 经 onEvent
+  // 转发 tool_execution_error——CLI 侧错误同样可达）。
+  const listeners = [];
+  cli.onEvent((ev) => {
+    for (const cb of listeners) {
+      try {
+        cb(ev);
+      } catch {
+        // 监听器异常不影响工具执行。
+      }
+    }
+  });
+  const emit = (event) => {
+    for (const cb of listeners) {
+      try {
+        cb(event);
+      } catch {
+        // 同上。
+      }
+    }
+  };
+
+  const fsSurface = {
+    listTools() {
+      return [
+        ...cli.listTools(),
+        ...FS_TOOLS.map((t) => ({
+          name: t.name,
+          description: t.description,
+          riskLevel: "confirm",
+          argsSchema: t.argsSchema,
+        })),
+      ];
+    },
+    onEvent(cb) {
+      if (typeof cb === "function") listeners.push(cb);
+    },
+    emit,
+    async execute(name, args = {}) {
+      const tool = FS_TOOLS.find((t) => t.name === name);
+      if (!tool) return cli.execute(name, args);
+      emit({ type: "tool_execution_start", name, status: "running" });
+      try {
+        const result = await executeFsTool(name, args, { cwd });
+        if (result?.errorCode) {
+          emitToolError(emit, name, result.errorCode, result.errorMessage ?? "操作失败");
+        } else {
+          emit({ type: "tool_execution_end", name, status: "completed" });
+        }
+        return result;
+      } catch (err) {
+        const errorCode = err?.code || "E-AGENT-FS-ERROR";
+        const errorMessage = err?.message ?? String(err);
+        emitToolError(emit, name, errorCode, errorMessage);
+        return errorResult(errorCode, errorMessage);
+      }
+    },
+    toPiToolDefinitions() {
+      const fsDefs = FS_TOOLS.map((tool) => ({
+        name: tool.name,
+        label: tool.name,
+        description: tool.description,
+        parameters: schemaToTypeBox(tool.argsSchema),
+        execute: async (toolCallId, params, signal) => {
+          if (signal?.aborted) throw new Error("操作已取消");
+          const result = await fsSurface.execute(tool.name, params ?? {});
+          if (result?.errorCode) {
+            throw new Error(`[${result.errorCode}] ${result.errorMessage ?? "命令执行失败"}`);
+          }
+          return {
+            content: [{ type: "text", text: formatToolOutput(result.output) }],
+            details: { tool: tool.name },
+          };
+        },
+      }));
+      return [...cli.toPiToolDefinitions(), ...fsDefs];
+    },
+  };
+  return fsSurface;
 }

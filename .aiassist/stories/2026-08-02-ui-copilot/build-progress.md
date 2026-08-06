@@ -29,10 +29,33 @@
 - Slice 4: complete (8edd068.., 业务测试 6/6 绿（uiConfirmation：3 红 3 绿基线 → 全绿）+ 回归：Slice 1-3 六套件全绿（sessionSpace 仅已知 T-1 fixture 红）+ builtin-agent confirmation/sessionStore/sessionRestore 16/16 绿 + lint 干净；M2 五套件（permissionPolicy/authorizerBridge/skillInjection/toolSurface/workerAssembly）仍红 = seam 未就绪（M2 模块未实现，本切片范围外）) + refactor: 无（eventBus 发布/订阅分流即最终形态——测试 seam 直接 svc.submit 与生产 confirm-request 同构，发布点收敛于 confirmationService.submit 单点）— 2026-08-06
 - PRD 对齐 Slice 4: ALIGNED（S5 后端全链：空间前缀分流/裁决 11 字段/裁决 8 回投语义/幂等与解耦回归；「卡片留历史」渲染层语义随 Slice 5 + GET confirmations 全量对齐）— 2026-08-06
 - Slice 5: complete (fc9b223.., 业务 E2E 5 套件 21/21 全绿 + M1 API 7 套件 34/35（仅已知 T-1）+ builtin-agent confirmation/sessionStore/sessionRestore 16/16 回归绿 + lint 干净 + vite build 过) + PRD 对齐: ALIGNED（双区壳/S3 流式渲染/S4 列表/030 确认卡渲染/034 只读呈现全链；实现偏差 3 项见「已知偏差」）+ refactor: 无（渲染层组件即最终形态；后端小改收敛于 wiring 单点）— 2026-08-06
+- Slice 6: complete (09d014b.., 业务测试 15/15 绿（skillInjection 6 + workerAssembly 5 + toolSurface 4）+ 回归：M1 API 39/39 绿（7 套件）+ builtin-agent conversation-space 33/33 + confirmation 7/7 + lint 干净（新增零告警）+ 单元 seam 自测 3/3 绿后自删) + PRD 对齐: ALIGNED（S6/S7 全链：skillPaths 按空间装配/available_skills 隔离/FS 工具面分级硬边界/cwd 边界 fail-closed；孤儿回落 default 不挂 FS 工具——fail-closed 语义；授权放行链随 Slice 7）+ refactor: 无（装配点收敛于 agentService.buildConfigMessage 单点 + toolAdapter.createSessionToolSurface 单面，即最终形态）— 2026-08-06
 
 ## PRD → 代码 可追溯性表
 
 （由各 slice 子代理写入）
+
+### Slice 6（REQ-AGENT-031 项目空间 SKILL.md 注入 + REQ-AGENT-032 FS/脚本工具面）
+
+> 范围：per-session 项目空间装配——session-config 扩展字段（cwd / skillPaths / permissionProfile，tech-design IPC 契约节）+ worker 按 spaceKey 前缀装配 + FS/脚本工具面（按 permissionProfile 挂载）。
+> 关键设计：① **装配点收敛于 agentService.buildConfigMessage 单点**——按 spaceKey 前缀解析：`ui:project:<pid>:` → project（cwd = 项目目录 realpath（裁决 18 归一化）、skillPaths = 项目关联 skills 技能库绝对路径、permissionProfile = "project"）；其余（`ui:copilot:*`/`feishu:*`）→ default（cwd = 现状默认、skillPaths = []、permissionProfile = "default"）。孤儿会话/项目无 localPath → **fail-closed 回落 default**（cwd 无从解析时 FS 工具不得指向非项目目录）；② **项目关联 skills 读取 API = `skillService.listLinkedSkillPaths(projectId)`**——以工作站关联记录（.linked-skills）为真相（link 意图：磁盘链接可能未分发（agent 目录缺失/注册表漂移）或手动删除，记录仍在；与 listProjectSkills 磁盘扫描视图互补），resolveSkillTargetDir 逐条解析为技能库绝对路径（`<技能库>/<slug>/skills/<name>/`），陈旧项（skill 已从库移除）跳过，技能库未配置 → []；③ **worker 按 session-config 装配 per-session DefaultResourceLoader**（H5 已证多 loader 共存隔离）：会话 cwd + additionalSkillPaths（仅非空注入，通用空间零变更）+ createAgentSession 会话 cwd；permissionProfile="project" → 工具面 = CLI + read/write/bash；④ **createSessionToolSurface（toolAdapter public seam）**：default = CLI 基线（createToolSurface 等价对象，一件不多一件不少——工具面分级硬边界，PRD §10.2）；project = CLI + read/write/bash（小写命名，裁决 6）；**cwd 边界判定接口**（realpath 归一化，裁决 18）：cwd 外写/执行 fail-closed 为工具错误 `E-AGENT-BOUNDARY`（无副作用），read 可读 cwd 内文件（标准 3 集成）；授权放行链（cwd 外 ask → approve）随 Slice 7 gotgenes；⑤ **skillAssembly.js（public seam）**：`listAvailableSkills({ skillPaths })` 读取各 skillPath 下 SKILL.md frontmatter → `[{ name, description }]`（等价 PI 渐进披露段输入，E6 缺 name/description 与 E10 不可读跳过语义与 skillService 一致）。
+
+| REQ-AGENT-031 验收标准 | 意图（PRD §4 S6/§10.1） | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|---|
+| 1. `ui:project:<pid>:*` 会话 skillPaths = 项目关联 skills 技能库绝对路径列表；通用/飞书 = 空数组 | S6 项目空间对话自动注入该项目关联 Skills 的 SKILL.md（技能库绝对路径，H2 生效方式） | `src/services/agentService.js`（resolveSpaceAssembly/buildConfigMessage）、`src/services/skillService.js`（listLinkedSkillPaths 新增） | `.../api/skillInjection.test.js` 用例 1/2/3 | COVERED |
+| 2. worker 按 skillPaths 装配 additionalSkillPaths（fake worker 捕获 session-config 断言） | S6 装配（H5：多 loader 共存已证） | `src/agent/worker.js`（createSessionEntry：per-session DefaultResourceLoader 会话 cwd + additionalSkillPaths 非空注入） | `.../api/skillInjection.test.js` 用例 1（fake capture）+ `.../api/workerAssembly.test.js` | COVERED |
+| 3. 项目空间 available_skills 段含项目 skills 的 name/description（渐进披露）；agent 可经 read 读到 SKILL.md 全文 | S6 prompt 级能力注入（同 Claude Code 加载方式，H2） | `src/agent/skillAssembly.js`（listAvailableSkills public seam——worker 内 PI 生成段 fake worker 观测不到，等价 seam 断言输入） | `.../api/skillInjection.test.js` 用例 4 | COVERED |
+| 4. 通用空间 available_skills 不含任何项目 skills（空间隔离） | S6/PRD §10.2 空间隔离；H5 隔离已证 | `src/agent/skillAssembly.js`（listAvailableSkills([]) → []）+ `src/agent/worker.js`（noSkills: true 默认发现隔离，零注入） | `.../api/skillInjection.test.js` 用例 5 | COVERED |
+| 5. 项目关联变更后新建会话生效（已建会话热更新不断言——降级决策） | S6 标准 5 降级：变更后新会话为准 | `src/services/skillService.js`（listLinkedSkillPaths 每次实时读关联记录） | `.../api/skillInjection.test.js` 用例 6 | COVERED |
+
+| REQ-AGENT-032 验收标准 | 意图（PRD §4 S7/§10.2） | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|---|
+| 1. `permissionProfile="project"` 会话挂载 read/write/bash 且 cwd = 项目目录绝对路径（fake worker 断言） | S7 项目目录内读文件/跑脚本工具；IPC 契约 cwd/permissionProfile | `src/services/agentService.js`（resolveSpaceAssembly）、`src/agent/worker.js`（permissionProfile → 工具面 profile） | `.../api/workerAssembly.test.js` 用例 1 | COVERED |
+| 2. `permissionProfile="default"`（通用/飞书）不出现 FS/bash 工具（分级硬边界；fake worker 断言工具清单） | S7 工具面按空间分级硬边界（通用空间维持 CLI-only，PRD §10.2/§13） | `src/agent/toolAdapter.js`（createSessionToolSurface：default = CLI 基线等价）、`src/services/agentService.js`（default 装配下发） | `.../api/workerAssembly.test.js` 用例 2/3 + `.../api/toolSurface.test.js` 用例 1（显式数组比较） | COVERED |
+| 3. 项目空间 agent 可在 cwd 内读文件（read 返回项目文件内容） | S7 读文件工具（S6+S7 操作流：读类直接放行） | `src/agent/toolAdapter.js`（executeFsTool read：cwd 内 → 内容；cwd 外 → 边界拦截） | `.../api/workerAssembly.test.js` 用例 5（集成）+ `.../api/toolSurface.test.js` 用例 2 | COVERED |
+| 4. cwd 外路径写/执行 → 权限层拦截（与 REQ-AGENT-033 附录 A 联动断言） | PRD §8 FS 工具越界（目录外写/执行 → 权限层拒绝，agent 转述）+ 附录 A cwd 外 → ask（无授权 fail-closed） | `src/agent/toolAdapter.js`（cwd 边界判定接口：resolveInsideCwd realpath 归一化 / commandViolatesCwd 绝对路径抽取；拦截 = E-AGENT-BOUNDARY 工具错误，无副作用） | `.../api/toolSurface.test.js` 用例 3/4 | COVERED |
+
+> 支撑性实现：① **resolveSpaceAssembly fail-closed**——孤儿会话/项目无 localPath → 回落 default（permissionProfile="default" + 空 skillPaths），FS 工具不指向非项目目录；② **组合面事件桥**——project 面 onEvent 统一转发 CLI 与 FS 工具事件（worker tool_execution_error 转发不因组合面丢失，CLI 侧 confirm-request 错误路径回归绿）；③ **可观测性**（tech-design 可观测性节）——worker session-config 完成日志含 profile/skills 计数（spaceKey→cwd/skills/profile 装配留痕）；④ 单元 seam 自测 3/3 绿后自删（边界判定：cwd 外读/写/bash 拦截 + symlink 逃逸 realpath 拦截 + cwd 内写建目录；listAvailableSkills frontmatter 变体/E6/E10 跳过；listLinkedSkillPaths 记录驱动/陈旧项跳过/未配置 → []）。**偏差：无**——default 面 = createToolSurface 等价（M1 行为零变化：M1 API 39/39 + builtin-agent conversation-space 33/33 + confirmation 7/7 回归全绿）；gotgenes 装配（permissionProfile 字段已下发，工厂注入）随 Slice 7（REQ-AGENT-033）。
 
 ### Slice 5（REQ-AGENT-026 双区 + 028/029/030/034 渲染层 E2E 面）
 

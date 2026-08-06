@@ -860,9 +860,29 @@ export function deleteSource(slug) {
   return { deleted: slug };
 }
 
-// ---------- project skill view (REQ-SKILL-012) ----------
+// ---------- linked skill paths for session assembly (REQ-AGENT-031) ----------
 
-// GET /api/projects/:id/skills: live scan of the project's declared agent
+// M2（2026-08-02-ui-copilot REQ-AGENT-031 标准 1）：项目关联 skills 的技能库
+// 绝对路径列表——会话装配 skillPaths 的读取 API（agentService → worker
+// session-config）。以工作站关联记录为真相（link 意图：磁盘链接可能未分发
+// （agent 目录缺失/注册表漂移）或被手动删除，记录仍在——与 listProjectSkills
+// 的磁盘扫描视图互补）。逐条解析为技能库内绝对目录；记录中的陈旧项（skill 已
+// 从库中移除）跳过。技能库未配置 → 空数组。
+export function listLinkedSkillPaths(projectId) {
+  const root = repoRoot();
+  if (!root) return [];
+  const paths = [];
+  for (const { slug, skillName } of readLinkedRecord(projectId)) {
+    try {
+      paths.push(path.resolve(resolveSkillTargetDir(slug, skillName)));
+    } catch {
+      // Stale record entry: the skill is gone from the library.
+    }
+  }
+  return paths;
+}
+
+// ---------- project skill view (REQ-SKILL-012) ----------// GET /api/projects/:id/skills: live scan of the project's declared agent
 // dirs (skillsDir-deduped). Links resolving into the library are attributed
 // to their {slug, skillName} (origin "repo"; broken:true when the target
 // skill vanished). Real directories and links resolving elsewhere are

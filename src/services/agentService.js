@@ -45,6 +45,9 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
+import * as projectService from "./projectService.js";
+import * as skillService from "./skillService.js";
+import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 import { decryptSecret } from "./secretStore.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
@@ -139,6 +142,36 @@ let activeService = null;
 
 export function getActiveService() {
   return activeService;
+}
+
+// —— M2 按空间装配（REQ-AGENT-031/032 IPC 契约扩展字段）——
+// session-config 扩展：cwd（项目空间 = 项目目录绝对路径 realpath；通用/飞书 =
+// 现状默认值）、skillPaths（项目空间 = 项目关联 skills 的技能库绝对路径列表；
+// 其他空间 = 空数组）、permissionProfile（"project" / "default"）。
+// worker 按 spaceKey 前缀装配：ui:project:* → project；其余（ui:copilot:* /
+// feishu:*）→ default（工具面分级硬边界，PRD §10.2）。
+const PROJECT_SPACE_RE = /^ui:project:([^:]+):/;
+
+function projectIdOf(spaceKey) {
+  const m = PROJECT_SPACE_RE.exec(String(spaceKey ?? ""));
+  return m ? m[1] : null;
+}
+
+// 项目空间装配解析：项目详情 → 项目目录 realpath + 关联 skills 技能库绝对路径。
+// 项目已删除/无本地目录（孤儿/异常）→ fail-closed 回落 default 装配（不挂
+// FS/脚本工具——cwd 无从解析时不得让 FS 工具指向非项目目录）。
+function resolveSpaceAssembly(spaceKey) {
+  const pid = projectIdOf(spaceKey);
+  if (!pid) {
+    return { cwd: null, skillPaths: [], permissionProfile: "default" };
+  }
+  const project = projectService.getProjectDetail(pid);
+  if (!project || typeof project.localPath !== "string" || project.localPath === "") {
+    return { cwd: null, skillPaths: [], permissionProfile: "default" };
+  }
+  const cwd = realpathBestEffort(path.resolve(expandTilde(project.localPath)));
+  const skillPaths = skillService.listLinkedSkillPaths(project.id);
+  return { cwd, skillPaths, permissionProfile: "project" };
 }
 
 // —— 共享工具 ——
@@ -723,6 +756,10 @@ function createProcessAgentService(options = {}) {
   }
 
   function buildConfigMessage(spaceKey, session) {
+    // M2 按空间装配（REQ-AGENT-031/032 IPC 契约）：项目空间 = 项目目录 realpath
+    // + 关联 skills 技能库绝对路径 + "project"；通用/飞书 = 现状默认 cwd + 空
+    // skillPaths + "default"。
+    const { cwd: spaceCwd, skillPaths, permissionProfile } = resolveSpaceAssembly(spaceKey);
     return {
       type: "session-config",
       sessionKey: spaceKey,
@@ -733,6 +770,9 @@ function createProcessAgentService(options = {}) {
       // 一次性注入：key 明文经 IPC 下发子进程（仅内存，不落日志/JSONL）。
       apiKey: keySecrets.get(session.keyRef),
       systemPrompt: buildSystemPrompt(session.identity),
+      cwd: spaceCwd ?? cwd,
+      skillPaths,
+      permissionProfile,
       // 工具上下文（Slice 8 G1 接线）：绑定默认目标候选 → worker 工具面消费。
       ...(session.toolContext ? { toolContext: session.toolContext } : {}),
     };

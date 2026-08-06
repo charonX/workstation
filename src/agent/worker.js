@@ -31,7 +31,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createToolSurface } from "./toolAdapter.js";
+import { createSessionToolSurface } from "./toolAdapter.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
@@ -238,32 +238,16 @@ async function disposeSession(entry) {
 //   不重建上下文，REQ-AGENT-004 标准 2）；
 // - 已存在 + provider/key/sessionRef 变更 → 重建会话（新 key 注入，
 //   tech-design 数据流 7 GAP 补全）。
-// 每会话工具面（REQ-AGENT-012 + Slice 8 接线）：
-// - sessionKey / getDefaultTarget：task run 注入 originating spaceKey（GAP 1）与
-//   绑定默认目标候选（G1，REQ-AGENT-017 标准 2——session-config toolContext 下发，
-//   惰性读取热更新即时生效）；
-// - onConfirmRequest：confirm 级工具 → IPC confirm-request → 主进程确认服务入队
-//   （agent_confirmations pending + 确认卡片）→ ack 后返回待确认（解耦：执行由
-//   确认服务回调驱动，不经过 agent turn，REQ-AGENT-016）。
+// M2 按空间装配（REQ-AGENT-031/032）：session-config 扩展字段 cwd / skillPaths /
+// permissionProfile（tech-design IPC 契约节）——
+// - cwd：项目空间 = 项目目录（DefaultResourceLoader / createAgentSession 均以
+//   会话 cwd 装配；通用/飞书 = 主进程现状默认）；
+// - skillPaths：项目空间 = 项目关联 skills 技能库绝对路径 → additionalSkillPaths
+//   （H5 已证：多会话各持独立 loader，available_skills 渐进披露段互不污染）；
+// - permissionProfile："project" → 工具面 = CLI + read/write/bash（cwd 边界判定
+//   在 toolAdapter）；"default" → CLI 基线（分级硬边界）。
 // 工具事件（REQ-AGENT-012 标准 4）：start/end 由 PI 原生 tool_execution_* 事件承载；
 // 本适配器仅补充 PI 不产生的 tool_execution_error（含工具名与状态，错误回传对话）。
-function createSessionToolSurface(sessionKey) {
-  const toolSurface = createToolSurface({
-    sessionKey,
-    getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
-    onConfirmRequest: async ({ tool, args, riskLevel }) => {
-      const confirmId = randomUUID();
-      send({ type: "confirm-request", confirmId, sessionKey, command: tool, args, riskLevel });
-      const ack = await confirmAck(confirmId);
-      if (ack?.ok === true) return { pending: true, reply: ack.reply };
-      return { pending: false, error: ack?.error ?? "确认请求失败" };
-    },
-  });
-  toolSurface.onEvent((ev) => {
-    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
-  });
-  return toolSurface;
-}
 
 // confirm-request 回执等待（超时兜底 resolve，防工具调用悬挂）。
 function confirmAck(confirmId) {
@@ -338,6 +322,11 @@ function createFreshSessionManager(ref) {
 // 新建会话（含 provider/key 变更后的重建路径）：PI AgentSession 创建 + 订阅 + 注册。
 async function createSessionEntry(msg) {
   const { sessionKey, provider, model, keyRef, sessionRef, systemPrompt, apiKey } = msg;
+  // M2 按空间装配：cwd/skillPaths/permissionProfile 来自主进程 session-config
+  // （REQ-AGENT-031/032 IPC 契约）；缺省（旧主进程/直接调试）回落现状默认。
+  const sessionCwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : cwd;
+  const skillPaths = Array.isArray(msg.skillPaths) ? msg.skillPaths : [];
+  const permissionProfile = msg.permissionProfile === "project" ? "project" : "default";
   const runtime = await getModelRuntime();
   const modelObj = await resolveModel(runtime, provider, model, apiKey);
 
@@ -363,8 +352,11 @@ async function createSessionEntry(msg) {
   }
 
   const config = { systemPrompt: systemPrompt ?? "" };
+  // 每会话独立 DefaultResourceLoader（H5 已证多 loader 共存隔离）：项目空间按
+  // session-config 装配会话 cwd 与 additionalSkillPaths（渐进披露段互不污染）；
+  // 通用/飞书维持现状装配（noSkills: true 隔离默认发现，不注入任何项目 skills）。
   const resourceLoader = new DefaultResourceLoader({
-    cwd,
+    cwd: sessionCwd,
     agentDir: agentHome,
     settingsManager,
     noExtensions: true,
@@ -373,18 +365,34 @@ async function createSessionEntry(msg) {
     noThemes: true,
     noContextFiles: true,
     systemPromptOverride: (base) => config.systemPrompt || base,
+    ...(skillPaths.length > 0 ? { additionalSkillPaths: skillPaths } : {}),
   });
   await resourceLoader.reload();
 
   // 工具面（REQ-AGENT-012 标准 1：除 release 外全量 CLI 命令作为 PI 工具注入；
   // C2：进程内 import 命令模块 → ensureServer 发现主进程 server → HTTP API）。
-  // server 发现走注册表（子进程 ppid = 主进程 = server owner）；显式 baseUrl
-  // 注入由工具适配器 seam 支持（测试）。Slice 8：确认接线（onConfirmRequest）+
-  // G1/GAP 1（sessionKey/getDefaultTarget）。
-  const toolSurface = createSessionToolSurface(sessionKey);
+  // M2 按空间分级（REQ-AGENT-032）：permissionProfile="project" → CLI + read/
+  // write/bash（cwd 限定项目目录，边界判定在 toolAdapter）；"default" → CLI 基线。
+  // Slice 8：确认接线（onConfirmRequest）+ G1/GAP 1（sessionKey/getDefaultTarget）。
+  const toolSurface = createSessionToolSurface({
+    profile: permissionProfile,
+    cwd: sessionCwd,
+    sessionKey,
+    getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
+    onConfirmRequest: async ({ tool, args, riskLevel }) => {
+      const confirmId = randomUUID();
+      send({ type: "confirm-request", confirmId, sessionKey, command: tool, args, riskLevel });
+      const ack = await confirmAck(confirmId);
+      if (ack?.ok === true) return { pending: true, reply: ack.reply };
+      return { pending: false, error: ack?.error ?? "确认请求失败" };
+    },
+  });
+  toolSurface.onEvent((ev) => {
+    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
+  });
 
   const { session: agentSession } = await createAgentSession({
-    cwd,
+    cwd: sessionCwd,
     agentDir: agentHome,
     sessionManager,
     settingsManager,
@@ -408,7 +416,8 @@ async function createSessionEntry(msg) {
   };
   agentSession.subscribe((ev) => forwardEvent(sessionKey, ev));
   sessions.set(sessionKey, entry);
-  log(`session-config 完成 session=${sessionKey} ref=${effectiveRef}`);
+  // 可观测性（tech-design 可观测性节）：会话创建装配（spaceKey→cwd/skills/profile）。
+  log(`session-config 完成 session=${sessionKey} ref=${effectiveRef} profile=${permissionProfile} skills=${skillPaths.length}`);
   if (rebuilt) {
     // 通知主进程换代重建（REQ-AGENT-009 标准 2 损坏分支）：主进程同步
     // agent_sessions 行（SQLite 为真相）与会话句柄，并挂历史不可恢复提示。
