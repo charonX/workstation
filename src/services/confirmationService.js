@@ -18,6 +18,13 @@
 // confirm-request 内容）；execute/notifyResult/sendCard 均可选注入（缺省时对应
 // 步骤为 no-op——业务测试按需注入，生产接线见 server.js）。
 //
+// 授权桥行（Slice 7，REQ-AGENT-033）：submit 可带 notifyOnSettle: false——确认
+// 决议（approve/reject）不注入 notifyResult。授权桥行 = gotgenes ask 的挂起行
+// （riskLevel "permission"）：操作由 worker 侧 gate allow 后经工具调用路径执行，
+// 结果经工具结果回投——主进程再注入会与真实结果重复/冲突（approve 时本库
+// execute 对该行是 no-op——命令为 FS 工具名，不在 CLI 注册表）。既有确认行
+// （CLI confirm 流）不带该标记，行为不变。
+//
 // 确认卡渲染目标按空间前缀分流（2026-08-02-ui-copilot REQ-AGENT-030 / CONTEXT.md
 // 授权桥：一套队列，按空间前缀分流渲染——UI 内联确认卡 / 飞书卡片）：
 // - `ui:*` 空间（ui:copilot:* / ui:project:<pid>:*）→ 发布 eventBus
@@ -40,6 +47,11 @@ function pendingReply(req) {
 function settledReply(status) {
   return status === "approved" ? "操作已确认并执行" : status === "rejected" ? "操作已取消" : `操作已处理（${status}）`;
 }
+
+// 授权桥行决议不注入 notifyResult 标记（confirmId → false；submit 登记，approve/
+// reject 消费后清理——内存态，重启丢失可接受：决议回传依赖同一进程，重启后
+// 授权桥决议等待已失效，行仅作记录）。
+const notifySettleFlags = new Map();
 
 // 确认卡片（REQ-AGENT-016 标准 1：含命令摘要与确认/拒绝按钮）。按钮 value 携带
 // confirmId + decision——飞书卡片动作回调（WS 事件 → HTTP 端点）按 value 分发到
@@ -156,8 +168,13 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
   }
 
   // 执行结果回投（approve/reject 共用）：注入 agent 会话 → 自然语言回投（W-2）。
-  // 回投失败不阻断确认本身（会话侧自行处理）。
-  async function notifyIfPresent(payload) {
+  // 回投失败不阻断确认本身（会话侧自行处理）。授权桥行（notifyOnSettle=false）
+  // 跳过——操作结果经工具调用路径回投，避免重复/冲突注入。
+  async function notifyIfPresent(payload, confirmId) {
+    if (notifySettleFlags.get(confirmId) === false) {
+      notifySettleFlags.delete(confirmId);
+      return;
+    }
     if (typeof notifyResult !== "function") return;
     try {
       await notifyResult(payload);
@@ -183,6 +200,7 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
       `INSERT INTO agent_confirmations (confirmId, sessionKey, command, args, riskLevel, status, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(req.confirmId, req.sessionKey ?? "", req.command ?? "", JSON.stringify(req.args ?? {}), req.riskLevel ?? "confirm", ts, ts);
+    if (req.notifyOnSettle === false) notifySettleFlags.set(req.confirmId, false);
     if (isUiSpaceKey(req.sessionKey)) {
       // UI 空间：确认卡渲染目标 = SSE 内联确认卡（REQ-AGENT-030）——发布
       // confirmation-pending 事件（SSE 路由按空间订阅转发），不发飞书卡片。
@@ -221,7 +239,7 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
         };
       }
     }
-    await notifyIfPresent({ sessionKey: row.sessionKey, result });
+    await notifyIfPresent({ sessionKey: row.sessionKey, result }, confirmId);
     return { status: "approved", executed: true, result };
   }
 
@@ -229,10 +247,13 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
   async function reject(confirmId) {
     const claim = claimPending(confirmId, "rejected");
     if (!claim.ok) return { status: claim.status, executed: false };
-    await notifyIfPresent({
-      sessionKey: claim.row.sessionKey,
-      result: { cancelled: true, message: "操作已取消", command: claim.row.command },
-    });
+    await notifyIfPresent(
+      {
+        sessionKey: claim.row.sessionKey,
+        result: { cancelled: true, message: "操作已取消", command: claim.row.command },
+      },
+      confirmId
+    );
     return { status: "rejected", executed: false };
   }
 

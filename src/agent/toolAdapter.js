@@ -501,10 +501,10 @@ export async function executeToolCommand(name, args = {}, { baseUrl } = {}) {
 // —— M2（REQ-AGENT-032）FS/脚本工具（read / write / bash）——
 // 命名小写（signoff 裁决 6）；仅 project 空间挂载（PRD §10.2 工具面分级硬边界：
 // 通用/飞书空间 = CLI-only，不可获得 FS/脚本工具）。cwd 边界判定（signoff 裁决
-// 18：realpath 归一化比较）：cwd 外路径的写/执行 fail-closed 为工具错误
+// 18：realpath 归一化比较）：cwd 外路径的写/执行缺省 fail-closed 为工具错误
 // （E-AGENT-BOUNDARY，agent 收到工具错误可转述，副作用不发生）。授权放行链
-// （cwd 外 ask → approve）随 Slice 7 gotgenes 接入——本切片先实现工具面挂载与
-// cwd 边界判定接口。
+// （Slice 7 gotgenes 接入）：项目空间装配 boundaryAuthorized=true——cwd 边界由
+// gotgenes external_directory 闸门裁决（ask → 授权桥 → 人工批准后放行，裁决 14）。
 
 const READ_TOOL = {
   name: "read",
@@ -566,10 +566,10 @@ async function runBash(command, cwd) {
   }
 }
 
-async function executeFsTool(name, args, { cwd }) {
+async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
   switch (name) {
     case "read": {
-      const target = resolveInsideCwd(cwd, args.path);
+      const target = boundaryAuthorized ? path.resolve(String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
       if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
         return errorResult("E-AGENT-FS-ERROR", `文件不存在或不可读：${args.path}`);
@@ -577,14 +577,14 @@ async function executeFsTool(name, args, { cwd }) {
       return { output: fs.readFileSync(target, "utf8") };
     }
     case "write": {
-      const target = resolveInsideCwd(cwd, args.path);
+      const target = boundaryAuthorized ? path.resolve(String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
       if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, String(args.content ?? ""));
       return { output: `已写入 ${args.path}` };
     }
     case "bash": {
-      if (commandViolatesCwd(cwd, args.command)) {
+      if (!boundaryAuthorized && commandViolatesCwd(cwd, args.command)) {
         return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       }
       return { output: await runBash(String(args.command ?? ""), cwd) };
@@ -596,14 +596,18 @@ async function executeFsTool(name, args, { cwd }) {
 
 // —— 会话工具面（REQ-AGENT-032 public seam）——
 // createSessionToolSurface({ profile, cwd, commandsDir, baseUrl, sessionKey,
-//   getDefaultTarget, onConfirmRequest }) → { listTools, execute, onEvent,
-//   emit, toPiToolDefinitions }（形态与 createToolSurface 一致）。
+//   getDefaultTarget, onConfirmRequest, boundaryAuthorized }) → { listTools,
+//   execute, onEvent, emit, toPiToolDefinitions }（形态与 createToolSurface 一致）。
 // - profile="default"（通用/飞书空间）= CLI 基线（createToolSurface 等价，无
 //   read/write/bash——分级硬边界）；
 // - profile="project"（项目空间）= CLI + read/write/bash（cwd 限定项目目录；
-//   cwd 外写/执行 fail-closed 为工具错误，授权放行链随 Slice 7）。
+//   cwd 外写/执行缺省 fail-closed 为工具错误——REQ-AGENT-032 标准 4）；
+// - boundaryAuthorized（Slice 7，REQ-AGENT-033）：true = cwd 边界已交由 gotgenes
+//   权限层裁决（external_directory ask → 人工批准后放行，signoff 裁决 14）——
+//   工具面不再二次硬拦截（批准后操作真实执行）；缺省 false = 无授权裁决时保持
+//   拦截（工具面行为层断言「未授权 fail-closed」不变）。
 export function createSessionToolSurface(options = {}) {
-  const { profile = "default", cwd, commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest } = options;
+  const { profile = "default", cwd, commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest, boundaryAuthorized = false } = options;
   const cli = createToolSurface({ commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest });
   if (profile !== "project") return cli;
 
@@ -650,7 +654,7 @@ export function createSessionToolSurface(options = {}) {
       if (!tool) return cli.execute(name, args);
       emit({ type: "tool_execution_start", name, status: "running" });
       try {
-        const result = await executeFsTool(name, args, { cwd });
+        const result = await executeFsTool(name, args, { cwd, boundaryAuthorized });
         if (result?.errorCode) {
           emitToolError(emit, name, result.errorCode, result.errorMessage ?? "操作失败");
         } else {

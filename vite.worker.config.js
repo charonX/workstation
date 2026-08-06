@@ -25,6 +25,10 @@ export default defineConfig({
         "@earendil-works/pi-ai",
         "@earendil-works/pi-agent-core",
         "@earendil-works/pi-tui",
+        // Slice 7（REQ-AGENT-033）：jiti 为 gotgenes 工厂加载器（pi-coding-agent
+        // 传递依赖）——运行期从 node_modules（dev）/ asar 内 node_modules（生产）
+        // 加载，不可内联（内部动态 import/fs 加载 .ts 源码）。
+        /^jiti(\/|$)/,
         // BUG-002：worker 图的直接 CJS 运行时依赖（regex 含子路径），不可内联。
         /^better-sqlite3(\/|$)/,
         /^node-cron(\/|$)/,

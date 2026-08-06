@@ -5,7 +5,8 @@
 // 「IPC 协议」）：
 // - stdin  ← 主进程 → 子进程：session-config / prompt / ping / shutdown ...
 // - stdout → 主进程 ← 子进程：ready / session-event / session-error /
-//   config-ack / prompt-result / pong ...
+//   config-ack / prompt-result / pong / confirm-request / permission-ask ...
+// - stdout → 主进程 → 子进程：confirm-request-ack / permission-decision
 // - stderr → 子进程日志（主进程 agentService 收集；绝不含 key 值）。
 //
 // 关键纪律（signoff 实现者测试缝契约 + spike 结论）：
@@ -23,6 +24,9 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { createJiti } from "jiti";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -62,6 +66,182 @@ const toolContexts = new Map(); // sessionKey → { defaultTarget: { flowId, pro
 const confirmAcks = new Map(); // confirmId → resolve(msg)
 // 确认请求超时兜底（主进程不可达时不悬挂工具调用；PI 自身亦有 tool timeout 兜底）。
 const CONFIRM_TIMEOUT_MS = 30000;
+
+// —— M2 权限层（Slice 7，REQ-AGENT-033；spike spike-m2-gotgenes.md H3/H4 PASS）——
+// 全局策略部署：应用资源 agent-policy/（只读默认，随分发）→ gotgenes 全局发现
+// 路径 <agentHome>/extensions/pi-permission-system/config.json（spike H3：
+// getAgentDir() 读 PI_CODING_AGENT_DIR——主进程 spawn 时注入 = agentHome；不设则
+// 落真实 ~/.pi/agent）。启动时幂等部署（覆盖 = 只读默认语义；项目策略为唯一
+// 用户手写层）。打包形态（asar extraResource）未配置——见 build-progress 已知偏差。
+const GOTGENES_GLOBAL_CONFIG_PATH = path.join(agentHome, "extensions", "pi-permission-system", "config.json");
+function globalPolicySourcePath() {
+  const viaCwd = path.join(process.cwd(), "agent-policy", "pi-permission-config.json");
+  if (fs.existsSync(viaCwd)) return viaCwd;
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "agent-policy",
+    "pi-permission-config.json"
+  );
+}
+function deployGlobalPolicy() {
+  try {
+    const source = globalPolicySourcePath();
+    if (!fs.existsSync(source)) {
+      log(`全局策略源缺失，跳过部署：${source}`);
+      return;
+    }
+    fs.mkdirSync(path.dirname(GOTGENES_GLOBAL_CONFIG_PATH), { recursive: true });
+    fs.copyFileSync(source, GOTGENES_GLOBAL_CONFIG_PATH);
+  } catch (err) {
+    log(`全局策略部署失败 err=${err?.message ?? String(err)}`);
+  }
+}
+
+// gotgenes 工厂加载（jiti）：包 exports "." 指向 service.ts（不含扩展工厂），
+// pi.extensions 元数据指明入口 src/index.ts——按绝对路径经 jiti 加载（spike
+// 装配要点 2 实证）。包为 npm i --no-save 装入 node_modules（未改 package.json）。
+// jiti 为 pi-coding-agent 传递依赖（vite.worker.config.js 已 external，运行期从
+// node_modules/asar 加载）。
+const workerRequire = createRequire(import.meta.url);
+let gotgenesFactoryPromise = null;
+function loadGotgenesFactory() {
+  if (!gotgenesFactoryPromise) {
+    gotgenesFactoryPromise = (async () => {
+      // 包 exports 未暴露 ./package.json——经 "." 导出（→ ./src/service.ts）解析包目录
+      // （入口在包内 src/ 子目录，包根 = 再上一级）。
+      const serviceEntry = workerRequire.resolve("@gotgenes/pi-permission-system");
+      const entryDir = path.dirname(serviceEntry);
+      const pkgDir = path.basename(entryDir) === "src" ? path.dirname(entryDir) : entryDir;
+      const jiti = createJiti(import.meta.url, { moduleCache: false, fsCache: false });
+      const [factory, serviceModule] = await Promise.all([
+        jiti.import(path.join(pkgDir, "src", "index.ts"), { default: true }),
+        jiti.import(path.join(pkgDir, "src", "service.ts")),
+      ]);
+      if (typeof factory !== "function" || typeof serviceModule?.getPermissionsService !== "function") {
+        throw new Error("gotgenes 工厂/服务导出异常");
+      }
+      return { factory, getPermissionsService: serviceModule.getPermissionsService };
+    })();
+  }
+  return gotgenesFactoryPromise;
+}
+
+// 权限确认请求（授权桥 IPC）：ask → 主进程确认挂起队列（permission-ask →
+// confirmationService submit + ui:* 分流发布）→ 人工决议（approve/reject）→
+// permission-decision 回传 → allow/deny。超时兜底（长时间无人裁决时工具调用
+// 不悬挂；挂起行保留可稍后处理——决议已超时，行仅作记录）。
+const PERMISSION_DECISION_TIMEOUT_MS = 10 * 60 * 1000;
+const permissionDecisions = new Map(); // confirmId → resolve({kind, reason})
+
+function requestPermissionDecision({ sessionKey, tool, input, description }) {
+  const confirmId = randomUUID();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      permissionDecisions.delete(confirmId);
+      resolve({ kind: "deny", reason: "确认超时（长时间未处理）" });
+    }, PERMISSION_DECISION_TIMEOUT_MS);
+    timer.unref?.();
+    permissionDecisions.set(confirmId, (decision) => {
+      clearTimeout(timer);
+      resolve(decision);
+    });
+    send({ type: "permission-ask", confirmId, sessionKey, tool, input, description });
+  });
+}
+
+// 授权桥扩展工厂（每会话独立实例——sessionKey 闭包捕获；H4 隔离前提：每
+// loader 独立 gotgenes 实例 + 每实例 AuthorizerRegistry，spike 补充验证）。
+// handle = loadGotgenesFactory() 的产物（factory + getPermissionsService）。
+// - permissions:ready 时 registerAuthorizer("opc-bridge")（ready 保证服务已发布；
+//   注册本身不授权——全局策略 authorizerChain: ["opc-bridge"] 显式 opt-in）；
+//   注意：ready 事件经 gotgenes 的 **eventBus**（pi.events）广播，不经 runner 的
+//   typed handler 分发（pi.on 只接收 runner 类型化事件）——必须订阅 pi.events.on；
+// - 排除面（external_directory/path/未知）直接 defer → 终端 UI（uiContext.select
+//   兜底，同一确认队列）——链 allow 会被有界委托降级为 defer，桥不重复裁决
+//   （spike 补充验证 5：cwd 外放行无法经桥自动批准，裁决 14 保持 ask）；
+// - 非排除面 ask → 桥建挂起确认行（details 无 value 字段——命令在 details.command、
+//   surface 在 details.accessIntent.surface，spike 补充验证 3）→ allow/deny 回传；
+// - user_bash（! bash）同策略评估（REQ-AGENT-033 标准 4，不经 tool_call 路径；
+//   worker 侧仅转发 IPC，分类在主进程 permissionPolicy 评估器）。
+function createPermissionBridgeFactory(sessionKey, handle) {
+  return async (pi) => {
+    pi.events?.on("permissions:ready", () => {
+      const svc = handle?.getPermissionsService?.();
+      if (!svc || typeof svc.registerAuthorizer !== "function") {
+        log(`授权桥注册跳过 session=${sessionKey}（权限服务未就绪）`);
+        return;
+      }
+      svc.registerAuthorizer("opc-bridge", async (details) => {
+        const surface = details?.accessIntent?.surface ?? details?.surface;
+        if (!surface || surface === "external_directory" || surface === "path") {
+          return { kind: "defer" };
+        }
+        const command = details?.command ?? details?.path ?? details?.target ?? details?.value ?? details?.message ?? "";
+        const tool = details?.toolName ?? details?.skillName ?? surface;
+        const verdict = await requestPermissionDecision({
+          sessionKey,
+          tool,
+          input: { command, path: details?.path, target: details?.target, surface },
+          description: `${tool}: ${command}`,
+        });
+        if (verdict.kind === "allow") return { kind: "allow" };
+        return { kind: "deny", reason: verdict.reason ?? "操作已取消（用户拒绝）" };
+      });
+      // 可观测性（tech-design 可观测性节）：授权桥注册留痕（permissions:ready →
+      // registerAuthorizer 完成）。
+      log(`授权桥注册完成 session=${sessionKey}`);
+    });
+    pi.on("user_bash", async (event) => {
+      const verdict = await requestPermissionDecision({
+        sessionKey,
+        tool: "user_bash",
+        input: { command: event?.command },
+        description: `bash: ${event?.command ?? ""}`,
+      });
+      if (verdict.kind === "deny") {
+        // 拒绝 → 错误 BashResult 阻止执行（agent 收到可转述工具错误）。
+        return {
+          result: {
+            output: `操作已取消：${verdict.reason ?? "用户拒绝"}`,
+            exitCode: 1,
+            cancelled: false,
+            truncated: false,
+          },
+        };
+      }
+      return undefined; // allow → 默认执行
+    });
+  };
+}
+
+// 授权桥 UI 兜底（spike 补充验证 5：external_directory 面链 defer → 终端
+// LocalUserAuthorizer → ctx.ui.select——宿主自实现即可接管；与桥同一确认队列，
+// 一次人工裁决）。approve → "Yes" 选项；reject → "No" 选项。
+// gotgenes 全量 UI 触点（session_start 状态同步/配置告警/权限选择）均需实现：
+// setStatus（syncPermissionSystemStatus，session_start 必调）、notify（配置告警）、
+// select（权限选择）、input（拒绝原因——桥不返回该选项，no-op 兜底）。
+function createBridgeUiContext(sessionKey) {
+  return {
+    select: async (title, options = []) => {
+      const verdict = await requestPermissionDecision({
+        sessionKey,
+        tool: "permission",
+        input: {},
+        description: String(title ?? "权限确认"),
+      });
+      if (verdict.kind === "allow") {
+        return options.find((o) => o?.startsWith("Yes")) ?? options[0];
+      }
+      return options.find((o) => o?.startsWith("No")) ?? options[options.length - 1];
+    },
+    input: async () => undefined,
+    confirm: async () => false,
+    notify: () => {},
+    setStatus: () => {},
+  };
+}
 
 // 串行队列工厂（排队串行，tech-design W-6）：
 // - 每 session 一条队列 → 同 sessionKey 排队串行、跨 session 并行；
@@ -352,9 +532,32 @@ async function createSessionEntry(msg) {
   }
 
   const config = { systemPrompt: systemPrompt ?? "" };
+
+  // M2 权限层装配（Slice 7，REQ-AGENT-033）：permissionProfile="project" →
+  // gotgenes 工厂 + 授权桥扩展（每会话独立 loader ⇒ 独立 gotgenes 实例，H4/H5
+  // 隔离前提）+ bindExtensions（mode rpc + uiContext——hasUI 判定 = uiContext 非
+  // noOp，注入即视为有 UI，spike 装配要点 5）；"default" → 不装配（分级硬边界）。
+  // 失败回退（fail-safe）：gotgenes 加载/装配异常 → 保持既有工具面确认拦截与
+  // cwd 边界硬拦截（无权限层时不下放）。
+  let gotgenesExtensions = [];
+  let bindBridgeUi = false;
+  let gotgenesAssembled = false;
+  if (permissionProfile === "project") {
+    try {
+      const handle = await loadGotgenesFactory();
+      gotgenesExtensions = [handle.factory, createPermissionBridgeFactory(sessionKey, handle)];
+      bindBridgeUi = true;
+      gotgenesAssembled = true;
+    } catch (err) {
+      log(`gotgenes 装配失败，回退默认工具面确认拦截 session=${sessionKey} err=${err?.message ?? String(err)}`);
+    }
+  }
+
   // 每会话独立 DefaultResourceLoader（H5 已证多 loader 共存隔离）：项目空间按
   // session-config 装配会话 cwd 与 additionalSkillPaths（渐进披露段互不污染）；
   // 通用/飞书维持现状装配（noSkills: true 隔离默认发现，不注入任何项目 skills）。
+  // noExtensions: true 保留——内联工厂不受其影响，文件系统扩展发现保持关闭
+  // （spike 装配要点 2）。
   const resourceLoader = new DefaultResourceLoader({
     cwd: sessionCwd,
     agentDir: agentHome,
@@ -366,26 +569,37 @@ async function createSessionEntry(msg) {
     noContextFiles: true,
     systemPromptOverride: (base) => config.systemPrompt || base,
     ...(skillPaths.length > 0 ? { additionalSkillPaths: skillPaths } : {}),
+    ...(gotgenesExtensions.length > 0 ? { extensionFactories: gotgenesExtensions } : {}),
   });
   await resourceLoader.reload();
 
   // 工具面（REQ-AGENT-012 标准 1：除 release 外全量 CLI 命令作为 PI 工具注入；
   // C2：进程内 import 命令模块 → ensureServer 发现主进程 server → HTTP API）。
   // M2 按空间分级（REQ-AGENT-032）：permissionProfile="project" → CLI + read/
-  // write/bash（cwd 限定项目目录，边界判定在 toolAdapter）；"default" → CLI 基线。
+  // write/bash（cwd 限定项目目录）；"default" → CLI 基线。
   // Slice 8：确认接线（onConfirmRequest）+ G1/GAP 1（sessionKey/getDefaultTarget）。
+  // Slice 7（REQ-AGENT-033）：gotgenes 装配成功时 CLI 高危由 gotgenes 策略闸门
+  // 拦截（ask → 授权桥 → 确认队列）——工具面自身 confirm 拦截停用（单一闸门，
+  // 避免双重 ask）；未装配（default 空间/装配失败回退）维持既有拦截。cwd 边界
+  // 同理：gotgenes 已裁决（external_directory ask → 人工批准）时工具面不再二次
+  // 硬拦截（boundaryAuthorized）；未装配时保持 fail-closed（E-AGENT-BOUNDARY）。
   const toolSurface = createSessionToolSurface({
     profile: permissionProfile,
     cwd: sessionCwd,
     sessionKey,
     getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
-    onConfirmRequest: async ({ tool, args, riskLevel }) => {
-      const confirmId = randomUUID();
-      send({ type: "confirm-request", confirmId, sessionKey, command: tool, args, riskLevel });
-      const ack = await confirmAck(confirmId);
-      if (ack?.ok === true) return { pending: true, reply: ack.reply };
-      return { pending: false, error: ack?.error ?? "确认请求失败" };
-    },
+    boundaryAuthorized: gotgenesAssembled,
+    ...(gotgenesAssembled
+      ? {}
+      : {
+          onConfirmRequest: async ({ tool, args, riskLevel }) => {
+            const confirmId = randomUUID();
+            send({ type: "confirm-request", confirmId, sessionKey, command: tool, args, riskLevel });
+            const ack = await confirmAck(confirmId);
+            if (ack?.ok === true) return { pending: true, reply: ack.reply };
+            return { pending: false, error: ack?.error ?? "确认请求失败" };
+          },
+        }),
   });
   toolSurface.onEvent((ev) => {
     if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
@@ -402,6 +616,14 @@ async function createSessionEntry(msg) {
     noTools: "all",
     customTools: toolSurface.toPiToolDefinitions(),
   });
+
+  // M2 权限层激活（Slice 7，REQ-AGENT-033）：bindExtensions 触发 session_start →
+  // gotgenes 生命周期激活（config 两级加载 + 服务发布 + permissions:ready →
+  // 授权桥注册；spike 装配要点 4/5）。uiContext 注入即 hasUI=true——external_directory
+  // 等排除面 ask 落终端 LocalUserAuthorizer → select → 同一确认队列（裁决 14）。
+  if (bindBridgeUi) {
+    await agentSession.bindExtensions({ mode: "rpc", uiContext: createBridgeUiContext(sessionKey) });
+  }
 
   const entry = {
     agentSession,
@@ -578,6 +800,16 @@ async function handleMessage(msg) {
       }
       break;
     }
+    case "permission-decision": {
+      // 授权桥决议回传（Slice 7，REQ-AGENT-033）：主进程确认行决议 →
+      // permission-decision → resolve 桥等待（allow/deny → gate 放行/拒绝）。
+      const resolve = permissionDecisions.get(msg.confirmId);
+      if (resolve) {
+        permissionDecisions.delete(msg.confirmId);
+        resolve({ kind: msg.kind === "allow" ? "allow" : "deny", reason: msg.reason });
+      }
+      break;
+    }
     case "notify-result":
       await handleNotifyResult(msg);
       break;
@@ -604,4 +836,5 @@ rl.on("close", () => {
 });
 
 // 就绪即回 ready（REQ-AGENT-005 标准 1；看门狗以 ready 判定存活起点）。
+deployGlobalPolicy();
 send({ type: "ready", pid: process.pid });

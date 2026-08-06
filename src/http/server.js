@@ -29,6 +29,7 @@ import { createAgentService } from "../services/agentService.js";
 import { createSessionStore } from "../services/sessionStore.js";
 import { createCardRenderer } from "../services/cardRenderer.js";
 import { createConfirmationService } from "../services/confirmationService.js";
+import { createPermissionBridge } from "../services/permissionBridge.js";
 import { executeToolCommand } from "../agent/toolAdapter.js";
 
 const activeServers = new Set();
@@ -223,6 +224,21 @@ export function startServer(options = {}) {
       };
       // 确认回调 HTTP 端点（/api/agent/confirmations/...）经 server 引用取惰性工厂。
       server._opcConfirmationServiceFactory = getConfirmationService;
+      // Slice 7：授权桥（REQ-AGENT-033，tech-design 授权桥契约节）——惰性创建
+      // （ADR-009）。gotgenes ask（worker 侧 authorizer 链 / uiContext 兜底 /
+      // user_bash）→ IPC permission-ask → 桥建挂起确认行（同表共存 + ui:* 空间
+      // SSE confirmation-pending 分流，复用 confirmationService submit）→ 决议
+      // （approve/reject 既有端点）→ 回传 worker gate 放行/拒绝。
+      let serverPermissionBridge = null;
+      const getPermissionBridge = () => {
+        if (!serverPermissionBridge) {
+          serverPermissionBridge = createPermissionBridge({
+            confirmationService: getConfirmationService(),
+          });
+        }
+        return serverPermissionBridge;
+      };
+      server._opcPermissionBridgeFactory = getPermissionBridge;
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
@@ -233,6 +249,23 @@ export function startServer(options = {}) {
             // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面 confirm 级
             // 工具 → IPC confirm-request → 确认服务入队（pending + 确认卡片）。
             onConfirmRequest: (req) => getConfirmationService().submit(req),
+            // Slice 7 授权桥接线（REQ-AGENT-033 标准 3/4）：worker gotgenes ask →
+            // IPC permission-ask → 桥建挂起行 + 决议等待 → 回传 allow/deny。
+            // user_bash（tool="user_bash"）走评估器分类（allow 直放 / ask 挂起行）。
+            onPermissionAsk: async ({ confirmId, sessionKey, tool, input, description }) => {
+              const bridge = getPermissionBridge();
+              if (tool === "user_bash") {
+                const result = await bridge.evaluateUserBash({
+                  spaceKey: sessionKey,
+                  command: input?.command,
+                  confirmId,
+                });
+                if (result.verdict === "allow") return { kind: "allow" };
+                return result.decision;
+              }
+              const ask = await bridge.authorize({ spaceKey: sessionKey, tool, input, description, confirmId });
+              return ask.decision;
+            },
           });
           await serverAgentService.start();
           server._opcAgentService = serverAgentService;

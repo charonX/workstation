@@ -577,6 +577,11 @@ function createProcessAgentService(options = {}) {
     env.OPC_AGENT_SESSION_DIR = sessionDir;
     env.OPC_AGENT_HOME = path.join(cwd, ".agent-home");
     env.OPC_AGENT_CWD = cwd;
+    // M2 权限层（REQ-AGENT-033，spike H3）：gotgenes 全局策略发现锚点 =
+    // PI_CODING_AGENT_DIR（getAgentDir() 读取；不设则落真实 ~/.pi/agent，污染
+    // 用户主目录）。指向 agentHome（与 OPC_AGENT_HOME 同值；全局策略由 worker
+    // 启动时自应用资源 agent-policy/ 部署到 <agentHome>/extensions/pi-permission-system/）。
+    env.PI_CODING_AGENT_DIR = path.join(cwd, ".agent-home");
     // 测试 seam（H3）：fauxProvider 注入，零网络（生产不设置）。
     if (process.env.NODE_ENV === "test") env.OPC_AGENT_FAUX = "1";
     if (inElectron) env.ELECTRON_RUN_AS_NODE = "1";
@@ -747,6 +752,36 @@ function createProcessAgentService(options = {}) {
           .catch((err) => {
             log(`confirm-request 处理失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
             sendToChild({ type: "confirm-request-ack", confirmId, ok: false, error: err?.message ?? String(err) });
+          });
+        break;
+      }
+      case "permission-ask": {
+        // 授权桥接线（Slice 7，REQ-AGENT-033 标准 3/4）：worker 侧 gotgenes
+        // authorizer 链 / uiContext 兜底 / user_bash 拦截 → IPC permission-ask →
+        // 主进程授权桥（confirmationService 挂起行 + 决议等待）→ permission-decision
+        // 回传（allow/deny）→ worker gate 放行/拒绝。onPermissionAsk 由生产接线
+        // （server.js）注入（bridge.authorize / evaluateUserBash）；未接线 → deny
+        // 兜底（fail-closed，工具调用不悬挂）。
+        const { confirmId, sessionKey, tool, input, description } = msg;
+        const handler = options.onPermissionAsk;
+        if (typeof handler !== "function") {
+          log(`permission-ask 未接线 session=${sessionKey} tool=${tool}`);
+          sendToChild({ type: "permission-decision", confirmId, kind: "deny", reason: "权限确认服务未接线" });
+          break;
+        }
+        Promise.resolve(handler({ confirmId, sessionKey, tool, input, description }))
+          .then((decision) => {
+            const kind = decision?.kind === "allow" ? "allow" : "deny";
+            sendToChild({
+              type: "permission-decision",
+              confirmId,
+              kind,
+              ...(kind === "deny" && typeof decision?.reason === "string" ? { reason: decision.reason } : {}),
+            });
+          })
+          .catch((err) => {
+            log(`permission-ask 处理失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+            sendToChild({ type: "permission-decision", confirmId, kind: "deny", reason: err?.message ?? "权限确认失败" });
           });
         break;
       }
