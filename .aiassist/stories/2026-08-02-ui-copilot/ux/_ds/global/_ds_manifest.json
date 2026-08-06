@@ -1,0 +1,738 @@
+{
+  "namespace": "Global_8001c2",
+  "components": [],
+  "startingPoints": [],
+  "cards": [],
+  "globalCssPaths": [
+    "tokens.css",
+    "styles.css"
+  ],
+  "tokens": [
+    {
+      "name": "--ch-font-sans",
+      "value": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "kind": "font",
+      "definedIn": "tokens.css",
+      "annotation": "font"
+    },
+    {
+      "name": "--ch-font-mono",
+      "value": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+      "kind": "font",
+      "definedIn": "tokens.css",
+      "annotation": "font"
+    },
+    {
+      "name": "--ch-text-xs",
+      "value": "11px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-sm",
+      "value": "12px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-base",
+      "value": "13px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-md",
+      "value": "14px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-lg",
+      "value": "16px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-xl",
+      "value": "20px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-text-2xl",
+      "value": "28px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-weight-normal",
+      "value": "400",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-weight-medium",
+      "value": "500",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-weight-semibold",
+      "value": "600",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-weight-bold",
+      "value": "700",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-leading-tight",
+      "value": "1.25",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-leading-normal",
+      "value": "1.5",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-leading-relaxed",
+      "value": "1.75",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-space-1",
+      "value": "4px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-2",
+      "value": "8px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-3",
+      "value": "12px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-4",
+      "value": "16px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-5",
+      "value": "20px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-6",
+      "value": "24px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-8",
+      "value": "32px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-space-10",
+      "value": "40px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-radius-sm",
+      "value": "4px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-radius-md",
+      "value": "6px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-radius-lg",
+      "value": "8px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-radius-xl",
+      "value": "12px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-radius-full",
+      "value": "9999px",
+      "kind": "spacing",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-topbar-height",
+      "value": "48px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-sidebar-width",
+      "value": "260px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-right-panel-width",
+      "value": "320px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-panel-padding",
+      "value": "16px",
+      "kind": "other",
+      "definedIn": "tokens.css",
+      "annotation": "other"
+    },
+    {
+      "name": "--ch-bg",
+      "value": "#f7f8f7",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface",
+      "value": "#ffffff",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-high",
+      "value": "#f0f1ef",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-highest",
+      "value": "#e6e7e4",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border",
+      "value": "#d9dbd6",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border-strong",
+      "value": "#bfc2bb",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text",
+      "value": "#1a1c19",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-secondary",
+      "value": "#4d524b",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-tertiary",
+      "value": "#7a8179",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent",
+      "value": "#0d9488",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-dim",
+      "value": "#0f766e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-text",
+      "value": "#ffffff",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-soft",
+      "value": "rgba(13, 148, 136, 0.10)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success",
+      "value": "#16a34a",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success-soft",
+      "value": "rgba(22, 163, 74, 0.10)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning",
+      "value": "#d97706",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning-soft",
+      "value": "rgba(217, 119, 6, 0.10)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error",
+      "value": "#dc2626",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error-soft",
+      "value": "rgba(220, 38, 38, 0.10)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info",
+      "value": "#2563eb",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info-soft",
+      "value": "rgba(37, 99, 235, 0.10)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-codex",
+      "value": "#9333ea",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-skill",
+      "value": "#0891b2",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-trigger",
+      "value": "#d97706",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-output",
+      "value": "#16a34a",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-sm",
+      "value": "0 1px 2px rgba(0, 0, 0, 0.06)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-md",
+      "value": "0 4px 12px rgba(0, 0, 0, 0.08)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-lg",
+      "value": "0 12px 32px rgba(0, 0, 0, 0.12)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-bg",
+      "value": "#0d1117",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface",
+      "value": "#161b22",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-high",
+      "value": "#1f242c",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-highest",
+      "value": "#2a3039",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border",
+      "value": "#2f3634",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border-strong",
+      "value": "#3c4a46",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text",
+      "value": "#dde4e1",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-secondary",
+      "value": "#8b929d",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-tertiary",
+      "value": "#5f6a66",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent",
+      "value": "#2dd4bf",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-dim",
+      "value": "#1a9e8e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-text",
+      "value": "#003731",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-soft",
+      "value": "rgba(45, 212, 191, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success",
+      "value": "#22c55e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success-soft",
+      "value": "rgba(34, 197, 94, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning",
+      "value": "#f59e0b",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning-soft",
+      "value": "rgba(245, 158, 11, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error",
+      "value": "#ef4444",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error-soft",
+      "value": "rgba(239, 68, 68, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info",
+      "value": "#3b82f6",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info-soft",
+      "value": "rgba(59, 130, 246, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-codex",
+      "value": "#a855f7",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-skill",
+      "value": "#06b6d4",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-trigger",
+      "value": "#f59e0b",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-output",
+      "value": "#22c55e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-sm",
+      "value": "0 1px 2px rgba(0, 0, 0, 0.30)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-md",
+      "value": "0 4px 12px rgba(0, 0, 0, 0.40)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-lg",
+      "value": "0 12px 32px rgba(0, 0, 0, 0.50)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-bg",
+      "value": "#0d1117",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface",
+      "value": "#161b22",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-high",
+      "value": "#1f242c",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-surface-highest",
+      "value": "#2a3039",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border",
+      "value": "#2f3634",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-border-strong",
+      "value": "#3c4a46",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text",
+      "value": "#dde4e1",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-secondary",
+      "value": "#8b929d",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-text-tertiary",
+      "value": "#5f6a66",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent",
+      "value": "#2dd4bf",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-dim",
+      "value": "#1a9e8e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-text",
+      "value": "#003731",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-accent-soft",
+      "value": "rgba(45, 212, 191, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success",
+      "value": "#22c55e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-success-soft",
+      "value": "rgba(34, 197, 94, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning",
+      "value": "#f59e0b",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-warning-soft",
+      "value": "rgba(245, 158, 11, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error",
+      "value": "#ef4444",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-error-soft",
+      "value": "rgba(239, 68, 68, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info",
+      "value": "#3b82f6",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-info-soft",
+      "value": "rgba(59, 130, 246, 0.14)",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-codex",
+      "value": "#a855f7",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-skill",
+      "value": "#06b6d4",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-trigger",
+      "value": "#f59e0b",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-output",
+      "value": "#22c55e",
+      "kind": "color",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-sm",
+      "value": "0 1px 2px rgba(0, 0, 0, 0.30)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-md",
+      "value": "0 4px 12px rgba(0, 0, 0, 0.40)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    },
+    {
+      "name": "--ch-shadow-lg",
+      "value": "0 12px 32px rgba(0, 0, 0, 0.50)",
+      "kind": "shadow",
+      "definedIn": "tokens.css"
+    }
+  ],
+  "themes": [],
+  "fonts": [],
+  "brandFonts": [],
+  "source": "spa"
+}
