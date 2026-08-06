@@ -269,13 +269,17 @@ function initSchema(database) {
     CREATE INDEX IF NOT EXISTS idx_channel_messages_createdAt ON channel_messages(createdAt DESC);
 
     -- REQ-AGENT-008 接口契约：agent_sessions（对话空间 ↔ PI session 引用）。
-    -- SQLite 为真相；spaceKey 唯一（feishu:<chatId>）；sessionRef = JSONL 路径。
+    -- SQLite 为真相；spaceKey 唯一（feishu:<chatId> / ui:copilot:<sid> /
+    -- ui:project:<pid>:<sid>）；sessionRef = JSONL 路径。
+    -- REQ-AGENT-027（ADR-016 空间=会话）：title 附加列——首条用户消息截断
+    -- （slice(0,40) 无省略号，signoff 裁决 4）；旧行 NULL 兼容（迁移补列）。
     CREATE TABLE IF NOT EXISTS agent_sessions (
       spaceKey TEXT PRIMARY KEY,
       sessionRef TEXT NOT NULL,
       createdAt TEXT NOT NULL,
       lastActiveAt TEXT NOT NULL,
-      summaryRef TEXT
+      summaryRef TEXT,
+      title TEXT
     );
 
     -- REQ-AGENT-016 接口契约：agent_confirmations（确认挂起队列，SQLite 为真相）。
@@ -361,4 +365,10 @@ function migrateSchema(database) {
   `);
   // REQ-AGENT-016: confirmation pending queue (legacy DBs get the table on migration).
   database.exec(CONFIRMATIONS_DDL);
+  // REQ-AGENT-027 (ADR-016 空间=会话): title 附加列（首条用户消息截断 40 字）。
+  // 旧库 ALTER TABLE 补列；既有行（含 feishu:*）title = NULL 无损兼容
+  // （REQ-AGENT-027 标准 6：迁移后旧行 title NULL）。
+  if (!hasColumn(database, "agent_sessions", "title")) {
+    database.exec(`ALTER TABLE agent_sessions ADD COLUMN title TEXT`);
+  }
 }

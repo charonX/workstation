@@ -83,6 +83,7 @@ export function createSessionStore(options = {}) {
       createdAt: row.createdAt,
       lastActiveAt: row.lastActiveAt,
       summaryRef: row.summaryRef ?? null,
+      title: row.title ?? null,
     };
   }
 
@@ -168,6 +169,20 @@ export function createSessionStore(options = {}) {
     }
   }
 
+  // title 首条写入（REQ-AGENT-027 标准 3 / ADR-016）：会话首条用户消息后写入
+  // 截断标题（slice(0,40) 无省略号，signoff 裁决 4）；后续消息不更新——
+  // WHERE title IS NULL 原子条件保证「首条即定」（并发首条也只写入一次）。
+  // SQLite 写失败按 E-SESSION-PERSIST 降级（title 丢失不影响对话）。
+  function setTitleIfEmpty(spaceKey, title) {
+    try {
+      db()
+        .prepare("UPDATE agent_sessions SET title = ? WHERE spaceKey = ? AND title IS NULL")
+        .run(title ?? null, spaceKey);
+    } catch (err) {
+      degradePersistFailure("setTitleIfEmpty", err);
+    }
+  }
+
   // provider/key 变更重建（数据流 7）时同步换代 sessionRef（SQLite 为真相）。
   function updateSessionRef(spaceKey, ref) {
     try {
@@ -204,5 +219,5 @@ export function createSessionStore(options = {}) {
     return () => resetListeners.delete(listener);
   }
 
-  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, onReset };
+  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset };
 }

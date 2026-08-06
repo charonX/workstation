@@ -21,6 +21,7 @@ import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
+import { handleAgentSessions } from "./routes/agentSessions.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
 import { createAgentRouter } from "../services/agentRouter.js";
@@ -167,6 +168,9 @@ export function startServer(options = {}) {
       // 绑定状态经 HTTP 暴露（Settings Agent 区：开始绑定/取消/解绑/状态查询，
       // REQ-AGENT-014）——handleRequest 经 server 引用取路由实例。
       server._opcAgentRouter = agentRouter;
+      // Slice 1（REQ-AGENT-027）：会话 REST 端点（/api/agent/sessions）惰性工厂
+      // 暴露——handleRequest 经 server 引用取路由实例（与确认服务同型接线）。
+      server._opcSessionStoreFactory = getSessionStore;
       // Slice 8：确认服务（REQ-AGENT-016，b 解耦）——惰性创建（ADR-009：首次
       // confirm-request / 确认回调才开库）。挂起队列与 agent_sessions 同库
       // （tech-design 模块图：SQLite：agent_sessions / agent_confirmations）。
@@ -209,6 +213,9 @@ export function startServer(options = {}) {
         }
         return serverAgentService;
       };
+      // Slice 1（REQ-AGENT-027）：会话 REST 端点惰性工厂（与确认服务同型接线——
+      // 路由侧 await 工厂触发首次 createAgentService + start）。
+      server._opcAgentServiceFactory = getAgentService;
       // Slice 7：会话卡片渲染器（REQ-AGENT-019~020）——惰性创建（ADR-009）：
       // 首次流式/执行事件才实例化；adapter 经 channelManager 解析当前飞书通道。
       // 任务卡片（REQ-AGENT-020）由 eventBus 执行事件驱动；sessionKey 从执行
@@ -380,6 +387,14 @@ async function handleRequest(req, res, server) {
     case "settings":
       return handleSettings(req, res, body, subPath, { agentRouter: server._opcAgentRouter });
     case "agent":
+      // 会话 REST（REQ-AGENT-027，Slice 1）：/api/agent/sessions 及其子资源
+      // （messages/reset）→ handleAgentSessions；其余（confirmations）走既有端点。
+      if (subPath[0] === "sessions") {
+        return handleAgentSessions(req, res, body, subPath, {
+          getSessionStore: () => server._opcSessionStoreFactory?.(),
+          getAgentService: () => server._opcAgentServiceFactory?.(),
+        });
+      }
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
       // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
       // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
