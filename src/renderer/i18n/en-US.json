@@ -8,7 +8,8 @@
     "notifications": "Notifications",
     "skills": "Skills",
     "settings": "Settings",
-    "system": "System"
+    "system": "System",
+    "backToChat": "Back to Chat"
   },
   "common": {
     "loading": "Loading...",

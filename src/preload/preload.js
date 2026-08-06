@@ -108,4 +108,23 @@ contextBridge.exposeInMainWorld("opc", {
    */
   __seedNotifications: (notifications) =>
     ipcRenderer.invoke("opc-seed-notifications", notifications),
+
+  /**
+   * Test-only seam to seed pending agent confirmations directly into the
+   * agent-sessions DB (2026-08-02-ui-copilot: E2E 内联确认卡造数，
+   * 仿 __seedNotifications 先例）。与 confirmationService 同库。
+   * @param {Array<{confirmId: string, sessionKey: string, command: string, args?: object, riskLevel?: string}>} rows
+   * @returns {Promise<number>}
+   */
+  __seedAgentConfirmations: (rows) =>
+    ipcRenderer.invoke("opc-seed-agent-confirmations", rows),
+
+  /**
+   * Test-only seam to seed agent sessions (feishu/orphan 会话无 HTTP 创建面，
+   * 2026-08-02-ui-copilot E2E 造数）。写 agent-sessions.db + JSONL 历史。
+   * @param {Array<{spaceKey: string, title?: string, createdAt?: string, lastActiveAt?: string, messages?: Array<{role: string, text: string, time?: string}>}>} rows
+   * @returns {Promise<number>}
+   */
+  __seedAgentSessions: (rows) =>
+    ipcRenderer.invoke("opc-seed-agent-sessions", rows),
 });

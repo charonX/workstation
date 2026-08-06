@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../hooks/useSettings.jsx";
 import DirectoryInput from "../components/shared/DirectoryInput.jsx";
@@ -101,7 +102,10 @@ export default function Settings() {
   const [generalSuccess, setGeneralSuccess] = useState(false);
   // Settings 页 tab 化（REQ-AGENT-023）：默认选中「通用」；切换只改显隐、面板保持
   // DOM 挂载（REQ-AGENT-025：未保存编辑跨 tab 保留；切换不触发任何保存请求）。
-  const [activeTab, setActiveTab] = useState("general");
+  // 2026-08-02-ui-copilot §8 引导态：会话区「去配置」经 navigate state 指定初始 tab
+  // （agentTab=true → 落 Agent 配置 tab）；缺省行为不变（general）。
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.agentTab === true ? "agent" : "general");
 
   // Feishu channel configuration state (independent from the main settings form).
   const [channelStatus, setChannelStatus] = useState(DEFAULT_CHANNEL_STATUS);

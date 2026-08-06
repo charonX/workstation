@@ -247,5 +247,15 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
       .map(rowToConfirmation);
   }
 
-  return { submit, approve, reject, get, listPending };
+  // 全量确认项（含已处理，status = pending|approved|rejected；2026-08-02-ui-copilot
+  // U-1 决策：页面重载后已处理确认卡的重建数据源——GET /api/agent/confirmations 扩展
+  // 返回全量 + status，前端按 status 渲染「已处理」态；pending 语义与 listPending 不变）。
+  function listAll() {
+    return db()
+      .prepare("SELECT * FROM agent_confirmations ORDER BY createdAt")
+      .all()
+      .map(rowToConfirmation);
+  }
+
+  return { submit, approve, reject, get, listPending, listAll };
 }

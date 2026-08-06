@@ -372,8 +372,12 @@ function createProcessAgentService(options = {}) {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   // H1：打包 = ELECTRON_RUN_AS_NODE + asar 内 bundle；开发/测试 = node <源码入口>。
   // 显式传入的 entry 路径不存在（测试 seam 常见：仅占位路径）→ 回退内置 worker 入口。
+  // Electron 源码布局下 agent-worker.js bundle 不存在（bundle 仅在打包产物内）→
+  // 回退源码入口 src/agent/worker.js（vite.worker.config.js：dev/测试直接跑源码入口）。
+  // 生产打包产物内 bundle 存在 → 行为不变（H1 先例）。
+  const bundledEntry = path.join(__dirname, "agent-worker.js");
   const defaultEntry = inElectron
-    ? path.join(__dirname, "agent-worker.js")
+    ? (fs.existsSync(bundledEntry) ? bundledEntry : path.join(__dirname, "../agent/worker.js"))
     : path.join(__dirname, "../agent/worker.js");
   const entry = options.entry
     ? (fs.existsSync(options.entry) ? options.entry : defaultEntry)

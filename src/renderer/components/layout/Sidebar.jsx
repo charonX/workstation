@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 function SidebarNavLink({ to, testid, children }) {
@@ -15,11 +15,29 @@ function SidebarNavLink({ to, testid, children }) {
   );
 }
 
+// 管理区顶部「← 返回对话」（ADR-018 双区模型：管理区 = 旧应用壳原样保留 +
+// 返回对话，REQ-AGENT-026 AC2/4/5）——经会话区 ⚙ 进入管理区，经本按钮回会话区。
+function BackToChatButton() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      className="back-to-chat-button"
+      data-testid="back-to-chat-button"
+      onClick={() => navigate("/assistant")}
+    >
+      ← {t("nav.backToChat")}
+    </button>
+  );
+}
+
 export default function Sidebar() {
   const { t } = useTranslation();
 
   return (
     <aside className="sidebar" data-testid="sidebar">
+      <BackToChatButton />
       <nav className="sidebar-nav">
         <div className="nav-group">
           <div className="nav-label">{t("nav.workspace")}</div>
@@ -32,6 +50,9 @@ export default function Sidebar() {
         <div className="nav-group">
           <div className="nav-label">{t("nav.system")}</div>
           <SidebarNavLink to="/skills" testid="nav-skills">{t("nav.skills")}</SidebarNavLink>
+          {/* 管理区左导八条目（REQ-AGENT-026 AC2）：既有七条目 + 补「通知」
+              （signoff 实现契约：nav-notifications，路由 /notifications 已存在） */}
+          <SidebarNavLink to="/notifications" testid="nav-notifications">{t("nav.notifications")}</SidebarNavLink>
           <SidebarNavLink to="/settings" testid="nav-settings">{t("nav.settings")}</SidebarNavLink>
         </div>
       </nav>

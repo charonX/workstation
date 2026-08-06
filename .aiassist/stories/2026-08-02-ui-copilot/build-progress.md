@@ -23,16 +23,32 @@
 - PRD 对齐 Slice 1+2: ALIGNED（实现零缺失；T-1~T-3 test-gap 候选 + Slice 5 前置 2 项已登记）— 2026-08-06
 - Slice 3: complete (97429ef..8edd068, 业务测试 12/12 绿 + 回归 25/26 仅已知 T-1) + refactor: b560d21（SSE 工厂提取，重构后 24/24 绿，无回滚）— 2026-08-06
 - PRD 对齐 Slice 3: ALIGNED（错误优先级链/SSE 契约/256KB 单位实证；O-1~O-3 → T-4~T-6 登记）— 2026-08-06
+- Slice 4: complete (b560d21..fc9b223, 业务测试 6/6 绿 + 回归全绿) + PRD 对齐: ALIGNED（分流逐字符等价/幂等构造性/SSE 过滤/回投语义/飞书回归 16/16；G-1→T-7；U-1/U-2 归 Slice 5）+ refactor: 无（改动面小，eventBus 发布点即最终形态）— 2026-08-06
 - Slice 2: complete (51add70..c7f5acb, 业务测试 7/7 绿 + Slice 1 两套件/builtin-agent sessionStore+sessionRestore 回归全绿（仅已知 sessionSpace 用例 4 fixture 红）+ 单元 seam 自测 5/5 绿后自删) + refactor: 无（分页窗口抽为导出纯函数 paginateMessages 即最终形态，与 Slice 1 投影纯函数同型）— 2026-08-06
 - Slice 3: complete (97429ef.., 业务测试 12/12 绿（sessionMessage 7 + sessionEvents 5）+ 回归 25/26（仅已知 sessionSpace 用例 4 fixture 红）+ builtin-agent api 33/33 全绿 + lint 干净) + refactor: 无（SSE 挂起订阅/轮次边界宣告即最终形态，改动面收敛于 routes 单文件 + server.js context 1 行）— 2026-08-06
 - Slice 4: complete (8edd068.., 业务测试 6/6 绿（uiConfirmation：3 红 3 绿基线 → 全绿）+ 回归：Slice 1-3 六套件全绿（sessionSpace 仅已知 T-1 fixture 红）+ builtin-agent confirmation/sessionStore/sessionRestore 16/16 绿 + lint 干净；M2 五套件（permissionPolicy/authorizerBridge/skillInjection/toolSurface/workerAssembly）仍红 = seam 未就绪（M2 模块未实现，本切片范围外）) + refactor: 无（eventBus 发布/订阅分流即最终形态——测试 seam 直接 svc.submit 与生产 confirm-request 同构，发布点收敛于 confirmationService.submit 单点）— 2026-08-06
 - PRD 对齐 Slice 4: ALIGNED（S5 后端全链：空间前缀分流/裁决 11 字段/裁决 8 回投语义/幂等与解耦回归；「卡片留历史」渲染层语义随 Slice 5 + GET confirmations 全量对齐）— 2026-08-06
+- Slice 5: complete (fc9b223.., 业务 E2E 5 套件 21/21 全绿 + M1 API 7 套件 34/35（仅已知 T-1）+ builtin-agent confirmation/sessionStore/sessionRestore 16/16 回归绿 + lint 干净 + vite build 过) + PRD 对齐: ALIGNED（双区壳/S3 流式渲染/S4 列表/030 确认卡渲染/034 只读呈现全链；实现偏差 3 项见「已知偏差」）+ refactor: 无（渲染层组件即最终形态；后端小改收敛于 wiring 单点）— 2026-08-06
 
 ## PRD → 代码 可追溯性表
 
 （由各 slice 子代理写入）
 
-### Slice 1（REQ-AGENT-027 空间=会话数据层）
+### Slice 5（REQ-AGENT-026 双区 + 028/029/030/034 渲染层 E2E 面）
+
+> 范围：双区渲染层（默认落地 /assistant + 管理区旧壳 + nav-notifications + back-to-chat）+ 会话区 UI（会话列表/对话窗/流式/确认卡/只读/未配置态）+ 种子 seam ×2 + E2E 全绿。
+> 关键设计：① 默认落地 = 启动 URL 直接带 `#/assistant`（main.js loadURL/loadFile hash），不引入 "/" 重定向路由——管理区左导仪表盘指向 "/"（Dashboard）保持可达（REQ-026 AC3 意图）；② SSE 客户端 = EventSource 封装，断线重连后先 GET messages 全量对齐再续流（F2），发送前等待「连接建立 + 对齐完成」（AC5：EventSource 重试退避 ~3s，断线窗口内发送会丢流式事件）；③ 流式渲染 = delta 累积缓冲 + rAF 节流 flush（FAUX 高速流下主线程不饱和）+ 流式光标 settle（短流可感知）；④ U-1：GET /api/agent/confirmations 扩展返回 `{ pending, confirmations }` 全量 + status，页面重载后已处理卡按 status 重建；⑤ 确认回调回投的会话句柄缺失（种子/稍后处理场景）→ server 接线按空间建句柄 + 挂接挂起 SSE 订阅（assistantConfirm「重启后仍可确认」）；⑥ 应用重启保端口（registry 既有端口优先复用，EADDRINUSE 回退随机）——E2E 重启场景 baseUrl 稳定。
+
+| E2E 用例（测试文件） | REQ / 原型元素 | 实现文件 | 状态 |
+|---|---|---|---|
+| assistantNav AC1~AC5（双区壳/⚙进出/返回对话/直接访问旧路由） | REQ-AGENT-026 AC1~5 + ux/assistant.html screen-chat/screen-admin | `src/renderer/App.jsx`（双区路由）、`pages/Assistant.jsx`、`components/layout/Sidebar.jsx`（nav-notifications + back-to-chat-button）、`main.js`（启动 #/assistant） | COVERED |
+| assistantChat AC4（发送→用户气泡即时→流式增量→完成恢复发送） | REQ-AGENT-028 标准 4 + 原型 messages/composer | `pages/Assistant.jsx`（乐观用户气泡 + SSE text_start/delta/end + rAF 节流）、`components/assistant/Composer.jsx`（流式中置灰） | COVERED |
+| assistantChat AC5（SSE 断线重连→重连后全量对齐再续流） | REQ-AGENT-028 标准 5 / tech-design F2 | `api/agentSessions.js`（subscribeSessionEvents）、`pages/Assistant.jsx`（onOpen 对齐 + 发送前等待对齐） | COVERED |
+| assistantSessions（点会话历史/active 态/项目展开收起/行内＋/新对话空态//reset 新会话） | REQ-AGENT-029 标准 6 + REQ-AGENT-027 标准 4 + 原型 session-item/nav-project/empty-state | `components/assistant/SessionList.jsx`、`pages/Assistant.jsx`（handleReset/新对话归属/auto-select 最近活跃） | COVERED |
+| assistantConfirm AC2~AC4（确认卡渲染/确认/拒绝/稍后处理/已处理态） | REQ-AGENT-030 标准 2/3/4 + 原型 confirm-card | `components/assistant/MessageList.jsx`（data-confirm-card/data-state）、`pages/Assistant.jsx`（approve/reject → 既有端点）、`confirmationService.listAll()` + `agentConfirmations.js` GET 全量（U-1）、`server.js` notifyResult 接线（句柄缺失建句柄 + 挂接订阅）、`main.js`/`preload.js` `__seedAgentConfirmations` | COVERED |
+| assistantFeishu（只读视图/无输入区/新消息可见/孤儿 deleted 态/无权限 tab/未配置引导） | REQ-AGENT-034 标准 1/3 + REQ-AGENT-029 标准 2 + REQ-AGENT-033 标准 6 + REQ-AGENT-028 标准 3（UI 面）+ §8 错误态 | `components/assistant/Composer.jsx`（composer-readonly/readonly-reason）、`SessionList.jsx`（.deleted 划线 + 无＋）、`pages/Assistant.jsx`（spaceOf 空间语义/未配置引导态/去配置）、`main.js`/`preload.js` `__seedAgentSessions` | COVERED |
+
+> 支撑性实现（渲染层 E2E 全绿所需的后端小改，均收敛于既有接线点）：① 重启保端口（`server.js` preferredPort + EADDRINUSE 回退随机、`main.js` 读 registry 既有端口）——assistantConfirm AC3 重启场景 baseUrl 稳定；② 确认回调回投句柄保障（`server.js` notifyResult：会话句柄缺失 → buildSessionConfig 同源建句柄 + attachPendingSseSubs 无条件挂接）——种子/稍后处理场景结果流式回投可达；③ `agentService` worker 入口回退（Electron 源码布局下 agent-worker.js bundle 不存在 → 回退 src/agent/worker.js，vite.worker.config.js「dev/测试直接跑源码入口」意图落地）——E2E FAUX 流式可跑；④ `SessionList`/`ChatView` 等组件 testid 契约逐一对齐五套 E2E 文件头「实现约定」块。
 
 | REQ-AGENT-027 验收标准 | 意图（PRD §2/§7.1/§10.1） | 实现文件 | 测试文件 | 状态 |
 |---|---|---|---|---|
@@ -92,6 +108,9 @@
 （实现与 HTML 原型/契约的偏差显式记录）
 
 - **Slice 1 单红测试 = 业务测试自身缺陷（非实现缺陷）**：`sessionSpace.test.js` 用例 4 前置断言 `assert.ok(firstText.length > 40)` 与 fixture「请帮我分析一下这个项目最近三次执行失败的根本原因并给出具体的改进建议清单」实际长度 36 矛盾（该 fixture 与断言均出自签核 commit c88f72c，工作树未改）。实现侧已按契约意图实现并经手工 e2e 验证：>40 字消息 → title = slice(0,40) 无省略号、第二条消息不更新。修复归属 /bug（test-gap 分类，test-author 修正 fixture 或调前置断言）——实现者按契约不得改业务测试，故留红。
+- **Slice 5 会话区文案 = 中文直写（未走 i18n en-US 直译）**：五套 E2E 断言中文文案且不 PATCH language（默认 en-US 下断言「通用」「新对话」「飞书会话 · 请到飞书继续对话」「项目已删除」等）——会话区组件文案按中文原型直写（testid/文案为已签核契约）；管理区新增元素（back-to-chat）走 i18n 双语文案。en-US 下会话区译文观感入 REFLECT（照 builtin-agent 签核裁决 2 惯例；test-plan REFLECT 备注「en-US 译文观感」在会话区为留白项）。
+- **Slice 5 composer 发送后不清空输入**：原型发送后清空输入；E2E 契约「流式完成后发送按钮恢复可用」要求发送文本保留（按钮可用性 = 文本非空 ∧ 非流式）——实现保留文本，重复提交由「流式中置灰 + 内核串行队列」兜底。
+- **既有 E2E 初始落地断言（T-8，非实现缺陷）**：默认落地切 /assistant（REQ-AGENT-026 AC1 已签核）后，settingsTabs/topbar/themeLanguage/onboarding/dashboard/notificationCenter/flowEditor 等既有套件在启动态点击管理区左导/顶栏的用例全部红（nav-settings 等不在会话区左导）。tech-design 风险表已预警（「默认路由切换影响既有 E2E → 套件大面积红；仅初始落地断言需适配，Settings 三套件已有同型适配先例」）；适配属测试侧（[test] commit，同 95c2e0a 先例）。本切片已实测 settingsTabs 红因 = 启动落地（页面快照 = 会话区），非管理区壳改动（nav-notifications/back-to-chat 经 assistantNav AC2/AC3 验证在管理区内正常）。
 - 列表端点 `{general, projects, feishu}` 为最小分组形态：项目名 join/孤儿标记/agent_space_meta/按 lastActiveAt 倒序细节随 REQ-AGENT-029（Slice 2）完整化（本切片内仅承担惰性迁移触发，迁移用例只断言 200）。
 
 ## 待 /bug 项（test-gap 候选，PRD 对齐子代理 2026-08-06 增补）
@@ -105,6 +124,9 @@
 | T-5 | SSE 直接挂接路径（连接打开时会话已存在）无测试（仅挂起路径覆盖）（O-2） | 补一条 attach(existing) 用例（低危） |
 | T-6 | `GET events` 对不存在 spaceKey 404 无测试（O-3） | 补一条（极低危） |
 > O-4 信息项：用例 3 字节断言 vs enforceSizeLimit 字符口径，CJK fixture 时注意（当前 ASCII 恒绿，不动）
+| T-7 | UI 空间「worker confirm 级工具 → IPC confirm-request → submit」生产全链无端到端用例（Slice 4 对齐 G-1；直桥 submit seam 覆盖，链路其余为已验收接线） | M2 workerAssembly 顺带补一条，或登记 |
+> Slice 4 对齐 UNCERTAIN（Slice 5 前置）：U-1 `GET /api/agent/confirmations` 仅返回 {pending}，页面重载后已处理卡无从重建——Slice 5 决策：GET 扩展返回全量+status（倾向）；U-2 approve/reject 后无 SSE 状态事件，多端一致靠 GET 全量对齐（与 U-1 同源）
+| T-8 | 既有 E2E（settingsTabs/topbar/themeLanguage/onboarding/dashboard/notificationCenter/flowEditor/skillLibrary/agentTypes/settingsChannel/versionDisplay 等 ~20 套件）启动态点击管理区导航的用例在默认落地 /assistant 后全红（tech-design 风险表已预警；已实测红因 = 启动落地，非管理区壳改动） | 测试侧适配：启动后先经 ⚙ 进管理区再走原断言（同 95c2e0a「三签名套件 tab 导航适配」先例），或显式 goto 旧路由 |
 
 ## Slice 5 前置确认项（PRD 对齐子代理 UNCERTAIN）
 

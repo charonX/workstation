@@ -3,7 +3,9 @@
 // - POST /api/agent/confirmations/:confirmId/approve — 确认 → 确认服务驱动同一
 //   命令模块执行（不经过 agent turn）→ notify-result 注入会话（自然语言回投）；
 // - POST /api/agent/confirmations/:confirmId/reject — 拒绝 → 不执行 + 回投「已取消」；
-// - GET /api/agent/confirmations — 挂起队列可见（M2 移动块基础：待确认项查看）。
+// - GET /api/agent/confirmations — 挂起队列可见（M2 移动块基础：待确认项查看）；
+//   U-1（2026-08-02-ui-copilot）：扩展返回全量 + status（{ pending, confirmations }，
+//   含 approved/rejected——页面重载后已处理确认卡重建数据源）。
 // confirmId 幂等：重复回调一次执行（确认服务内保证）。
 // 卡片按钮 value 携带 confirmId + decision（{ decision: "approve"|"reject" }）——
 // 飞书卡片动作 → 本端点的桥接（WS 事件分发）属通道集成，随 QA/REFLECT 验收。
@@ -21,7 +23,10 @@ export async function handleAgentConfirmations(req, res, body, subPath = [], con
   const rest = subPath.slice(1);
 
   if (req.method === "GET" && rest.length === 0) {
-    return ok(res, { pending: svc.listPending() });
+    // 2026-08-02-ui-copilot U-1：挂起队列可见（既有 { pending } 形态保留，builtin-agent
+    // confirmation.test.js 回归断言 pending 数组）+ 全量确认项（含 approved/rejected，
+    // 页面重载后已处理确认卡重建数据源——前端按 status 渲染「已处理」态）。
+    return ok(res, { pending: svc.listPending(), confirmations: svc.listAll() });
   }
 
   const confirmId = rest[0];

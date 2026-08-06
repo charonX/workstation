@@ -426,8 +426,9 @@ const pendingSseSubs = new Map();
 
 // 会话句柄创建后挂接挂起订阅（handlePostMessage 在 createSession 之后调用）：
 // 事件从下一轮起持续收流（SSE 只推增量、不做事件回溯，F2）。spaceKey 无挂起
-// 订阅时为 no-op（常态路径）。
-function attachPendingSseSubs(spaceKey, svc) {
+// 订阅时为 no-op（常态路径）。导出供 server.js 接线复用（确认回调建句柄后
+// 同型挂接——assistantConfirm「稍后处理」场景的流式回投）。
+export function attachPendingSseSubs(spaceKey, svc) {
   const subs = pendingSseSubs.get(spaceKey);
   if (!subs || subs.size === 0) return;
   const session = peekSession(svc, spaceKey);
@@ -571,7 +572,9 @@ function createSseSubscription(res, spaceKey) {
 }
 
 // —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
-function buildSessionConfig() {
+// 导出供 server.js 接线复用（确认回调回投时会话句柄缺失需按空间建句柄——
+// 与 handlePostMessage 同源构建，避免双源漂移）。
+export function buildSessionConfig() {
   const agentCfg = settingsService.loadSettings()?.agent ?? {};
   const provider =
     typeof agentCfg.provider === "string" && agentCfg.provider !== "" ? agentCfg.provider : DEFAULT_PROVIDER;

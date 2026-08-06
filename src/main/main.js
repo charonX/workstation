@@ -11,17 +11,20 @@ import "./bootstrap-env.js";
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from "electron";
 import path from "node:path";
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import { migrateLegacyDb } from "../db.js";
 import { discoverServer } from "../cli/server.js";
-import { takeoverExistingServer } from "../serverRegistry.js";
+import { takeoverExistingServer, readServerInfoRaw } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
 import { checkForUpdates, E_UPDATE_PARSE } from "./updates.js";
 import { setSecretBackend } from "../services/secretStore.js";
+import { configDir } from "../services/settingsService.js";
+import { safeKeyFor } from "../services/sessionStore.js";
 
 const require = createRequire(import.meta.url);
 
@@ -166,7 +169,19 @@ async function createWindow() {
         return;
       }
     }
-    serverCtx = await startServer({ reset: false });
+    // 重启保端口（2026-08-02-ui-copilot assistantConfirm AC3「重启后卡片仍挂起」E2E
+    // 契约 + server.json 消费者稳定性）：复用本配置目录 registry 中最近一条记录的
+    // 端口——应用重启后 baseUrl 不变（E2E 重启场景的既有 apiBaseUrl 继续可达）。
+    // 端口被占用时由 startServer 回退随机端口（EADDRINUSE → listen(0)）。
+    let preferredPort = 0;
+    try {
+      const records = readServerInfoRaw();
+      const last = records[records.length - 1];
+      if (last && Number.isInteger(last.port) && last.port > 0) preferredPort = last.port;
+    } catch {
+      // 无既有记录 → 随机端口。
+    }
+    serverCtx = await startServer({ reset: false, port: preferredPort });
     const { server, baseUrl } = serverCtx;
     const { port } = server.address();
     apiBaseUrl = baseUrl;
@@ -195,13 +210,16 @@ async function createWindow() {
   });
 
   // Load renderer
+  // 默认落地 = 会话区（ADR-018 / REQ-AGENT-026 AC1）：启动 URL 直接带 #/assistant
+  // （不引入 "/" 重定向路由——管理区左导仪表盘指向 "/"（Dashboard）须保持可达，
+  // 旧壳零改动；"管理区 ↔ 会话区"往返由 back-to-chat / open-admin 显式导航）。
   if (process.env.NODE_ENV === "development" || process.env.ELECTRON_IS_DEV) {
     // Development: load from Vite dev server
-    await mainWindow.loadURL("http://localhost:5173");
+    await mainWindow.loadURL("http://localhost:5173/#/assistant");
   } else {
     // Production / test: load bundled renderer
     const rendererPath = path.join(__dirname, "../renderer/main_window/index.html");
-    await mainWindow.loadFile(rendererPath);
+    await mainWindow.loadFile(rendererPath, { hash: "/assistant" });
   }
 
   mainWindow.maximize();
@@ -354,6 +372,93 @@ if (process.env.NODE_ENV === "development") {
     }
     return list.length;
   });
+}
+
+// Test-only seam（2026-08-02-ui-copilot，仿 opc-seed-notifications 先例）：E2E 直写
+// agent-sessions.db 造数——与生产 sessionStore/confirmationService 同库同路径
+// （<configDir>/agent-sessions.db；JSONL 会话目录 <configDir>/agent-sessions）。
+// Guarded to development so production builds do not expose this surface.
+if (process.env.NODE_ENV === "development") {
+  // 直写挂起确认行（assistantConfirm.test.cjs 种子 seam）：rows =
+  // [{ confirmId, sessionKey, command, args?, riskLevel? }] → INSERT pending 行。
+  // 挂起队列 = SQLite 真相（agent_confirmations），与 confirmationService 同库。
+  ipcMain.handle("opc-seed-agent-confirmations", async (_event, rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const db = getDb(path.join(configDir(), "agent-sessions.db"));
+    const insert = db.prepare(`
+      INSERT OR REPLACE INTO agent_confirmations
+        (confirmId, sessionKey, command, args, riskLevel, status, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+    `);
+    const now = new Date().toISOString();
+    for (const r of list) {
+      insert.run(
+        r.confirmId,
+        r.sessionKey ?? "",
+        r.command ?? "",
+        JSON.stringify(r.args ?? {}),
+        r.riskLevel ?? "confirm",
+        now,
+        now
+      );
+    }
+    return list.length;
+  });
+
+  // 造飞书/孤儿会话（assistantFeishu.test.cjs 种子 seam）：rows =
+  // [{ spaceKey, title?, createdAt?, lastActiveAt?, messages?: [{ role, text, time? }] }]
+  // - 新 spaceKey → INSERT agent_sessions 行 + JSONL 历史（可被 GET .../messages
+  //   投影读到，气泡渲染源）；
+  // - 已有 spaceKey → 追加 messages + 更新 lastActiveAt（模拟通道侧新消息到达）；
+  // - sessionRef 命名与 sessionStore 同规（safeKeyFor）。
+  ipcMain.handle("opc-seed-agent-sessions", async (_event, rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const db = getDb(path.join(configDir(), "agent-sessions.db"));
+    const sessionDir = path.join(configDir(), "agent-sessions");
+    const now = new Date().toISOString();
+    for (const r of list) {
+      const spaceKey = String(r.spaceKey ?? "");
+      if (spaceKey === "") continue;
+      const ref = path.join(sessionDir, `${safeKeyFor(spaceKey)}.jsonl`);
+      const existing = db.prepare("SELECT sessionRef FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
+      if (existing) {
+        // 已有空间：追加消息 + 更新 lastActiveAt（lastActiveAt 缺省 = 不改变活跃序外
+        // 的新时间——模拟「新消息到达」）。
+        appendSeedMessages(ref, r.messages);
+        db.prepare("UPDATE agent_sessions SET lastActiveAt = ? WHERE spaceKey = ?").run(
+          r.lastActiveAt ?? now,
+          spaceKey
+        );
+      } else {
+        fsSync.mkdirSync(sessionDir, { recursive: true });
+        db.prepare(
+          "INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt, title) VALUES (?, ?, ?, ?, ?)"
+        ).run(spaceKey, ref, r.createdAt ?? now, r.lastActiveAt ?? now, r.title ?? null);
+        appendSeedMessages(ref, r.messages);
+      }
+    }
+    return list.length;
+  });
+}
+
+// JSONL 历史种子追加（与 agentService appendJsonlMessage 同构——B1：平台侧不复制
+// 全文，运行时真相 = PI JSONL；投影契约见 agentSessions.js projectMessagesFromJsonl）。
+function appendSeedMessages(ref, messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  if (list.length === 0) return;
+  fsSync.mkdirSync(path.dirname(ref), { recursive: true });
+  const lines = list.map((m) =>
+    JSON.stringify({
+      type: "message",
+      id: randomUUID(),
+      timestamp: typeof m.time === "string" ? m.time : new Date().toISOString(),
+      message: {
+        role: typeof m.role === "string" ? m.role : "user",
+        content: [{ type: "text", text: String(m.text ?? "") }],
+      },
+    })
+  );
+  fsSync.appendFileSync(ref, `${lines.join("\n")}\n`);
 }
 
 app.whenReady().then(createWindow);

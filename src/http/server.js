@@ -21,7 +21,7 @@ import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
-import { handleAgentSessions } from "./routes/agentSessions.js";
+import { handleAgentSessions, buildSessionConfig, attachPendingSseSubs } from "./routes/agentSessions.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
 import { createAgentRouter } from "../services/agentRouter.js";
@@ -100,7 +100,7 @@ export function startServer(options = {}) {
     process.env.DB_PATH = dbPath;
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       handleRequest(req, res, server).catch((err) => {
         console.error("HTTP handler error:", err);
@@ -111,7 +111,12 @@ export function startServer(options = {}) {
       });
     });
 
-    server.listen(0, "127.0.0.1", async () => {
+    // 首选端口（2026-08-02-ui-copilot 重启保端口：main.js 传 registry 既有端口，
+    // 应用重启后 baseUrl 稳定）；缺省/被占用 → 随机端口（listen(0)）。
+    const preferredPort = Number.isInteger(options.port) && options.port > 0 ? options.port : 0;
+    let usingPreferredPort = preferredPort > 0;
+
+    const onListening = async () => {
       const { port } = server.address();
       activeServers.add(server);
       if (dbPath) server._opcDbPath = dbPath;
@@ -188,6 +193,27 @@ export function startServer(options = {}) {
             execute: async (command, args) => executeToolCommand(command, args, { baseUrl: `http://127.0.0.1:${port}` }),
             notifyResult: async ({ sessionKey, result }) => {
               const svc = await getAgentService();
+              // 会话句柄缺失（UI 打开会话但从未发消息——种子/「稍后处理」场景，
+              // REQ-AGENT-030 AC3：确认与执行解耦，挂起队列 = SQLite 真相）→ 先按
+              // 该空间建句柄（provider/key 与 handlePostMessage 同源构建），再注入
+              // 结果——保证确认回调的结果经 SSE 流式回投可达（assistantConfirm E2E）。
+              // 会话句柄缺失（UI 打开会话但从未发消息——种子/「稍后处理」场景，
+              // REQ-AGENT-030 AC3：确认与执行解耦，挂起队列 = SQLite 真相）→ 先按
+              // 该空间建句柄（provider/key 与 handlePostMessage 同源构建），再注入
+              // 结果——保证确认回调的结果经 SSE 流式回投可达（assistantConfirm E2E）。
+              // 注：句柄可能已存在（getAgentService 启动时按 agent_sessions 水合既有
+              // 行——hydration 不挂接订阅），故 attachPendingSseSubs 无条件执行
+              // （无挂起订阅时为 no-op）。
+              if (!svc.getSession(sessionKey)) {
+                const cfg = buildSessionConfig();
+                svc.createSession({
+                  spaceKey: sessionKey,
+                  provider: cfg.provider,
+                  apiKey: cfg.apiKey,
+                  identity: cfg.identity,
+                });
+              }
+              attachPendingSseSubs(sessionKey, svc);
               svc.notifyResult(sessionKey, result);
             },
             sendCard: (payload) => channelManager.sendCard("feishu", payload),
@@ -295,7 +321,18 @@ export function startServer(options = {}) {
       eventBus.subscribe("execution:progress", (e) => dispatchExecutionEvent(e, "progress", { log: e.log }));
       eventBus.subscribe("execution:completed", (e) => dispatchExecutionEvent(e, "completed", { output: e.output, artifacts: e.artifacts }));
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
+    };
+
+    // 首选端口被占用（重启保端口窗口竞争等）→ 回退随机端口；其他监听错误上抛。
+    server.on("error", (err) => {
+      if (err?.code === "EADDRINUSE" && usingPreferredPort) {
+        usingPreferredPort = false;
+        server.listen(0, "127.0.0.1", onListening);
+        return;
+      }
+      reject(err);
     });
+    server.listen(preferredPort, "127.0.0.1", onListening);
   });
 }
 
