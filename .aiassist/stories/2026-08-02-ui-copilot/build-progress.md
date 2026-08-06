@@ -21,8 +21,12 @@
 - Slice 1: complete (52171f1..425705d, 业务测试 9/10 绿 + 既有回归全绿；1 红 = 业务测试自身前置断言缺陷，见「已知偏差」) + refactor: 无（本切片改动面小，route 纯函数导出即最终形态）— 2026-08-06
 - Slice 2: complete (425705d..9fc8c83, 业务测试 7/7 绿 + 回归 18/19) + refactor: 97429ef（数据层聚合重构 2 文件，重构后 19/19 绿，无回滚）— 2026-08-06
 - PRD 对齐 Slice 1+2: ALIGNED（实现零缺失；T-1~T-3 test-gap 候选 + Slice 5 前置 2 项已登记）— 2026-08-06
+- Slice 3: complete (97429ef..8edd068, 业务测试 12/12 绿 + 回归 25/26 仅已知 T-1) + refactor: b560d21（SSE 工厂提取，重构后 24/24 绿，无回滚）— 2026-08-06
+- PRD 对齐 Slice 3: ALIGNED（错误优先级链/SSE 契约/256KB 单位实证；O-1~O-3 → T-4~T-6 登记）— 2026-08-06
 - Slice 2: complete (51add70..c7f5acb, 业务测试 7/7 绿 + Slice 1 两套件/builtin-agent sessionStore+sessionRestore 回归全绿（仅已知 sessionSpace 用例 4 fixture 红）+ 单元 seam 自测 5/5 绿后自删) + refactor: 无（分页窗口抽为导出纯函数 paginateMessages 即最终形态，与 Slice 1 投影纯函数同型）— 2026-08-06
 - Slice 3: complete (97429ef.., 业务测试 12/12 绿（sessionMessage 7 + sessionEvents 5）+ 回归 25/26（仅已知 sessionSpace 用例 4 fixture 红）+ builtin-agent api 33/33 全绿 + lint 干净) + refactor: 无（SSE 挂起订阅/轮次边界宣告即最终形态，改动面收敛于 routes 单文件 + server.js context 1 行）— 2026-08-06
+- Slice 4: complete (8edd068.., 业务测试 6/6 绿（uiConfirmation：3 红 3 绿基线 → 全绿）+ 回归：Slice 1-3 六套件全绿（sessionSpace 仅已知 T-1 fixture 红）+ builtin-agent confirmation/sessionStore/sessionRestore 16/16 绿 + lint 干净；M2 五套件（permissionPolicy/authorizerBridge/skillInjection/toolSurface/workerAssembly）仍红 = seam 未就绪（M2 模块未实现，本切片范围外）) + refactor: 无（eventBus 发布/订阅分流即最终形态——测试 seam 直接 svc.submit 与生产 confirm-request 同构，发布点收敛于 confirmationService.submit 单点）— 2026-08-06
+- PRD 对齐 Slice 4: ALIGNED（S5 后端全链：空间前缀分流/裁决 11 字段/裁决 8 回投语义/幂等与解耦回归；「卡片留历史」渲染层语义随 Slice 5 + GET confirmations 全量对齐）— 2026-08-06
 
 ## PRD → 代码 可追溯性表
 
@@ -67,6 +71,22 @@
 
 > 支撑性实现：① **300KB 单位确认**（Slice 5 前置 UNCERTAIN 项之一落地）：enforceSizeLimit 按 `JSON.stringify(event).length` 与 256KB 比较——单位 = 字符（String.length / UTF-16 code units），既有回归同单位断言；输入上限统一为 256KB 字符（PRD §7「长度上限沿用 enforceSizeLimit」），300KB 明确越界 → 400。Slice 1-2 占位上限 300KB（`>` 判断）会让恰 300KB 输入放行（sessionMessage 超限用例当时红 + 87s 拖尾），本切片修正。② **text_start 来源**：worker 未映射 PI turn_start/turn_end（worker 仅产 text_delta/text_end），轮次边界由 SSE 层宣告（imRouter stream_start 同型先例）——每轮首个文本事件前补发 text_start，text_end 后重置。③ **SSE 连接先于首条消息打开**（用例 2/3/4/5 均如此）：挂起订阅注册表 pendingSseSubs，handlePostMessage 在 createSession 后补挂接；peekAgentService 为同步窥探（未创建 → null），打开 events 连接不启动 agent 子进程（ADR-009 保持）。
 
+### Slice 4（REQ-AGENT-030 内联确认卡桥——后端部分）
+
+> 范围：M1 确认桥形态 = **命令保险层分类直桥**（tech-design 里程碑切分：授权桥雏形，不含 gotgenes）。后端 = UI 空间高危 → 挂起行 + SSE confirmation-pending + approve/reject 既有端点复用 + 结果回投 agent 消息。渲染层确认卡 UI 属 Slice 5（assistantConfirm.test.cjs）。
+> 关键设计：**确认卡渲染目标按 spaceKey 前缀分流**（tech-design 模块关系图 / F3 / CONTEXT.md 授权桥——一套队列、按空间前缀分流渲染）——`ui:*` 空间新建挂起行 → eventBus `confirmation-pending` 发布（confirmationService submit 内，**不依赖特定入队路径**：worker confirm-request 与测试直桥 submit 同构）→ SSE 路由按空间订阅过滤转发（裁决 11 字段 confirmId/operation/description）；`feishu:*` → 既有 sendCard 路径全链不动。approve/reject 回投走既有语义（裁决 8）：approve → 执行结果经 notify-result 注入（FAUX 回声含「执行结果已就绪」注入提示词）；reject → 不执行 + 回投「操作已取消」（confirmationService 既有注入）。挂起队列 = SQLite 真相（agent_confirmations），暂不处理稍后仍有效、重复回调幂等——既有语义回归（本套件 3 例设计使然绿）。
+
+| REQ-AGENT-030 验收标准 | 意图（PRD §4 S5/§6.2/§8 + signoff 裁决） | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|---|
+| 1. CLI 高危（既有命令保险层分类）在 UI 空间触发 → 挂起行创建 + SSE confirmation-pending（含确认 id、操作描述） | S5 内联高危确认卡（通用空间 CLI 工具面天然含删除/配置变更高危，挂起后 UI 必须能确认）+ tech-design F3.1 + 裁决 11（confirmation-pending 字段 = confirmId/operation/description） | `src/services/confirmationService.js`（submit：ui:* 空间分支 publishPending → eventBus 发布；isUiSpaceKey/buildPendingDescription 纯函数）、`src/http/routes/agentSessions.js`（createSseSubscription：subscribe confirmation-pending 按 spaceKey 过滤转发 + detach 摘除） | `.../api/uiConfirmation.test.js` 用例 1 | COVERED |
+| 2. 点确认 → 调既有端点 → 执行结果以 agent 消息流式呈现；点拒绝 → agent 告知已取消 | PRD §6 S5 操作流（确认 → 操作执行结果以 agent 消息呈现；拒绝 → 中止告知）+ tech-design F3.2/3.3 + 裁决 8（approve 回投执行结果语义 / reject 回投「操作已取消」confirmationService 既有注入） | 既有端点 `src/http/routes/agentConfirmations.js` + `src/http/server.js`（approve → executeToolCommand C2 同模块执行 + notifyResult → agentService → worker notify-result 回投；reject 不执行）——本切片零改动（既有全链接线复用），确认服务语义未动 | `.../api/uiConfirmation.test.js` 用例 2/3（FAUX 回声断言「执行结果已就绪」/「操作已取消」） | COVERED |
+| 3. 暂不处理：卡片留历史、稍后点击仍有效（确认与执行解耦，挂起队列 = SQLite 真相） | PRD §6.2 S5 分支（稍后处理 → 卡片留历史可后点）+ tech-design 授权桥契约幂等性 | 既有 `src/services/confirmationService.js`（agent_confirmations SQLite 持久化 + 幂等认领，未动语义） | `.../api/uiConfirmation.test.js` 用例 4（队列级；「卡片保留在历史中」渲染层由 E2E assistantConfirm.test.cjs 覆盖） | COVERED |
+| 4. 已处理卡片置灰「已处理」；重复回调幂等（既有语义回归） | PRD §8（确认回调过期/重复 → 置灰「已处理」）+ REQ-AGENT-016 标准 4 既有幂等 | 既有 `src/services/confirmationService.js`（claimPending 非 pending 认领失败 → 返回当前状态不执行，未动）；「置灰」渲染层 Slice 5 | `.../api/uiConfirmation.test.js` 用例 5 | COVERED |
+| 5. 飞书空间确认卡片路径回归：同一挂起队列，飞书渲染与回调不变 | S5 飞书卡片路径完全不变（一套队列一张卡；渲染目标按 spaceKey 前缀分流）+ tech-design F3.4 | `src/services/confirmationService.js`（submit 非 ui:* 空间走既有 sendCard 分支，零行为变化） | `.../api/uiConfirmation.test.js` 用例 6（跨空间共存/互不干扰）+ builtin-agent `confirmation.test.js` 全套 7/7 回归 | COVERED |
+
+> 支撑性实现：① **空间前缀分流接线**——confirmationService 新增依赖仅 `eventBus`（服务侧发布先例：taskService execution 事件）；`ui:*` 空间跳过 sendCard（避免误向飞书通道发卡，chatchatId 语义不属于 UI 空间）；feishuReadonly 静态审查（routes 无 sendCard/channelManager/cardRenderer）继续通过。② **SSE 通道扩展**——confirmation-pending 经 eventBus 直达 SSE 订阅（不经 session 句柄），与 handle session-event 通道互不干扰（非文本事件不参与轮次边界宣告）；SSE 只推增量（发布时连接不在 → 丢失，渲染层以 GET /api/agent/confirmations 全量对齐——「卡片留历史」数据源）。③ **生产直桥路径全链复用**：worker 工具面 confirm 级 → IPC confirm-request（sessionKey = ui 空间 key）→ agentService onConfirmRequest → server.js getConfirmationService().submit → 发布 + 入队——本切片无 server.js/worker/agentService 改动（Slice 8 既有接线即 M1 直桥入队点）。④ 单元测试 /tdd 自写自删（3 例：ui:* 发布字段/feishu 不发布/重复 submit 不重复发布，红→绿→删）。
+
+
 ## 已知偏差
 
 （实现与 HTML 原型/契约的偏差显式记录）
@@ -81,6 +101,10 @@
 | T-1 | sessionSpace 用例 4 fixture 36 字 < 前置断言 40（已知） | test-author 加长 fixture ≥41 字 |
 | T-2 | sessionList 用例 2 孤儿 projectName 弱断言（`null || string`），无法捕获裁决 16 回归 | 收紧为 `=== null` |
 | T-3 | sessionReset 无 `ui:project:*` 组 reset 用例（仅 general 覆盖） | 补一条同分组前缀断言（低危） |
+| T-4 | 错误优先级无判别性测试（feishu 403 / 孤儿 409 用例均已配 agent，E-AGENT-CONFIG 提前也全绿）——裁决 2 未被捕获（Slice 3 对齐 O-1） | 补两条：feishu+未配置→403；孤儿+未配置→409 E-SESSION-ORPHAN |
+| T-5 | SSE 直接挂接路径（连接打开时会话已存在）无测试（仅挂起路径覆盖）（O-2） | 补一条 attach(existing) 用例（低危） |
+| T-6 | `GET events` 对不存在 spaceKey 404 无测试（O-3） | 补一条（极低危） |
+> O-4 信息项：用例 3 字节断言 vs enforceSizeLimit 字符口径，CJK fixture 时注意（当前 ASCII 恒绿，不动）
 
 ## Slice 5 前置确认项（PRD 对齐子代理 UNCERTAIN）
 

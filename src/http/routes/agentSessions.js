@@ -32,6 +32,14 @@
 //                                                     允许辅助事件交错）；断线不崩、重连可再建；
 //                                                     confirmation-pending 事件类型由 Slice 4 产生，
 //                                                     本切片接通「事件流经 SSE 转发」通道
+// Slice 4（REQ-AGENT-030 内联确认卡桥）端点增补：
+//   GET  .../events 订阅 eventBus `confirmation-pending`（confirmationService 按空间
+//                                                    前缀分流发布：ui:* 空间新建挂起行 → 发布；
+//                                                    飞书空间不走此通道）→ 按本连接 spaceKey
+//                                                    过滤转发为 SSE confirmation-pending 帧
+//                                                    （字段 = 裁决 11：confirmId/operation/
+//                                                    description；不依赖特定入队路径——直桥
+//                                                    submit 与 worker confirm-request 同构发布）。
 //
 // 空间 key 语法（ADR-016 / CONTEXT.md 对话空间）：ui:copilot:<sessionId>（通用空间）、
 // ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 世代制沿用（不套用
@@ -51,6 +59,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "../../db.js";
 import * as settingsService from "../../services/settingsService.js";
 import { decryptSecret } from "../../services/secretStore.js";
+import { subscribe } from "../../services/eventBus.js";
 
 const DEFAULT_PROVIDER = "deepseek";
 
@@ -495,6 +504,18 @@ function createSseSubscription(res, spaceKey) {
     }
   };
 
+  // Slice 4（REQ-AGENT-030）：confirmation-pending 事件通道——confirmationService
+  // 对 ui:* 空间新建挂起行发布（eventBus，按空间前缀分流），本连接按 spaceKey
+  // 过滤转发（字段 = 裁决 11：confirmId/operation/description；sessionKey 仅订阅
+  // 侧过滤用，不出现在事件帧）。与 handle 事件互不干扰（confirmation-pending
+  // 非文本事件，不参与轮次边界宣告）；SSE 只推增量（事件发布时连接不在 → 丢失，
+  // 渲染层以 GET /api/agent/confirmations 全量对齐——F3「卡片留历史」数据源）。
+  const unsubscribePending = subscribe("confirmation-pending", (payload) => {
+    if (detached || !payload || payload.sessionKey !== spaceKey) return;
+    const { sessionKey: _sessionKey, ...pending } = payload;
+    writeFrame({ type: "confirmation-pending", ...pending });
+  });
+
   const onEvent = (ev) => {
     if (detached || !ev || typeof ev.type !== "string") return;
     if (ev.type === "text_start") {
@@ -518,6 +539,7 @@ function createSseSubscription(res, spaceKey) {
     detach() {
       if (detached) return;
       detached = true;
+      unsubscribePending(); // 摘除 confirmation-pending 订阅（eventBus 回调先查 detached，幂等）
       if (heartbeat) clearInterval(heartbeat);
       if (attached && session) session.off("session-event", onEvent);
       const subs = pendingSseSubs.get(spaceKey);

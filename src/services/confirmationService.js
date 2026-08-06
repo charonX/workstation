@@ -18,9 +18,18 @@
 // confirm-request 内容）；execute/notifyResult/sendCard 均可选注入（缺省时对应
 // 步骤为 no-op——业务测试按需注入，生产接线见 server.js）。
 //
+// 确认卡渲染目标按空间前缀分流（2026-08-02-ui-copilot REQ-AGENT-030 / CONTEXT.md
+// 授权桥：一套队列，按空间前缀分流渲染——UI 内联确认卡 / 飞书卡片）：
+// - `ui:*` 空间（ui:copilot:* / ui:project:<pid>:*）→ 发布 eventBus
+//   `confirmation-pending`（含 confirmId/operation/description，signoff 裁决 11）——
+//   SSE 路由按空间订阅转发（内联确认卡数据源；不依赖特定入队路径：worker
+//   confirm-request 与直桥 submit 同构发布）；不发飞书卡片；
+// - 其他空间（feishu:*）→ 既有 sendCard 路径不变（飞书卡片全链不动）。
+//
 // ADR-009：惰性初始化——模块级无副作用；数据库连接经 getDb() 按路径缓存。
 
 import { getDb, defaultDbPath } from "../db.js";
+import { publish } from "./eventBus.js";
 
 // agent 该轮结束的待确认回复（REQ-AGENT-016 标准 1：回复「操作待确认」）。
 function pendingReply(req) {
@@ -68,6 +77,31 @@ function buildConfirmationCard(req) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+// —— 确认卡渲染目标按空间前缀分流（REQ-AGENT-030 / 授权桥）——
+// UI 空间（ADR-016 spaceKey 语法）：ui:copilot:<sid> / ui:project:<pid>:<sid>。
+function isUiSpaceKey(sessionKey) {
+  return String(sessionKey ?? "").startsWith("ui:");
+}
+
+// 操作描述（SSE confirmation-pending 事件 description 字段，signoff 裁决 11；
+// 措辞不作字面契约——裁决 8）：命令 + 参数摘要。
+function buildPendingDescription(req) {
+  const argsText = JSON.stringify(req.args ?? {});
+  return argsText === "{}" ? `${req.command}` : `${req.command}（参数：${argsText}）`;
+}
+
+// UI 空间确认挂起发布（submit 内调用）：eventBus `confirmation-pending` →
+// SSE 路由按空间订阅转发（内联确认卡数据源）。事件字段 = 裁决 11
+// （confirmId/operation/description）+ sessionKey（订阅侧空间过滤）。
+function publishPending(req) {
+  publish("confirmation-pending", {
+    sessionKey: req.sessionKey,
+    confirmId: req.confirmId,
+    operation: req.command,
+    description: buildPendingDescription(req),
+  });
 }
 
 export function createConfirmationService({ dbPath, execute, notifyResult, sendCard } = {}) {
@@ -149,7 +183,12 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
       `INSERT INTO agent_confirmations (confirmId, sessionKey, command, args, riskLevel, status, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(req.confirmId, req.sessionKey ?? "", req.command ?? "", JSON.stringify(req.args ?? {}), req.riskLevel ?? "confirm", ts, ts);
-    if (typeof sendCard === "function") {
+    if (isUiSpaceKey(req.sessionKey)) {
+      // UI 空间：确认卡渲染目标 = SSE 内联确认卡（REQ-AGENT-030）——发布
+      // confirmation-pending 事件（SSE 路由按空间订阅转发），不发飞书卡片。
+      // 发布不依赖特定入队路径（worker confirm-request 与直桥 submit 同构）。
+      publishPending(req);
+    } else if (typeof sendCard === "function") {
       try {
         sendCard({ chatId: String(req.sessionKey ?? "").replace(/^feishu:/, ""), cardJson: buildConfirmationCard(req) });
       } catch (err) {
