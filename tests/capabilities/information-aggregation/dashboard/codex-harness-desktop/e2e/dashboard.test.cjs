@@ -8,6 +8,7 @@
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow, createExecution, waitForExecutionTerminal } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Dashboard", () => {
@@ -49,7 +50,8 @@ test.describe("Dashboard", () => {
   });
 
   test("renders key metric cards", async () => {
-    await firstWindow.click(locators.DASHBOARD_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 仪表盘路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/");
     await expect(firstWindow.locator(locators.DASHBOARD_PAGE)).toBeVisible();
 
     await expect(firstWindow.locator(locators.PROJECT_COUNT_CARD)).toBeVisible();
@@ -64,7 +66,8 @@ test.describe("Dashboard", () => {
   });
 
   test("lists recent executions", async () => {
-    await firstWindow.click(locators.DASHBOARD_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 仪表盘路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/");
     await expect(firstWindow.locator(locators.RECENT_EXECUTIONS_LIST)).toBeVisible();
 
     const executionRow = firstWindow.locator(locators.RECENT_EXECUTIONS_LIST).locator("tr, li, [role='listitem']").first();
@@ -73,7 +76,8 @@ test.describe("Dashboard", () => {
   });
 
   test("provides quick project links", async () => {
-    await firstWindow.click(locators.DASHBOARD_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 仪表盘路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/");
 
     const quickLink = firstWindow.locator(locators.DASHBOARD_PAGE).getByText("Dashboard Project").first();
     await expect(quickLink).toBeVisible();

@@ -27,6 +27,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 const TAB_NAMES = ["general", "agent", "channel", "about"];
@@ -34,7 +35,10 @@ const tab = (page, name) => page.locator(`[role='tab'][data-tab='${name}']`);
 const panel = (page, name) => page.locator(`[data-tab-panel='${name}']`);
 
 async function openSettings(page) {
-  await page.click(locators.SETTINGS_LINK);
+  // T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant，REQ-AGENT-026 AC1）——
+  // 管理区左导 nav-settings 不在会话区；直接 goto 设置路由（管理区壳，AC5）；
+  // 断言语义不变。
+  await goToAdminRoute(page, "#/settings");
   await expect(page.locator(locators.SETTINGS_PAGE)).toBeVisible();
 }
 

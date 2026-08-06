@@ -20,7 +20,15 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
+
+// T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——管理区左导不在会话区；
+// 进入设置页统一先 goto 设置路由（管理区壳，AC5）；断言语义不变。
+async function openSettingsPage(firstWindow) {
+  await goToAdminRoute(firstWindow, "#/settings");
+  await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
+}
 
 async function setChannelDomain(apiBaseUrl, userDataDir) {
   // 把 channelDomain 指向本地 fake 路径，避免 E2E 访问真实飞书服务器。
@@ -52,8 +60,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
   });
 
   test("设置页包含飞书通道配置区块", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
-    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
+    await openSettingsPage(firstWindow);
     await expect(firstWindow.locator("[data-testid='channel-settings-card']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='channel-app-id-input']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='channel-app-secret-input']")).toBeVisible();
@@ -62,8 +69,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
   });
 
   test("保存无效凭据后显示离线/错误状态", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
-    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
+    await openSettingsPage(firstWindow);
 
     await firstWindow.locator("[data-testid='channel-app-id-input']").fill("cli_test_invalid");
     await firstWindow.locator("[data-testid='channel-app-secret-input']").fill("invalid-secret");
@@ -80,8 +86,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
     const savedAppId = "cli_persisted_app_id";
     const savedSecret = "persisted-secret-42";
 
-    await firstWindow.click(locators.SETTINGS_LINK);
-    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
+    await openSettingsPage(firstWindow);
     await firstWindow.locator("[data-testid='channel-app-id-input']").fill(savedAppId);
     await firstWindow.locator("[data-testid='channel-app-secret-input']").fill(savedSecret);
     await firstWindow.locator("[data-testid='save-channel-credentials-button']").click();
@@ -89,8 +94,7 @@ test.describe("REQ-CHANNEL-001 设置页飞书通道配置", () => {
 
     // 离开设置页再返回，验证凭据已从 settings.json 回显到输入框。
     await firstWindow.click(locators.DASHBOARD_LINK);
-    await firstWindow.click(locators.SETTINGS_LINK);
-    await firstWindow.click(locators.SETTINGS_TAB_CHANNEL);
+    await openSettingsPage(firstWindow);
 
     await expect(firstWindow.locator("[data-testid='channel-app-id-input']")).toHaveValue(savedAppId);
     await expect(firstWindow.locator("[data-testid='channel-app-secret-input']")).toHaveValue(savedSecret);

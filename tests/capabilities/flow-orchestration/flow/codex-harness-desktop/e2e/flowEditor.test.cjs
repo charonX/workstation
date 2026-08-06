@@ -9,6 +9,7 @@
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Flow Editor Node Design", () => {
@@ -35,7 +36,8 @@ test.describe("Flow Editor Node Design", () => {
       localPath: `${userDataDir}/workspace/flow-editor-node-project`,
     });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await expect(firstWindow.locator(locators.FLOW_FORM_MODAL)).toBeVisible();
 

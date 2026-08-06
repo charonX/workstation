@@ -10,7 +10,14 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
+
+// T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——管理区左导 nav-settings
+// 不在会话区；进入设置页统一先 goto 设置路由（管理区壳，AC5）；断言语义不变。
+async function openSettingsPage(firstWindow) {
+  await goToAdminRoute(firstWindow, "#/settings");
+}
 
 test.describe("Theme and Language", () => {
   let electronApp;
@@ -29,7 +36,7 @@ test.describe("Theme and Language", () => {
   });
 
   test("switching theme updates DOM data-theme attribute", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
 
     await firstWindow.selectOption(locators.THEME_SELECT, "dark");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
@@ -41,18 +48,18 @@ test.describe("Theme and Language", () => {
   });
 
   test("theme preference persists after reload", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.selectOption(locators.THEME_SELECT, "dark");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     await firstWindow.reload();
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await expect(firstWindow.locator(locators.THEME_SELECT)).toHaveValue("dark");
     await expect(firstWindow.locator("html")).toHaveAttribute("data-theme", "dark");
   });
 
   test("switching language updates html lang and UI text", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
 
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "zh-CN");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
@@ -66,12 +73,12 @@ test.describe("Theme and Language", () => {
   });
 
   test("language preference persists after reload", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "zh-CN");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
     await firstWindow.reload();
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await expect(firstWindow.locator(locators.LANGUAGE_SELECT)).toHaveValue("zh-CN");
     await expect(firstWindow.locator("html")).toHaveAttribute("lang", "zh-CN");
   });

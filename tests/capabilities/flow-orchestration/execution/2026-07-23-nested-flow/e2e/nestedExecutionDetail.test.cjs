@@ -9,6 +9,7 @@ const { test, expect } = require("@playwright/test");
 const assert = require("node:assert/strict");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 // data-testid 约定（实现阶段加在 UI 元素上）：
@@ -51,7 +52,9 @@ async function runFlow(apiBaseUrl, projectId, flowId) {
 }
 
 async function openExecutionDetail(firstWindow, executionId) {
-  await firstWindow.click(locators.EXECUTIONS_LINK);
+  // T-8 适配（2026-08-06）：默认落地 = 会话区——管理区左导不可直达；直接 goto
+  // 执行页路由（管理区壳，AC5）；断言语义不变。
+  await goToAdminRoute(firstWindow, "#/executions");
   await firstWindow.locator(locators.EXECUTION_ROW).filter({ hasText: executionId }).first().click();
   await expect(firstWindow.locator(locators.EXECUTION_DETAIL_PANEL)).toBeVisible();
   // 成功执行默认落在产物 tab（ExecutionDetail 行为）；节点行在节点 tab 下

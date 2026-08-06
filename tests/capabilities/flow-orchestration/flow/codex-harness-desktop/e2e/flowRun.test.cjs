@@ -8,6 +8,7 @@
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow, createExecution } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("Flow Run", () => {
@@ -35,7 +36,8 @@ test.describe("Flow Run", () => {
   });
 
   test("user can create a new flow", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await expect(firstWindow.locator(locators.FLOW_FORM_MODAL)).toBeVisible();
 
@@ -49,7 +51,8 @@ test.describe("Flow Run", () => {
   });
 
   test("Flow Editor renders node palette and canvas", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Editor Test Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
@@ -68,7 +71,8 @@ test.describe("Flow Run", () => {
   });
 
   test("selecting a node shows properties panel", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Properties Test Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
@@ -86,7 +90,8 @@ test.describe("Flow Run", () => {
   });
 
   test("Run button creates an execution", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Runnable Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
@@ -101,7 +106,8 @@ test.describe("Flow Run", () => {
   });
 
   test("zoom controls adjust canvas view", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Zoom Test Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
@@ -133,7 +139,8 @@ test.describe("Flow Run", () => {
   });
 
   test("user can delete a flow with confirmation", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Delete Me Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });
@@ -156,7 +163,8 @@ test.describe("Flow Run", () => {
     });
     await createExecution(apiBaseUrl, { projectId: seededProject.id, flowId: flow.id });
 
-    await firstWindow.click(locators.EXECUTIONS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 执行页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/executions");
     await firstWindow.locator(locators.EXECUTION_ROW).first().click();
 
     await expect(firstWindow.locator(locators.EXECUTION_DETAIL_PANEL)).toBeVisible();
@@ -166,7 +174,8 @@ test.describe("Flow Run", () => {
   });
 
   test("REQ-FLOW-012: user can connect two nodes and save the edge", async () => {
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.click(locators.NEW_FLOW_BUTTON);
     await firstWindow.fill(locators.FLOW_NAME_INPUT, "Connectable Flow");
     await firstWindow.selectOption(locators.FLOW_PROJECT_SELECT, { label: "Flow Run Project" });

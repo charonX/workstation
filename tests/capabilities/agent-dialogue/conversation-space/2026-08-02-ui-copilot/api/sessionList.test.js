@@ -201,8 +201,9 @@ describe("REQ-AGENT-029 分组会话列表与历史回看", () => {
     assert.ok(orphanGroup.sessions.some((s) => s.spaceKey === "ui:project:proj-gone:sess-1"),
       "孤儿组应含该会话");
     // signoff 2026-08-06: assertion signed（裁决见 signoff.md）
-    assert.ok(orphanGroup.projectName === null || typeof orphanGroup.projectName === "string",
-      "孤儿组 projectName 应为 null 或字符串（拍板占位）");
+    // T-2（test-gap 修复）：收紧为 === null（signoff 裁决 16：孤儿 projectName 不回填 pid）——
+    // 原 `null || string` 弱断言无法捕获裁决 16 回归。
+    assert.equal(orphanGroup.projectName, null, "孤儿组 projectName 应为 null（裁决 16，不回填 pid）");
   });
 
   it("sessions within a group are ordered by lastActiveAt descending", async () => {

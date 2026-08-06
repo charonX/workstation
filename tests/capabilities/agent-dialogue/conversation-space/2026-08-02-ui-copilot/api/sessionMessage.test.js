@@ -199,6 +199,41 @@ describe("REQ-AGENT-028 发送错误映射（标准 3）", () => {
     assert.equal(body.error, "E-SESSION-READONLY", "错误码应为 E-SESSION-READONLY（REQ-AGENT-028 标准 3 / REQ-AGENT-034 标准 2 同断言）");
   });
 
+  it("feishu 空间发送优先级：未配置 agent 时仍 403 E-SESSION-READONLY（先于 409 E-AGENT-CONFIG）", async () => {
+    // T-4（test-gap 修复，signoff 裁决 2）：只读是空间属性，与 agent 配置无关——
+    // 若实现把「未配置」校验提前到只读之前，本用例会红（错得 409 E-AGENT-CONFIG）。
+    // 注意：本用例不调用 configureAgent（startServer 后 agent 默认未配置）。
+    await loadSessionsRouteSeam();
+    await materializeFeishuSession("feishu:oc_readonly_unconfigured");
+
+    const { res, body } = await postMessage(serverCtx.baseUrl, "feishu:oc_readonly_unconfigured", { text: "在吗" });
+
+    assert.equal(res.status, 403, `feishu 空间未配置 agent 时应仍 403（裁决 2 只读先于配置），实际 ${res.status}：${JSON.stringify(body)}`);
+    assert.equal(body.error, "E-SESSION-READONLY", "错误码应为 E-SESSION-READONLY（非 E-AGENT-CONFIG）");
+  });
+
+  it("孤儿空间发送优先级：未配置 agent 时仍 409 E-SESSION-ORPHAN（先于 409 E-AGENT-CONFIG）", async () => {
+    // T-4（test-gap 修复）：孤儿是空间属性，先于 agent 配置——若实现把「未配置」
+    // 校验提前到孤儿判定之前，本用例会红（错得 409 E-AGENT-CONFIG）。
+    // 注意：本用例不调用 configureAgent（startServer 后 agent 默认未配置）。
+    await loadSessionsRouteSeam();
+    const createRes = await fetch(`${serverCtx.baseUrl}/api/projects`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: "孤儿项目（未配置）", localPath: workdir })
+    });
+    assert.equal(createRes.status, 201, "setup：项目创建应 201");
+    const project = await createRes.json();
+    const spaceKey = await createProjectSession(serverCtx.baseUrl, project.id);
+    const delRes = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}`, { method: "DELETE" });
+    assert.ok(delRes.ok, `setup：项目删除应成功，实际 ${delRes.status}`);
+
+    const { res, body } = await postMessage(serverCtx.baseUrl, spaceKey, { text: "项目还在吗" });
+
+    assert.equal(res.status, 409, `孤儿空间未配置 agent 时应仍 409（孤儿先于配置），实际 ${res.status}：${JSON.stringify(body)}`);
+    assert.equal(body.error, "E-SESSION-ORPHAN", "错误码应为 E-SESSION-ORPHAN（非 E-AGENT-CONFIG）");
+  });
+
   it("不存在的 spaceKey 发送返回 404", async () => {
     await loadSessionsRouteSeam();
     await configureAgent();

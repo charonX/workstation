@@ -21,6 +21,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 
 async function createSourceViaApi(apiBaseUrl, body) {
   const res = await fetch(`${apiBaseUrl}/api/content-sources`, {
@@ -33,8 +34,9 @@ async function createSourceViaApi(apiBaseUrl, body) {
 }
 
 async function openSourcesPage(firstWindow) {
-  // 签核导航入口文案 "Sources"（UX 原型 sidebar nav-link）。
-  await firstWindow.getByRole("link", { name: "Sources" }).click();
+  // T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——管理区左导不在会话区；
+  // 直接 goto 内容源路由（管理区壳，AC5，页面本体与文案断言不变）。
+  await goToAdminRoute(firstWindow, "#/sources");
   await expect(firstWindow.getByRole("heading", { name: "Sources" })).toBeVisible();
 }
 

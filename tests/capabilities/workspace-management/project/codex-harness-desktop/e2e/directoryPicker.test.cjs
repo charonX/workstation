@@ -7,6 +7,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 const { mockSelectDirectory } = require("../../../../../e2e/helpers/mockDirectoryPicker.cjs");
 
@@ -27,7 +28,8 @@ test.describe("Project form directory picker", () => {
   });
 
   test("browse button fills local path input", async () => {
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/workspace");
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
 

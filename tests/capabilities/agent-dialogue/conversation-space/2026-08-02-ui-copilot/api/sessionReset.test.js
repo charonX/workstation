@@ -148,6 +148,49 @@ describe("REQ-AGENT-027 标准 4 UI 空间 /reset = 同分组新建会话", () =
     assert.notEqual(oldRow.sessionRef, newRow.sessionRef, "新旧会话应各持独立 JSONL");
   });
 
+  it("resetting a ui:project:* session returns a new spaceKey under the same project prefix while the old row is retained", async () => {
+    await ensureAgentSessionsRoute();
+
+    // T-3（test-gap 修复）：027 标准 4 的 project 面——仅 general 覆盖不足以捕获
+    // 「同分组」语义对 ui:project:<pid> 前缀的回归（newUiSpaceKeyFor 若丢失 pid 段
+    // 会退化为 ui:copilot:* 分组）。
+    // Arrange：项目 + 项目会话（项目数据走既有项目服务端点建行）。
+    const projectRes = await postJson(serverCtx.baseUrl, "/api/projects", {
+      name: "UI Copilot 重置项目",
+      localPath: path.join(workdir, "reset-proj")
+    });
+    assert.equal(projectRes.status, 201, `前置：建项目应 201，实际 ${projectRes.status}`);
+    const projectId = projectRes.body.id;
+    const created = await postJson(serverCtx.baseUrl, "/api/agent/sessions", {
+      spaceKind: "project",
+      projectId
+    });
+    assert.equal(created.status, 200, `前置：建项目会话应 200，实际 ${created.status}`);
+    const oldKey = created.body.spaceKey;
+    assert.match(oldKey, new RegExp(`^ui:project:${projectId}:`), "前置：项目会话 spaceKey 应带项目前缀");
+    await sendUserMessage(serverCtx.baseUrl, agentSessionsDbPath, oldKey, "项目 reset 前的历史消息");
+
+    // Act
+    const res = await postJson(serverCtx.baseUrl, `/api/agent/sessions/${encodeURIComponent(oldKey)}/reset`);
+
+    // Assert：新 spaceKey 同分组 = 同一 ui:project:<pid>: 前缀（027 标准 4 project 面）。
+    assert.equal(res.status, 200, `项目空间 reset 应 200，实际 ${res.status}: ${JSON.stringify(res.body)}`);
+    const newKey = res.body?.spaceKey;
+    assert.ok(typeof newKey === "string", "reset 响应应含新 spaceKey");
+    assert.match(newKey, new RegExp(`^ui:project:${projectId}:`),
+      `新 spaceKey 应与旧会话同分组（ui:project:<pid>:*），实际: ${newKey}`);
+    assert.notEqual(newKey, oldKey, "reset 应返回新会话（不同 sessionId）");
+
+    // Assert：新行建立；旧行保留（sessionRef 不被改写、历史文件不丢）。
+    const newRow = readSessionRow(agentSessionsDbPath, newKey);
+    assert.ok(newRow, `新会话应建 agent_sessions 行（spaceKey=${newKey}）`);
+    assert.ok(fs.existsSync(newRow.sessionRef), "新会话 JSONL 占位应落盘");
+    const oldRow = readSessionRow(agentSessionsDbPath, oldKey);
+    assert.ok(oldRow, "旧会话行应保留（reset 不删行）");
+    assert.ok(fs.existsSync(oldRow.sessionRef), "旧会话 JSONL 历史文件应保留");
+    assert.notEqual(oldRow.sessionRef, newRow.sessionRef, "新旧会话应各持独立 JSONL");
+  });
+
   it("the old session's message history remains readable after reset", async () => {
     await ensureAgentSessionsRoute();
 

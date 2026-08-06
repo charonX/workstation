@@ -7,6 +7,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 test.describe("TopBar", () => {
@@ -19,6 +20,9 @@ test.describe("TopBar", () => {
     electronApp = ctx.electronApp;
     firstWindow = ctx.firstWindow;
     userDataDir = ctx.userDataDir;
+    // T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——顶栏在管理区壳内，
+    // 启动后先进管理区仪表盘（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/");
   });
 
   test.afterEach(async () => {

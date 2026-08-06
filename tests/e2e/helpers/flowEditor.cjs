@@ -17,6 +17,7 @@
 
 const { expect } = require("@playwright/test");
 const { createFlow } = require("./seed.cjs");
+const { goToAdminRoute } = require("./navigation.cjs");
 const locators = require("./locators.cjs");
 
 const FLOW_SAVE_SUCCESS = "[data-testid='flow-save-success']";
@@ -30,7 +31,9 @@ const REMOVE_VARIABLE_BUTTON = "[data-testid='remove-variable-button']";
  */
 async function openFlowInEditor(firstWindow, apiBaseUrl, { projectId, name, nodes = [], edges = [] }) {
   const flow = await createFlow(apiBaseUrl, { name, projectId, nodes, edges });
-  await firstWindow.click(locators.FLOWS_LINK);
+  // T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——管理区左导不可直达，
+  // 直接 goto 流程页路由（管理区壳，AC5）；断言语义不变。
+  await goToAdminRoute(firstWindow, "#/flows");
   await firstWindow
     .locator(locators.FLOW_CARD)
     .filter({ hasText: name })

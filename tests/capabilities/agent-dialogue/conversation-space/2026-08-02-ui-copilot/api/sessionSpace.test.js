@@ -172,7 +172,9 @@ describe("REQ-AGENT-027 空间 = 会话模型与新对话归属（创建/title/�
     const created = await postJson(serverCtx.baseUrl, "/api/agent/sessions", { spaceKind: "general" });
     assert.equal(created.status, 200, `前置：建会话应 200，实际 ${created.status}`);
     const spaceKey = created.body.spaceKey;
-    const firstText = "请帮我分析一下这个项目最近三次执行失败的根本原因并给出具体的改进建议清单";
+    // T-1（test-gap 修复）：fixture 由 36 字加长至 54 字（补长句尾，中文语义完整），
+    // 与前置断言 firstText.length > 40 一致——首条消息超过 40 字才能覆盖 title 截断。
+    const firstText = "请帮我分析一下这个项目最近三次执行失败的根本原因并给出具体的改进建议清单，并列出每一步的操作建议与预期收益。";
     // signoff 2026-08-06: assertion signed（裁决见 signoff.md）
     const expectedTitle = firstText.slice(0, 40);
     assert.ok(firstText.length > 40, "前置：首条消息应超过 40 字以覆盖截断");

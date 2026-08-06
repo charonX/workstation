@@ -7,6 +7,7 @@
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 // REQ-DIST-002/003/004：Settings 页"关于/更新"区（版本号 + 检查更新 + 引导文案）。
@@ -43,7 +44,8 @@ test.describe("Settings 关于/更新区", () => {
   });
 
   test("REQ-DIST-003: 当前版本号可见且非空", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 设置路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/settings");
     await expect(firstWindow.locator(locators.SETTINGS_PAGE)).toBeVisible();
     await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     const version = firstWindow.locator(locators.UPDATE_VERSION);
@@ -53,7 +55,8 @@ test.describe("Settings 关于/更新区", () => {
   });
 
   test("REQ-DIST-002 AC8: 检查更新按钮存在，点击后出现状态区", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 设置路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/settings");
     await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     await expect(firstWindow.locator(locators.UPDATE_SECTION)).toBeVisible();
     await firstWindow.locator(locators.UPDATE_CHECK_BUTTON).click();
@@ -62,7 +65,8 @@ test.describe("Settings 关于/更新区", () => {
   });
 
   test("REQ-DIST-004 AC2: 首次安装引导文案存在", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 设置路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/settings");
     await firstWindow.click(locators.SETTINGS_TAB_ABOUT);
     const guide = firstWindow.locator(locators.UPDATE_GUIDE);
     await expect(guide).toBeVisible();

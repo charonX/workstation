@@ -17,7 +17,17 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
+
+// T-8 适配（2026-08-06）：默认落地 = 会话区（/assistant）——管理区左导不在会话区；
+// 启动态首次进入设置/工作区页统一先 goto 目标路由（管理区壳，AC5）；断言语义不变。
+async function openSettingsPage(firstWindow) {
+  await goToAdminRoute(firstWindow, "#/settings");
+}
+async function openWorkspacePage(firstWindow) {
+  await goToAdminRoute(firstWindow, "#/workspace");
+}
 
 async function createLocalGitRepo(baseDir, repoName) {
   const repoPath = path.join(baseDir, repoName);
@@ -50,7 +60,7 @@ test.describe("Onboarding", () => {
   });
 
   test("user can configure workspace and skill repository in Settings", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await expect(firstWindow.locator(locators.SETTINGS_FORM)).toBeVisible();
 
     await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
@@ -64,7 +74,7 @@ test.describe("Onboarding", () => {
   });
 
   test("user can add a local project from Workspace", async () => {
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    await openWorkspacePage(firstWindow);
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
 
@@ -80,7 +90,7 @@ test.describe("Onboarding", () => {
   test("user can add a git project from Workspace", async () => {
     const { repoUrl } = await createLocalGitRepo(userDataDir, "git-demo-project");
 
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.fill(locators.WORKSPACE_ROOT_INPUT, `${userDataDir}/workspace`);
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
@@ -105,7 +115,7 @@ test.describe("Onboarding", () => {
     firstWindow.on("console", (msg) => consoleMessages.push(msg.text()));
 
     try {
-      await firstWindow.click(locators.WORKSPACE_LINK);
+      await openWorkspacePage(firstWindow);
       await firstWindow.click(locators.ADD_PROJECT_BUTTON);
       await firstWindow.fill(locators.PROJECT_NAME_INPUT, "Delete Me Project");
       await firstWindow.fill(locators.PROJECT_LOCAL_PATH_INPUT, `${userDataDir}/workspace/delete-me-project`);
@@ -139,7 +149,7 @@ test.describe("Onboarding", () => {
   });
 
   test("theme toggle updates document data-theme", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.selectOption(locators.THEME_SELECT, "dark");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
@@ -152,7 +162,7 @@ test.describe("Onboarding", () => {
   });
 
   test("language toggle updates html lang", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.selectOption(locators.LANGUAGE_SELECT, "zh-CN");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 
@@ -165,7 +175,7 @@ test.describe("Onboarding", () => {
   });
 
   test("density toggle updates data-density", async () => {
-    await firstWindow.click(locators.SETTINGS_LINK);
+    await openSettingsPage(firstWindow);
     await firstWindow.selectOption(locators.DENSITY_SELECT, "compact");
     await firstWindow.click(locators.SAVE_GENERAL_SETTINGS_BUTTON);
 

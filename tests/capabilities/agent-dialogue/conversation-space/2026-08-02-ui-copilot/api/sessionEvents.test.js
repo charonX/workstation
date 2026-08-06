@@ -193,6 +193,18 @@ describe("REQ-AGENT-028 SSE 事件流（GET .../events，标准 2/5/6）", () =>
     await sse.close();
   });
 
+  it("GET events 对不存在的 spaceKey 返回 404 E-SESSION-NOT-FOUND", async () => {
+    await loadSessionsRouteSeam();
+    await createUiSession(serverCtx.baseUrl); // seam 就绪证据：真实会话可建（防路由全 404 造成假阳性）。
+
+    // T-6（test-gap 修复，O-3）：不存在会话的 events 连接 → 404（tech-design 契约表）。
+    const res = await fetch(eventsUrl(serverCtx.baseUrl, "ui:copilot:no-such-session"));
+
+    assert.equal(res.status, 404, `不存在的 spaceKey events 应 404，实际 ${res.status}`);
+    const body = await res.json().catch(() => null);
+    assert.equal(body?.error, "E-SESSION-NOT-FOUND", "错误码应为 E-SESSION-NOT-FOUND");
+  });
+
   it("FAUX 流式：text_start → text_delta×N → text_end 按序推送且增量拼接与最终内容一致", async () => {
     await loadSessionsRouteSeam();
     const spaceKey = await createUiSession(serverCtx.baseUrl);
@@ -278,6 +290,31 @@ describe("REQ-AGENT-028 SSE 事件流（GET .../events，标准 2/5/6）", () =>
     assert.ok(
       typeof frame.event.content === "string" && frame.event.content.length > 0,
       "重连后的新 SSE 流应收到完整流式回复（REQ-AGENT-028 标准 5 端点侧语义）"
+    );
+  });
+
+  it("直接挂接路径：会话句柄已存在（发送过消息）后打开的 events 连接仍持续收到流式事件", async () => {
+    // T-5（test-gap 修复，O-2）：其余 5 例全部走「连接先于首条消息」的挂起路径
+    // （pendingSseSubs → attachPendingSseSubs）；本用例覆盖 attach(existing) 直接
+    // 挂接分支——连接打开时会话句柄已存在（handlePostMessage 内 createSession，
+    // 202 返回时首轮流式已完整结束），后续消息的流式事件必须仍经本连接到达
+    // （断线重连/续流场景的端点侧语义，REQ-AGENT-028 标准 5）。
+    await loadSessionsRouteSeam();
+    const spaceKey = await createUiSession(serverCtx.baseUrl);
+
+    // 先建会话并发送一条消息（会话句柄此刻已存在）。
+    await postMessage(serverCtx.baseUrl, spaceKey, "先建立会话句柄");
+
+    // 再开 events 连接：走 attach(existing) 直接挂接分支。
+    const sse = await openSse(spaceKey);
+
+    // 后续消息的流式事件经本连接到达。
+    const secondText = "会话已存在后再发送";
+    await postMessage(serverCtx.baseUrl, spaceKey, secondText);
+    const endFrame = await sse.waitForType("text_end", 30000, "既有会话上的 text_end");
+    assert.ok(
+      typeof endFrame.event.content === "string" && endFrame.event.content.includes(secondText),
+      "既有会话句柄上打开的 SSE 连接应收到完整流式回复（直接挂接路径）"
     );
   });
 });

@@ -8,6 +8,7 @@
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 // data-testid 约定（实现阶段加在对应 UI 元素上）：
@@ -43,7 +44,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     const project = await createProject(apiBaseUrl, { name: "Palette", localPath: `${userDataDir}/ws/palette` });
     await createFlow(apiBaseUrl, { name: "Palette Flow", projectId: project.id, nodeList: [], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Palette Flow" }).click();
     await expect(firstWindow.locator(locators.FLOW_EDITOR_PAGE)).toBeVisible();
 
@@ -56,7 +58,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     const project = await createProject(apiBaseUrl, { name: "Add", localPath: `${userDataDir}/ws/add` });
     await createFlow(apiBaseUrl, { name: "Add Flow", projectId: project.id, nodeList: [], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "Add Flow" }).click();
 
     const before = await firstWindow.locator(locators.FLOW_NODE).count();
@@ -76,7 +79,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
       ]}}
     ], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
 
     // 加 callFlow 节点
@@ -108,7 +112,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     ], edges: [] });
     await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
     await firstWindow.getByTestId("palette-node-callFlow").click();
     await firstWindow.locator(locators.FLOW_NODE).last().click();
@@ -135,7 +140,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     ], edges: [] });
     await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
     await firstWindow.getByTestId("palette-node-callFlow").click();
     await firstWindow.locator(locators.FLOW_NODE).last().click();
@@ -155,7 +161,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     ], edges: [] });
     await createFlow(apiBaseUrl, { name: "parent", projectId: project.id, nodeList: [], edges: [] });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "parent" }).click();
     await firstWindow.getByTestId("palette-node-callFlow").click();
     await firstWindow.locator(locators.FLOW_NODE).last().click();
@@ -195,7 +202,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
       })
     });
 
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "B" }).click();
     await firstWindow.getByTestId("palette-node-callFlow").click();
     await firstWindow.locator(locators.FLOW_NODE).last().click();
@@ -213,7 +221,8 @@ test.describe("Nested Subflow - Node Palette & Config Panel", () => {
     // 依赖现有语言切换机制（locators.LANG_TOGGLE 或 settings）
     const project = await createProject(apiBaseUrl, { name: "I18n", localPath: `${userDataDir}/ws/i18n` });
     await createFlow(apiBaseUrl, { name: "F", projectId: project.id, nodeList: [], edges: [] });
-    await firstWindow.click(locators.FLOWS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 流程页路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/flows");
     await firstWindow.locator(locators.FLOW_CARD).filter({ hasText: "F" }).click();
 
     // 默认 en

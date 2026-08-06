@@ -11,6 +11,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, updateSettings } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 async function writeSkillSource(dir, skills) {
@@ -77,7 +78,8 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
   });
 
   async function openProjectDetail(projectName) {
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/workspace");
     const card = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: projectName });
     await card.locator(locators.CONFIGURE_SKILLS_BUTTON).click();
     await expect(firstWindow.locator(locators.PROJECT_DETAIL_MODAL)).toBeVisible();
@@ -85,7 +87,8 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
   }
 
   test("REQ-SKILL-009: install modal offers only git and local sources", async () => {
-    await firstWindow.click(locators.SKILLS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 技能库路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/skills");
     await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
     await expect(firstWindow.locator(locators.INSTALL_SKILL_MODAL)).toBeVisible();
 
@@ -99,7 +102,8 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
     const source = await fs.mkdtemp(path.join(os.tmpdir(), "opc-e2e-local-src-"));
     await writeSkillSource(source, ["alpha-skill", "beta-skill"]);
 
-    await firstWindow.click(locators.SKILLS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 技能库路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/skills");
     await firstWindow.click(locators.INSTALL_SKILL_BUTTON);
     await firstWindow.selectOption(locators.SKILL_SOURCE_SELECT, "local");
     await firstWindow.fill(locators.SKILL_IDENTIFIER_INPUT, source);
@@ -156,7 +160,8 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
     await linkSkillViaApi(apiBaseUrl, project.id, path.basename(source), "alpha-skill");
 
     // 编辑页追加 codex → 保存 → 收敛摘要可见
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/workspace");
     const card = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Converge Project" });
     await card.locator(locators.EDIT_PROJECT_BUTTON).click();
     const multiselect = firstWindow.locator(locators.AGENT_TYPE_MULTISELECT);
@@ -345,7 +350,8 @@ test.describe("Skill Library UI (install / link / converge / resync / external /
     await writeSkillSource(source, ["alpha-skill"]);
     await installLocalSource(apiBaseUrl, source);
 
-    await firstWindow.click(locators.SKILLS_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 技能库路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/skills");
     const repoRow = firstWindow.locator(locators.REPO_ROW).filter({ hasText: path.basename(source) });
     await expect(repoRow).toBeVisible();
     await repoRow.locator(locators.REPO_DELETE_BUTTON).click();

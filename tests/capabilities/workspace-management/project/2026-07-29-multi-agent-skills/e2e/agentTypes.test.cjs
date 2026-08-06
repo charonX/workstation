@@ -11,6 +11,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 const PINNED = ["claude-code", "codex", "opencode", "cursor", "kimi-code-cli"];
@@ -38,7 +39,8 @@ test.describe("Agent Type Multi-Select", () => {
   });
 
   async function openCreateProjectModal() {
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/workspace");
     await firstWindow.click(locators.ADD_PROJECT_BUTTON);
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
   }
@@ -113,7 +115,8 @@ test.describe("Agent Type Multi-Select", () => {
     const projectDir = await makeProjectDir();
     await createProject(apiBaseUrl, { name: "Echo Project", localPath: projectDir, agentTypes: ["claude-code", "kimi-code-cli"] });
 
-    await firstWindow.click(locators.WORKSPACE_LINK);
+    // T-8 适配（2026-08-06）：默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/workspace");
     const card = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Echo Project" });
     await card.locator(locators.EDIT_PROJECT_BUTTON).click();
     await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();
@@ -153,7 +156,8 @@ test.describe("Agent Type Multi-Select", () => {
     firstWindow = ctx.firstWindow;
     userDataDir = ctx.userDataDir;
     try {
-      await firstWindow.click(locators.WORKSPACE_LINK);
+      // T-8 适配（2026-08-06）：重启后默认落地 = 会话区——直接 goto 工作区路由（断言语义不变）。
+      await goToAdminRoute(firstWindow, "#/workspace");
       const card = firstWindow.locator(locators.PROJECT_CARD).filter({ hasText: "Drift Project" });
       await card.locator(locators.EDIT_PROJECT_BUTTON).click();
       await expect(firstWindow.locator(locators.PROJECT_FORM_MODAL)).toBeVisible();

@@ -22,6 +22,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { createProject, createFlow, createExecution } = require("../../../../../e2e/helpers/seed.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 const locators = require("../../../../../e2e/helpers/locators.cjs");
 
 const EXECUTIONS_PAGE = "[data-testid='executions-page']";
@@ -36,7 +37,10 @@ async function waitForTerminalStatus(apiBaseUrl, executionId) {
 
 // Executions 列表在页面挂载时拉取一次；先离开再进入强制重新挂载。
 async function openExecutionsPage(firstWindow) {
-  await firstWindow.click(locators.DASHBOARD_LINK);
+  // T-8 适配（2026-08-06）：默认落地 = 会话区——先 goto 管理区仪表盘（/），再经左导
+  // SPA 进入执行页。「先离开再进入强制重新挂载」语义保留：共享 app 实例（beforeAll）
+  // 下重复进入同一路由时 goto 为 no-op，EXECUTIONS_LINK 的 SPA 挂载才是重新拉取的关键。
+  await goToAdminRoute(firstWindow, "#/");
   await firstWindow.click(locators.EXECUTIONS_LINK);
   await expect(firstWindow.locator(EXECUTIONS_PAGE)).toBeVisible();
 }

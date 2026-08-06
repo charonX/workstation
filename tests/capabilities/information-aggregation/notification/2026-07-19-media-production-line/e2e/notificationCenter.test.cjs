@@ -23,6 +23,7 @@
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { seedNotifications } = require("../../../../../e2e/helpers/notifications.cjs");
+const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 
 async function getUnreadCount(apiBaseUrl) {
   const res = await fetch(`${apiBaseUrl}/api/notifications`);
@@ -32,6 +33,9 @@ async function getUnreadCount(apiBaseUrl) {
 
 async function openNotificationsPage(firstWindow) {
   // 通知入口改为右上角 TopBar 图标按钮（topbar-notifications-button）。
+  // T-8 适配（2026-08-06）：默认落地 = 会话区——顶栏在管理区壳内，先 goto 管理区
+  // 仪表盘再点（断言语义不变）。
+  await goToAdminRoute(firstWindow, "#/");
   await firstWindow.locator("[data-testid='topbar-notifications-button']").click();
   await expect(firstWindow.getByRole("heading", { name: "Notifications" })).toBeVisible();
 }
@@ -62,6 +66,8 @@ test.describe("REQ-NOTIFY-002 通知中心 UI（E2E，UX 原型映射）", () =>
     ]);
 
     const expected = await getUnreadCount(apiBaseUrl);
+    // T-8 适配（2026-08-06）：顶栏在管理区壳内，断言前先进管理区（断言语义不变）。
+    await goToAdminRoute(firstWindow, "#/");
     // UX: TopBar 通知图标的 badge（icon-btn-badge）。
     const badge = firstWindow.locator("[data-testid='topbar-notifications-button-badge']").first();
     await expect(badge).toBeVisible();
