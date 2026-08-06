@@ -393,6 +393,10 @@ async function handleRequest(req, res, server) {
         return handleAgentSessions(req, res, body, subPath, {
           getSessionStore: () => server._opcSessionStoreFactory?.(),
           getAgentService: () => server._opcAgentServiceFactory?.(),
+          // Slice 3（REQ-AGENT-028 SSE）：同步窥探既有服务实例（未创建 → null）——
+          // events 端点据此判断「直接挂接既有会话句柄」还是「挂起等首条消息建句柄」；
+          // 不触发惰性创建（ADR-009：打开 events 连接不启动 agent 子进程）。
+          peekAgentService: () => server._opcAgentService ?? null,
         });
       }
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，

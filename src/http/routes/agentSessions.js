@@ -15,6 +15,23 @@
 //                                                       agent_space_meta chat 名 / lastActiveAt 倒序）
 //   GET  /api/agent/sessions/:spaceKey/messages?limit&before → 200 { messages: [...] }
 //                                                     （JSONL 投影分页；默认 limit=100）
+// Slice 3（REQ-AGENT-028 消息发送 + SSE 流式）端点：
+//   POST /api/agent/sessions/:spaceKey/messages 完整错误映射：trim 空 / 超上限 → 400
+//                                                     （上限 = enforceSizeLimit 同单位 256KB 字符）；
+//                                                     不存在 → 404 E-SESSION-NOT-FOUND；
+//                                                     feishu:* → 403 E-SESSION-READONLY（先于 409，
+//                                                     裁决 2：只读是空间属性）；孤儿项目空间 →
+//                                                     409 E-SESSION-ORPHAN（空间属性先于 agent
+//                                                     配置）；agent 未配置 → 409 E-AGENT-CONFIG
+//   GET  /api/agent/sessions/:spaceKey/events         → SSE 流（text/event-stream）：会话句柄
+//                                                     session-event 原样转发（≤256KB 契约由
+//                                                     agentService 源头截断保证）+ 轮次边界
+//                                                     text_start 宣告（imRouter stream_start 同型
+//                                                     先例：worker 未映射 PI turn_start/turn_end，
+//                                                     边界由路由层宣告）+ 15s 心跳注释帧（裁决 11
+//                                                     允许辅助事件交错）；断线不崩、重连可再建；
+//                                                     confirmation-pending 事件类型由 Slice 4 产生，
+//                                                     本切片接通「事件流经 SSE 转发」通道
 //
 // 空间 key 语法（ADR-016 / CONTEXT.md 对话空间）：ui:copilot:<sessionId>（通用空间）、
 // ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 世代制沿用（不套用
@@ -24,12 +41,10 @@
 // 3（历史封套 { messages }，条目含 messageId/role/createdAt）、4（title slice(0,40)
 // 无省略号）、5（分页：默认最新 limit 条、数组时间升序、before 游标 = messageId）、
 // 9（feishu HTTP reset → 403）、10（feishu chat 名 seam = agent_space_meta 侧表，
-// 表/行缺失 fallback 到 spaceKey）、16（孤儿组 projectName = null）、
-// 17（条目字段集 title/lastActiveAt/sessionRef + spaceKey；组内 lastActiveAt 倒序）、
-// 12（空文本 400 不强制 code）。
-//
-// SSE（GET .../events）属 REQ-AGENT-028（Slice 3），本文件不实现。孤儿/只读会话
-// 的发送拦截（E-SESSION-ORPHAN）随 REQ-AGENT-028 错误映射完整化。
+// 表/行缺失 fallback 到 spaceKey）、11（SSE 事件契约：text_start/text_delta/text_end
+// 子序列严格有序 + 拼接一致；允许辅助事件交错）、12（300KB 明确越界 → 400，精确
+// 边界不额外断言）、16（孤儿组 projectName = null）、17（条目字段集
+// title/lastActiveAt/sessionRef + spaceKey；组内 lastActiveAt 倒序）。
 
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -39,9 +54,13 @@ import { decryptSecret } from "../../services/secretStore.js";
 
 const DEFAULT_PROVIDER = "deepseek";
 
-// 输入上限（signoff 裁决 12）：300KB 明确越界 → 400（enforceSizeLimit 精确边界值
-// 由既有回归覆盖，此处仅越界兜底）。
-const MAX_MESSAGE_CHARS = 300 * 1024;
+// 输入上限（signoff 裁决 12）：300KB 明确越界 → 400（sessionMessage.test.js 超限用例）。
+// 单位与 enforceSizeLimit 统一为「字符」：agentService 按 JSON.stringify(event).length
+// 与 MAX_IPC_BYTES=256*1024 比较（String.length 字符数，UTF-16 code units；既有回归
+// agentDialogue「单条 IPC 消息 ≤ 256KB」同单位断言）。上限值 = 256KB 字符——PRD §7
+// 「长度上限沿用 agentService 既有 enforceSizeLimit 限制」。精确边界由既有回归覆盖，
+// 此处仅越界兜底。
+const MAX_MESSAGE_CHARS = 256 * 1024;
 
 // —— 空间 key 纯函数（ADR-016 语法；Slice 2 分组列表复用）——
 // ui:project:<pid>:<sid> 的前缀/pid 解析共用同一模式（ui:copilot 无 pid 段）。
@@ -156,6 +175,11 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
   if (tail.length === 1 && tail[0] === "messages") {
     if (req.method === "GET") return handleGetMessages(req, res, spaceKey, store);
     if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, getAgentService);
+    return notFound(res);
+  }
+
+  if (tail.length === 1 && tail[0] === "events") {
+    if (req.method === "GET") return handleGetEvents(res, spaceKey, store, context);
     return notFound(res);
   }
 
@@ -301,10 +325,19 @@ function parsePaginationQuery(req) {
   return { limit, before };
 }
 
-// 发送消息（F1 核心处理最小形态）：202 { messageId }（事件即结果，流式回传属
-// REQ-AGENT-028 SSE）；title 首条写入（slice(0,40) 无省略号，signoff 裁决 4；
-// WHERE title IS NULL 原子条件 → 后续消息不更新）。错误映射（E-AGENT-CONFIG /
-// E-SESSION-ORPHAN 等）随 REQ-AGENT-028 完整化。
+// 孤儿空间判定（REQ-AGENT-028 标准 3 / CONTEXT.md 孤儿会话 / PRD §7.1「项目被删除后其会话
+// 保留可回看（孤儿会话），但不可发送新消息」）：ui:project:<pid>:* 且 pid 在 projects 表
+// 不存在 → 孤儿。通用/飞书空间不适用（projectIdOf 解析不到 pid → false）。
+function isOrphanSpace(spaceKey) {
+  const pid = projectIdOf(spaceKey);
+  return pid !== undefined && !projectExists(pid);
+}
+
+// 发送消息（F1 核心处理）：202 { messageId }（事件即结果，流式回传经 SSE，F2）；
+// title 首条写入（slice(0,40) 无省略号，signoff 裁决 4；WHERE title IS NULL 原子
+// 条件 → 后续消息不更新）。错误映射（REQ-AGENT-028 标准 3 / signoff 裁决 1/2/12）：
+// 校验顺序 = 400（输入）→ 404（会话不存在）→ 403（只读空间属性，先于 409，裁决 2）
+// → 409（孤儿空间，空间属性先于 agent 配置）→ 409（agent 未配置）。
 async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   const text = typeof body?.text === "string" ? body.text : "";
   const textError = messageTextError(text);
@@ -312,19 +345,29 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   const row = store.get(spaceKey);
   if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
   if (spaceKey.startsWith("feishu:")) {
-    // 飞书空间 UI 只读（signoff 裁决 2 同原则：空间属性，先于 agent 配置检查）。
+    // 飞书空间 UI 只读（signoff 裁决 2：只读是空间属性，与 agent 配置无关 → 先于 409）。
     return sendError(res, 403, "E-SESSION-READONLY", "飞书会话只读，请到飞书继续对话");
   }
-
+  if (isOrphanSpace(spaceKey)) {
+    // 孤儿空间：项目已删除，历史可回看但禁止发送新消息（CONTEXT.md 孤儿会话）。
+    return sendError(res, 409, "E-SESSION-ORPHAN", "项目已删除，该会话不可发送新消息");
+  }
+  const config = buildSessionConfig();
+  if (!config.apiKey) {
+    // agent 未配置 / 密钥失效（PRD §8 引导态）：409 E-AGENT-CONFIG，且不启动子进程
+    // （ADR-009：配置校验前置）。
+    return sendError(res, 409, "E-AGENT-CONFIG", "agent 未配置，请先在设置中配置模型与 API key");
+  }
   const svc = await resolveAgentService(getAgentService);
   if (!svc) return notFound(res);
-  const config = buildSessionConfig();
   svc.createSession({
     spaceKey,
     provider: config.provider,
     apiKey: config.apiKey,
     identity: config.identity,
   });
+  // SSE 挂起订阅挂接（会话句柄此刻已存在；此前打开的 events 连接从本轮回流事件起收流）。
+  attachPendingSseSubs(spaceKey, svc);
   try {
     await svc.prompt(spaceKey, text);
   } catch {
@@ -363,6 +406,130 @@ function handleReset(res, spaceKey, store) {
   if (!newKey) return sendError(res, 400, "E-SESSION-CREATE", "不支持的空间 key");
   store.getOrCreate(newKey);
   return ok(res, { spaceKey: newKey });
+}
+
+// —— SSE 事件流（GET .../events，REQ-AGENT-028 标准 2/5/6，D4 流式 = SSE）——
+
+// 挂起订阅注册表：spaceKey → Set<sub>。events 连接先于首条消息打开时，agentService
+// 会话句柄尚不存在（句柄由 handlePostMessage 的 createSession 创建）——先挂起，
+// 句柄创建后经 attachPendingSseSubs 补挂接。sub.detach 时自行从注册表移除。
+const pendingSseSubs = new Map();
+
+// 会话句柄创建后挂接挂起订阅（handlePostMessage 在 createSession 之后调用）：
+// 事件从下一轮起持续收流（SSE 只推增量、不做事件回溯，F2）。spaceKey 无挂起
+// 订阅时为 no-op（常态路径）。
+function attachPendingSseSubs(spaceKey, svc) {
+  const subs = pendingSseSubs.get(spaceKey);
+  if (!subs || subs.size === 0) return;
+  const session = svc?.getSession ? svc.getSession(spaceKey) : null;
+  if (!session) return;
+  for (const sub of subs) sub.attach(session); // attach 不增删本集合 → 直接迭代
+  pendingSseSubs.delete(spaceKey);
+}
+
+// GET .../events → SSE 流（text/event-stream；实现用 Node 原生 http：
+// writeHead + flushHeaders 首包即达 + write 逐帧推送）：
+// - 事件 = 会话句柄 "session-event" 原样转发（不增删字段；≤256KB 截断契约由
+//   agentService 源头 enforceSizeLimit 保证，本层不二次截断——confirmation-pending
+//   等非文本事件无 content/delta 载体，二次截断会丢字段）；
+// - 轮次边界 text_start 由本层宣告（imRouter stream_start 同型先例：worker 未映射
+//   PI turn_start/turn_end，边界由触发层宣告）：每轮首个文本事件（text_delta /
+//   text_end）前补发 text_start，text_end 后重置——UI 渲染层据此开新气泡；
+// - 心跳 = 15s 注释帧（": keep-alive"，裁决 11 允许辅助事件交错；测试客户端解析
+//   跳过空 data 帧）；
+// - 客户端断开（res close/error）→ 摘除监听 + 清心跳，服务不崩；重连可再建
+//   （REQ-AGENT-028 标准 5 端点侧语义）；会话不存在 → 404（tech-design 契约表）。
+function handleGetEvents(res, spaceKey, store, context) {
+  const row = store.get(spaceKey);
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.flushHeaders(); // 首包立即送达（fetch 依赖头部先到达才 resolve）
+
+  const HEARTBEAT_MS = 15 * 1000;
+  let session = null;
+  let attached = false;
+  let detached = false;
+  let textStarted = false; // 当前轮次是否已宣告 text_start（text_end 后重置）
+  let heartbeat = null;
+
+  const sub = {
+    attach(s) {
+      if (detached) return;
+      session = s;
+      attached = true;
+      session.on("session-event", onEvent);
+    },
+    detach() {
+      if (detached) return;
+      detached = true;
+      if (heartbeat) clearInterval(heartbeat);
+      if (attached && session) session.off("session-event", onEvent);
+      const subs = pendingSseSubs.get(spaceKey);
+      if (subs) {
+        subs.delete(sub);
+        if (subs.size === 0) pendingSseSubs.delete(spaceKey);
+      }
+      try {
+        res.end();
+      } catch {
+        // 响应已结束/已销毁：忽略。
+      }
+    },
+  };
+
+  const writeFrame = (event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      sub.detach(); // 写失败（连接已死）→ 摘除，服务不崩
+    }
+  };
+
+  const onEvent = (ev) => {
+    if (detached || !ev || typeof ev.type !== "string") return;
+    if (ev.type === "text_start") {
+      textStarted = true;
+    } else if (!textStarted && (ev.type === "text_delta" || ev.type === "text_end")) {
+      // 轮次边界宣告：首个文本事件前补发 text_start（裁决 11 子序列头）。
+      textStarted = true;
+      writeFrame({ type: "text_start" });
+    }
+    if (ev.type === "text_end") textStarted = false; // 轮次结束，下一轮重新宣告
+    writeFrame(ev);
+  };
+
+  res.on("close", () => sub.detach());
+  res.on("error", () => sub.detach());
+  heartbeat = setInterval(() => {
+    if (detached) return;
+    try {
+      res.write(": keep-alive\n\n");
+    } catch {
+      sub.detach();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.(); // 心跳不阻塞进程退出（node --test 生命周期）
+
+  // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
+  // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
+  // 启动（ADR-009：打开 events 连接不启动 agent 子进程）。
+  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const existing = svc?.getSession ? svc.getSession(spaceKey) : null;
+  if (existing) {
+    sub.attach(existing);
+  } else {
+    let subs = pendingSseSubs.get(spaceKey);
+    if (!subs) {
+      subs = new Set();
+      pendingSseSubs.set(spaceKey, subs);
+    }
+    subs.add(sub);
+  }
 }
 
 // —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
