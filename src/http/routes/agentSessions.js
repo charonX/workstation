@@ -421,10 +421,17 @@ const pendingSseSubs = new Map();
 function attachPendingSseSubs(spaceKey, svc) {
   const subs = pendingSseSubs.get(spaceKey);
   if (!subs || subs.size === 0) return;
-  const session = svc?.getSession ? svc.getSession(spaceKey) : null;
+  const session = peekSession(svc, spaceKey);
   if (!session) return;
   for (const sub of subs) sub.attach(session); // attach 不增删本集合 → 直接迭代
   pendingSseSubs.delete(spaceKey);
+}
+
+// 会话句柄窥探（挂起订阅挂接 / events 既有句柄直接挂接共用）：服务未接线或句柄
+// 未创建 → null。getSession 为同步返回既有句柄，不触发惰性创建（ADR-009：打开
+// events 连接不启动 agent 子进程）。
+function peekSession(svc, spaceKey) {
+  return svc?.getSession ? svc.getSession(spaceKey) : null;
 }
 
 // GET .../events → SSE 流（text/event-stream；实现用 Node 原生 http：
@@ -450,12 +457,56 @@ function handleGetEvents(res, spaceKey, store, context) {
   });
   res.flushHeaders(); // 首包立即送达（fetch 依赖头部先到达才 resolve）
 
+  const sub = createSseSubscription(res, spaceKey);
+
+  // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
+  // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
+  // 启动（ADR-009：打开 events 连接不启动 agent 子进程）。
+  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const existing = peekSession(svc, spaceKey);
+  if (existing) {
+    sub.attach(existing);
+  } else {
+    let subs = pendingSseSubs.get(spaceKey);
+    if (!subs) {
+      subs = new Set();
+      pendingSseSubs.set(spaceKey, subs);
+    }
+    subs.add(sub);
+  }
+}
+
+// SSE 订阅构造（挂起/挂接两用）：连接状态 + 事件转发 + 轮次边界宣告 + 心跳 +
+// 断开清理收敛一处；对调用方仅暴露 attach/detach 两个动作。行为语义见
+// handleGetEvents 头注释（端点契约）。
+function createSseSubscription(res, spaceKey) {
   const HEARTBEAT_MS = 15 * 1000;
   let session = null;
   let attached = false;
   let detached = false;
   let textStarted = false; // 当前轮次是否已宣告 text_start（text_end 后重置）
   let heartbeat = null;
+
+  const writeFrame = (event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      sub.detach(); // 写失败（连接已死）→ 摘除，服务不崩
+    }
+  };
+
+  const onEvent = (ev) => {
+    if (detached || !ev || typeof ev.type !== "string") return;
+    if (ev.type === "text_start") {
+      textStarted = true;
+    } else if (!textStarted && (ev.type === "text_delta" || ev.type === "text_end")) {
+      // 轮次边界宣告：首个文本事件前补发 text_start（裁决 11 子序列头）。
+      textStarted = true;
+      writeFrame({ type: "text_start" });
+    }
+    if (ev.type === "text_end") textStarted = false; // 轮次结束，下一轮重新宣告
+    writeFrame(ev);
+  };
 
   const sub = {
     attach(s) {
@@ -482,27 +533,6 @@ function handleGetEvents(res, spaceKey, store, context) {
     },
   };
 
-  const writeFrame = (event) => {
-    try {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    } catch {
-      sub.detach(); // 写失败（连接已死）→ 摘除，服务不崩
-    }
-  };
-
-  const onEvent = (ev) => {
-    if (detached || !ev || typeof ev.type !== "string") return;
-    if (ev.type === "text_start") {
-      textStarted = true;
-    } else if (!textStarted && (ev.type === "text_delta" || ev.type === "text_end")) {
-      // 轮次边界宣告：首个文本事件前补发 text_start（裁决 11 子序列头）。
-      textStarted = true;
-      writeFrame({ type: "text_start" });
-    }
-    if (ev.type === "text_end") textStarted = false; // 轮次结束，下一轮重新宣告
-    writeFrame(ev);
-  };
-
   res.on("close", () => sub.detach());
   res.on("error", () => sub.detach());
   heartbeat = setInterval(() => {
@@ -515,21 +545,7 @@ function handleGetEvents(res, spaceKey, store, context) {
   }, HEARTBEAT_MS);
   heartbeat.unref?.(); // 心跳不阻塞进程退出（node --test 生命周期）
 
-  // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
-  // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
-  // 启动（ADR-009：打开 events 连接不启动 agent 子进程）。
-  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
-  const existing = svc?.getSession ? svc.getSession(spaceKey) : null;
-  if (existing) {
-    sub.attach(existing);
-  } else {
-    let subs = pendingSseSubs.get(spaceKey);
-    if (!subs) {
-      subs = new Set();
-      pendingSseSubs.set(spaceKey, subs);
-    }
-    subs.add(sub);
-  }
+  return sub;
 }
 
 // —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
