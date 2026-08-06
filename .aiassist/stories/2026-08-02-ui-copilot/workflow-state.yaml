@@ -5,7 +5,7 @@ story_id: 2026-08-02-ui-copilot
 intention: >-
   在应用内查执行状态、下发任务、操作配置都要手动点菜单页面——没有对话式辅助路径。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
@@ -13,6 +13,12 @@ created: 2026-08-02
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-02, from: -, to: THINK, note: "创建 story（wayfind builtin-agent 决议 S3）"}
+  - {at: 2026-08-05, from: THINK, to: PRD, note: "demand-insight 完成（interview-notes.md）：方向 B 分层交付拍板 M1 会话中心骨架→M2 项目空间增强（skill 注入+FS/脚本工具+高危确认）→M3 飞书只读；空间模型 ui:copilot+ui:project:<id>+feishu:* 只读；Codex 式双栏形态；权限=高危确认其余放行无 UI 配置（PI 权限插件待 research）；消息桥不做"}
+  - {at: 2026-08-06, from: PRD, to: TECH-DESIGN, note: "DESIGN 收口：assistant.html 原型 approved（双区模型拍板——会话区纯会话默认落地 + 管理区旧壳原样+返回对话，路线 A 融合左导否决；项目行＋解决无会话首发；M1 标题首条截断/M2 飞书独立分组/M4 引导卡砍掉固化；M3 挂起可见性登记远期；Playwright 冒烟零错误）。PRD v1 含 S1~S9 稳定块 + H1/H2 假设。下一步先 /research 验 H1（PI 权限插件）/H2（SKILL.md 注入）再 tech-design"}
+  - {at: 2026-08-06, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v1 拍板：H1/H2 research 证实（gotgenes 权限扩展 + PI 原生 skills 渐进披露）；D1 空间=会话（ui:copilot:<sid>/ui:project:<pid>:<sid>，/reset=新会话）、D2 gotgenes+授权桥（全局/项目策略文件，ask→既有挂起队列）、D3 双区模型、D4 SSE 流式；ADR-016/017/018 落盘；H3/H4（gotgenes 嵌入不确定项）登记签核前 spike。PRD 已反向同步"}
+  - {at: 2026-08-06, from: CRYSTALLIZE, to: TEST, note: "requirements v1 人确认：REQ-AGENT-026~034（9 条，M1 五条/M2 三条/M3 一条），附录 A 高危分类清单细化（读 allow/写 ask/bash 破坏性 ask/cwd 外 ask/CLI 沿用/无 deny）；H3/H4/H5 spike 列签核前置；hash 8432c0cf；CONTEXT.md 术语登记（对话空间修订+7 新术语）；能力地图 conversation-space (ui-copilot) 行"}
+  - {at: 2026-08-06, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：17 文件 85 用例（api 64 + e2e 21），9 REQ 全覆盖；test-plan.md 含回溯检查/待签占位清单（9 类）/实现契约（testid 集 + nav-notifications 补条目 + 种子 seam ×2 + 新模块 public seam）/spike 前置/REFLECT 人工项。待门 1 签核"}
+  - {at: 2026-08-06, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核通过（人签核）：signoff.md 落盘——20 项断言裁决（错误码 E-SESSION-CREATE/NOT-FOUND/READONLY、403 先于 409、{messages} 封套、title slice(0,40) 无省略号、分页升序+messageId 游标、FS 命名 read/write/bash、/reset 走 composer 斜杠、feishu reset 403、agent_space_meta 侧表、SSE 契约、权限策略文件 gotgenes 约定、只读 cwd 外 ask、CLI 查询 allow、孤儿 projectName null 等）；占位全清 ASSERTIONS-SIGNED: true；实现契约确认（testid 集/nav-notifications/种子 seam×2/public seam×5）；spike H3/H4/H5 列 M2 BUILD 前（ADR-017 回退预案）。BUILD 解锁，M1 先行"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -26,13 +32,13 @@ blocks: {}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
-  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
-  compiled: false           # 是否已跑过 compile-design-system
-  preview: ""               # 当前有效的 preview.html 路径
+  slug: "global"            # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true            # 是否已跑过 compile-design-system
+  preview: ".aiassist/stories/2026-08-02-ui-copilot/ux/preview.html"               # 当前有效的 preview.html 路径
 
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
-  recorded: []              # [flow-a.html, flow-b.html, ...]
+  recorded: [assistant.html]              # [flow-a.html, flow-b.html, ...]
 
 # 已生成的变体(按需)。
 variants:

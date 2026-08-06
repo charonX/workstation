@@ -26,7 +26,7 @@
 | 变量赋值节点 | setVariables Node | 通用变量归一化节点：声明 outputVariables 并用 expressions 求值，用于多入口变量名对齐或常量注入 | `nodes` 表中 `type="setVariables"` | — |
 | 发布物 | Release | 一次应用分发的版本发布（GitHub Release + tag，含 dmg/zip 资产），驱动检查更新与手动重装 | GitHub Release（无 DB 表） | 版本发布 |
 | 嵌套执行 | Nested Execution | 子流程被调用时产生的 execution，通过 parentExecutionId/parentNodeId/depth 与父执行关联 | `executions` 表 | — |
-| 对话空间 | Conversation Space | 对话的上下文容器，按入口与聊天维度隔离（飞书单聊 / 每个群聊 / UI 面板各一）；每空间一个独立 agent 会话，上下文互不串扰；spaceKey 形如 `feishu:<chatId>`、`ui:copilot` | `agent_sessions` 表 + PI session | 会话（易与通用会话混淆）、聊天 |
+| 对话空间 | Conversation Space | 对话的上下文容器，**空间 = 会话**（2026-08-06 ADR-016 修订）：每条 chat 一个独立空间，上下文互不串扰；spaceKey 语法 `feishu:<chatId>`（世代制沿用）、`ui:copilot:<sessionId>`、`ui:project:<projectId>:<sessionId>` | `agent_sessions` 表 + PI session | 聊天（"会话"在 UI 语境 = 对话空间本身，是规范说法；禁止用它指代 execution 等其他概念） |
 
 ## 业务概念
 
@@ -48,6 +48,13 @@
 | 产物 | Flow 执行产出的文件（日报、速存 markdown 等）；主锚点是项目文件，执行记录登记其路径 | Execution | 产物登记 / 通知 / 飞书文档同步 |
 | 触发来源 | 执行的启动方式：手动 / 调试 / schedule / 通道 / **对话**（agent 对话识别下发意图，2026-08-03 登记） | Execution | executions.trigger 字段 |
 | Tag | 内容源的品类标签；Flow 按 tag 筛选引用内容源，不做逐一关联 | 内容源 | 定时日报的来源圈定 |
+| 会话区 | 应用默认落地区（ADR-018）：纯会话左导（新对话/通用/项目/飞书分组）+ 对话窗；经 ⚙ 进管理区 | 对话空间 | 会话中心 / 助手页 |
+| 管理区 | 旧应用壳原样保留区（ADR-018）：仪表盘/工作区/流程/执行/内容源/技能/通知/设置，顶部「← 返回对话」 | — | 会话区 ⚙ 进入 |
+| 通用空间 | 不属任何项目的对话空间分组（`ui:copilot:<sid>`）；工具面 = CLI-only | 对话空间 | 会话区通用分组 |
+| 项目空间 | 归属某项目的对话空间（`ui:project:<pid>:<sid>`）；工具面 = CLI + 项目 skills + 项目目录 FS/脚本（权限策略管控） | 对话空间, Project | 会话区项目分组、行内＋新建 |
+| 孤儿会话 | 项目已删除但保留可回看的项目空间会话；禁止发送新消息 | 对话空间 | 会话列表划线呈现 |
+| 内联确认卡 | 对话窗内渲染的高危确认交互（确认/拒绝/稍后处理），复用确认挂起队列与既有确认回调端点 | 确认挂起 | UI 空间高危操作 |
+| 授权桥 | gotgenes 权限评估 `ask` → 确认挂起队列的接缝（ADR-017）：一套队列、按空间前缀分流渲染（UI 内联确认卡 / 飞书卡片） | 确认挂起 | 权限层（FS/脚本高危） |
 
 ## 状态与生命周期
 
@@ -78,5 +85,6 @@
 | 2026-07-16 | 新增 skill-repo、skill symlink、dependency cascade、orphan skill 术语 | codex-harness-desktop /reflect |
 | 2026-07-19 | 新增内容源、通知实体；素材库、通道、产物、触发来源、Tag 概念 | 2026-07-19-media-production-line |
 | 2026-07-28 | 新增子流程、callFlow/flowInput/flowOutput/setVariables 节点、嵌套执行术语 | 2026-07-23-nested-flow /reflect |
+| 2026-08-06 | 「对话空间」修订为"空间=会话"（ADR-016）；新增会话区/管理区/通用空间/项目空间/孤儿会话/内联确认卡/授权桥 | 2026-08-02-ui-copilot /domain-model |
 | 2026-07-29 | Skill 代码映射改为磁盘（三表删除）；Skill Repository → 技能库/来源目录；Skill Symlink 定义更新（agent 原生目录→技能库）；删除 Dependency Cascade（ADR-011 废止）、Orphan Skill（三表删除后概念消失）；新增 agentTypes、Agent Registry、收敛、外部条目；CLI 三级子命令约定扩展 | 2026-07-29-multi-agent-skills tech-design |
 | 2026-08-03 | 新增「对话空间」实体、「用户绑定」「确认挂起」概念；修订「通道」「通道绑定」定义（agent 优先，REQ-CHANNEL-002）；触发来源新增「对话」；状态新增 pending | 2026-08-02-builtin-agent domain-model |
