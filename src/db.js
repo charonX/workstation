@@ -161,6 +161,16 @@ const CONFIRMATIONS_DDL = `
   CREATE INDEX IF NOT EXISTS idx_agent_confirmations_status ON agent_confirmations(status);
 `;
 
+// REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta（通道空间显示名侧表）。
+// spaceKey 唯一 = agent_sessions.spaceKey（飞书 chat）；写入在 M3 通道侧，UI 侧只读。
+// initSchema 与 migrateSchema（旧库补建）共用同一 DDL（CREATE IF NOT EXISTS 幂等，防漂移）。
+const SPACE_META_DDL = `
+  CREATE TABLE IF NOT EXISTS agent_space_meta (
+    spaceKey TEXT PRIMARY KEY,
+    displayName TEXT
+  );
+`;
+
 function initSchema(database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -290,10 +300,7 @@ function initSchema(database) {
 
     -- REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta（通道空间显示名侧表）。
     -- spaceKey 唯一 = agent_sessions.spaceKey（飞书 chat）；写入在 M3 通道侧，UI 侧只读。
-    CREATE TABLE IF NOT EXISTS agent_space_meta (
-      spaceKey TEXT PRIMARY KEY,
-      displayName TEXT
-    );
+    ${SPACE_META_DDL}
 
     ${EXECUTION_NODES_DDL}
   `);
@@ -381,10 +388,5 @@ function migrateSchema(database) {
   }
   // REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta 侧表（旧库补建，
   // 与 initSchema 同 DDL，CREATE IF NOT EXISTS 幂等）。
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS agent_space_meta (
-      spaceKey TEXT PRIMARY KEY,
-      displayName TEXT
-    );
-  `);
+  database.exec(SPACE_META_DDL);
 }

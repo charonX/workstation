@@ -44,14 +44,22 @@ const DEFAULT_PROVIDER = "deepseek";
 const MAX_MESSAGE_CHARS = 300 * 1024;
 
 // —— 空间 key 纯函数（ADR-016 语法；Slice 2 分组列表复用）——
+// ui:project:<pid>:<sid> 的前缀/pid 解析共用同一模式（ui:copilot 无 pid 段）。
+const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
 
 // 从既有 ui:* 空间 key 解析分组前缀：ui:copilot:* → "ui:copilot:"；
 // ui:project:<pid>:* → "ui:project:<pid>:"；非 ui 空间 → undefined。
 export function uiGroupPrefixFor(spaceKey) {
   const key = String(spaceKey ?? "");
   if (key.startsWith("ui:copilot:")) return "ui:copilot:";
-  const m = /^ui:project:[^:]+:/.exec(key);
+  const m = PROJECT_PREFIX_RE.exec(key);
   return m ? m[0] : undefined;
+}
+
+// ui:project:<pid>:<sid> → <pid>；其他空间 key → undefined。
+function projectIdOf(spaceKey) {
+  const m = PROJECT_PREFIX_RE.exec(String(spaceKey ?? ""));
+  return m ? m[1] : undefined;
 }
 
 // UI 空间 reset 新 key：同分组前缀 + 新 sessionId（F4：不触发世代机制）。
@@ -87,9 +95,7 @@ export function projectMessagesFromJsonl(sessionRef) {
     if (typeof content === "string") {
       text = content;
     } else if (Array.isArray(content)) {
-      text = content
-        .map((part) => (typeof part === "string" ? part : typeof part?.text === "string" ? part.text : ""))
-        .join("");
+      text = content.map(partText).join("");
     }
     messages.push({
       messageId: String(entry.id ?? ""),
@@ -101,12 +107,23 @@ export function projectMessagesFromJsonl(sessionRef) {
   return messages;
 }
 
+// 文本段归一化：纯字符串原样；{ type:"text", text } 取 text；其余 → ""。
+function partText(part) {
+  if (typeof part === "string") return part;
+  return typeof part?.text === "string" ? part.text : "";
+}
+
+// limit 归一化（signoff 裁决 5）：0/负数/NaN/非整数 → 默认 100。
+function normalizeLimit(limit) {
+  return Number.isInteger(limit) && limit > 0 ? limit : 100;
+}
+
 // 历史分页窗口（REQ-AGENT-029 标准 4 / signoff 裁决 5）：默认取最新 limit 条、
 // 数组时间升序返回（JSONL 顺序即时间序，调用方保证）；before 游标 = messageId，
 // 返回严格早于游标的窗口；游标不在数组中 → 视为无游标（最新窗口）；limit 非法
 // （0/负数/NaN/非数字）→ 默认 100。
 export function paginateMessages(messages, { limit = 100, before } = {}) {
-  const size = Number.isInteger(limit) && limit > 0 ? limit : 100;
+  const size = normalizeLimit(limit);
   let window = messages;
   if (typeof before === "string" && before !== "") {
     const idx = messages.findIndex((m) => m.messageId === before);
@@ -176,7 +193,7 @@ function listSessions(store) {
     if (row.spaceKey.startsWith("ui:copilot:")) {
       general.push(item);
     } else if (row.spaceKey.startsWith("ui:project:")) {
-      const pid = row.spaceKey.slice("ui:project:".length).split(":", 1)[0];
+      const pid = projectIdOf(row.spaceKey);
       let group = projects.find((g) => g.projectId === pid);
       if (!group) {
         group = {
@@ -235,11 +252,11 @@ function handleCreateSession(res, body, store) {
   if (spaceKind === "project") {
     const projectId = body?.projectId;
     if (typeof projectId !== "string" || projectId === "" || !projectExists(projectId)) {
-      return sessionError(res, 400, "E-SESSION-CREATE", "项目不存在，无法创建项目会话");
+      return sendError(res, 400, "E-SESSION-CREATE", "项目不存在，无法创建项目会话");
     }
     return createUiRow(res, `ui:project:${projectId}:${randomUUID()}`, store);
   }
-  return sessionError(res, 400, "E-SESSION-CREATE", "spaceKind 仅支持 general | project");
+  return sendError(res, 400, "E-SESSION-CREATE", "spaceKind 仅支持 general | project");
 }
 
 function projectExists(projectId) {
@@ -260,7 +277,7 @@ function createUiRow(res, spaceKey, store) {
 
 function handleGetMessages(req, res, spaceKey, store) {
   const row = store.get(spaceKey);
-  if (!row) return sessionError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
   const { limit, before } = parsePaginationQuery(req);
   const messages = paginateMessages(projectMessagesFromJsonl(row.sessionRef), { limit, before });
   return ok(res, { messages });
@@ -275,8 +292,7 @@ function parsePaginationQuery(req) {
     const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
     const rawLimit = params.get("limit");
     if (rawLimit !== null) {
-      const n = Number(rawLimit);
-      if (Number.isInteger(n) && n > 0) limit = n;
+      limit = normalizeLimit(Number(rawLimit));
     }
     before = params.get("before") ?? undefined;
   } catch {
@@ -291,16 +307,16 @@ function parsePaginationQuery(req) {
 // E-SESSION-ORPHAN 等）随 REQ-AGENT-028 完整化。
 async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   const text = typeof body?.text === "string" ? body.text : "";
-  if (text.trim() === "") return validationError(res, "消息内容不能为空");
-  if (text.length > MAX_MESSAGE_CHARS) return validationError(res, `消息长度超过上限（${MAX_MESSAGE_CHARS} 字符）`);
+  const textError = messageTextError(text);
+  if (textError) return validationError(res, textError);
   const row = store.get(spaceKey);
-  if (!row) return sessionError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
   if (spaceKey.startsWith("feishu:")) {
     // 飞书空间 UI 只读（signoff 裁决 2 同原则：空间属性，先于 agent 配置检查）。
-    return sessionError(res, 403, "E-SESSION-READONLY", "飞书会话只读，请到飞书继续对话");
+    return sendError(res, 403, "E-SESSION-READONLY", "飞书会话只读，请到飞书继续对话");
   }
 
-  const svc = typeof getAgentService === "function" ? await getAgentService() : null;
+  const svc = await resolveAgentService(getAgentService);
   if (!svc) return notFound(res);
   const config = buildSessionConfig();
   svc.createSession({
@@ -320,17 +336,31 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   return ok(res, { messageId: randomUUID() }, 202);
 }
 
+// 消息文本校验（signoff 裁决 12：空文本 400 不强制错误码）：空/超限 → 错误文案；
+// 合法 → undefined。
+function messageTextError(text) {
+  if (text.trim() === "") return "消息内容不能为空";
+  if (text.length > MAX_MESSAGE_CHARS) return `消息长度超过上限（${MAX_MESSAGE_CHARS} 字符）`;
+  return undefined;
+}
+
+// 惰性解析 agentService（server.js 工厂，首个消息请求才启动）；未接线 → null
+// （404 与未实现端点同语义）。
+async function resolveAgentService(getAgentService) {
+  return typeof getAgentService === "function" ? getAgentService() : null;
+}
+
 // UI 空间 /reset = 同分组新建会话并切换（F4）：新 spaceKey 新行 + JSONL 占位，
 // 旧行保留（历史可读、可继续发送）。feishu:* → 403 E-SESSION-READONLY
 // （signoff 裁决 9：世代制语义保留给飞书通道内部路径，HTTP 面不套用 UI 新行语义）。
 function handleReset(res, spaceKey, store) {
   const row = store.get(spaceKey);
-  if (!row) return sessionError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
   if (spaceKey.startsWith("feishu:")) {
-    return sessionError(res, 403, "E-SESSION-READONLY", "飞书会话只读，不支持 HTTP 重置");
+    return sendError(res, 403, "E-SESSION-READONLY", "飞书会话只读，不支持 HTTP 重置");
   }
   const newKey = newUiSpaceKeyFor(spaceKey);
-  if (!newKey) return sessionError(res, 400, "E-SESSION-CREATE", "不支持的空间 key");
+  if (!newKey) return sendError(res, 400, "E-SESSION-CREATE", "不支持的空间 key");
   store.getOrCreate(newKey);
   return ok(res, { spaceKey: newKey });
 }
@@ -361,23 +391,25 @@ function decodeParam(value) {
   }
 }
 
-function ok(res, data, status = 200) {
+// —— JSON 响应（唯一写点：writeHead + end；错误封套 { error, message } 单一构造处）——
+function sendJson(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
 
-function sessionError(res, status, code, message) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: code, message }));
+function sendError(res, status, code, message) {
+  sendJson(res, status, { error: code, message });
+}
+
+function ok(res, data, status = 200) {
+  sendJson(res, status, data);
 }
 
 // 参数类 400（signoff 裁决 12：空文本不强制错误码，避免与 E-SESSION-CREATE 语义混淆）。
 function validationError(res, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
+  sendError(res, 400, "VALIDATION_ERROR", message);
 }
 
 function notFound(res) {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message: "Not found" }));
+  sendError(res, 404, "NOT_FOUND", "Not found");
 }
