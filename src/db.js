@@ -88,6 +88,7 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS channel_bindings;
     DROP TABLE IF EXISTS channel_messages;
     DROP TABLE IF EXISTS agent_sessions;
+    DROP TABLE IF EXISTS agent_space_meta;
     DROP TABLE IF EXISTS agent_confirmations;
   `);
   initSchema(database);
@@ -287,6 +288,13 @@ function initSchema(database) {
     -- args 为命令参数 JSON（LLM flags 归一化后的 kebab-case 形式）。
     ${CONFIRMATIONS_DDL}
 
+    -- REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta（通道空间显示名侧表）。
+    -- spaceKey 唯一 = agent_sessions.spaceKey（飞书 chat）；写入在 M3 通道侧，UI 侧只读。
+    CREATE TABLE IF NOT EXISTS agent_space_meta (
+      spaceKey TEXT PRIMARY KEY,
+      displayName TEXT
+    );
+
     ${EXECUTION_NODES_DDL}
   `);
 }
@@ -371,4 +379,12 @@ function migrateSchema(database) {
   if (!hasColumn(database, "agent_sessions", "title")) {
     database.exec(`ALTER TABLE agent_sessions ADD COLUMN title TEXT`);
   }
+  // REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta 侧表（旧库补建，
+  // 与 initSchema 同 DDL，CREATE IF NOT EXISTS 幂等）。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS agent_space_meta (
+      spaceKey TEXT PRIMARY KEY,
+      displayName TEXT
+    );
+  `);
 }

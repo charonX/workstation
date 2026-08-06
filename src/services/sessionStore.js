@@ -219,5 +219,17 @@ export function createSessionStore(options = {}) {
     return () => resetListeners.delete(listener);
   }
 
-  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset };
+  // agent_space_meta 侧表读取（REQ-AGENT-029 / signoff 裁决 10 候选 A：飞书组显示名
+  // seam）。通道侧写入在 M3（本切片只读，无写入路径）；表缺失（旧库未迁移）→ 空
+  // 数组，调用方 fallback 到 spaceKey 或空（裁决 10）。返回 [{ spaceKey, displayName }]。
+  function listSpaceMeta() {
+    try {
+      return db().prepare("SELECT spaceKey, displayName FROM agent_space_meta").all();
+    } catch (err) {
+      if (err?.code === "SQLITE_ERROR") return [];
+      throw err;
+    }
+  }
+
+  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset, listSpaceMeta };
 }

@@ -2,18 +2,19 @@
 // UI Copilot 会话中心 — 会话 REST 端点（tech-design「接口契约」HTTP 会话端点表）。
 //
 // Slice 1（REQ-AGENT-027 空间=会话数据层）端点：
-//   GET  /api/agent/sessions                          → 200 { general, projects, feishu }
-//                                                     （最小分组；列表端点首个 store 消费方，
-//                                                       触发惰性初始化/旧库迁移）
 //   POST /api/agent/sessions { spaceKind, projectId? } → 200 { spaceKey }；spaceKind 非法 /
 //                                                      projectId 无效 → 400 E-SESSION-CREATE
-//   GET  /api/agent/sessions/:spaceKey/messages        → 200 { messages: [...] }；
-//                                                      spaceKey 不存在 → 404 E-SESSION-NOT-FOUND
 //   POST /api/agent/sessions/:spaceKey/messages { text } → 202 { messageId }；空/超限 → 400；
 //                                                      feishu:* → 403 E-SESSION-READONLY
 //   POST /api/agent/sessions/:spaceKey/reset           → 200 { spaceKey: 新 }（UI 空间 = 同分组
 //                                                      新建会话并切换，旧行保留可读可继续，F4 语义）；
 //                                                      feishu:* → 403 E-SESSION-READONLY
+// Slice 2（REQ-AGENT-029 分组列表与历史回看）端点：
+//   GET  /api/agent/sessions                          → 200 { general, projects, feishu }
+//                                                     （完整分组：join projects 取名 / 孤儿标记 /
+//                                                       agent_space_meta chat 名 / lastActiveAt 倒序）
+//   GET  /api/agent/sessions/:spaceKey/messages?limit&before → 200 { messages: [...] }
+//                                                     （JSONL 投影分页；默认 limit=100）
 //
 // 空间 key 语法（ADR-016 / CONTEXT.md 对话空间）：ui:copilot:<sessionId>（通用空间）、
 // ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 世代制沿用（不套用
@@ -21,10 +22,14 @@
 //
 // signoff 裁决：1（错误码 E-SESSION-CREATE/E-SESSION-NOT-FOUND/E-SESSION-READONLY）、
 // 3（历史封套 { messages }，条目含 messageId/role/createdAt）、4（title slice(0,40)
-// 无省略号）、9（feishu HTTP reset → 403）、12（空文本 400 不强制 code）。
+// 无省略号）、5（分页：默认最新 limit 条、数组时间升序、before 游标 = messageId）、
+// 9（feishu HTTP reset → 403）、10（feishu chat 名 seam = agent_space_meta 侧表，
+// 表/行缺失 fallback 到 spaceKey）、16（孤儿组 projectName = null）、
+// 17（条目字段集 title/lastActiveAt/sessionRef + spaceKey；组内 lastActiveAt 倒序）、
+// 12（空文本 400 不强制 code）。
 //
-// 孤儿/飞书行分组细节（join projects 取名/孤儿标记/agent_space_meta）与 SSE 属
-// REQ-AGENT-028/029（Slice 2/3），本文件保持最小骨架。
+// SSE（GET .../events）属 REQ-AGENT-028（Slice 3），本文件不实现。孤儿/只读会话
+// 的发送拦截（E-SESSION-ORPHAN）随 REQ-AGENT-028 错误映射完整化。
 
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -96,6 +101,20 @@ export function projectMessagesFromJsonl(sessionRef) {
   return messages;
 }
 
+// 历史分页窗口（REQ-AGENT-029 标准 4 / signoff 裁决 5）：默认取最新 limit 条、
+// 数组时间升序返回（JSONL 顺序即时间序，调用方保证）；before 游标 = messageId，
+// 返回严格早于游标的窗口；游标不在数组中 → 视为无游标（最新窗口）；limit 非法
+// （0/负数/NaN/非数字）→ 默认 100。
+export function paginateMessages(messages, { limit = 100, before } = {}) {
+  const size = Number.isInteger(limit) && limit > 0 ? limit : 100;
+  let window = messages;
+  if (typeof before === "string" && before !== "") {
+    const idx = messages.findIndex((m) => m.messageId === before);
+    if (idx !== -1) window = messages.slice(0, idx);
+  }
+  return window.slice(-size);
+}
+
 // —— HTTP 分发（server.js resource="agent"、subPath[0]="sessions" 挂接）——
 
 export async function handleAgentSessions(req, res, body, subPath = [], context = {}) {
@@ -118,7 +137,7 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
   const tail = rest.slice(1);
 
   if (tail.length === 1 && tail[0] === "messages") {
-    if (req.method === "GET") return handleGetMessages(res, spaceKey, store);
+    if (req.method === "GET") return handleGetMessages(req, res, spaceKey, store);
     if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, getAgentService);
     return notFound(res);
   }
@@ -133,10 +152,17 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
 // —— 集合级端点 ——
 
-// 最小分组列表（REQ-AGENT-027 切片内仅承担「触发惰性迁移」；分组 join/孤儿标记/
-// agent_space_meta 随 REQ-AGENT-029 扩展）。条目字段 = signoff 裁决 17 最小集
-// （title/lastActiveAt/sessionRef + spaceKey 供选中）。各组按 lastActiveAt 倒序。
+// 分组会话列表（REQ-AGENT-029 标准 1~3/5）：
+// - general = ui:copilot:*；projects = ui:project:<pid>:*；feishu = feishu:*。
+// - 项目组 join projects 表取名（标准 1）；pid 不存在 → orphan:true + projectName:null
+//   （标准 2 / signoff 裁决 16，不回填 pid）。
+// - 飞书条目显示名取 agent_space_meta 侧表（标准 5 / 裁决 10 候选 A）；表/行缺失 →
+//   fallback 到 spaceKey（裁决 10）。
+// - 条目字段 = 裁决 17 最小集（title/lastActiveAt/sessionRef + spaceKey 供选中），
+//   飞书条目附加 displayName。各组内按 lastActiveAt 倒序（裁决 17）。
 function listSessions(store) {
+  const projectNames = loadProjectNameMap();
+  const spaceMeta = loadSpaceMetaMap(store);
   const general = [];
   const projects = [];
   const feishu = [];
@@ -153,11 +179,17 @@ function listSessions(store) {
       const pid = row.spaceKey.slice("ui:project:".length).split(":", 1)[0];
       let group = projects.find((g) => g.projectId === pid);
       if (!group) {
-        group = { projectId: pid, sessions: [] };
+        group = {
+          projectId: pid,
+          projectName: projectNames.get(pid) ?? null,
+          orphan: !projectNames.has(pid),
+          sessions: [],
+        };
         projects.push(group);
       }
       group.sessions.push(item);
     } else if (row.spaceKey.startsWith("feishu:")) {
+      item.displayName = spaceMeta.get(row.spaceKey) ?? row.spaceKey;
       feishu.push(item);
     }
   }
@@ -166,6 +198,30 @@ function listSessions(store) {
   for (const group of projects) group.sessions.sort(byActiveDesc);
   feishu.sort(byActiveDesc);
   return { general, projects, feishu };
+}
+
+// projects 表 join（REQ-AGENT-029 标准 1：项目名取 projects.name）。项目表与会话库
+// 分属不同库（server.js 接线：会话库 = 配置目录 agent-sessions.db，项目表 = 应用库
+// DB_PATH），JS 侧 map 归并。读失败（表缺失等）→ 空 map（全部按孤儿处理，不阻断列表）。
+function loadProjectNameMap() {
+  try {
+    const rows = getDb().prepare("SELECT id, name FROM projects").all();
+    return new Map(rows.map((r) => [r.id, r.name]));
+  } catch {
+    return new Map();
+  }
+}
+
+// agent_space_meta 侧表 join（signoff 裁决 10 候选 A：飞书 chat 名）。经 store 读
+// （侧表与会话同库 = 配置目录）；表缺失 → 空 map（fallback 由调用方兜底）。
+function loadSpaceMetaMap(store) {
+  const map = new Map();
+  try {
+    for (const row of store.listSpaceMeta()) map.set(row.spaceKey, row.displayName);
+  } catch {
+    return map;
+  }
+  return map;
 }
 
 // 新建会话（F4 新对话归属）：{ spaceKind: "general" } → ui:copilot:<sid>；
@@ -202,10 +258,31 @@ function createUiRow(res, spaceKey, store) {
 
 // —— 会话级端点 ——
 
-function handleGetMessages(res, spaceKey, store) {
+function handleGetMessages(req, res, spaceKey, store) {
   const row = store.get(spaceKey);
   if (!row) return sessionError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
-  return ok(res, { messages: projectMessagesFromJsonl(row.sessionRef) });
+  const { limit, before } = parsePaginationQuery(req);
+  const messages = paginateMessages(projectMessagesFromJsonl(row.sessionRef), { limit, before });
+  return ok(res, { messages });
+}
+
+// 分页 query 解析（REQ-AGENT-029 标准 4）：limit 非法 → 默认 100；before 缺省/空 →
+// 无游标。非法 query 串 → 默认值。
+function parsePaginationQuery(req) {
+  let limit = 100;
+  let before;
+  try {
+    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+    const rawLimit = params.get("limit");
+    if (rawLimit !== null) {
+      const n = Number(rawLimit);
+      if (Number.isInteger(n) && n > 0) limit = n;
+    }
+    before = params.get("before") ?? undefined;
+  } catch {
+    // 非法 query → 默认值。
+  }
+  return { limit, before };
 }
 
 // 发送消息（F1 核心处理最小形态）：202 { messageId }（事件即结果，流式回传属
