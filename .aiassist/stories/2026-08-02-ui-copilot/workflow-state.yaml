@@ -5,7 +5,7 @@ story_id: 2026-08-02-ui-copilot
 intention: >-
   在应用内查执行状态、下发任务、操作配置都要手动点菜单页面——没有对话式辅助路径。
 
-phase: BUG          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。（BUG-001~005 已占用）
 created: 2026-08-02
@@ -32,6 +32,7 @@ history:
   - {at: 2026-08-07, from: BUG, to: REFLECT, note: "BUG-004 修复完成：渲染器 finalizeStreamCard（text_end/error/completed 后关 streaming_mode + summary 换正文摘要 slice(0,40)，cardId 竞态回填补发）+ adapter finalizeCard（PUT cards/:id/settings，settings JSON 字符串官方 schema）+ channelManager 透传 + server.js 接线（4 文件）。回归 deb4e90 [test] 修复前 5 红 → fa1a4c0 [bugfix] 后 19/19；agent-dialogue 179/179 + 全仓 618/618。闸门全过（一次绿/4 文件/无 req-gap）。真实飞书联调验证列 REFLECT 人工项。待门 2 最终验收"}
   - {at: 2026-08-07, from: REFLECT, to: BUG, note: "BUG-005（用户 16:03 实测：修复 commit 15:45 后症状仍在，列表仍卡「[生成中...]」）：BUG-004 修复生产未生效。诊断：worker text_end 事件契约完好（worker.js:370）、调用链完好（测试 19/19 绿）；三分叉待定位——H1 应用未重启跑旧代码 / H2 finalize HTTP 失败被 fire-and-forget 静默吞（BUG-004 诊断盲区：finalize 路径无 console 输出）/ H3 飞书 settings 行为与预期不符。先补诊断（finalize 派发/失败/竞态待回填全链 console 可见，对齐 sendCard 模式）交用户重启实测分叉"}
   - {at: 2026-08-07, from: BUG, to: BUG, note: "BUG-005 实测分叉命中 H2：诊断 869c7a5 上线后用户重启实测——「定型失败 E-CHANNEL-SEND: feishu API error: 404」（无 code 字段=网关级 404=路径不存在）。根因：settings 接口官方方法为 PATCH，BUG-004 误用 PUT（官方文档+社区实证，且搜索佐证「卡片卡生成中=必须调 settings 关流式」正是本症）。修正链：e6ce210 [test] 断言改 PATCH（修复前红）→ 0f46933 [bugfix] putJson→patchJson（19/19 + agent-dialogue 179/179）。教训沉淀候选：H4 类真实 API 契约的 mock 测试无法捕获方法级错误，联调人工项不可省。待用户二次实测确认列表定型"}
+  - {at: 2026-08-07, from: BUG, to: REFLECT, note: "BUG-005 收官（用户二次实测确认「飞书这成功了」）：列表不再卡「[生成中...]」，定型后预览换正文摘要。BUG-004/005 联合修复链完整：deb4e90 回归 5 红 → fa1a4c0 定型机制 → 869c7a5 诊断 → e6ce210 断言 PATCH → 0f46933 PATCH 修复 → 真实联调 PASS（H4 联调人工项就此闭环）。无 open bug，待门 2 最终验收"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
