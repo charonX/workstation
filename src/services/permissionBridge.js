@@ -12,8 +12,9 @@
 // - 决议观察 = 轮询 svc.get(confirmId).status（approve/reject 为同步写库；
 //   生产与测试同进程同一服务实例，轮询即事件等价；无注入依赖）；
 // - 授权桥行以 riskLevel="permission" + notifyOnSettle=false 提交：approve 不
-//   注入 notifyResult（操作经 worker 工具调用路径回投，避免重复/冲突注入；
-//   本库 execute 对该行是 no-op——命令为 FS 工具名，不在 CLI 注册表）；
+//   注入 notifyResult 也不执行（BUG-001：操作执行由 worker 侧 gate allow 后经
+//   工具调用路径承担——单一闸门；主进程 execute 再执行 = 双重执行——授权桥行
+//   command = CLI 工具名，在 TOOL_DEFS 注册表内，并非 no-op）；
 // - evaluateUserBash：permissionPolicy 评估器分类（allow → 直放；ask → 同桥
 //   挂起行）——生产入口 = worker user_bash 事件经 permission-ask IPC 路由
 //   （tool="user_bash" 时主进程侧走本函数）。

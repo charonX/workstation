@@ -21,9 +21,11 @@
 // 授权桥行（Slice 7，REQ-AGENT-033）：submit 可带 notifyOnSettle: false——确认
 // 决议（approve/reject）不注入 notifyResult。授权桥行 = gotgenes ask 的挂起行
 // （riskLevel "permission"）：操作由 worker 侧 gate allow 后经工具调用路径执行，
-// 结果经工具结果回投——主进程再注入会与真实结果重复/冲突（approve 时本库
-// execute 对该行是 no-op——命令为 FS 工具名，不在 CLI 注册表）。既有确认行
-// （CLI confirm 流）不带该标记，行为不变。
+// 结果经工具结果回投——主进程既不注入 notifyResult 也不执行（approve 跳过
+// execute，BUG-001：授权桥行 command = CLI 工具名，在 TOOL_DEFS 注册表内，
+// 主进程执行会与 worker 侧真实执行重复 = 双重执行；gate 超时后的晚批准同样
+// 不得执行——决议上下文已失效）。既有确认行（CLI confirm 流）不带该标记，
+// 行为不变（approve 仍驱动同一命令模块执行）。
 //
 // 确认卡渲染目标按空间前缀分流（2026-08-02-ui-copilot REQ-AGENT-030 / CONTEXT.md
 // 授权桥：一套队列，按空间前缀分流渲染——UI 内联确认卡 / 飞书卡片）：
@@ -220,12 +222,20 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
   // 确认回调 → 驱动同一命令模块执行（不经过 agent turn，REQ-AGENT-016 标准 2）：
   // - 非 pending（已处理/不存在）→ 幂等忽略（标准 4：同一回调只执行一次）；
   // - 执行结果经 notifyResult 注入会话（W-2：agent 生成自然语言回投）。
+  // 授权桥行（BUG-001，REQ-AGENT-033）：riskLevel="permission"（或 notifyOnSettle
+  // =false）的行跳过主进程 execute——操作执行由 worker 侧 gate allow 后经工具调用
+  // 路径承担（单一闸门，设计声明）；主进程再执行 = 双重执行（CLI 高危工具名在
+  // TOOL_DEFS 注册表内，非 no-op：project create 建两个项目、delete 删两次、
+  // schedule toggle 开关两次回原态）。gate 超时后的晚批准同样不得执行（决议
+  // 上下文已失效，晚执行 = 绕过 gate 上下文）。行仍结清（approved）→ 桥决议
+  // 回传 allow；result 缺省（worker 侧结果经工具结果回投）。
   async function approve(confirmId) {
     const claim = claimPending(confirmId, "approved");
     if (!claim.ok) return { status: claim.status, executed: false };
     const { row } = claim;
+    const isBridgeRow = row.riskLevel === "permission" || notifySettleFlags.get(confirmId) === false;
     let result;
-    if (typeof execute === "function") {
+    if (!isBridgeRow && typeof execute === "function") {
       try {
         // args 回读为对象（agent_confirmations.args 存 JSON；执行层契约 = 对象，
         // 与工具路径 LLM 参数同形态）。
@@ -240,7 +250,7 @@ export function createConfirmationService({ dbPath, execute, notifyResult, sendC
       }
     }
     await notifyIfPresent({ sessionKey: row.sessionKey, result }, confirmId);
-    return { status: "approved", executed: true, result };
+    return { status: "approved", executed: !isBridgeRow, result };
   }
 
   // 拒绝 → 不执行 + 回投「已取消」（REQ-AGENT-016 标准 3）。
