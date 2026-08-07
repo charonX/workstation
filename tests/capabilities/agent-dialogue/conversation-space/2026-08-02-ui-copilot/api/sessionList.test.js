@@ -2,6 +2,7 @@
 // REQ-VERSION: v1-hash:8432c0cff25d5ef4a71d5c8fd95b3045977d65430eb968d7063be5fc81d67012
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
+// BUG-TRACE: BUG-003
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: true
 
@@ -234,6 +235,31 @@ describe("REQ-AGENT-029 分组会话列表与历史回看", () => {
     const i2 = keys.indexOf(s2.body.spaceKey);
     assert.ok(i1 !== -1 && i2 !== -1, `两条会话都应在 general 组，实际: ${JSON.stringify(keys)}`);
     assert.ok(i2 < i1, `lastActiveAt 较新的会话应排在前面（倒序），顺序: ${JSON.stringify(keys)}`);
+  });
+
+  it("BUG-003: a project without any sessions still appears in the projects group with an empty sessions array", async () => {
+    await ensureAgentSessionsRoute();
+
+    // Arrange：建一个项目，但不创建任何 ui:project:* 会话（无会话项目——从未对话，
+    // 左导「项目」分组须仍显示它，行内＋/「没有聊天」空态由此可达，UX 原型语义）。
+    const projectRes = await postJson(serverCtx.baseUrl, "/api/projects", {
+      name: "无会话项目",
+      localPath: path.join(workdir, "proj-nosession")
+    });
+    assert.equal(projectRes.status, 201, `前置：建项目应 201，实际 ${projectRes.status}`);
+    const projectId = projectRes.body.id;
+
+    // Act
+    const res = await getJson(serverCtx.baseUrl, "/api/agent/sessions");
+
+    // Assert（REQ-AGENT-029 标准 1 项目分组 = 所有现存项目；BUG-003 修复前该项目不出现）。
+    assert.equal(res.status, 200, `列表端点应 200，实际 ${res.status}`);
+    const group = (res.body?.projects ?? []).find((p) => p.projectId === projectId);
+    assert.ok(group, `无会话项目应出现在 projects 组，实际: ${JSON.stringify(res.body?.projects)}`);
+    assert.equal(group.projectName, "无会话项目", "无会话项目应 join projects 表取名");
+    assert.equal(group.orphan, false, "现存项目分组 orphan 应为 false");
+    assert.ok(Array.isArray(group.sessions) && group.sessions.length === 0,
+      "无会话项目 sessions 应为空数组（前端渲染「没有聊天」空态）");
   });
 
   it("GET .../messages paginates with limit and before, and defaults to returning the full history within the 100 cap", async () => {
