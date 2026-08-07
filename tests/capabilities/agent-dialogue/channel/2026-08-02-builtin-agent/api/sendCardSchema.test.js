@@ -159,7 +159,7 @@ describe("BUG-004 层 1：finalizeCard 请求体符合 CardKit 更新配置接�
     mock.restore();
   });
 
-  it("PUT /cards/:id/settings：settings JSON 字符串含 streaming_mode=false + summary.content（修复前红：方法缺失）", async () => {
+  it("PATCH /cards/:id/settings：settings JSON 字符串含 streaming_mode=false + summary.content（修复前红：误用 PUT → 404）", async () => {
     const create = await loadAdapter();
     const adapter = create({
       domain: "https://open.feishu.cn",
@@ -170,10 +170,11 @@ describe("BUG-004 层 1：finalizeCard 请求体符合 CardKit 更新配置接�
     assert.equal(typeof adapter.finalizeCard, "function", "adapter 应提供 finalizeCard 定型 seam（修复前缺失）");
     await adapter.finalizeCard({ cardId: "card_fake_1", summary: "执行列表", sequence: 3 });
 
-    assert.equal(mock.settingsBodies.length, 1, "应调用一次 settings 接口（PUT cards/:id/settings）");
+    assert.equal(mock.settingsBodies.length, 1, "应调用一次 settings 接口（PATCH cards/:id/settings）");
     const rec = mock.settingsBodies[0];
     assert.ok(rec.url.includes("/open-apis/cardkit/v1/cards/card_fake_1/settings"), "URL 应为 settings 端点");
-    assert.equal(rec.method, "PUT", "settings 接口方法应为 PUT");
+    // BUG-005 实测实证：settings 接口官方方法为 PATCH——PUT 获网关级 404（无 code 字段）。
+    assert.equal(rec.method, "PATCH", "settings 接口方法应为 PATCH（PUT 被飞书网关 404，BUG-005 实测）");
     // 官方 schema：settings 为 JSON 字符串（非 object），内含 config 层字段。
     assert.equal(typeof rec.body.settings, "string", "settings 应为 JSON 字符串（官方 schema）");
     const settings = JSON.parse(rec.body.settings);
