@@ -5,9 +5,9 @@ story_id: 2026-08-02-ui-copilot
 intention: >-
   在应用内查执行状态、下发任务、操作配置都要手动点菜单页面——没有对话式辅助路径。
 
-phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。（BUG-001~004 已占用）
 created: 2026-08-02
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -19,6 +19,17 @@ history:
   - {at: 2026-08-06, from: CRYSTALLIZE, to: TEST, note: "requirements v1 人确认：REQ-AGENT-026~034（9 条，M1 五条/M2 三条/M3 一条），附录 A 高危分类清单细化（读 allow/写 ask/bash 破坏性 ask/cwd 外 ask/CLI 沿用/无 deny）；H3/H4/H5 spike 列签核前置；hash 8432c0cf；CONTEXT.md 术语登记（对话空间修订+7 新术语）；能力地图 conversation-space (ui-copilot) 行"}
   - {at: 2026-08-06, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：17 文件 85 用例（api 64 + e2e 21），9 REQ 全覆盖；test-plan.md 含回溯检查/待签占位清单（9 类）/实现契约（testid 集 + nav-notifications 补条目 + 种子 seam ×2 + 新模块 public seam）/spike 前置/REFLECT 人工项。待门 1 签核"}
   - {at: 2026-08-06, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核通过（人签核）：signoff.md 落盘——20 项断言裁决（错误码 E-SESSION-CREATE/NOT-FOUND/READONLY、403 先于 409、{messages} 封套、title slice(0,40) 无省略号、分页升序+messageId 游标、FS 命名 read/write/bash、/reset 走 composer 斜杠、feishu reset 403、agent_space_meta 侧表、SSE 契约、权限策略文件 gotgenes 约定、只读 cwd 外 ask、CLI 查询 allow、孤儿 projectName null 等）；占位全清 ASSERTIONS-SIGNED: true；实现契约确认（testid 集/nav-notifications/种子 seam×2/public seam×5）；spike H3/H4/H5 列 M2 BUILD 前（ADR-017 回退预案）。BUILD 解锁，M1 先行"}
+  - {at: 2026-08-06, from: BUG, to: BUILD, note: "批量 test-gap 处置（人裁决 A，8 条）：T-1 fixture 加长 54 字（M1 唯一红消除）、T-2 孤儿 projectName 收紧 ===null、T-3 project 组 reset 用例、T-4 错误优先级判别性×2（实现符合，无 code-defect 暴露）、T-5 SSE 直接挂接用例、T-6 events 404 用例、T-7 延后 M2、T-8 既有 E2E 初始落地适配（navigation.cjs helper + 19 文件 27 套件，断言语义不变）。验证：API 32/32 + 既有 E2E 127/127 + 主套件 21/21。commit 09d014b [test]。M1 全量绿，待 H3/H4/H5 spike → M2"}
+  - {at: 2026-08-07, from: BUILD, to: BUG, note: "BUG-001 code-defect（人拍板）：M2 对齐子代理发现——授权桥 approve 对 project 空间 CLI 高危工具双重执行（主进程 approve→executeToolCommand 真执行 + worker 侧 gate 放行再执行；18 个 confirm 级工具受影响，超时后晚批准仍执行）。根因：confirmationService.approve 无条件 execute + 桥行 command=CLI 工具名非 no-op；被测试 seam 形态掩盖。修复：permission 行跳过主进程 execute（单一闸门语义恢复）。回归测试先红后绿（8145895 [test] 修复前 3 红 → 11c7031 [bugfix] 后 8/8）；agent-dialogue 全套 165/165 + 全仓 604/604。用例 1 断言语义调整（执行由 worker 侧承担）"}
+  - {at: 2026-08-07, from: BUG, to: BUILD, note: "BUG-001 修复完成，M2 收官：Slice 6（c8b4e20 装配 15/15）+ Slice 7（f29c632 gotgenes 权限 14/14）+ 聚合对齐 ALIGNED（19 项 COVERED + BUG-001 修复）+ 未做聚合 refactor（BUG-001 修复已含注释修正，面小）。对齐 UNCERTAIN 处置：依赖声明 @gotgenes/jiti 入 package.json 建议采纳（待做）；bash 模式双真源补策略文件模式（待做）；031 标准 3 意图 REFLECT 确认；T-9 全链 test-gap 登记；forge 打包发布流水线验证。待 M3（飞书只读收尾：agent_space_meta 通道侧写入 + SSE 增量）"}
+  - {at: 2026-08-07, from: BUILD, to: BUG, note: "BUG-002 code-defect（人拍板）：Slice 8 实证——gotgenes 热路径分解语义使重定向/管道符号对通配不可见（echo hi>out.txt / curl|sh 被放行），附录 A bash 破坏性 ask 承诺在 tool_call 热路径失效（user_bash 不受影响）。修复（方向 A 拍板）：worker 扩展层 gate 前自评估——permissionPolicy.classifyBashToolCall 全串语义 + 桥扩展顺序对调（桥在 gotgenes 前、block 短路），单一评估不双执行（BUG-001 语义延续）。回归测试 8 条先红后绿（cd38c43 [test] → 67de78c [bugfix]）；33/33 + agent-dialogue 全能力域 173/173。Slice 8（5a64457）：依赖声明（gotgenes 24.0.0 精确 pin + jiti 2.7.0）+ 策略补 *>* 冷路径模式"}
+  - {at: 2026-08-07, from: BUG, to: BUILD, note: "BUG-002 修复完成。M1+M2 全量绿。剩余：M3（飞书只读收尾：agent_space_meta 通道侧写入 + 034 剩余面）→ QA 全量回归"}
+  - {at: 2026-08-07, from: BUILD, to: QA, note: "M3 收官（Slice 9 e27c11d）：agent_space_meta 通道侧写入全链（imRouter recordSpaceMeta + feishuChannelAdapter.fetchChatName 生产 appId 闸门 + 异步 fire-and-forget 不阻塞路由）+ 034 AC3 生产链路缺口补齐（飞书入站消息建句柄后挂起 SSE 订阅漏挂 → server.js onSessionCreated 补 attachPendingSseSubs）。业务 7/7 + 回归 140/140 + E2E assistantFeishu 5/5 + 生产路径冒烟 1/1。**M1+M2+M3 全部收官，REQ-AGENT-026~034 九条全部实现**。待 /qa-runner 全量回归"}
+  - {at: 2026-08-07, from: QA, to: REFLECT, note: "QA 全量通过：API/CLI 612/612 + E2E 148/148（本 story 21 + 既有 127），无 flaky 无 open bug（BUG-001/002 已修）。qa-report.md 落盘。遗留确认项：031 标准 3 意图 / T-9 / forge 打包冒烟 / T-7。待门 2 最终验收"}
+  - {at: 2026-08-07, from: REFLECT, to: BUG, note: "BUG-003 code-defect（人拍板，REFLECT 前用户实测发现）：配置有项目但对话左导项目分组不显示——listSessions 只遍历会话表，无会话项目不分组（偏离已批准 UX 原型「所有项目 + 没有聊天」语义）。修复：现存项目补空组 {orphan:false, sessions:[]}；前端已具 nav-empty 渲染无需改动。回归 18664ae 红 → 016ded5 [bugfix]（+11 行）；sessionList 6/6 + conversation-space 80/80"}
+  - {at: 2026-08-07, from: BUG, to: REFLECT, note: "BUG-003 修复完成（用户实测发现，REFLECT 前回归）。待门 2 最终验收"}
+  - {at: 2026-08-07, from: REFLECT, to: BUG, note: "BUG-004 code-defect（人拍板，门 2 前用户实测发现）：飞书回复完成后会话列表仍卡「[生成中...]」——text_end/error/completed 只做元素内容终更（PUT elements/content），从未调更新配置接口关 streaming_mode + 更新 summary（H4 spike 已载「建议手动 card.settings 关 streaming_mode」，REQ-AGENT-019 标准 2「卡片定型」飞书侧未落地；任务卡片「[任务执行中...]」同根）。REQ 属 builtin-agent，计数落本 story（人裁决）。症状 2（2s 心跳 ping）= REQ-AGENT-005 签核看门狗语义，not-a-bug；用户提出 idle 退出机制设计问题，登记后续 story 候选不入本次"}
+  - {at: 2026-08-07, from: BUG, to: REFLECT, note: "BUG-004 修复完成：渲染器 finalizeStreamCard（text_end/error/completed 后关 streaming_mode + summary 换正文摘要 slice(0,40)，cardId 竞态回填补发）+ adapter finalizeCard（PUT cards/:id/settings，settings JSON 字符串官方 schema）+ channelManager 透传 + server.js 接线（4 文件）。回归 deb4e90 [test] 修复前 5 红 → fa1a4c0 [bugfix] 后 19/19；agent-dialogue 179/179 + 全仓 618/618。闸门全过（一次绿/4 文件/无 req-gap）。真实飞书联调验证列 REFLECT 人工项。待门 2 最终验收"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
