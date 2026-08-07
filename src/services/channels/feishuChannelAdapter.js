@@ -124,6 +124,10 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     return requestJson("PUT", url, body, headers);
   }
 
+  function patchJson(url, body, headers) {
+    return requestJson("PATCH", url, body, headers);
+  }
+
   // E-CHANNEL-SEND 错误（统一 code 标注，供上层告警分类；message 保留既有文案）。
   function channelSendError(message) {
     const err = new Error(`E-CHANNEL-SEND: ${message}`);
@@ -399,10 +403,11 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     },
 
     /**
-     * CardKit 卡片定型（BUG-004 / REQ-AGENT-019 标准 2）：
-     * PUT /cardkit/v1/cards/:card_id/settings —— 官方 schema：settings 为 **JSON 字符串**
+     * CardKit 卡片定型（BUG-004/BUG-005 / REQ-AGENT-019 标准 2）：
+     * PATCH /cardkit/v1/cards/:card_id/settings —— 官方 schema：settings 为 **JSON 字符串**
      * （{ config: { streaming_mode: false, summary: { content } } }），sequence 流式序号
      * （正整数，与元素更新同一严格递增序列）、uuid 幂等。
+     * BUG-005 实测实证：官方方法为 **PATCH**——误用 PUT 获网关级 404（无 code 字段）。
      * 流式结束/任务终态后关闭 streaming_mode 并把会话列表预览 summary 换成正文摘要——
      * 否则 streaming_mode 常开，列表永远停在初始 summary「[生成中...]」直到 10 分钟
      * 窗口自动关闭（H4 spike：建议手动 card.settings 关 streaming_mode）。
@@ -423,7 +428,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       log.info(`[feishuChannelAdapter] finalizeCard cardId=${cardId} sequence=${sequence}`);
       log.info(`[feishuChannelAdapter] finalizeCard body前300=${JSON.stringify(body).slice(0, 300)}`);
       const result = await sendWithRetry(async () =>
-        putJson(url, body, authorizationHeader())
+        patchJson(url, body, authorizationHeader())
       );
       log.info(`[feishuChannelAdapter] finalizeCard 成功 cardId=${cardId}`);
       return result;
