@@ -4,6 +4,7 @@
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: true
+// BUG-TRACE: BUG-001
 
 // REQ-AGENT-033 授权桥（S8，M2）——ask → 挂起确认 → approve/reject 全链（标准 3）、
 // user_bash 同策略拦截（标准 4）、双会话并发 ask 策略隔离（标准 5，H4）。
@@ -81,8 +82,13 @@ describe("REQ-AGENT-033 授权桥：ask → 挂起确认 → 决议回传（标�
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("ask → 创建挂起确认行（含操作描述 + 来源 spaceKey）→ approve → allow 且操作执行", async () => {
+  it("ask → 创建挂起确认行（含操作描述 + 来源 spaceKey）→ approve → allow（执行由 worker 侧 gate 放行承担）", async () => {
     // Arrange：既有挂起队列 + 授权桥；execute 注入记录实际操作。
+    // BUG-001 语义调整：授权桥行（riskLevel="permission"）的操作执行由 worker
+    // 侧 gate allow 后经工具调用路径承担（单一闸门，设计声明）——主进程 execute
+    // 对该行不再调用（修复前无条件调用 → project create 建两个项目等双重执行）。
+    // 「执行一次」的真实性由 worker 侧全链/冒烟覆盖；此处断言主进程不重复执行
+    // + approve 决议仍返回 allow。
     const createConfirmationService = await loadConfirmationService();
     const createPermissionBridge = await loadPermissionBridge();
     const executed = [];
@@ -113,10 +119,11 @@ describe("REQ-AGENT-033 授权桥：ask → 挂起确认 → 决议回传（标�
     assert.equal(executed.length, 0, "挂起期间操作不得执行");
     // Act 2：人工 approve（既有端点语义，确认回调幂等由 REQ-AGENT-016 兜底）。
     await svc.approve(ask.confirmId);
-    // Assert 2：桥回传 allow 且操作执行。
+    // Assert 2：桥回传 allow 且主进程不重复执行（授权桥行执行由 worker 侧承担）。
     const decision = await ask.decision;
     assert.equal(decision.kind, "allow", `approve 后授权桥应回传 allow。实际: ${JSON.stringify(decision)}`);
-    assert.equal(executed.length, 1, "approve 后操作应执行（既有确认服务驱动执行语义）");
+    assert.equal(executed.length, 0, "approve 授权桥行不得触发主进程 execute（BUG-001：worker 侧 gate 放行后工具路径单次执行）");
+    assert.equal(svc.get(ask.confirmId).status, "approved", "approve 后行应结清 approved（决议回传前提）");
   });
 
   it("ask → reject → deny 且 agent 收到可转述的工具错误", async () => {
@@ -287,5 +294,97 @@ describe("REQ-AGENT-033 挂起行共存（标准 3 补充，轻量共存断言�
     const decision = await uiAsk.decision;
     assert.equal(decision.kind, "deny", "UI 空间挂起行应可独立 reject → deny");
     assert.equal(svc.get(feishuId).status, "approved", "飞书确认行状态不受 UI 决议影响");
+  });
+});
+
+// —— BUG-001 回归（code-defect，2026-08-07）——
+// 症状：project 空间（gotgenes 装配成功）CLI 高危工具（flow delete / project
+// create / schedule toggle 等 18 个 confirm 级，TOOL_DEFS riskLevel="confirm"）
+// 经 gotgenes ask → 用户确认后操作执行两次：① 主进程 approve → claimPending →
+// executeToolCommand 真实执行（结果被 notifyOnSettle=false 吞掉不回投）；② worker
+// 侧 permission-decision(allow) → gate 放行 → PI 执行 → 再次真实执行。后果：project
+// create 建两个项目、delete 删两次、schedule toggle 开关两次回原态；超时后晚批准
+// 仍执行（绕过 gate 上下文）。
+// 根因：confirmationService.approve 对任意行无条件调用注入 execute（server.js 接线
+// = executeToolCommand，无 riskLevel 守卫）；授权桥行（riskLevel="permission"、
+// notifyOnSettle=false）的 command = CLI 工具名，在 TOOL_DEFS 注册表内（非 no-op）。
+// 修复语义：approve 对 permission 行跳过主进程 execute——执行由 worker 侧 gate
+// 放行后的工具路径承担（单一闸门，设计声明）；行仍结清（approved）→ 决议 allow；
+// gate 超时后的晚批准同样不得执行（决议上下文已失效）。
+describe("BUG-001 回归：授权桥 permission 行 approve 不得主进程重复执行（REQ-AGENT-033 标准 3）", () => {
+  let workdir;
+  let dbPath;
+
+  beforeEach(() => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "bug001-"));
+    dbPath = path.join(workdir, "confirm.db");
+    process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
+  });
+
+  afterEach(() => {
+    closeDb();
+    delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+    fs.rmSync(workdir, { recursive: true, force: true });
+  });
+
+  it("approve 授权桥行（CLI 高危工具名）→ 主进程 execute 不被调用", async () => {
+    // Arrange：真实 confirmationService + spy execute（"flow delete" 在 TOOL_DEFS
+    // 注册表内——修复前 approve 会真执行 → 本用例红）。
+    const createConfirmationService = await loadConfirmationService();
+    const createPermissionBridge = await loadPermissionBridge();
+    const executed = [];
+    const svc = createConfirmationService({
+      dbPath,
+      execute: async (command, args) => {
+        executed.push({ command, args });
+        return { output: "已删除" };
+      },
+    });
+    const bridge = createPermissionBridge({ confirmationService: svc });
+    const ask = await bridge.authorize({
+      spaceKey: "ui:project:p_1:s1",
+      tool: "flow delete",
+      input: { id: "flow_1" },
+      description: "flow delete: flow_1",
+    });
+    // Act：人工 approve（授权桥行，既有端点语义）。
+    await svc.approve(ask.confirmId);
+    // Assert：决议 allow（worker gate 放行）+ 主进程不执行（执行由 worker 侧
+    // gate 放行后的工具路径承担，单一闸门——双重执行即本 bug）。
+    const decision = await ask.decision;
+    assert.equal(decision.kind, "allow", `approve 后授权桥应回传 allow。实际: ${JSON.stringify(decision)}`);
+    assert.equal(executed.length, 0, "approve 授权桥行不得触发主进程 execute（BUG-001：主进程执行 + worker 侧执行 = 双重执行）");
+    assert.equal(svc.get(ask.confirmId).status, "approved", "行应结清 approved（决议回传前提）");
+  });
+
+  it("gate 超时后晚批准授权桥行 → 不执行（绕过 gate 上下文）", async () => {
+    // Arrange：授权桥挂起行 + spy execute（"project create" 在 TOOL_DEFS 注册表内）。
+    // 模拟 gate 超时：worker 侧 PERMISSION_DECISION_TIMEOUT_MS（10 分钟）无裁决 →
+    // permissionDecisions 解析器已清除、工具调用已以 deny（超时）结束——决议等待
+    // 无人消费；行仍 pending（挂起队列 = SQLite 真相，「稍后处理」语义保留）。
+    const createConfirmationService = await loadConfirmationService();
+    const createPermissionBridge = await loadPermissionBridge();
+    const executed = [];
+    const svc = createConfirmationService({
+      dbPath,
+      execute: async (command, args) => {
+        executed.push({ command, args });
+        return { output: "已创建" };
+      },
+    });
+    const bridge = createPermissionBridge({ confirmationService: svc });
+    const ask = await bridge.authorize({
+      spaceKey: "ui:project:p_1:s1",
+      tool: "project create",
+      input: { name: "p2" },
+      description: "project create: p2",
+    });
+    // gate 超时：ask 的决议等待已失效（worker 侧按 deny 结束，无消费方）。
+    // Act：超时后人工晚批准（挂起行稍后处理语义仍受理）。
+    await svc.approve(ask.confirmId);
+    // Assert：晚批准只结清行（approved）——主进程不得执行（决议上下文已失效，
+    // 晚执行 = 绕过 gate 上下文）。
+    assert.equal(executed.length, 0, "超时后晚批准不得触发主进程执行（BUG-001：gate 上下文已失效，执行即绕过闸门）");
+    assert.equal(svc.get(ask.confirmId).status, "approved", "晚批准应结清行（已处理，稍后处理语义）");
   });
 });
