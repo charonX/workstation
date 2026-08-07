@@ -9,6 +9,8 @@ phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTA
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。（BUG-001~005 已占用）
 created: 2026-08-02
+completed: true   # 门 2 最终验收通过（人：接受）
+completed_at: 2026-08-07
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -33,6 +35,9 @@ history:
   - {at: 2026-08-07, from: REFLECT, to: BUG, note: "BUG-005（用户 16:03 实测：修复 commit 15:45 后症状仍在，列表仍卡「[生成中...]」）：BUG-004 修复生产未生效。诊断：worker text_end 事件契约完好（worker.js:370）、调用链完好（测试 19/19 绿）；三分叉待定位——H1 应用未重启跑旧代码 / H2 finalize HTTP 失败被 fire-and-forget 静默吞（BUG-004 诊断盲区：finalize 路径无 console 输出）/ H3 飞书 settings 行为与预期不符。先补诊断（finalize 派发/失败/竞态待回填全链 console 可见，对齐 sendCard 模式）交用户重启实测分叉"}
   - {at: 2026-08-07, from: BUG, to: BUG, note: "BUG-005 实测分叉命中 H2：诊断 869c7a5 上线后用户重启实测——「定型失败 E-CHANNEL-SEND: feishu API error: 404」（无 code 字段=网关级 404=路径不存在）。根因：settings 接口官方方法为 PATCH，BUG-004 误用 PUT（官方文档+社区实证，且搜索佐证「卡片卡生成中=必须调 settings 关流式」正是本症）。修正链：e6ce210 [test] 断言改 PATCH（修复前红）→ 0f46933 [bugfix] putJson→patchJson（19/19 + agent-dialogue 179/179）。教训沉淀候选：H4 类真实 API 契约的 mock 测试无法捕获方法级错误，联调人工项不可省。待用户二次实测确认列表定型"}
   - {at: 2026-08-07, from: BUG, to: REFLECT, note: "BUG-005 收官（用户二次实测确认「飞书这成功了」）：列表不再卡「[生成中...]」，定型后预览换正文摘要。BUG-004/005 联合修复链完整：deb4e90 回归 5 红 → fa1a4c0 定型机制 → 869c7a5 诊断 → e6ce210 断言 PATCH → 0f46933 PATCH 修复 → 真实联调 PASS（H4 联调人工项就此闭环）。无 open bug，待门 2 最终验收"}
+  - {at: 2026-08-07, from: REFLECT, to: REFLECT, note: "门 2 前置全量回归：单元 618/618 PASS；E2E 148 例首跑 146 过 2 败（REQ-FLOW-012/013，flow-orchestration codex-harness-desktop 域，非本 story 面），隔离复跑 15/15 绿 → 判定 flaky（画布拖拽时序敏感，全量并行负载下偶发；qa-report「无 flaky」记录已过时，登记待 flow 域处理）。本 story 面 E2E 21/21 全绿"}
+  - {at: 2026-08-07, from: REFLECT, to: REFLECT, note: "遗留确认项部分裁决（人）：② forge 打包冒烟→延后；⑤ PI agent 保活/进程模型/整体整理→由新 story 2026-08-07-pi-agent-consolidation 承接（原 agent-session-lifecycle 壳扩名合并，议题 ①~⑤ 登记）。待裁决：① 031 标准 3 意图、③ T-7/T-9 test-gap 去向、④ gotgenes `..` 双确认卡（人已知悉机制后定）"}
+  - {at: 2026-08-07, from: REFLECT, to: REFLECT, note: "门 2 最终验收通过（人：接受）。遗留全裁决：① 031 标准 3 意图确认（PI 原生装载路径符合意图）；③ T-7/T-9 并入 pi-agent-consolidation；④ `..` 双确认卡并入新 story 议题④；⑤ 新 story 承接。健康指标：bug 5（全 code-defect）+ not-a-bug 1 + test-gap 8 批量 + 转入 2；req-gap 回补 0；归档重做 0；实现者 9 slice；周期 08-02→08-07。沉淀：engineering-lessons +3（mock 契约假设盲区/诊断先行/唯一执行者单一询问）、testing.md 反模式 +1、observability.md 项目补充 +3、ADR-017 补充（BUG-001/002 实证修订）、CONTEXT.md 授权桥修订+卡片定型新词、能力地图 ui-copilot 行落地。completed: true"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
