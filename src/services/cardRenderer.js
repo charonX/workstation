@@ -163,16 +163,31 @@ export function createCardRenderer({
     if (typeof adapter.finalizeCard !== "function") return; // 通道无定型 seam → 跳过
     if (!state.cardId) {
       state.pendingFinalize = true;
+      // 诊断（BUG-005）：竞态窗口定型待回填——生产可见。
+      if (process.env.NODE_ENV !== "test") {
+        console.log(`[cardRenderer] 定型待回填 sessionKey=${state.sessionKey}（sendCard 竞态窗口，回填后补发）`);
+      }
       return;
     }
     state.finalized = true;
     state.sequence += 1;
+    // 诊断（BUG-005）：定型派发可见——fire-and-forget 静默会让失败无痕（BUG-004 盲区）。
+    if (process.env.NODE_ENV !== "test") {
+      console.log(`[cardRenderer] 定型派发 sessionKey=${state.sessionKey} cardId=${state.cardId} summary=${summaryOf(state.text)} sequence=${state.sequence}`);
+    }
+    const onFailure = (err) => {
+      recordWarning(err?.message ?? String(err));
+      // 诊断：定型失败是「列表卡生成中」的关键信号（带飞书错误码，sendWithRetry 已聚合）。
+      if (process.env.NODE_ENV !== "test") {
+        console.error(`[cardRenderer] 定型失败 sessionKey=${state.sessionKey} cardId=${state.cardId}:`, err?.message ?? String(err));
+      }
+    };
     try {
       Promise.resolve(
         adapter.finalizeCard({ cardId: state.cardId, summary: summaryOf(state.text), sequence: state.sequence })
-      ).catch((err) => recordWarning(err?.message ?? String(err)));
+      ).catch(onFailure);
     } catch (err) {
-      recordWarning(err?.message ?? String(err));
+      onFailure(err);
     }
   }
 

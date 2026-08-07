@@ -419,9 +419,14 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/settings`;
       const body = { settings: JSON.stringify(settings), uuid: randomUUID() };
       if (Number.isInteger(sequence) && sequence > 0) body.sequence = sequence;
-      return sendWithRetry(async () =>
+      // 诊断（BUG-005）：定型请求可见——对齐 BUG-006 sendCard 诊断模式，生产联调定位用。
+      log.info(`[feishuChannelAdapter] finalizeCard cardId=${cardId} sequence=${sequence}`);
+      log.info(`[feishuChannelAdapter] finalizeCard body前300=${JSON.stringify(body).slice(0, 300)}`);
+      const result = await sendWithRetry(async () =>
         putJson(url, body, authorizationHeader())
       );
+      log.info(`[feishuChannelAdapter] finalizeCard 成功 cardId=${cardId}`);
+      return result;
     },
 
     /**
