@@ -16,6 +16,11 @@
 //
 // 测试分两层：adapter 层 mock global.fetch 断言请求体外层结构；cardRenderer 层用
 // adapter fake 捕获 cardJson 断言卡片 JSON 内部结构。修复前红，修复后绿。
+//
+// BUG-004（code-defect，2026-08-02-ui-copilot 计数）层 1 回归：finalizeCard 请求体
+// 必须符合 CardKit 更新配置接口 schema——PUT /cardkit/v1/cards/:card_id/settings，
+// settings 为 JSON 字符串（{ config: { streaming_mode: false, summary: { content } } }），
+// 带 sequence/uuid。修复前红（adapter 无 finalizeCard 方法）。
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -25,10 +30,17 @@ function mockFeishuOpenPlatform() {
   const originalFetch = global.fetch;
   const cardCreateBodies = [];
   const messageBodies = [];
+  const settingsBodies = [];
   global.fetch = async (url, init) => {
     const urlStr = String(url);
     if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
       return new Response(JSON.stringify({ code: 0, tenant_access_token: "fake-tenant-token", expire: 7200 }), { status: 200 });
+    }
+    // BUG-004：settings 端点先于通用 cardkit 匹配（URL 同含 /cardkit/v1/cards）。
+    if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards") && urlStr.endsWith("/settings")) {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      settingsBodies.push({ url: urlStr, body, method: init?.method ?? "GET" });
+      return new Response(JSON.stringify({ code: 0, msg: "success", data: {} }), { status: 200 });
     }
     if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards")) {
       const body = init?.body ? JSON.parse(init.body) : {};
@@ -45,6 +57,7 @@ function mockFeishuOpenPlatform() {
   return {
     cardCreateBodies,
     messageBodies,
+    settingsBodies,
     restore() {
       global.fetch = originalFetch;
     },
@@ -132,6 +145,42 @@ describe("BUG-006 层 1：sendCard 请求体符合 CardKit 创建接口（REQ-AG
     // 官方 schema：content 为 { type: "card", data: { card_id } }。
     assert.equal(content.type, "card", "content.type 应为 card（官方 schema，裸 {card_id} 会 200621）");
     assert.equal(typeof content.data?.card_id, "string", "content.data.card_id 应为卡片实体 ID");
+  });
+});
+
+describe("BUG-004 层 1：finalizeCard 请求体符合 CardKit 更新配置接口（REQ-AGENT-019 标准 2）", () => {
+  let mock;
+
+  beforeEach(() => {
+    mock = mockFeishuOpenPlatform();
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  it("PUT /cards/:id/settings：settings JSON 字符串含 streaming_mode=false + summary.content（修复前红：方法缺失）", async () => {
+    const create = await loadAdapter();
+    const adapter = create({
+      domain: "https://open.feishu.cn",
+      credentials: { appId: "cli_test00000000000001", appSecret: "secret" },
+    });
+    await adapter.start();
+
+    assert.equal(typeof adapter.finalizeCard, "function", "adapter 应提供 finalizeCard 定型 seam（修复前缺失）");
+    await adapter.finalizeCard({ cardId: "card_fake_1", summary: "执行列表", sequence: 3 });
+
+    assert.equal(mock.settingsBodies.length, 1, "应调用一次 settings 接口（PUT cards/:id/settings）");
+    const rec = mock.settingsBodies[0];
+    assert.ok(rec.url.includes("/open-apis/cardkit/v1/cards/card_fake_1/settings"), "URL 应为 settings 端点");
+    assert.equal(rec.method, "PUT", "settings 接口方法应为 PUT");
+    // 官方 schema：settings 为 JSON 字符串（非 object），内含 config 层字段。
+    assert.equal(typeof rec.body.settings, "string", "settings 应为 JSON 字符串（官方 schema）");
+    const settings = JSON.parse(rec.body.settings);
+    assert.equal(settings.config?.streaming_mode, false, "定型应关闭 streaming_mode（列表不再卡「生成中...」）");
+    assert.equal(settings.config?.summary?.content, "执行列表", "summary 应换为正文摘要");
+    assert.equal(rec.body.sequence, 3, "应携带流式序号（H4 严格递增）");
+    assert.equal(typeof rec.body.uuid, "string", "应携带幂等 uuid");
   });
 });
 

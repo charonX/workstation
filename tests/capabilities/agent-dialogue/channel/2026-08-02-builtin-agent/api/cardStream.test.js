@@ -7,6 +7,10 @@
 // BUG-TRACE: Slice 7 code-defect（待 /bug 编号）——缺陷 1：cardRenderer 流式结束（text_end/error）
 // 只置 final=true 不删 streams 条目，下一轮首个事件被丢弃（第二轮零产出）；缺陷 2：imRouter 对
 // 同一会话句柄每条消息重复 session.on（监听器累积 → 每轮事件触发 N 次）。两例回归 Prove-It，修复前应红。
+// BUG-TRACE: BUG-004（2026-08-02-ui-copilot 计数，code-defect）——流式结束/错误/任务终态只做元素
+// 内容终更（PUT elements/content），从未调更新配置接口（PUT cards/:id/settings）关闭 streaming_mode +
+// 更新 summary → 飞书会话列表永远卡初始 summary「[生成中...]」（REQ-AGENT-019 标准 2「卡片定型」
+// 飞书侧未落地；H4 spike：建议手动 card.settings 关 streaming_mode）。回归 Prove-It，修复前应红。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -30,10 +34,11 @@ async function loadCardRenderer() {
   return mod.createCardRenderer;
 }
 
-// adapter fake：记录 sendCard / updateCardStream / send 调用（接口契约对齐 tech-design F1）：
-// sendCard({chatId, cardJson}) → {cardId}；updateCardStream({cardId, content, sequence})；send({chatId, text})。
+// adapter fake：记录 sendCard / updateCardStream / send / finalizeCard 调用（接口契约对齐 tech-design F1）：
+// sendCard({chatId, cardJson}) → {cardId}；updateCardStream({cardId, content, sequence})；send({chatId, text})；
+// finalizeCard({cardId, summary, sequence})（BUG-004：定型 = 关 streaming_mode + summary 换正文摘要）。
 function createCardAdapterFake() {
-  const calls = { sendCard: [], updateCardStream: [], send: [] };
+  const calls = { sendCard: [], updateCardStream: [], send: [], finalizeCard: [] };
   let seq = 0;
   let failUpdatesRemaining = 0;
   return {
@@ -56,6 +61,10 @@ function createCardAdapterFake() {
       calls.send.push({ chatId, text });
       seq += 1;
       return { messageId: `om_${seq}` };
+    },
+    async finalizeCard({ cardId, summary, sequence } = {}) {
+      calls.finalizeCard.push({ cardId, summary, sequence });
+      return { ok: true };
     }
   };
 }
@@ -309,5 +318,74 @@ describe("code-defect 回归：imRouter 对同一会话只挂一次监听器（�
     onSessionEventCalls.length = 0;
     session.emit("session-event", { type: "text_delta", delta: "第二轮增量" });
     assert.equal(onSessionEventCalls.length, 1, "一条 session-event 应恰好触发一次 onSessionEvent（监听器不累积）");
+  });
+});
+
+describe("BUG-004 回归（code-defect）：卡片定型关闭 streaming_mode，列表不卡「生成中...」", () => {
+  // 根因：text_end/error/completed 只做元素内容终更（PUT elements/content），从未调
+  // 更新配置接口（PUT cards/:id/settings）关 streaming_mode + 更新 summary——飞书在
+  // streaming_mode 开启期间，会话列表固定显示初始 summary「[生成中...]」（H4 spike：
+  // 建议手动 card.settings 关 streaming_mode；REQ-AGENT-019 标准 2「卡片定型」飞书侧
+  // 未落地）。修复前应红（finalizeCard 零调用）。
+  let workdir;
+
+  beforeEach(() => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "card-finalize-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  });
+
+  it("text_end → finalizeCard 一次：summary 换正文摘要、sequence 接续递增", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "执行" });
+    await flushMicrotasks(); // sendCard 异步回填 cardId
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "执行列表" });
+    assert.equal(adapter.calls.finalizeCard.length, 1, "流式结束应定型一次（关闭 streaming_mode，修复前零调用）");
+    const fin = adapter.calls.finalizeCard[0];
+    assert.equal(fin.cardId, "card_1", "定型应指向本轮回复卡片");
+    assert.ok(JSON.stringify(fin.summary).includes("执行列表"), "summary 应换为正文摘要（列表预览不再「生成中...」）");
+    assert.ok(!JSON.stringify(fin.summary).includes("生成中"), "summary 不应残留「生成中」");
+    const lastUpdateSeq = adapter.calls.updateCardStream.at(-1).sequence;
+    assert.ok(fin.sequence > lastUpdateSeq, `定型 sequence（${fin.sequence}）应接续递增（末次更新 ${lastUpdateSeq}，H4 严格递增）`);
+  });
+
+  it("error → finalizeCard 同样触发（失败卡片也定型）", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "开头" });
+    await flushMicrotasks();
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "error", code: "E-AGENT-LLM-FAIL", userMessage: "供应商失败" });
+    assert.equal(adapter.calls.finalizeCard.length, 1, "流式错误也应定型（修复前零调用）");
+    assert.ok(JSON.stringify(adapter.calls.finalizeCard[0].summary).includes("开头"), "summary 应为已产正文摘要");
+    assert.ok(!JSON.stringify(adapter.calls.finalizeCard[0].summary).includes("生成中"), "summary 不应残留「生成中」");
+  });
+
+  it("任务卡片 completed → finalizeCard（「[任务执行中...]」同根缺陷）", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    const execId = crypto.randomUUID();
+    renderer.handleExecutionEvent({ sessionKey: "feishu:oc_1", type: "started", executionId: execId });
+    await flushMicrotasks(); // 任务卡片 cardId 回填
+    renderer.handleExecutionEvent({ sessionKey: "feishu:oc_1", type: "completed", executionId: execId, status: "success" });
+    assert.equal(adapter.calls.finalizeCard.length, 1, "任务终态应定型（修复前零调用）");
+    assert.equal(adapter.calls.finalizeCard[0].cardId, "card_1", "定型应指向任务卡片");
+  });
+
+  it("竞态：text_end 早于 sendCard 回填 → 回填后补发 finalizeCard", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    // 不 flush：sendCard 微任务未结算，text_end 时 cardId 仍 undefined（生产竞态窗口）。
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "增量" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "完整回复" });
+    await flushMicrotasks(); // sendCard 回填 → 应补发定型
+    assert.equal(adapter.calls.finalizeCard.length, 1, "cardId 回填后应补发定型（竞态窗口不失定型）");
+    assert.equal(adapter.calls.finalizeCard[0].cardId, "card_1", "补发定型应携带真实 cardId");
   });
 });
