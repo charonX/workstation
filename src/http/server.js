@@ -306,6 +306,9 @@ export function startServer(options = {}) {
         baseUrl: `http://127.0.0.1:${port}`,
         agentRouter,
         agentService: getAgentService,
+        // Slice 9（REQ-AGENT-034）：会话存储注入（惰性工厂同 agentRouter 形态）——
+        // 通道侧 chat 名写入 agent_space_meta（列表显示名 seam，signoff 裁决 10）。
+        sessionStore: getSessionStore,
         // Slice 7：agent 流式事件 → 回复卡片流式（REQ-AGENT-019）。
         onSessionEvent: (spaceKey, ev) => {
           getCardRenderer().handleStreamEvent({ sessionKey: spaceKey, ...ev });
@@ -314,6 +317,17 @@ export function startServer(options = {}) {
         // 标准 3：执行完成 → agent 生成摘要 → 摘要经流式事件回投 → 回复卡片）。
         onSessionCreated: (spaceKey, session) => {
           if (!session || typeof session !== "object") return;
+          // Slice 9（REQ-AGENT-034 标准 3 生产链路补全）：通道侧 createSession 建句柄
+          // 后，挂接本 spaceKey 的挂起 SSE 订阅——UI 选中该飞书会话且 agent 服务尚未
+          // 启动/句柄未创建时，events 连接处于挂起注册表（此前仅 UI 发送路径
+          // handlePostMessage 补挂接，飞书入站消息路径漏挂 → 新消息 SSE 增量不达 UI）。
+          // 此刻 agent 服务已启动（routeToAgent 已 await 工厂），异步补挂接幂等
+          // （无挂起订阅时为 no-op，见 routes/agentSessions.attachPendingSseSubs）。
+          if (typeof attachPendingSseSubs === "function") {
+            getAgentService()
+              .then((svc) => attachPendingSseSubs(spaceKey, svc))
+              .catch(() => undefined);
+          }
           if (typeof session.onExecutionResult !== "function") {
             session.onExecutionResult = (result) => {
               const summaryPrompt = `请用不超过 200 字总结本次执行结果，直接输出总结：${JSON.stringify(result ?? {})}`;

@@ -220,7 +220,7 @@ export function createSessionStore(options = {}) {
   }
 
   // agent_space_meta 侧表读取（REQ-AGENT-029 / signoff 裁决 10 候选 A：飞书组显示名
-  // seam）。通道侧写入在 M3（本切片只读，无写入路径）；表缺失（旧库未迁移）→ 空
+  // seam）。写入由通道侧（imRouter，REQ-AGENT-034）产生；表缺失（旧库未迁移）→ 空
   // 数组，调用方 fallback 到 spaceKey 或空（裁决 10）。返回 [{ spaceKey, displayName }]。
   function listSpaceMeta() {
     try {
@@ -231,5 +231,22 @@ export function createSessionStore(options = {}) {
     }
   }
 
-  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset, listSpaceMeta };
+  // agent_space_meta 侧表写入（REQ-AGENT-034 标准 5 生产路径 / signoff 裁决 10
+  // 候选 A，M3 通道侧）：幂等 upsert——同一 chat 重复消息/chat 改名 → 覆盖为新值，
+  // 不新增行（spaceKey 主键冲突走 DO UPDATE）。SQLite 写失败按 E-SESSION-PERSIST
+  // 降级（显示名缺失 → 列表 fallback spaceKey，裁决 10；不阻断消息路由）。
+  function upsertSpaceMeta(spaceKey, displayName) {
+    try {
+      db()
+        .prepare(
+          `INSERT INTO agent_space_meta (spaceKey, displayName) VALUES (?, ?)
+           ON CONFLICT(spaceKey) DO UPDATE SET displayName = excluded.displayName`
+        )
+        .run(spaceKey, displayName ?? null);
+    } catch (err) {
+      degradePersistFailure("upsertSpaceMeta", err);
+    }
+  }
+
+  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset, listSpaceMeta, upsertSpaceMeta };
 }

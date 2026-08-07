@@ -78,7 +78,13 @@ export function createImRouter({
   agentRouter,
   agentService,
   onSessionEvent,
-  onSessionCreated
+  onSessionCreated,
+  // Slice 9（REQ-AGENT-034）：会话存储（对象或惰性工厂，同 agentRouter sessionStore
+  // 注入形态）——通道侧 chat 名写入 agent_space_meta 用；未注入 → 写入路径 no-op。
+  sessionStore,
+  // Slice 9：chat 名查询可注入（测试 seam）；缺省经 channelManager/channelAdapter
+  // 解析（生产 = channelManager.fetchChatName("feishu", chatId) → 适配器 API 查询）。
+  fetchChatName,
 } = {}) {
   // 监听器去重（code-defect 2 修复）：同一会话句柄（生产 createSession 按 spaceKey
   // 缓存，同空间复用同一句柄）只挂一次 session-event 监听器——修复前每条消息无条件
@@ -214,6 +220,53 @@ export function createImRouter({
     }
   }
 
+  // Slice 9（REQ-AGENT-034 标准 5 生产路径 / signoff 裁决 10 候选 A）：通道侧 chat 名
+  // 写入——飞书消息到达 → agent_space_meta(spaceKey=feishu:<chatId>, displayName=chat 名)。
+  // chat 名来源：入站消息事件（im.message.receive_v1）不含 chat_name，经通道会话信息
+  // 查询（GET /open-apis/im/v1/chats/:chatId）取得；拿不到（查询失败/无 name/通道未
+  // 接线/无 store）→ 跳过并记录（列表显示名 fallback spaceKey，裁决 10）。
+  // 元数据增强路径：异步 fire-and-forget，不阻塞消息路由（REQ-CHANNEL-002 3 秒回调
+  // 语义保持）；内部全量兜底，不向调用方抛出。
+  const getStore = () => (typeof sessionStore === "function" ? sessionStore() : sessionStore);
+
+  async function resolveChatName(chatId) {
+    try {
+      if (typeof fetchChatName === "function") {
+        const name = await fetchChatName(chatId);
+        return typeof name === "string" ? name : null;
+      }
+      if (channelManager && typeof channelManager.fetchChatName === "function") {
+        const name = await channelManager.fetchChatName("feishu", chatId);
+        return typeof name === "string" ? name : null;
+      }
+      if (channelAdapter && typeof channelAdapter.fetchChatName === "function") {
+        const name = await channelAdapter.fetchChatName(chatId);
+        return typeof name === "string" ? name : null;
+      }
+    } catch (err) {
+      console.error("[imRouter] chat 名查询失败（跳过 spaceMeta 写入）:", err.message);
+    }
+    return null;
+  }
+
+  async function recordSpaceMeta(msg) {
+    try {
+      const chatId = msg?.chatId;
+      if (!chatId) return;
+      const store = getStore();
+      if (!store || typeof store.upsertSpaceMeta !== "function") return;
+      const chatName = await resolveChatName(chatId);
+      if (typeof chatName !== "string" || chatName.trim() === "") {
+        console.log(`[imRouter] chat 名获取失败/缺失，跳过 spaceMeta 写入 chatId=${chatId}`);
+        return;
+      }
+      store.upsertSpaceMeta(`feishu:${chatId}`, chatName);
+      console.log(`[imRouter] spaceMeta 已写入 spaceKey=feishu:${chatId} displayName=${chatName}`);
+    } catch (err) {
+      console.error(`[imRouter] recordSpaceMeta 失败（跳过写入）:`, err?.message ?? String(err));
+    }
+  }
+
   const messageHandler = async (msg) => {
     const { messageId } = msg || {};
     if (!messageId) return;
@@ -226,6 +279,10 @@ export function createImRouter({
       console.log(`[imRouter] 重复消息跳过 messageId=${messageId}`);
       return;
     }
+
+    // Slice 9（REQ-AGENT-034）：通道侧 chat 名写入（异步元数据增强，不 await——
+    // 消息路由/3 秒回调语义不受网络查询影响；失败降级跳过）。
+    recordSpaceMeta(msg);
 
     if (agentRouter) {
       // agent 优先路由（REQ-AGENT-017）：去重（沿用 channel_messages）→ agentRouter

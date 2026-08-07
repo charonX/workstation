@@ -165,6 +165,15 @@ export async function sendCard(channelType, payload) {
   return dispatchToAdapter(channelType, "sendCard", payload);
 }
 
+// 会话信息查询（Slice 9 / REQ-AGENT-034 通道侧 chat 名写入）：透传适配器
+// fetchChatName（GET /open-apis/im/v1/chats/:chatId → chat 名）。适配器未接线 /
+// 无该能力 → null（元数据增强路径，调用方降级跳过）。
+export async function fetchChatName(channelType, chatId) {
+  const adapter = getAdapter(channelType);
+  if (!adapter || typeof adapter.fetchChatName !== "function") return null;
+  return adapter.fetchChatName(chatId);
+}
+
 export async function updateCardStream(channelType, payload) {
   return dispatchToAdapter(channelType, "updateCardStream", payload);
 }

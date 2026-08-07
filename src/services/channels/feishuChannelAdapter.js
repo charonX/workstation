@@ -398,6 +398,34 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       );
     },
 
+    /**
+     * 会话信息查询（Slice 9 / REQ-AGENT-034 通道侧 chat 名写入）：
+     * GET /open-apis/im/v1/chats/:chatId → data.name（群聊名 / 单聊对方名）。
+     * 入站消息事件（im.message.receive_v1）不含 chat_name，chat 名只能经本查询取得。
+     * 元数据增强路径：任何失败（网络/权限/无 name）→ 返回 null 且不抛出——调用方
+     * 降级跳过写入（列表显示名 fallback spaceKey，signoff 裁决 10），不阻断消息路由。
+     * 非生产形态 appId（测试 fixture，同 startWebSocketClient 判定）→ 直接 null：
+     * 避免测试环境对真实飞书开放平台发起无谓网络请求。
+     */
+    async fetchChatName(chatId) {
+      if (!chatId || !FEISHU_APP_ID_RE.test(credentials.appId)) return null;
+      try {
+        const res = await fetch(`${baseUrl}/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`, {
+          headers: authorizationHeader(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.code !== 0) {
+          log.error(`[feishuChannelAdapter] fetchChatName failed chatId=${chatId} code=${data?.code ?? res.status}`);
+          return null;
+        }
+        const name = data?.data?.name;
+        return typeof name === "string" && name.trim() !== "" ? name : null;
+      } catch (err) {
+        log.error("[feishuChannelAdapter] fetchChatName error:", err.message);
+        return null;
+      }
+    },
+
     onMessage(cb) {
       if (typeof cb === "function") messageListeners.add(cb);
     },
