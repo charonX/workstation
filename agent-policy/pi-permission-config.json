@@ -57,6 +57,7 @@
       "yarn global *": "ask",
       "* > *": "ask",
       "* >> *": "ask",
+      "*>*": "ask",
       "* | *sh": "ask",
       "* | *bash": "ask",
       "*|*sh": "ask",
