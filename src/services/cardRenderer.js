@@ -144,6 +144,38 @@ export function createCardRenderer({
       : text;
   }
 
+  // 会话列表预览摘要（BUG-004）：卡片定型时把 summary 从初始占位（「[生成中...]」）
+  // 换成正文摘要——单行、截断 40 字符（对齐签核「title slice(0,40) 无省略号」形态）；
+  // 空正文兜底「已完成」。
+  function summaryOf(text) {
+    const excerpt = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+    return excerpt === "" ? "已完成" : excerpt;
+  }
+
+  // 卡片定型（REQ-AGENT-019 标准 2 / BUG-004 code-defect）：流式结束/错误/任务终态 →
+  // 终更后关闭 streaming_mode + summary 换正文摘要。修复前只 PUT elements/content，
+  // streaming_mode 常开 → 飞书会话列表永远卡初始 summary「[生成中...]」直到 10 分钟
+  // 窗口自动关闭（H4 spike：建议手动 card.settings 关 streaming_mode）。
+  // fire-and-forget：失败 → E-CHANNEL-SEND 告警，不阻断流式/执行状态推进。
+  // cardId 未回填（sendCard 竞态窗口）→ 记 pendingFinalize，回填时补发（dispatchSendCard）。
+  function finalizeStreamCard(state) {
+    if (state.finalized) return;
+    if (typeof adapter.finalizeCard !== "function") return; // 通道无定型 seam → 跳过
+    if (!state.cardId) {
+      state.pendingFinalize = true;
+      return;
+    }
+    state.finalized = true;
+    state.sequence += 1;
+    try {
+      Promise.resolve(
+        adapter.finalizeCard({ cardId: state.cardId, summary: summaryOf(state.text), sequence: state.sequence })
+      ).catch((err) => recordWarning(err?.message ?? String(err)));
+    } catch (err) {
+      recordWarning(err?.message ?? String(err));
+    }
+  }
+
   // fire-and-forget 发卡：sendCard 异步完成后回填 cardId（后续更新携带真实
   // card_id）；失败 → 告警 + 释放流状态（下一次事件重新发卡）。
   function dispatchSendCard(state, chatId, cardJson, registry) {
@@ -161,7 +193,11 @@ export function createCardRenderer({
           const current = registry.get(state.sessionKey);
           // 轮次边界守卫（code-defect 1 修复配套）：条目已被新一轮替换（stream_start
           // 重置）→ 旧轮 sendCard 回填不写进新轮，防跨轮串卡（cardId 张冠李戴）。
-          if (current && current === state) current.cardId = r?.cardId;
+          if (current && current === state) {
+            current.cardId = r?.cardId;
+            // 定型早于回填到达（text_end/completed 在 sendCard 完成前，BUG-004）→ 补发。
+            if (current.pendingFinalize) finalizeStreamCard(current);
+          }
         },
         onFailure
       );
@@ -283,6 +319,8 @@ export function createCardRenderer({
       content: capContent(stream.text),
       sequence: stream.sequence,
     });
+    // 流式结束/错误 → 卡片定型（关闭 streaming_mode + summary 换正文摘要，BUG-004）。
+    if (stream.final) finalizeStreamCard(stream);
   }
 
   // —— 任务卡片（REQ-AGENT-020）——
@@ -343,6 +381,8 @@ export function createCardRenderer({
           content: capContent(task.text),
           sequence: task.sequence,
         });
+        // 任务终态 → 卡片定型（「[任务执行中...]」与回复卡片同根缺陷，BUG-004）。
+        finalizeStreamCard(task);
         tasks.delete(sessionKey);
       }
       // 执行结果经对话回投（REQ-AGENT-020 标准 3：会话活跃时——agent 生成摘要）。

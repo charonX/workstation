@@ -399,6 +399,32 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     },
 
     /**
+     * CardKit 卡片定型（BUG-004 / REQ-AGENT-019 标准 2）：
+     * PUT /cardkit/v1/cards/:card_id/settings —— 官方 schema：settings 为 **JSON 字符串**
+     * （{ config: { streaming_mode: false, summary: { content } } }），sequence 流式序号
+     * （正整数，与元素更新同一严格递增序列）、uuid 幂等。
+     * 流式结束/任务终态后关闭 streaming_mode 并把会话列表预览 summary 换成正文摘要——
+     * 否则 streaming_mode 常开，列表永远停在初始 summary「[生成中...]」直到 10 分钟
+     * 窗口自动关闭（H4 spike：建议手动 card.settings 关 streaming_mode）。
+     * cardId 缺失（sendCard 竞态窗口）→ 跳过（渲染器在回填后补发，不失定型）。
+     */
+    async finalizeCard({ cardId, summary, sequence } = {}) {
+      if (!cardId) {
+        return { ok: true, skipped: true };
+      }
+      const settings = { config: { streaming_mode: false } };
+      if (typeof summary === "string" && summary !== "") {
+        settings.config.summary = { content: summary };
+      }
+      const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/settings`;
+      const body = { settings: JSON.stringify(settings), uuid: randomUUID() };
+      if (Number.isInteger(sequence) && sequence > 0) body.sequence = sequence;
+      return sendWithRetry(async () =>
+        putJson(url, body, authorizationHeader())
+      );
+    },
+
+    /**
      * 会话信息查询（Slice 9 / REQ-AGENT-034 通道侧 chat 名写入）：
      * GET /open-apis/im/v1/chats/:chatId → data.name（群聊名 / 单聊对方名）。
      * 入站消息事件（im.message.receive_v1）不含 chat_name，chat 名只能经本查询取得。

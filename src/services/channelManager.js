@@ -177,3 +177,10 @@ export async function fetchChatName(channelType, chatId) {
 export async function updateCardStream(channelType, payload) {
   return dispatchToAdapter(channelType, "updateCardStream", payload);
 }
+
+// CardKit 卡片定型（BUG-004 / REQ-AGENT-019 标准 2）：关闭 streaming_mode +
+// summary 换正文摘要（PUT cards/:id/settings）——流式结束/任务终态后调用，
+// 否则会话列表永远卡初始 summary「[生成中...]」。
+export async function finalizeCard(channelType, payload) {
+  return dispatchToAdapter(channelType, "finalizeCard", payload);
+}

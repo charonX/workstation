@@ -294,6 +294,8 @@ export function startServer(options = {}) {
             adapter: {
               sendCard: (payload) => channelManager.sendCard("feishu", payload),
               updateCardStream: (payload) => channelManager.updateCardStream("feishu", payload),
+              // BUG-004：定型 seam（关 streaming_mode + summary 换正文摘要）。
+              finalizeCard: (payload) => channelManager.finalizeCard("feishu", payload),
               send: (payload) => channelManager.send("feishu", payload)
             },
             sessions: sessionRegistry
