@@ -206,6 +206,9 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 // - general = ui:copilot:*；projects = ui:project:<pid>:*；feishu = feishu:*。
 // - 项目组 join projects 表取名（标准 1）；pid 不存在 → orphan:true + projectName:null
 //   （标准 2 / signoff 裁决 16，不回填 pid）。
+// - BUG-003：projects 分组 = 所有现存项目（UX 原型语义，sessions 可空）——遍历
+//   projects 表补全无会话项目（空组，前端「没有聊天」空态 + 行内＋可达）；孤儿判定
+//   不变（有会话项目已删 → orphan:true 保持，不回补）。
 // - 飞书条目显示名取 agent_space_meta 侧表（标准 5 / 裁决 10 候选 A）；表/行缺失 →
 //   fallback 到 spaceKey（裁决 10）。
 // - 条目字段 = 裁决 17 最小集（title/lastActiveAt/sessionRef + spaceKey 供选中），
@@ -241,6 +244,14 @@ function listSessions(store) {
     } else if (row.spaceKey.startsWith("feishu:")) {
       item.displayName = spaceMeta.get(row.spaceKey) ?? row.spaceKey;
       feishu.push(item);
+    }
+  }
+  // BUG-003：补全现存项目（无会话项目 → 空组）。组排序 = 有会话项目保持既有顺序
+  // （首会话出现序）+ 无会话项目追加尾部（projects 表序）；孤儿组不在此列（projects
+  // 表已无此 pid），由上面会话遍历产生。
+  for (const [pid, name] of projectNames) {
+    if (!projects.some((g) => g.projectId === pid)) {
+      projects.push({ projectId: pid, projectName: name, orphan: false, sessions: [] });
     }
   }
   const byActiveDesc = (a, b) => String(b.lastActiveAt).localeCompare(String(a.lastActiveAt));
