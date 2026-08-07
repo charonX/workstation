@@ -38,3 +38,11 @@ research（`research/pi-permission-extensions.md`）证实：PI 扩展 API 原�
 - 方案：`.aiassist/stories/2026-08-02-ui-copilot/tech-design.md`（D2、授权桥契约）
 - 调研：`.aiassist/stories/2026-08-02-ui-copilot/research/pi-permission-extensions.md`
 - 既有机制：`src/services/confirmationService.js`（挂起队列）、`src/agent/toolAdapter.js`（命令保险层）
+
+## 补充（2026-08-07，BUG-001/002 实证修订）
+
+实现期两个 code-defect 暴露并修正了本决策的两处隐含假设，决策本身不变：
+
+1. **唯一执行者**（BUG-001）：授权桥行（`riskLevel: "permission"`，command = CLI 工具名）的 approve 决议**跳过主进程 execute**——操作由 worker 侧 gate allow 后经工具调用路径单一执行。修正前主进程 approve→execute + worker gate 放行再执行 = 同一命令双重执行（18 个 confirm 级工具受影响，含超时后的晚批准）。原则沉淀：双层安全机制必须显式指定唯一执行者（见 engineering-lessons「单一执行/单一询问」）。
+2. **单一评估 + 桥在 gotgenes 前**（BUG-002）：gotgenes 热路径（tree-sitter command-enumeration）跳过 file_redirect 节点与 `|` 匿名 token——`>`/`>>`/`|sh` 对策略通配不可见，附录 A bash 破坏性 ask 对重定向/管道类失效。修正：worker 扩展层在 gotgenes gate **前**自评估（`permissionPolicy.classifyBashToolCall`，与本模块评估器同一真源），仅当危险**仅由**不可见运算符承载时 pre-gate 拦截，其余交 gotgenes——同一命令不产生二次 ask/双评估（wrapper floor 例外：gotgenes #481 floor 为 ask 时 pre-gate 跳过）。
+3. 已知角落登记：gotgenes 规则级重复确认（`..` 相对重定向同时命中 cwd 外与 `*>` 模式 → 双确认卡，无安全洞）——去重规则转入 2026-08-07-pi-agent-consolidation。

@@ -102,3 +102,9 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 测试 seam 绕过清单不显式 | fauxProvider 绕过 key 校验 → 水合不注 key 全绿假象（BUG-005）；开发入口 spawn 源码 → bundle 崩溃全绿假象（BUG-002） | 写 seam 时显式注释「本 seam 绕过了什么环境差异」；绕过清单即真实联调检查清单；跨进程 story 在 QA 做最小真实链路冒烟 |
 | 时序类行为用固定快速依赖测试 | faux 秒级流式永不触发 6s 心跳超时，看门狗误杀潜伏（BUG-008） | 时序相关测试留可调速率 seam（如 OPC_AGENT_FAUX_TPS）；用「横跨超时窗口」的慢速用例断言 |
 | E2E/单元混跑不管原生模块 ABI | test:unit 把 better-sqlite3 重建为 Node ABI → 紧跟 E2E 报 E-DB-UNWRITABLE（项目创建类挂） | 混跑顺序：`npm run rebuild:electron` → E2E → unit（即 `npm run test:e2e` 惯例）；ABI 冲突失败属环境顺序问题，不误判为产品缺陷 |
+
+## 反模式（2026-08-07 补充：2026-08-02-ui-copilot）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| mock 契约断言充当外部 API 契约验证 | 测试按错误假设写（settings 接口断言 PUT，官方实为 PATCH）——5 个回归全绿，真实联调 404：mock 只能证"实现符合假设"，证不了"假设符合外部世界" | 外部 API 契约的每个假设要素（方法/端点/包装/响应解析）在测试注释标注「联调验证点」，QA 逐条核销；首次接入的端点先用 curl 级脚本对真实 API 钉死方法/端点再写测试 |

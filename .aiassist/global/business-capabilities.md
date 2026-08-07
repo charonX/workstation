@@ -90,7 +90,7 @@
 | cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `tests/capabilities/command-interface/cli/2026-07-29-multi-agent-skills/cli/` | REQ-CLI-001~002 | `cli.test.js`, `skillCli.test.js` |
 
 ### agent-dialogue
-> 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式、权限策略（gotgenes+授权桥）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展）
+> 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式（含定型：PATCH settings 关 streaming_mode + summary 换正文摘要）、权限策略（gotgenes+授权桥：唯一执行者/单一评估，ADR-017 补充）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展并验收 2026-08-07）
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
@@ -98,8 +98,8 @@
 | conversation-space | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/` | REQ-AGENT-005~013 | `agentProcess.test.js`, `agentDialogue.test.js`, `sessionStore.test.js`, `sessionRestore.test.js`, `toolSurface.test.js`, `agentWorkerBundle.test.js`, `agentDefaultModel.test.js`, `agentRestartKey.test.js`, `agentHeartbeatBusy.test.js` |
 | user-binding | `tests/capabilities/agent-dialogue/user-binding/2026-08-02-builtin-agent/api/` | REQ-AGENT-014~015 | `userBinding.test.js` |
 | confirmation | `tests/capabilities/agent-dialogue/confirmation/2026-08-02-builtin-agent/api/` | REQ-AGENT-016 | `confirmation.test.js` |
-| channel | `tests/capabilities/agent-dialogue/channel/2026-08-02-builtin-agent/api/` | REQ-AGENT-017~022 | `agentRoute.test.js`, `cardStream.test.js`, `slashCommands.test.js`, `commandReply.test.js`, `stdioGuard.test.js`, `sendCardSchema.test.js` |
-| conversation-space (ui-copilot) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/`, `.../e2e/` | REQ-AGENT-026~034 | 待 /test-author（规划：`sessionSpace/sessionReset/sessionMessage/sessionEvents/sessionList/uiConfirmation/skillInjection/workerAssembly/toolSurface/permissionPolicy/authorizerBridge/feishuReadonly.test.js` + `assistantNav/Chat/Sessions/Confirm/Feishu.test.cjs` E2E） |
+| channel | `tests/capabilities/agent-dialogue/channel/2026-08-02-builtin-agent/api/` | REQ-AGENT-017~022 | `agentRoute.test.js`, `cardStream.test.js`（含 BUG-004 卡片定型回归）, `slashCommands.test.js`, `commandReply.test.js`, `stdioGuard.test.js`, `sendCardSchema.test.js`（含 BUG-006 schema + BUG-005 PATCH settings 回归） |
+| conversation-space (ui-copilot) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/`, `.../e2e/` | REQ-AGENT-026~034（2026-08-07 验收） | `sessionSpace/sessionReset/sessionMessage/sessionEvents/sessionList/uiConfirmation/skillInjection/workerAssembly/toolSurface/permissionPolicy/authorizerBridge/feishuReadonly.test.js` + E2E `assistantNav/assistantChat/assistantSessions/assistantConfirm/assistantFeishu.test.cjs` |
 
 ## 能力依赖图
 

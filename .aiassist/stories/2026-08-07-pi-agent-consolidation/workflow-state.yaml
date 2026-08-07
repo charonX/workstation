@@ -1,0 +1,39 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-07-pi-agent-consolidation
+intention: >-
+  PI agent 集成是三次 story 叠加出来的，边角在累积：会话只建不收（无 idle 淘汰/无上限，
+  内存随使用单调涨）、主进程日志无界泄漏、全空间混居单子进程（一崩全崩）、权限双层评估
+  有规则级重复确认角落、worker/桥/策略文件职责交叠——需要一次整体的整理与优化，
+  而不是继续贴补丁。
+
+phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-07
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-07, from: -, to: THINK, note: "创建 story（原 2026-08-07-agent-session-lifecycle 壳扩名合并——衍生自 2026-08-02-ui-copilot BUG-004 轮保活讨论 + REFLECT 遗留裁决「PI agent 整体整理优化」）。已登记议题清单：① 会话 idle TTL 淘汰 + LRU 上限（worker sessions Map 释放仅三条路径：同 key 重建/出错//reset）；② 主进程 agentService.logs 无界无消费者 + ping/pong 日志降噪；③ 进程隔离模型拍板（单进程多会话 vs 分进程——痛点轴待访谈：爆炸半径/内存共池/重启恢复成本）；④ gotgenes 规则级重复确认角落去重（`..` 相对重定向双确认卡，无安全洞）；⑤ REQ-AGENT-005 看门狗契约影响面评估。来源 story 2026-08-02-ui-copilot REFLECT 中，本 story 非 bug 回流"}
+  - {at: 2026-08-07, from: THINK, to: THINK, note: "ui-copilot 门 2 验收通过，遗留转入本 story（人裁决）：③④ 维持转入（进程模型 + `..` 双确认去重）+ T-7/T-9 两条全链 test-gap 并入（UI 空间 confirm 全链用例 / bash pre-gate→授权桥→批准→执行全链用例）。handoff.md 落盘——新会话自包含简报（议题实证 file:line、方向已议定项勿重谈、硬约束 REQ-AGENT-005/ADR-014/015/017、环境 ABI 备忘、续跑入口）。forge 打包冒烟维持延后无归属"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""
+  compiled: false
+  preview: ""
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []
+
+# 已生成的变体(按需)。
+variants:
+  active: []

@@ -60,3 +60,11 @@
 ---
 
 来源：改编自 `reference/agent-skills/references/observability-checklist.md`。
+
+---
+
+## 项目补充（2026-08-07，2026-08-02-ui-copilot BUG-005 实证）
+
+- [ ] fire-and-forget 异步路径（不阻塞主流程的副作用调用：卡片更新/元数据写入/通知派发）的失败有**三态 console 通道**：派发/成功/失败——静默 catch 只进内存数组 = 生产无痕
+- [ ] 外部 API 调用的错误日志聚合网关级与业务级信息（`status code= msg=` 模式）：网关级错误（如无 code 的 404 = 路径/方法不存在）与业务级错误（有 code）一眼可分
+- [ ] "修复未生效"排查：先列分叉 → 找诊断盲区 → 补日志 → 现场实测一轮分叉，不盲猜重试
