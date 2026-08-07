@@ -198,3 +198,52 @@ export function createPolicyEvaluator({ cwd, projectDir } = {}) {
 
   return { evaluate };
 }
+
+// —— BUG-002 pre-gate 分类（bash 工具调用热路径预分类）——
+// gotgenes 热路径（生产常态，before_agent_start 已预热 parser）下，bash 命令枚举
+// （tree-sitter command-enumeration）跳过 file_redirect 节点与 `|` 匿名 token——
+// unit 文本不含 `>`/`>>`/`|`——策略通配匹配对重定向/管道符号不可见（`echo hi>out.txt`
+// 与 `curl ...|sh` 经 tool_call gate 被放行），附录 A「bash 破坏性模式 → ask」对
+// 重定向类/管道类失效（高危写操作可未经确认执行）。`! bash`（user_bash）走本模块
+// 评估不受影响。策略文件无法修复（热路径下 `>` 不可见）——worker 扩展层在
+// gotgenes gate 前自评估（修复方向 A）。
+//
+// 判定（复用本模块评估器 = 单一真源，全串 regex 语义与附录 A 一致）：
+// - 命令含重定向/管道运算符（`>`/`>>`/`|sh`/`|bash`——gotgenes 热路径不可见族），
+//   原命令评估 = ask，且去除这些运算符（URL token 一并剥除——`https://x` 的 `//x`
+//   会被绝对路径启发式误判为外部路径）后 = allow → "ask"：危险仅由 gotgenes 不可见
+//   运算符承载，由 pre-gate 预拦截（直接走授权桥）；
+// - 其余（rm/sudo/cwd 外路径/包装载荷等 gotgenes 可见危险，或运算符剥除后仍有
+//   其他 ask 原因）→ "allow"：交 gotgenes gate 正常评估——单一评估原则（BUG-001
+//   教训）：同一命令不产生二次 ask/双评估。
+// 包装载荷例外：`bash -c '...'`/`eval` 等 opaque-payload wrapper 的 base allow 被
+// gotgenes floor 为 ask（#481）——若 pre-gate 也 ask 会双 ask，故跳过（gotgenes 承接）。
+function stripRedirectPipeOperators(command) {
+  return String(command ?? "")
+    .replace(/\bhttps?:\/\/[^\s"'|;&]+/g, " ") // URL token 非文件系统路径（剥除防外部路径启发式误判）
+    .replace(/\s*\|\s*(ba)?sh(?=\s|$)/g, " ") // 管道到 sh/bash：去运算符与 shell 名（载荷保留为裸 token）
+    .replace(/\s*>>?\s*/g, " "); // 重定向运算符（含 >>、2>）：去运算符（目标保留为裸 token，cwd 外仍判 ask）
+}
+
+// gotgenes 热路径不可见族运算符显式预检（`>`/`>>` 重定向与 `|sh`/`|bash` 管道——
+// 附录 A bash 破坏性模式中被 tree-sitter 枚举跳过的两类）。与 strip 的剥除集合
+// 一致，保证「剥除后 allow ⇒ 危险仅由不可见运算符承载」的判定闭合。
+const REDIRECT_OR_PIPE_TO_SHELL_RE = />|\|\s*(ba)?sh(?=\s|$)/;
+
+// gotgenes wrapper floor 判定（#481：`bash -c`/`eval`/`sh -c` 等单元 allow 被
+// floor 为 ask）：命中 → pre-gate 跳过（gotgenes 单 ask 承接，不双 ask）。
+const WRAPPER_PAYLOAD_RE = /(^|[|;&\s])(?:[^\s|;&]*\/)?(ba|da|z|k)?sh\s+-[a-z]*c(?=\s|$)|(^|[|;&\s])eval(?=\s|$)/;
+
+export function classifyBashToolCall(command, { cwd, projectDir } = {}) {
+  const evaluator = createPolicyEvaluator({ cwd, projectDir });
+  const original = evaluator.evaluate({ tool: "bash", input: { command } });
+  if (original !== "ask") return "allow"; // 评估层非 ask → 交 gotgenes
+  if (!REDIRECT_OR_PIPE_TO_SHELL_RE.test(String(command ?? ""))) return "allow"; // 无重定向/管道族 → 交 gotgenes
+  if (WRAPPER_PAYLOAD_RE.test(String(command ?? ""))) return "allow"; // wrapper floor 由 gotgenes 承接
+  const stripped = stripRedirectPipeOperators(command);
+  if (evaluator.evaluate({ tool: "bash", input: { command: stripped } }) !== "allow") {
+    // 危险非仅由重定向/管道承载（rm/sudo/cwd 外路径等 gotgenes 可见）→ 交 gotgenes。
+    return "allow";
+  }
+  return "ask"; // 危险仅由 gotgenes 热路径不可见的重定向/管道运算符承载 → 预拦截
+}

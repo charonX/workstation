@@ -23,10 +23,12 @@
 // { authorize({ spaceKey, tool, input, description, confirmId? }) →
 //     { confirmId, decision: Promise<{ kind: "allow"|"deny", reason? }> },
 //   evaluateUserBash({ spaceKey, command, cwd?, confirmId? }) →
-//     { verdict: "allow"|"ask", confirmId?, decision? } }
+//     { verdict: "allow"|"ask", confirmId?, decision? },
+//   evaluateBashToolCall({ spaceKey, command, cwd?, projectDir?, confirmId? }) →
+//     { verdict: "allow"|"ask", confirmId?, decision? } }   // BUG-002 pre-gate 桥 seam
 
 import { randomUUID } from "node:crypto";
-import { createPolicyEvaluator } from "./permissionPolicy.js";
+import { createPolicyEvaluator, classifyBashToolCall } from "./permissionPolicy.js";
 
 const POLL_INTERVAL_MS = 20;
 
@@ -91,5 +93,27 @@ export function createPermissionBridge({ confirmationService: svc } = {}) {
     };
   }
 
-  return { authorize, evaluateUserBash };
+  // bash 工具调用热路径 pre-gate（BUG-002，worker 扩展层 gate 前自评估的桥形态）：
+  // gotgenes 热路径（parser 已预热）枚举对重定向/管道符号不可见（`echo hi>out.txt`/
+  // `curl ...|sh` 被 tool_call gate 放行）——本 seam 在 gotgenes gate 之前预分类：
+  // 命中 ask 族（danger 仅由重定向/管道运算符承载）→ 同桥挂起行（同一挂起队列）→
+  // 决议回传；其余（gotgenes 可见危险/非破坏）→ { verdict: "allow" }（交 gotgenes
+  // 正常评估——单一评估原则：不叠加二次 ask/双执行）。
+  // 分类复用 permissionPolicy classifyBashToolCall（单一真源，全串 regex = 附录 A）。
+  async function evaluateBashToolCall({ spaceKey, command, cwd, projectDir, confirmId } = {}) {
+    const verdict = classifyBashToolCall(command, { cwd, projectDir });
+    if (verdict === "allow") return { verdict: "allow" };
+    return {
+      verdict: "ask",
+      ...(await authorize({
+        spaceKey,
+        tool: "bash",
+        input: { command },
+        description: `bash: ${command}`,
+        confirmId,
+      })),
+    };
+  }
+
+  return { authorize, evaluateUserBash, evaluateBashToolCall };
 }

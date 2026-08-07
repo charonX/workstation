@@ -36,6 +36,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSessionToolSurface } from "./toolAdapter.js";
+import { classifyBashToolCall } from "../services/permissionPolicy.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
@@ -151,7 +152,7 @@ function requestPermissionDecision({ sessionKey, tool, input, description }) {
   });
 }
 
-// 授权桥扩展工厂（每会话独立实例——sessionKey 闭包捕获；H4 隔离前提：每
+// 授权桥扩展工厂（每会话独立实例——sessionKey/cwd 闭包捕获；H4 隔离前提：每
 // loader 独立 gotgenes 实例 + 每实例 AuthorizerRegistry，spike 补充验证）。
 // handle = loadGotgenesFactory() 的产物（factory + getPermissionsService）。
 // - permissions:ready 时 registerAuthorizer("opc-bridge")（ready 保证服务已发布；
@@ -165,7 +166,16 @@ function requestPermissionDecision({ sessionKey, tool, input, description }) {
 //   surface 在 details.accessIntent.surface，spike 补充验证 3）→ allow/deny 回传；
 // - user_bash（! bash）同策略评估（REQ-AGENT-033 标准 4，不经 tool_call 路径；
 //   worker 侧仅转发 IPC，分类在主进程 permissionPolicy 评估器）。
-function createPermissionBridgeFactory(sessionKey, handle) {
+// - BUG-002 pre-gate（tool_call 热路径 gate 前自评估）：gotgenes 热路径（parser
+//   已预热）的 bash 通配匹配对重定向/管道符号不可见（unit 文本枚举跳过
+//   file_redirect 节点与 `|` 匿名 token——`echo hi>out.txt`/`curl ...|sh` 被放行，
+//   附录 A 承诺失效）。本钩子在 gotgenes gate **之前**对 bash 工具调用自评估
+//   （permissionPolicy classifyBashToolCall，全串 regex = 附录 A，单一真源）：
+//   命中 ask 族（danger 仅由重定向/管道承载）→ 直接走授权桥（挂起确认）；
+//   其余 → 交 gotgenes 正常评估。单一评估原则（BUG-001 教训）：ask 判定已排除
+//   gotgenes 可见危险（rm/sudo/cwd 外路径/包装载荷等由其 gate 单 ask 承接），
+//   approved 后同一调用至多一次执行、不再产生二次 ask。
+function createPermissionBridgeFactory(sessionKey, sessionCwd, handle) {
   return async (pi) => {
     pi.events?.on("permissions:ready", () => {
       const svc = handle?.getPermissionsService?.();
@@ -192,6 +202,23 @@ function createPermissionBridgeFactory(sessionKey, handle) {
       // 可观测性（tech-design 可观测性节）：授权桥注册留痕（permissions:ready →
       // registerAuthorizer 完成）。
       log(`授权桥注册完成 session=${sessionKey}`);
+    });
+    pi.on("tool_call", async (event) => {
+      if (event.toolName !== "bash") return undefined;
+      const command = String(event.input?.command ?? "");
+      if (classifyBashToolCall(command, { cwd: sessionCwd, projectDir: sessionCwd }) !== "ask") {
+        return undefined; // 其余（含 gotgenes 可见危险）→ gotgenes 正常评估
+      }
+      // ask 族 → 直接走授权桥（挂起确认）→ allow 放行（工具路径单次执行）/
+      // deny/超时 block（agent 收到可转述工具错误）。
+      const verdict = await requestPermissionDecision({
+        sessionKey,
+        tool: "bash",
+        input: { command },
+        description: `bash: ${command}`,
+      });
+      if (verdict.kind === "allow") return undefined;
+      return { block: true, reason: verdict.reason ?? "操作已取消（用户拒绝）" };
     });
     pi.on("user_bash", async (event) => {
       const verdict = await requestPermissionDecision({
@@ -545,7 +572,11 @@ async function createSessionEntry(msg) {
   if (permissionProfile === "project") {
     try {
       const handle = await loadGotgenesFactory();
-      gotgenesExtensions = [handle.factory, createPermissionBridgeFactory(sessionKey, handle)];
+      // BUG-002 pre-gate：授权桥扩展排在 gotgenes **之前**——扩展 runner 按
+      // extensionFactories 顺序分发 tool_call 处理器（emitToolCall 顺序遍历，
+      // 首个 block 短路），pre-gate 自评估须先于 gotgenes gate 执行
+      // （「worker 扩展层 gate 前自评估」，修复方向 A）。
+      gotgenesExtensions = [createPermissionBridgeFactory(sessionKey, sessionCwd, handle), handle.factory];
       bindBridgeUi = true;
       gotgenesAssembled = true;
     } catch (err) {
