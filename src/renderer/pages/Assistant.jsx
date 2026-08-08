@@ -36,6 +36,98 @@ const POLL_MS = 10 * 1000;
 // 流式光标 settle（见选中会话 effect 内 text_end 处理注释）。
 const STREAM_SETTLE_MS = 1200;
 
+// —— 工具事件归约（REQ-AGENT-052 / tech-design 接口 1：tool 元素生命周期）——
+// 纯函数（无 React 依赖）：handleEvent 调用 + SSR 自验 harness 直接断言消息模型演化。
+// 生命周期：start 创建（id=toolCallId，input=PI args）→ end|error 按 id 更新 →
+// error 为终态（其后 end 不降级）→ error 无 toolCallId 匹配最近 running 块 →
+// turn 结束时仍 running 的块由 markInterruptedTools 标记（text_end 防御）。
+export function reduceToolEvent(prev, ev, now = Date.now()) {
+  if (!ev || typeof ev.type !== "string") return prev;
+  if (ev.type === "tool_execution_start") {
+    // 标准 1：start 创建 tool 元素（默认收起态；输入摘要截断在 ToolCallBlock 展示层）。
+    // 防御兜底：PI 原生 start 恒含 toolCallId（Slice 3 实证）；缺失时按时间戳生成。
+    const id = typeof ev.toolCallId === "string" && ev.toolCallId ? ev.toolCallId : `tool-${now}`;
+    return [
+      ...prev,
+      {
+        kind: "tool",
+        id,
+        name: String(ev.name ?? "tool"),
+        status: "running",
+        input: ev.input,
+        startedAt: now, // 内部字段：end/error 到达时计算 durationMs
+      },
+    ];
+  }
+  if (ev.type === "tool_execution_end") {
+    // 标准 2/3/4：按 toolCallId 更新。isError:true 的 end → error 态（I-2）；
+    // error 终态双保险：块已 error 时，其后到达的 completed end 不降级（I-2）。
+    return prev.map((m) => {
+      if (m.kind !== "tool" || m.id !== ev.toolCallId) return m;
+      if (m.status === "error") return m; // error 终态：保留 errorCode/errorMessage 与 error 展示
+      return {
+        ...m,
+        output: ev.output,
+        status: ev.isError === true ? "error" : "completed",
+        interrupted: false,
+        durationMs: now - (m.startedAt ?? now),
+      };
+    });
+  }
+  if (ev.type === "tool_execution_error") {
+    // 标准 3/5：error 事件无 toolCallId（toolAdapter.js:359 实证）→ 匹配该 turn
+    // 最近一个 status:"running" 的 tool 块；SSE 层若未来补 toolCallId 则优先精确匹配
+    // （tech-design 数据流 4）。error 为终态（其后 completed end 不再降级）。
+    const hasId = typeof ev.toolCallId === "string" && ev.toolCallId;
+    if (!hasId) {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const m = prev[i];
+        if (m.kind === "tool" && m.status === "running") {
+          const next = [...prev];
+          next[i] = {
+            ...m,
+            errorCode: ev.errorCode,
+            errorMessage: ev.errorMessage,
+            status: "error",
+            interrupted: false,
+            durationMs: now - (m.startedAt ?? now),
+          };
+          return next;
+        }
+      }
+      return prev; // 无 running 块（防御）：忽略
+    }
+    return prev.map((m) => {
+      if (m.kind !== "tool" || m.id !== ev.toolCallId || m.status !== "running") return m;
+      return {
+        ...m,
+        errorCode: ev.errorCode,
+        errorMessage: ev.errorMessage,
+        status: "error",
+        interrupted: false,
+        durationMs: now - (m.startedAt ?? now),
+      };
+    });
+  }
+  return prev;
+}
+
+// text_end 防御（接口 1 / REQ-AGENT-052 标准 6）：turn 结束时仍 running 的 tool 块
+// 标记 interrupted（防御：turn 结束未收到 end）。状态枚举保持签核契约
+// running|completed|error 不变——以 running + interrupted 标记表达（视觉态由
+// ToolCallBlock 渲染为"已中断"；迟到的 end/error 仍可正确收尾该块）。
+export function markInterruptedTools(messages) {
+  let changed = false;
+  const next = messages.map((m) => {
+    if (m.kind === "tool" && m.status === "running" && !m.interrupted) {
+      changed = true;
+      return { ...m, interrupted: true };
+    }
+    return m;
+  });
+  return changed ? next : messages;
+}
+
 // —— 空间语义（ADR-016 spaceKey 语法 + CONTEXT.md 会话区/通用空间/项目空间/孤儿会话）——
 // 返回 { kind, name（空态空间名）, badge（徽标）, readonly, reason? }。
 function spaceOf(key, sessions) {
@@ -266,7 +358,9 @@ export default function Assistant() {
             // text_end 时可能有 rAF 挂起未 flush 的累积 delta——兜底落盘，防尾字丢失。
             next[next.length - 1] = { ...last, text: remaining ?? last.text };
           }
-          return next;
+          // text_end 防御（接口 1 / REQ-AGENT-052 标准 6）：turn 结束时仍 running 的
+          // tool 块标记 interrupted（防御：turn 结束未收到 end——块不悬挂）。
+          return markInterruptedTools(next);
         });
         // 流式光标 settle（STREAM_SETTLE_MS）：text_end 后保持 data-streaming 一小段
         // ——cursor 收尾观感 + 短流可感知（FAUX 默认 TPS 下完整轮次仅 ~100ms，逐字
@@ -284,6 +378,12 @@ export default function Assistant() {
             setConfirmations((confs.confirmations ?? []).filter((c) => c.sessionKey === selectedKey));
           })
           .catch(() => {});
+      } else if (ev.type === "tool_execution_start" || ev.type === "tool_execution_end" || ev.type === "tool_execution_error") {
+        // 工具调用折叠块（REQ-AGENT-052 / tech-design 数据流 3/4）：现零消费 →
+        // start 创建 tool 消息元素 / end|error 按 toolCallId 更新 / error 无 id 匹配
+        // 最近 running / error 终态（其后 end 不降级）。纯归约函数（模块级导出，
+        // SSR 自验 seam）。工具事件为离散增量，不经 rAF 缓冲（text 路径不变）。
+        setMessages((prev) => reduceToolEvent(prev, ev));
       } else if (ev.type === "session-error") {
         setStreamingBoth(false);
       }

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from "react";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
+import ToolCallBlock from "./ToolCallBlock.jsx";
 
 // 操作描述（SSE confirmation-pending description 字段语义同构，裁决 11/8）：
 // GET 全量行无 description 字段（command + args 为真相），前端推导显示文案。
@@ -35,14 +36,18 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
         return (
           <div key={m.id ?? `${role}-${m.messageId ?? m.createdAt}-${idx}`} className={`msg ${role}`}>
             <div
-              className={`bubble${m.streaming ? " streaming" : ""}`}
+              className={`bubble${m.streaming ? " streaming" : ""}${m.kind === "tool" ? " tool-bubble" : ""}`}
               data-message-role={role}
               data-streaming={m.streaming ? "true" : undefined}
             >
               {/* 渲染分流（tech-design 模块关系图）：text → MarkdownRenderer；
-                  tool → ToolCallBlock（Slice 4 REQ-AGENT-052 接入；当前消息流无 tool 元素
-                  产生——历史不落工具、SSE 未消费 tool 事件，故分支不触发）。 */}
-              {m.kind === "tool" ? null : <MarkdownRenderer text={m.text} streaming={m.streaming} />}
+                  tool → ToolCallBlock（REQ-AGENT-052：SSE 消费 tool_execution_* →
+                  kind:"tool" 元素；历史不落工具 → 无 tool 元素，B8）。 */}
+              {m.kind === "tool" ? (
+                <ToolCallBlock tool={m} />
+              ) : (
+                <MarkdownRenderer text={m.text} streaming={m.streaming} />
+              )}
             </div>
           </div>
         );

@@ -696,3 +696,117 @@
   color: var(--ch-text-secondary);
   margin: var(--ch-space-2) 0 var(--ch-space-4);
 }
+
+/* ============================================================
+   工具调用折叠块（B6 / REQ-AGENT-052；对齐 ux/assistant-rich.html
+   tool-block 三态语义：border/radius/header hover/chevron 旋转/error 色）
+   ============================================================ */
+/* 工具块独立成块（不套气泡底色/边框/内边距；宽度放开利于输入/输出正文） */
+.msg.agent .bubble.tool-bubble {
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  white-space: normal;
+}
+
+.tool-block {
+  margin: 0;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  background: var(--ch-surface);
+  overflow: hidden;
+}
+
+.tool-block.error { border-color: var(--ch-error); }
+
+/* interrupted（text_end 防御）：弱化呈现 = 非 running 视觉态（已中断） */
+.tool-block.interrupted { opacity: 0.65; }
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-3);
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--ch-font-mono);
+  font-size: 0.86em;
+  color: var(--ch-text-secondary);
+}
+
+.tool-header:hover { background: var(--ch-surface-high); }
+
+.tool-chevron {
+  transition: transform 0.15s ease;
+  color: var(--ch-text-tertiary);
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+
+.tool-block.open .tool-chevron { transform: rotate(90deg); }
+
+.tool-name {
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+}
+
+.tool-summary {
+  color: var(--ch-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-error-badge {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: #fff;
+  background: var(--ch-error);
+  border-radius: var(--ch-radius-sm);
+  padding: 0 6px;
+  font-family: var(--ch-font-sans);
+  font-weight: var(--ch-weight-medium);
+  flex-shrink: 0;
+}
+
+.tool-interrupted-hint {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-sans);
+  flex-shrink: 0;
+}
+
+.tool-body { display: none; border-top: 1px solid var(--ch-border); }
+.tool-block.open .tool-body { display: block; }
+
+.tool-section { padding: var(--ch-space-2) var(--ch-space-3); }
+.tool-section + .tool-section { border-top: 1px solid var(--ch-border); }
+
+.tool-section-label {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ch-text-tertiary);
+  margin-bottom: var(--ch-space-1);
+}
+
+.tool-section-content {
+  font-family: var(--ch-font-mono);
+  font-size: 0.85em;
+  color: var(--ch-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  /* 超长输出折叠内滚动（实现要求：输出截断展示——折叠内滚动） */
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.tool-block.error .tool-section-content { color: var(--ch-error); }
+
+.tool-duration {
+  font-size: 0.78em;
+  color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono);
+}
