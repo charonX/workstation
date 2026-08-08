@@ -87,3 +87,14 @@ ADR-005 ~ ADR-012 见 `.aiassist/global/adr/README.md`，包括：
 - ADR-010: 统一节点输出模型与节点类型注册表
 - ADR-011: Agent skill 分发由 workstation 自持，第三方库仅作 registry 数据源
 - ADR-012: macOS 分发走未签名 + 公开 GitHub Release + 手动重装 + 轻量检查更新
+
+ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`），包括：
+
+- ADR-013: 内置 agent 采用 PI 双运行时
+- ADR-014: agent 运行时独立 SDK 子进程（崩溃隔离 + 多会话 IPC）
+- ADR-015: 看门狗心跳控制面带外（任何入站消息计存活）
+- ADR-016: UI 空间 = 会话（多会话列表可继续）
+- ADR-017: agent 权限 gotgenes + 授权桥（唯一执行者/单一评估）
+- ADR-018: 双区信息架构（会话区左导 + 管理区）
+- ADR-019: PI agent 维持单进程（重估触发条件：真实崩溃/隔离需求）
+- ADR-020: 权限出厂策略单一真源（代码规则表 + 生成配平，修订 ADR-017「文件=契约」）

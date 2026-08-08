@@ -108,3 +108,11 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 反模式 | 问题 | 修复 |
 |---|---|---|
 | mock 契约断言充当外部 API 契约验证 | 测试按错误假设写（settings 接口断言 PUT，官方实为 PATCH）——5 个回归全绿，真实联调 404：mock 只能证"实现符合假设"，证不了"假设符合外部世界" | 外部 API 契约的每个假设要素（方法/端点/包装/响应解析）在测试注释标注「联调验证点」，QA 逐条核销；首次接入的端点先用 curl 级脚本对真实 API 钉死方法/端点再写测试 |
+
+## 2026-08-08 追加（pi-agent-consolidation REFLECT）
+
+- [ ] 签核断言必须可执行：每条验收标准落真实断言；seam 未就绪用「seam 未就绪即失败」（assert.ok(mod, ...)），禁止 `assert.ok(true)` + 注释占位（实现后失去验证力）
+- [ ] 签核浏览器 E2E 前验证行为链可驱动性：FAUX 能力边界（确定性回声不调工具）、seed seam、可编程注入缝——不可驱动腿补 seam 或降级并显式记录
+- [ ] agent 主动发起路径（工具调用/确认/恢复）必须有真实链路 E2E：fake IPC / seed 覆盖不到模型循环真实执行（2026-08-08 实证：noTools 工具面失效 + 确认链死锁藏三个 story）
+- [ ] 测试 seam 注入模式：node --import 预载脚本注入裸全局引用（测试文件只读不改 import 的合法通道）；E2E 用环境变量驱动 FAUX 工具调用序列（OPC_FAUX_TOOL_SEQUENCE）
+- [ ] 黄金文件断言用 try/finally 还原：--check 类测试篡改-验证-还原必须 finally 保证，防污染真源文件（policyCodegen 教训：断言失败导致 golden 停留漂移态）
