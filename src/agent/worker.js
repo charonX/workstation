@@ -36,6 +36,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSessionToolSurface } from "./toolAdapter.js";
+import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
@@ -53,7 +54,9 @@ fs.mkdirSync(agentHome, { recursive: true });
 // 活跃会话：sessionKey → { agentSession, sessionManager, modelRuntime, resourceLoader,
 // config, sessionRef, provider, model, keyRef }。
 // keyRef → 明文 key 仅持内存（一次性注入语义，不落盘/不落日志/不进 JSONL）。
-const sessions = new Map();
+// 会话注册表/淘汰调度/同组单活/tombstone 归 sessionLifecycle 模块（tech-design
+// 接口 1，REQ-AGENT-035/036/037/039）；worker 经 lifecycle 存取，不再直接操作 Map。
+// keySecrets 为 keyRef 级共享缓存，不随单会话淘汰清理（REQ-AGENT-035 标准 2）。
 const keySecrets = new Map();
 
 // 会话工具上下文（Slice 8 G1 接线）：sessionKey → { defaultTarget }（绑定默认目标
@@ -386,9 +389,42 @@ const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
 function forwardEvent(sessionKey, ev) {
   const mapped = mapToContractEvent(ev);
   if (!mapped) return;
+  // 流式/工具事件 = 会话活动（REQ-AGENT-035 标准 1）：刷新 lastActiveAt。
+  // 未知 sessionKey → 模块内静默 no-op（消息乱序容忍，接口 1 业务错误行）。
+  lifecycle.touch(sessionKey);
   if (mapped.type === "text_end") lastReplies.set(sessionKey, mapped.content);
   send({ type: "session-event", sessionKey, event: limitSize(mapped) });
 }
+
+// 会话生命周期（REQ-AGENT-035/036/037/039；tech-design 接口 1）：
+// - 三触发淘汰调度：TTL 1h / LRU 50 / 同组单活，sweep 每 60s；流式/队列豁免
+//   （F2/E1：进行中的回复不掐断；流结束回归候选集合）；
+// - onEvict：淘汰副作用回调——dispose + 辅助 Map×3（toolContexts/sessionQueues/
+//   lastReplies）清理 + 发 session-evicted IPC（接口 2，{ type:"session-evicted",
+//   sessionKey }；主进程丢句柄、store 行保留、keySecrets 保留——Slice 3 接主进程侧）；
+// - tombstone 由模块内部记录（tombstonedKeys；接口 3 判别依据，Slice 3 接 evicted
+//   重投）；keySecrets 不动（keyRef 级共享缓存，035 标准 2）；confirmAcks/
+//   permissionDecisions 不随淘汰清理（035 标准 7，随 30s/10min 超时兜底释放）。
+const lifecycle = createSessionLifecycle({
+  onEvict: (key, entry) => {
+    if (entry) disposeSession(entry);
+    toolContexts.delete(key);
+    sessionQueues.delete(key);
+    lastReplies.delete(key);
+    send({ type: "session-evicted", sessionKey: key });
+    log(`会话淘汰 session=${key}（JSONL 保留，下次活动懒恢复）`);
+  },
+});
+
+// sweep 周期（signoff 裁决 2：60s 语义）；unref：不阻塞进程退出。
+const sweepTimer = setInterval(() => {
+  try {
+    lifecycle.sweep();
+  } catch (err) {
+    log(`sweep 异常 err=${err?.message ?? String(err)}`);
+  }
+}, DEFAULT_SWEEP_INTERVAL_MS);
+sweepTimer.unref?.();
 
 // FAUX 测试 seam（H3）的确定性回复：上下文回声——把本次模型可见的
 // system prompt 与全部消息序列化回传。零网络且可断言「回复引用了恢复前
@@ -484,6 +520,9 @@ async function handleSessionConfig(msg) {
   } = msg;
   // 诊断：worker 收到 session-config。
   log(`session-config 进入 session=${sessionKey} provider=${provider} model=${model} hasKey=${!!apiKey}`);
+  // 同组单活（REQ-AGENT-037 标准 2/5）：session-config 到达 = 本空间有活动 →
+  // 冷却同组其他会话（组内流式中 → 模块标记延迟淘汰，流结束立即执行）。
+  lifecycle.evictGroupPeers(sessionKey);
   // 工具上下文（Slice 8 G1）：随 session-config 更新（新会话与热更新共用；
   // toolSurface 经 getDefaultTarget 惰性读取，无需重建 PI 会话）。
   if (toolContext && typeof toolContext === "object") {
@@ -491,7 +530,7 @@ async function handleSessionConfig(msg) {
   } else {
     toolContexts.delete(sessionKey);
   }
-  const existing = sessions.get(sessionKey);
+  const existing = lifecycle.get(sessionKey);
 
   if (existing) {
     if (apiKey) keySecrets.set(keyRef ?? existing.keyRef, apiKey);
@@ -506,7 +545,7 @@ async function handleSessionConfig(msg) {
     }
     // provider/key 变更 → 重建：旧会话释放，走下方新建路径（新 JSONL 引用）。
     await disposeSession(existing);
-    sessions.delete(sessionKey);
+    lifecycle.remove(sessionKey); // 显式重建路径：不触发 onEvict，清 tombstone（旧世代不复活）
   }
 
   await createSessionEntry(msg);
@@ -668,7 +707,9 @@ async function createSessionEntry(msg) {
     keyRef: keyRef ?? `key:${provider}`,
   };
   agentSession.subscribe((ev) => forwardEvent(sessionKey, ev));
-  sessions.set(sessionKey, entry);
+  // 经生命周期模块注册（tech-design 接口 1）：覆盖注册（懒恢复/重建）清 tombstone，
+  // 并刷新活跃时间；LRU 上限由模块在注册时执行（REQ-AGENT-036）。
+  lifecycle.register(sessionKey, entry);
   // 可观测性（tech-design 可观测性节）：会话创建装配（spaceKey→cwd/skills/profile）。
   log(`session-config 完成 session=${sessionKey} ref=${effectiveRef} profile=${permissionProfile} skills=${skillPaths.length}`);
   if (rebuilt) {
@@ -698,16 +739,25 @@ async function resolveModel(runtime, provider, model, apiKey) {
 
 async function handlePrompt(msg) {
   const { id, sessionKey, text } = msg;
-  const entry = sessions.get(sessionKey);
+  const entry = lifecycle.get(sessionKey);
   // 诊断：worker 收到 prompt。
   log(`prompt 进入 session=${sessionKey} id=${id} session存在=${!!entry} text=${String(text ?? "").slice(0, 60)}`);
   if (!entry) {
+    // 非 tombstone 未知 key → 保持既有 E-AGENT-NO-SESSION（孤儿/旧世代不复活；
+    // tombstone 判别 + evicted 重投为接口 3，Slice 3 接主进程侧）。
     const error = { code: "E-AGENT-NO-SESSION", reason: "会话不存在" };
     send({ type: "session-error", sessionKey, ...error, userMessage: "会话不存在，请重试" });
     send({ type: "prompt-result", id, sessionKey, ok: false, error });
     return;
   }
+  // prompt 到达 = 活动（REQ-AGENT-035 标准 1：刷新 lastActiveAt）+ 同组单活
+  // （REQ-AGENT-037 标准 2：冷却同组其他会话）。
+  lifecycle.touch(sessionKey);
+  lifecycle.evictGroupPeers(sessionKey);
+  entry.queued = true; // 排队中豁免（F2：TTL/LRU/组冷却不淘汰排队中的会话）
   await enqueueSession(sessionKey, async () => {
+    entry.queued = false;
+    entry.streaming = true; // 流式保护（F2/E1：进行中的回复不掐断）
     try {
       // FAUX 测试 seam：每轮排队一个上下文回声响应（确定性、零网络）。
       if (FAUX_MODE) fauxHandle.appendResponses([fauxEchoFor]);
@@ -728,6 +778,8 @@ async function handlePrompt(msg) {
       log(`prompt 失败 session=${sessionKey} code=${error.code}`);
       send({ type: "session-error", sessionKey, ...error, userMessage: `LLM 调用失败：${reason}` });
       send({ type: "prompt-result", id, sessionKey, ok: false, error });
+    } finally {
+      entry.streaming = false; // 流结束：回归可淘汰集合（TTL/LRU 候选；组冷却延迟即淘汰）
     }
   });
 }
@@ -737,27 +789,33 @@ async function handlePrompt(msg) {
 // （与 prompt 同队列，同空间不交错）；回投文本经 session-event 流式回传（回复卡片）。
 async function handleNotifyResult(msg) {
   const { sessionKey, result } = msg;
-  const entry = sessions.get(sessionKey);
+  const entry = lifecycle.get(sessionKey);
   if (!entry) {
     log(`notify-result 跳过 session=${sessionKey}（会话不存在）`);
     return;
   }
+  entry.queued = true;
   await enqueueSession(sessionKey, async () => {
+    entry.queued = false;
+    entry.streaming = true; // 流式保护（F2）：回投生成期间不淘汰
     try {
       if (FAUX_MODE) fauxHandle.appendResponses([fauxEchoFor]);
       const text = `执行结果已就绪，请用自然语言向用户简要汇报执行结果：${JSON.stringify(result ?? {})}`;
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
     } catch (err) {
       log(`notify-result prompt 失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+    } finally {
+      entry.streaming = false;
     }
   });
 }
 
 async function shutdownAll() {
-  for (const entry of sessions.values()) {
+  for (const [key, entry] of lifecycle.entries()) {
     await disposeSession(entry);
+    lifecycle.remove(key);
   }
-  sessions.clear();
+  clearInterval(sweepTimer);
 }
 
 // 全局消息串行队列：session-config 等异步处理必须先于后续 prompt 完成
@@ -789,11 +847,12 @@ rl.on("line", (line) => {
 
 // /reset（REQ-AGENT-010）：dispose 并释放当前空间会话；主进程随后以下发的
 // 新 sessionRef（世代 +1）重新 session-config → 新建空上下文会话。
+// 经 lifecycle.remove（显式路径，不触发 onEvict 淘汰链）。
 async function handleResetSession(msg) {
-  const entry = sessions.get(msg.sessionKey);
+  const entry = lifecycle.get(msg.sessionKey);
   if (entry) {
     await disposeSession(entry);
-    sessions.delete(msg.sessionKey);
+    lifecycle.remove(msg.sessionKey);
     lastReplies.delete(msg.sessionKey);
     log(`reset-session session=${msg.sessionKey}`);
   }
