@@ -210,10 +210,82 @@ PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 
 
 ---
 
+### Slice 4：REQ-AGENT-041/042 权限缝（policyRules + 生成器 + 配平 + 语料矩阵）（2026-08-08）
+
+**实现文件**（Rule 0.5 范围纪律：规则表 + 评估器局部 + 生成器 + golden 重生成，不动运行时/项目覆盖/E2E）：
+
+- `src/services/policyRules.js`（新增，tech-design 接口 5）：
+  - `BASH_RULES`：12 条 bash 破坏性模式规则（自 permissionPolicy 既有 BASH_DESTRUCTIVE_PATTERNS 平移），每条 `{ pattern（RegExp source）, decision, hotPathVisible, family, globs（gotgenes glob 渲染，仅可见族）}`——四字段契约齐备，`globs` 为生成器渲染字段；
+  - hotPathVisible 标记：rm/sudo/kill/pkill/chmod/chown/dd/mkfs/mv/git push --force/npm·pnpm -g/yarn global → `true`（gotgenes 热路径可见，进部署 JSON）；`>+`（重定向）/`|sh|bash`（管道到 shell）→ `false`（B7 不可见族，只活在 pre-gate，不进产物）；
+  - `BASH_DESTRUCTIVE_PATTERNS`：编译导出（无 flags，与既有字面量语义逐字一致——node 脚本对 21 条既有语料验证 behavior identical）；
+  - 非声明化部分（cwd 外启发式/strip/wrapper floor）留 permissionPolicy；工具默认裁决与 CLI 高危（toolAdapter TOOL_DEFS）保持评估器内建。
+- `src/services/permissionPolicy.js`（改）：内建 `BASH_DESTRUCTIVE_PATTERNS` 字面量数组删除 → `import` 自 policyRules（评估器消费全部 bash 模式，无论可见性——不可见族在评估层照常 ask）；pre-gate 三逻辑（REDIRECT_OR_PIPE_TO_SHELL_RE / stripRedirectPipeOperators / WRAPPER_PAYLOAD_RE）零改动；项目覆盖加载/优先级/fail-closed 零改动；头部「文件=契约」注释修订为「代码规则表=真源，部署 JSON=生成产物（ADR-020 修订关系）」。
+- `scripts/gen-agent-policy.mjs`（新增，tech-design 接口 4）：
+  - 默认模式：规则表 `hotPathVisible:true && decision:ask` 族的 globs + 静态模板（STATIC_TEMPLATE + PERMISSION_TOP_SURFACES/READ_WRITE_SURFACES/CLI_SURFACES，自既有 golden 平移，键序保持 bash 夹在工具面中间）→ 覆写 `agent-policy/pi-permission-config.json`；
+  - `--check`：LCS 行 diff（无外部依赖），一致 exit 0 / 漂移 exit 1 + diff 摘要（≤40 行）；
+  - 职责划分：规则字段只来自 policyRules，静态字段只来自生成器模板，两者在产物内不重叠。
+- `agent-policy/pi-permission-config.json`（golden 重生成，[build] 产物）：语义 diff = bash surface **-7 不可见族**（`* > *`/`* >> *`/`*>*`/`* | *sh`/`* | *bash`/`*|*sh`/`*|*bash`）+ **+2 补全**（`pnpm install -g *`/`pnpm install --global *`——既有 golden 手写镜像遗漏，规则表 regex 本就覆盖 pnpm install，生成器闭环该缝隙）；静态字段（$schema/debugLog/permissionReviewLog/yoloMode/doublePressToConfirm/toolInputPreviewMaxLength/toolTextSummaryMaxLength/piInfrastructureReadPaths/authorizerChain）与非 bash permission 块逐字保持；其余为格式规范化（空行删除/嵌套对象展开，部署链 worker copyFileSync 格式不敏感）。
+
+**测试命令与输出摘要**（先 `npm run rebuild:node`）：
+
+| 命令 | 结果 |
+|---|---|
+| `policyCodegen.test.js` + `permissionCorpus.test.js`（本 slice 2 文件 10 标准） | 10/10 pass（占位断言，注释承载语义；seam 已按注释语义接线，真实断言待父代理强化） |
+| 回归 `permissionPolicy.test.js`（ui-copilot 8 标准）+ `authorizerBridge.test.js`（16 用例，pre-gate 真实断言） | 24/24 pass（**不修改全绿 = 行为保持硬标准达成**） |
+| 回归 toolSurface.test.js ×2（ui-copilot + builtin-agent） | 全绿 |
+| 回归 `2026-08-02-ui-copilot/api` + `2026-08-02-builtin-agent/api` 全量（113 用例 37 suites） | 113/113 pass |
+| 全量单元（test:unit 同形命令） | 662 tests / 658 pass / 4 fail——仅 `docAssets.test.js`（ADR-019 + CONTEXT 术语，Slice 5 文档 seam 未就绪，预期红，与 Slice 1/2/3 记录一致） |
+| 手测 `--check` 三态 | 一致 exit 0；篡改 golden 一行（`"rm *": "allow"`）→ exit 1 + diff 摘要（`- "rm *": "allow"` / `+ "rm *": "ask"`）；还原 → exit 0 |
+| TDD 等价性验证（node 脚本） | 12 规则四字段齐备；编译 regex 对 21 条语料（含 rm/sudo/重定向/管道/2>/>>/URL）与既有字面量逐字一致；可见族 globs 27 条 |
+| `npx oxlint` 新文件/改动文件 | 零告警（存量告警不属本 slice） |
+
+**占位断言待父代理强化清单**（policyCodegen.test.js 6 标准 + permissionCorpus.test.js 4 标准全部为 `assert.ok(true)` 注释占位）：
+
+- policyCodegen 标准 1：断言 `BASH_RULES` 每条含 pattern/decision/hotPathVisible/family + 评估器源码无硬编码 bash 字面量（可 grep BASH_DESTRUCTIVE_PATTERNS 不存在于 permissionPolicy 内联声明 + import 自 policyRules）。
+- 标准 2：跑生成器（或 --check）→ JSON.parse 断言可见族在（`rm *`/`sudo *`/`git push --force*`）、不可见族不在（`* > *`/`* >> *`/`*|*sh`/`*|*bash`）、静态字段保留。
+- 标准 3：`node scripts/gen-agent-policy.mjs --check` spawn exit 0 → 篡改 golden 一行 → exit 1 且 stderr 含 diff 标记 → 还原 → exit 0。
+- 标准 4：既有 permissionPolicy.test.js 不修改全绿（本 slice 已手动回归 8/8，可并入 QA 全量）。
+- 标准 5：构造项目覆盖文件断言优先级（项目>全局>附录A）；untrusted 剔除面（注意：`projectTrusted` 目前仅存在于语料占位注释，代码无此参数——强化若需新 seam 参数，由父代理按 /bug 或就地补全裁决）。
+- 标准 6：ADR-020 文档断言归 Slice 5（本 slice 不产文档）。
+- permissionCorpus 标准 1/2/4：classifyBashToolCall 判别表/变种/0 双卡语料断言——行为已由既有 authorizerBridge.test.js 真实断言（echo hi>out.txt 无空格变体/带空格/cwd 外/bash -c wrapper）+ 规则表等价性锁死，强化只需将注释语料落地。
+- 标准 3：信任门 fail-closed（同上 projectTrusted 说明）。
+
+**PRD→代码 可追溯性表**：
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| B6 稳定块：权限出厂规则单一真源化——语义只留代码评估器，部署 JSON 由生成器从代码语义产出（仅 gotgenes 热路径可见族）；配平测试锁「生成 == 检入部署源」 | `policyRules.js`（BASH_RULES 唯一声明源）+ `permissionPolicy.js`（消费规则表）+ `scripts/gen-agent-policy.mjs`（生成器 + --check） | `policyCodegen.test.js` 标准 1/2/3（占位，seam 已接线）+ 手测三态 | COVERED（语义全链实现；签核断言待父代理强化） |
+| B7 稳定块：重定向/管道不可见族只活在 pre-gate——生成产物 JSON 不再含 `* > *` 等热路径不可见模式；同一命令同一危险只出一张确认卡 | `policyRules.js`（hotPathVisible:false 标记 → 生成器跳过）+ `permissionPolicy.js`（pre-gate 三逻辑零改动，不可见族在评估层照常 ask） | `permissionCorpus.test.js` 标准 1/2/4（占位）+ `authorizerBridge.test.js` 既有真实断言回归 | COVERED（golden 语义 diff -7 不可见族实证；0 双卡由「不可见族从 gotgenes 面移除，双确认家族只剩 pre-gate 一个家」构造性达成） |
+| F6 步骤 1：修改代码中的出厂规则语义 → 只改一处 | `policyRules.js`（规则变更唯一落点） | —（构造性：评估器与生成器共同 import） | COVERED（架构性达成） |
+| F6 步骤 2：运行生成器 → 产出部署 JSON（仅热路径可见族；不可见族不出现） | `scripts/gen-agent-policy.mjs` 默认模式 + golden 重生成 | `policyCodegen` 标准 2（占位）+ 语义 diff 实证（+2/-7/静态保持） | COVERED |
+| F6 步骤 3：改完忘跑生成器（漂移分支）→ 配平测试红，拦截 | `gen-agent-policy.mjs --check`（exit 1 + diff） | `policyCodegen` 标准 3（占位）+ 手测篡改/还原 | COVERED |
+| §8 E3 生成产物漂移：代码语义改了但检入 JSON 未重新生成 → 配平测试失败（测试报错），不部署；跑生成器使两侧一致 | 同上（--check 为配平入口） | 同上 | COVERED |
+| §8 E4 项目级覆盖 JSON 语法错误：沿用现状容错语义（本 story 不变更） | `permissionPolicy.js` loadPermissionRules 容错零改动 | `policyCodegen` 标准 5（占位）；既有 permissionPolicy.test.js 回归 | COVERED（未变更面） |
+| REQ-AGENT-041 标准 1：规则表唯一声明源（{pattern,decision,hotPathVisible,family}）；评估器不再硬编码 bash 模式清单 | `policyRules.js` + `permissionPolicy.js`（内联数组删除，import 自规则表） | `policyCodegen` 标准 1（占位）+ 等价性 node 脚本（四字段 + 21 语料 regex 一致） | COVERED |
+| REQ-AGENT-041 标准 2：生成器默认模式覆写 golden——内容=可见族+静态模板字段；不可见族不出现 | `gen-agent-policy.mjs`（buildBashSurface 过滤 hotPathVisible:true）+ golden 重生成 | `policyCodegen` 标准 2（占位）+ 语义 diff 实证 | COVERED |
+| REQ-AGENT-041 标准 3：--check 一致 exit 0 / 漂移 exit 1 + diff 摘要 | `gen-agent-policy.mjs`（LCS 行 diff，无外部依赖） | `policyCodegen` 标准 3（占位）+ 手测三态 | COVERED |
+| REQ-AGENT-041 标准 4：评估行为保持——规则表化后既有语料裁决不变（permissionPolicy 既有测试不修改全绿） | `permissionPolicy.js`（仅模式清单改引用，regex 语义逐字一致） | `permissionPolicy.test.js`（ui-copilot）不修改全绿 + `authorizerBridge.test.js` 不修改全绿 | COVERED（真实断言） |
+| REQ-AGENT-041 标准 5：项目级覆盖机制不变（<projectDir>/.pi/... 加载、优先级项目>全局>附录A、fail-closed 信任门） | `permissionPolicy.js` 覆盖加载/优先级零改动 | `policyCodegen` 标准 5（占位）；既有 permissionPolicy.test.js 回归 | COVERED（未变更面；断言待强化） |
+| REQ-AGENT-041 标准 6：ADR-020 存在且注明修订 ADR-017 关系 + README 索引 | 非本 slice（Slice 5 文档切片） | `policyCodegen` 标准 6（占位） | 非本 slice（Slice 5 承担；实现注释已引用 ADR-020 修订关系） |
+| REQ-AGENT-042 标准 1：判别表——仅不可见族→pre-gate ask；仅可见族→放行；双命中→放行（gotgenes 优先）；wrapper→放行（floor 承接） | `permissionPolicy.js` classifyBashToolCall（零改动）+ 规则表驱动 | `permissionCorpus` 标准 1（占位）+ `authorizerBridge.test.js` 真实断言（echo hi>out.txt 无空格/带空格 → ask；cwd 外 → allow 单卡；bash -c → allow） | COVERED（行为由既有真实测试锁死） |
+| REQ-AGENT-042 标准 2：变种覆盖（2>、>>、|sh、|bash、URL // 防误判、wrapper 叠加重定向） | `permissionPolicy.js`（REDIRECT_OR_PIPE_TO_SHELL_RE / stripRedirectPipeOperators / WRAPPER_PAYLOAD_RE 零改动） | `permissionCorpus` 标准 2（占位）；authorizerBridge 变种回归 + 等价性脚本 21 语料 | COVERED |
+| REQ-AGENT-042 标准 3：信任门 projectTrusted=false 剔除项目范围（fail-closed，对齐 gotgenes H3） | 未变更面（代码无 projectTrusted 参数；评估器项目规则加载路径零改动） | `permissionCorpus` 标准 3（占位） | PARTIAL（既有语义保持；断言强化若需新 seam 由父代理裁决） |
+| REQ-AGENT-042 标准 4：每条 ask 语料「同一命令恰一个 ask 来源」（0 双卡） | 不可见族从 golden 移除（gotgenes 面不再重复匹配，BUG-002 双卡角落根除）+ pre-gate 单一评估 | `permissionCorpus` 标准 4（占位）+ authorizerBridge 既有 0 双卡断言回归 | COVERED（构造性 + 既有真实断言） |
+| tech-design 接口 4（生成器 CLI）：默认覆写 / --check 不写文件 diff | `scripts/gen-agent-policy.mjs` | `policyCodegen` 标准 3 + 手测 | COVERED |
+| tech-design 接口 5（规则表）：{pattern, decision, hotPathVisible, family}；不可见族仅评估器/pre-gate 消费；非声明化部分留代码 | `policyRules.js` | `policyCodegen` 标准 1 + 等价性脚本 | COVERED |
+| tech-design 数据流 5：改 policyRules 一处 → 跑生成器 → golden 检入 → 配平 --check 绿 → 启动照旧幂等部署；忘跑 → 配平红不进部署 | `policyRules.js` + `gen-agent-policy.mjs` + worker 部署链（零改动） | 上述标准 2/3 | COVERED |
+| tech-design 数据流 6（命中组合归属判别表四行）：仅不可见→ask / 仅可见→allow / 双命中→allow / wrapper→allow | `permissionPolicy.js` classifyBashToolCall（判别逻辑零改动） | `permissionCorpus` 标准 1 + authorizerBridge 回归 | COVERED |
+| PRD §12 范围外：项目级覆盖 JSON（.pi/...）机制改动 / gotgenes 运行时改动 / E2E | 本 slice 零改动（worker.js / permissionBridge.js / agentService.js / E2E 未触碰） | — | 遵守 |
+
+**refactor 结果**：无（policyRules 183 行新增 + permissionPolicy 局部引用替换 + 生成器新增 + golden 重生成；未触发 refactor 轮）
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v5 | 2026-08-08 | Slice 4 记录：权限缝（policyRules 规则表唯一真源 + 评估器消费规则表 + gen-agent-policy 生成器 + golden 重生成 -7 不可见族/+2 pnpm 补全）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v4 | 2026-08-08 | Slice 3 记录：水合窗口规则化（统一水合循环 + hydrationWindowMs seam + 诊断日志）+ session-evicted 丢句柄（接口 2）+ evicted 重投（接口 3，防环一次）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v3 | 2026-08-08 | Slice 2 PRD 对齐修复记录：M1 touch 来源区分（clearPending）、M2 onWarn 注入、M3 E1 诊断 + 表修正、U1 worker 侧 tombstone 判别（evicted）、U2/U3 tech-design 数据流 1 与模块关系图修正 |
 | v2 | 2026-08-08 | Slice 2 记录：sessionLifecycle 模块（抽取+TTL/LRU/组冷却/tombstone）+ worker 委托 + seam 注入 |

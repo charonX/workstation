@@ -22,13 +22,16 @@
 //   优先于全局；显式规则命中（非 "*" 通配）时以文件裁决为准（H4：A 空间项目策略
 //   不影响 B 空间评估——每 evaluator 独立加载）；分类为内建默认。
 //
-// 术语遵循 CONTEXT.md；与 gotgenes 运行时共享同一策略文件（文件 = 契约）。
+// 术语遵循 CONTEXT.md；与 gotgenes 运行时共享同一策略文件——代码规则表
+// （policyRules）为唯一真源，部署 JSON 为生成产物（ADR-020 修订 ADR-017
+// 「文件=契约」表述；生成器 scripts/gen-agent-policy.mjs + 配平测试锁死漂移）。
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getToolDefinition } from "../agent/toolAdapter.js";
 import { comparisonKey, isInsideOrEqual, realpathBestEffort } from "./pathUtils.js";
+import { BASH_DESTRUCTIVE_PATTERNS } from "./policyRules.js";
 
 // 全局策略文件（应用资源 agent-policy/ 随分发；src/services/ → ../../agent-policy）。
 // 打包形态的可靠资源定位（asar extraResource）未配置——见 build-progress「已知偏差」。
@@ -45,22 +48,9 @@ export const PROJECT_POLICY_REL_PATH = path.join(".pi", "extensions", "pi-permis
 const READ_TOOLS = new Set(["read", "ls", "grep", "find", "cat"]);
 const WRITE_TOOLS = new Set(["write", "edit", "create", "delete"]);
 
-// bash 破坏性模式（附录 A 清单；与 agent-policy/pi-permission-config.json 的
-// bash 面规则逐条对应——runtime 与评估层同契约，改此清单需同步改策略文件）。
-const BASH_DESTRUCTIVE_PATTERNS = [
-  /(^|\s)(rm|rmdir)(\s|$)/, // rm/rmdir
-  /(^|\s)sudo(\s|$)/, // sudo
-  />+/, // > 重定向（含 >>）
-  /\|\s*(ba)?sh(\s|$)/, // curl|sh / wget|sh 管道
-  /(^|\s)(kill|pkill)(\s|$)/, // kill/pkill
-  /(^|\s)(chmod|chown)(\s|$)/, // chmod/chown
-  /(^|\s)dd(\s|$)/, // dd
-  /(^|\s)mkfs(\s|$)/, // mkfs
-  /(^|\s)mv(\s|$)/, // mv（可覆盖目标，保守 ask）
-  /(^|\s)git\s+push\s+(--force|-f)/, // git push --force / -f
-  /(^|\s)(npm|pnpm)\s+(i|install|add)\s+(-g|--global)/, // 全局包安装
-  /(^|\s)yarn\s+global(\s|$)/, // yarn global
-];
+// bash 破坏性模式（附录 A 清单；来自 policyRules 规则表——唯一真源，评估器
+// 不再硬编码；hotPathVisible 与可见性无关：评估器消费全部 bash 模式，无论
+// 不可见族是否进入部署 JSON）。
 
 // 命令中绝对路径抽取（与 toolAdapter commandViolatesCwd 同型启发式；边界判定
 // 统一 realpath 归一化比较——signoff 裁决 18）。

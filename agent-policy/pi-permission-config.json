@@ -1,33 +1,31 @@
 {
   "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
-
   "debugLog": false,
   "permissionReviewLog": false,
   "yoloMode": false,
   "doublePressToConfirm": false,
-
   "toolInputPreviewMaxLength": 400,
   "toolTextSummaryMaxLength": 120,
-
   "piInfrastructureReadPaths": [],
-
-  "authorizerChain": ["opc-bridge"],
-
+  "authorizerChain": [
+    "opc-bridge"
+  ],
   "permission": {
     "*": "ask",
-    "path": { "*": "allow" },
-    "external_directory": { "*": "ask" },
-
+    "path": {
+      "*": "allow"
+    },
+    "external_directory": {
+      "*": "ask"
+    },
     "read": "allow",
     "ls": "allow",
     "grep": "allow",
     "find": "allow",
-
     "write": "ask",
     "edit": "ask",
     "create": "ask",
     "delete": "ask",
-
     "bash": {
       "*": "allow",
       "rm *": "ask",
@@ -52,18 +50,12 @@
       "npm add --global *": "ask",
       "pnpm i -g *": "ask",
       "pnpm i --global *": "ask",
+      "pnpm install -g *": "ask",
+      "pnpm install --global *": "ask",
       "pnpm add -g *": "ask",
       "pnpm add --global *": "ask",
-      "yarn global *": "ask",
-      "* > *": "ask",
-      "* >> *": "ask",
-      "*>*": "ask",
-      "* | *sh": "ask",
-      "* | *bash": "ask",
-      "*|*sh": "ask",
-      "*|*bash": "ask"
+      "yarn global *": "ask"
     },
-
     "task list": "allow",
     "task get": "allow",
     "task run": "allow",
