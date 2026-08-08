@@ -13,7 +13,7 @@
 | 3 | REQ-AGENT-038 | 水合窗口规则化（agentService 面，含 035 主进程集成面） | 2 | **complete**（本 slice commit） |
 | 4 | REQ-AGENT-041/042 | 权限缝（policyRules+生成器+配平+语料矩阵） | — | pending |
 | 5 | REQ-AGENT-045/046 | 文档（ADR-019/020 + CONTEXT 术语归位） | — | **complete**（本 slice commit） |
-| 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | pending |
+| 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | **complete**（验证切片：实现零改动，确认链路无回归；2 个新 E2E 签核文件测试侧偏差 D1-D5 记录待父代理裁决） |
 
 ## 关键 seam 契约速记（供子代理简报引用）
 
@@ -334,10 +334,54 @@ PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 
 
 ---
 
+### Slice 6：REQ-AGENT-043/044 E2E T-7/T-9 全链（验证切片）（2026-08-08）
+
+**实现动作**：本切片为「接线 + 验证」切片——**实现零改动**（[build] 无）。确认链路未因 Slice 1-5 改造回归（证据见下）；2 个已签核新 E2E 文件存在**测试侧**接线/locator 偏差，按纪律如实记录（测试文件只读、UI 结构不改），交父代理裁决。
+
+**验证与回归命令及输出摘要**（先 `npm run rebuild:electron`，ABI 切换；跑完 E2E 后 node ABI 失效，node 单测需先 `rebuild:node`——testing.md 已登记互斥）：
+
+| 命令 | 结果 |
+|---|---|
+| `npm run rebuild:electron` | OK（better-sqlite3 → Electron ABI） |
+| `npx playwright test .../2026-08-07-pi-agent-consolidation/e2e/`（2 文件 6 用例） | **6/6 fail，全部首断言 `page.goto("/assistant")` 即失败**：`Cannot navigate to invalid URL`（无 Electron 启动/baseURL/webServer/globalSetup；Playwright 裸 Chromium page）——未触达任何产品代码 |
+| 回归 `.../2026-08-02-ui-copilot/e2e/assistantConfirm.test.cjs`（4 用例） | **4/4 pass（9.9s）**——已验收同链路（卡渲染/批准→真实执行→流式回投/拒绝/重启挂起/幂等置灰）在真实 Electron 未回归 |
+| `git diff 005049c..HEAD -- src/agent/worker.js src/services/agentService.js` | confirm 路径**功能改动 0**（仅 1 行注释：confirmAcks/permissionDecisions 不随淘汰清理） |
+| `uiConfirmation.test.js`（confirm-request IPC 腿）+ `confirmation.test.js` | 本机未重跑（ABI 已切 Electron 互斥）；同 HEAD 代码在 Slice 5 全量 **662/662 pass** 时已绿 |
+
+**偏差记录（测试侧，未改测试文件 / 未改 UI 组件结构）**：
+
+| # | 偏差 | 测试现状 | 实际 renderer（`src/renderer/components/assistant/MessageList.jsx`） | 建议（待父代理裁决 /test-author 重写） |
+|---|---|---|---|---|
+| D1 | 启动接线缺失 | 裸 `{ page }` 夹具 + `page.goto("/assistant")` 相对 URL；无 startElectronApp / baseURL / webServer；无 seedAgentConfig、无建会话 | 既有 5 个 E2E 全部 `startElectronApp({ extraEnv:{OPC_AGENT_FAUX:"1"} })` → firstWindow；playwright.config.cjs 无 baseURL → 6/6 在 goto 行失败 | 按 assistantConfirm 同型接线：startElectronApp → seedAgentConfig → POST /api/agent/sessions → 打开会话再发消息 |
+| D2 | 卡 locator 不符 | `getByTestId("confirm-card")`（精确 `data-testid="confirm-card"`） | 卡元素为裸 `data-confirm-card` 属性（L52，ui-copilot 已验收测试同用 `[data-confirm-card]`）；无 data-testid | 改用 `[data-confirm-card]`（与已验收约定一致） |
+| D3 | 批准按钮文案不符 | `getByRole("button", { name: /批准|允许/ })` | 批准按钮文案「确认执行」（L65，无 aria-label）——`/批准|允许/` 永不匹配；拒绝「拒绝」匹配 `/拒绝|取消/` | 用 `[data-testid='confirm-approve-button']` 或文案 `/确认执行/` |
+| D4 | 计数断言不可满足 | `[data-testid*='confirm']` toHaveCount(1)（「恰一卡」） | 该选择器匹配恰 2 个元素（confirm-approve-button + confirm-reject-button，pending 态）；done 态 0 个——任何卡状态都 ≠1 | 卡计数用 `[data-confirm-card]` toHaveCount(1) |
+| D5 | seam 缺位（T-7/T-9 核心前提） | 前提 = composer 自然语言 → agent 发起 confirm 级工具调用（write/bash） | FAUX provider（零网络 E2E 模式）为确定性回声，**从不发起工具调用**（assistantConfirm 头注释已实证——正是 ui-copilot 弃方案①选 seed seam ②的原因）；真实 provider 需网络+真实 key 且非确定 | test-author 新增「可编程工具调用 FAUX」seam（如 OPC_AGENT_FAUX 脚本化工具响应）；或 T-7/T-9 组合已实证链路（seed 挂起行→批准→真实执行 + uiConfirmation IPC 腿） |
+
+**结论**：
+- 实现侧零改动：确认链路未回归（assistantConfirm 4/4 绿 + diff 功能改动 0 + Slice 5 662/662 含 confirm IPC 腿）。
+- 2 个新 E2E 文件以当前签核形态在本环境**不可跑绿**；6/6 失败全部发生在测试接线/定位层（D1 实证，D2-D5 静态分析），未触达产品代码。
+- E2E 环境可跑性：本机 macOS 正常（assistantConfirm 真实 Electron 9.9s 绿）；confirmChainBash 的 fs 副作用断言方式（mkdtemp 临时目录，E2E 与 Electron 同机可直读）本身可用，接线修复后可复用。
+- 处置：按纪律不改测试/UI，偏差记录交父代理走 /bug（test-gap）→ /test-author 重写 E2E 接线与 locator。
+
+**PRD→代码 可追溯性表**：
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| B8 T-7 UI confirm 生产全链（REQ-AGENT-043）：worker confirm 级工具→IPC confirm-request→卡→批准→执行→结果回投 | 零改动（链路实证 intact：`worker.js` L679-682 confirm-request 发送 + `agentService.js` L886 confirm-request 处理 + confirmationService 入队 + `MessageList.jsx` 卡渲染） | `confirmChainUi.test.cjs`（签核）——测试侧偏差 D1-D5 | DEVIATION（实现链路 intact；签核 E2E 当前形态不可跑，待 /test-author 重写） |
+| B9 T-9 bash pre-gate→授权桥→批准→执行（REQ-AGENT-044）：副作用 fs 断言、恰执行一次（唯一执行者）、恰一卡 | 零改动（pre-gate 判别 Slice 4 已锁；授权桥/确认服务/执行链由 assistantConfirm 实证） | `confirmChainBash.test.cjs`（签核）——同 D1/D2/D4/D5（fs 断言方式本身可用） | DEVIATION（同上） |
+| 裁决 16：E2E 链路（T-7/T-9 + ADR-017 唯一执行者） | 同链路既有实现（ui-copilot 交付，本 story 未改） | assistantConfirm 4/4 绿 + uiConfirmation/confirmation 在 HEAD 662/662 绿 | COVERED（已验收链路在整理后的新缝上未回归） |
+| 裁决 18：回归保全——既有测试不修改、水位不退 | Slice 1-5 对 confirm 路径功能改动 0 | assistantConfirm 4/4 + Slice 5 全量 662/662（含 confirm IPC 腿） | COVERED |
+
+**refactor 结果**：无（零代码改动）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v7 | 2026-08-08 | Slice 6 记录：E2E T-7/T-9 验证切片（实现零改动）——确认链路无回归（assistantConfirm 4/4 绿 + diff 0 功能改动 + 662/662 含 IPC 腿）；2 个新 E2E 签核文件 6/6 在 page.goto 即失败（测试侧偏差 D1-D5 记录：启动接线/locator D2-D4/seam D5），待父代理 /test-author 重写；PRD→代码可追溯性表 |
 | v6 | 2026-08-08 | Slice 5 记录：ADR-019（维持单进程 + 重估触发条件 + 不变关系）/ ADR-020（权限单一真源化 + 修订 ADR-017 关系）+ adr/README 索引 +2 + CONTEXT.md 术语归位（agent 三义 + 六术语）+ docAssets 5/5 与 policyCodegen 标准6 转绿 + 全量 662/662 + PRD→代码可追溯性表 |
 | v5 | 2026-08-08 | Slice 4 记录：权限缝（policyRules 规则表唯一真源 + 评估器消费规则表 + gen-agent-policy 生成器 + golden 重生成 -7 不可见族/+2 pnpm 补全）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v4 | 2026-08-08 | Slice 3 记录：水合窗口规则化（统一水合循环 + hydrationWindowMs seam + 诊断日志）+ session-evicted 丢句柄（接口 2）+ evicted 重投（接口 3，防环一次）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
