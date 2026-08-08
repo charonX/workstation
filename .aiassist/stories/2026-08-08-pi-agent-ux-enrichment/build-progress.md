@@ -14,7 +14,7 @@
 | 4 | REQ-AGENT-052 | 工具折叠块（消息模型 kind:tool + SSE 消费 + ToolCallBlock 三态） | 1,3 | done（2026-08-09） |
 | 5 | REQ-AGENT-049/050 | Mermaid（securityLevel strict + 流式字面量）+ KaTeX | 1 | done（2026-08-09） |
 | 6 | REQ-AGENT-051 | 图片（主进程 HTTP API + 白名单 + 裸路径识别） | 1 | done（2026-08-09） |
-| 7 | REQ-AGENT-054 | E2E 接线（3 个 E2E 跑绿）+ 主题切换 + 历史统一管线验证 | 全部 | pending |
+| 7 | REQ-AGENT-054 | E2E 接线（3 个 E2E 跑绿）+ 主题切换 + 历史统一管线验证 | 全部 | done（2026-08-09；E2E 12/12 + 回归 12/12 + 666 全绿） |
 
 ## 关键 seam 契约速记（供子代理简报引用）
 
@@ -365,6 +365,59 @@
 
 ---
 
+### Slice 7（REQ-AGENT-047~054 E2E 接线收官）— 2026-08-09
+
+**实现 commit**：`[test] slice7: E2E 接线（项目空间 seed + API 投递保留行首语法 + extraEnv 注入缝 + 越权占位强化 + 轮询角色名修正）(REQ-AGENT-047~054)`（348b6c9；实现代码零改动——本切片只改业务测试接线）
+
+**接线修正**（3 文件 12 用例，断言语义不变；各文件头注释有完整修正记录）：
+
+| # | 修正 | 原因（实证） | 涉及 |
+|---|---|---|---|
+| 1 | seed 改**项目空间会话**：createProject（localPath = 测试临时目录，含 fixture 图片）+ `POST /api/agent/sessions {spaceKind:"project", projectId}` | 原 seed 通用空间无解析根（图片必占位，Slice 6 concern 4 标准 1 必红）；原请求体 `{spaceKey, provider, apiKey}` 与现契约（spaceKind）不符 → 400 E-SESSION-CREATE | richRender |
+| 2 | 图片 fixture 放**项目 localPath 内**（非 userDataDir） | 主进程 agentFiles.js 按 projectId → projects.localPath 解析根 | richRender |
+| 3 | **seed 经 API 投递消息（非 composer）**，发送文本前置 "\n" | FAUX 回声为 `user:<text>` 前缀拼接，MD_FIXTURE 首行 `#` 必须处行首才构成 ATX 标题；renderer composer 发送路径 trim 前导空白（Assistant.jsx 实证），API 路由不 trim（实证回声渲染出 h1/h2）；签核语料内容不变 | richRender / streamingRender |
+| 4 | 越权占位断言**强化**（signoff 裁决 4 ②）：项目外绝对路径 → `.img-fallback` 出现 + `img[alt='越权']` 计数 0 | 原注释占位；FAUX 回声累积全对话（echo2 内含 echo1 嵌入图）→ 末气泡合法含多 img，断言按 alt 定位越权图 | richRender 051 |
+| 5 | 等待回声落盘改**轮询 GET messages**（150s 预算）+ 测试级 timeout 180s | 替代固定 500ms 等待；worker 冷启动方差大（1.4s~60s+）；Playwright 默认 30s 测试超时在慢速冷启动下必失败 | richRender / streamingRender / toolCallBlock |
+| 6 | 补 seedAgentConfig（PUT /api/settings/agent） | 缺失时发送 409 E-AGENT-CONFIG（原文件未播种） | 3 文件 |
+| 7 | **轮询角色名修正**：GET messages 的 role = PI JSONL 原生 `"user"|"assistant"`（projectMessagesFromJsonl），非 UI 气泡 data-message-role="agent" | 首版轮询按 "agent" 过滤永不命中（回声恒在 ~2s 落盘），轮询跑满预算超时——本切片最长调试点（10+ 轮 150s 超时，误判为 worker 挂起；隔离 worker harness 恒绿 + JSONL dump 截断误导，最终比对通过/失败两文件差异定位） | richRender postMessage |
+| 8 | **extraEnv 注入缝确认**：startElectronApp 夹具已支持 options.extraEnv（透传 electron.launch env；worker 继承 spawn 时主进程 env；OPC_FAUX_TOOL_SEQUENCE 由 worker 首轮 FAUX prompt 惰性解析）——**无需改夹具** | signoff 裁决 4 ① 实现后接线 | toolCallBlock |
+| 9 | 工具改 **CLI 查询级**：成功例 flow list（播种真实 flow，输出确定性含流程名）、错误例 flow get 不存在 id | 原 write 为 confirm 级（需确认卡流程，非本用例断言面）；断言语义不变（块出现/收起/展开内容/错误展开标红），工具名与内容为 fixture 细节 | toolCallBlock |
+| 10 | OPC_AGENT_FAUX_TPS=200 | FAUX 回声（数百字符）在默认 1000 事件/秒下 ~0.2s 即完成，「流式中」断言窗口不可靠——拉长到秒级（assistantChat 同型先例） | richRender / streamingRender |
+
+**测试摘要**：
+
+- E2E（rebuild:electron + playwright）：**3 文件 12 用例全绿（20.4s）**——richRender 7（047 标准1 GFM/标准2 XSS、048 高亮+主题、049 Mermaid SVG、050 KaTeX、051 图片项目内+越权占位、054 历史无 tool 元素）、toolCallBlock 3（收起/展开/error 终态/interrupted）、streamingRender 2（完成态无 `**` 残留、高速流 composer 可输入）。
+- **回归（Slice 3 worker 转发改动后首次 E2E 回归）**：assistantChat 2 + assistantConfirm 4 + confirmChainUi 3 + confirmChainBash 3 = **12/12 全绿（10.7s）**——工具事件转发加法扩展（start+input/end+output+isError）对既有确认链零感知。
+- 全量单测（rebuild:node + `npm run test:unit`）：**tests 666 / pass 666 / fail 0 全绿**（首轮 1 例失败 = hydrationWindow.test.js mtime 窗口计时敏感环境性 flake，与 Slice 5/6 记录同源；复跑全绿，非本切片回归）。
+- lint：改动文件零告警。
+
+**PRD→代码 可追溯性表**（B1-B8 E2E 断言面，全部 COVERED）：
+
+| PRD/REQ 条目 | E2E 断言面 | 落点（测试文件） | 状态 |
+|---|---|---|---|
+| B1 GFM（F1） | h1/h2/ul/table/blockquote 渲染 + `<script>` 转义不出现 | richRender 047 标准1/标准2 | COVERED |
+| B2 高亮（F1） | pre>code hljs span + 主题切换后仍存在 | richRender 048 | COVERED |
+| B3 Mermaid（F2） | ```mermaid → svg + data-theme 切换后仍可见 | richRender 049 | COVERED |
+| B4 KaTeX（F1） | `.katex` 出现 + `$E=mc^2$` 字面量残留 0 | richRender 050 | COVERED |
+| B5 图片（F3） | 项目内语法图+裸路径 → img≥1；项目外 → .img-fallback + 无 img | richRender 051 | COVERED（裁决 4 ② 强化落地） |
+| B6 工具块（F4） | 折叠块出现/收起/展开含输出/错误默认展开+徽标/interrupted | toolCallBlock 标准1/2、3/4、6 | COVERED |
+| B7 流式（F5） | 流式期间 bubble 稳定 + 完成态 h2/strong 无 `**` 残留 + 流式期间 composer 可输入 | streamingRender 标准1、标准2 | COVERED |
+| B8 历史统一管线+主题（F6） | 历史 markdown 渲染（h1）+ 历史无 [data-tool-block] | richRender 054 | COVERED |
+| REQ-AGENT-054 标准 4 主题切换 | 与 048 同断言（data-theme 切换后高亮类仍存在） | richRender 048/049 | COVERED |
+
+**concerns**（回传父代理）：
+
+1. **E2E 环境可跑性**：全链路验证完成（rebuild:electron → playwright 12/12 → 回归 12/12 → rebuild:node → 666 全绿，ABI 切回）。E2E 需先 `rebuild:electron`（better-sqlite3 ABI），单测前 `rebuild:node`——ABI 备忘见 testing.md 既有约定。
+2. **extraEnv 夹具结论**：`startElectronApp({ extraEnv })` 已支持（electronApp.cjs 第 90 行透传 electron.launch env），**无需改夹具**；worker 子进程经 spawnChild `{...process.env}` 继承，OPC_FAUX_TOOL_SEQUENCE 在 worker 首轮 FAUX prompt 惰性解析（spawn 前注入满足）。
+3. **FAUX 回声 = 上下文累积**：echo2 含 echo1+全部消息（含内嵌 markdown/图片）——E2E 断言「末气泡」时须考虑累积语义（051 越权断言已按 alt 定位）；历史消息渲染断言不受影响（GET messages 逐条独立渲染）。
+4. **轮询角色名**：GET messages 的 role 为 PI JSONL 原生 `"user"|"assistant"`——与 UI 气泡 data-message-role 命名不同，后续测试引用该 API 时注意（已写入 richRender postMessage 注释）。
+5. **worker 冷启动方差**（1.4s~60s+，Electron 子进程 + pi 装配）：测试级 timeout 180s + 轮询 150s 预算已吸收；慢速冷启动非缺陷（隔离 worker harness 恒绿）。
+6. hydrationWindow flake 与 Slice 5/6 记录同源（环境性，非本切片回归）。
+
+**refactor**：本切片无实现代码改动（纯测试接线）；夹具零改动（extraEnv 已支持）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
@@ -375,3 +428,4 @@
 | v4 | 2026-08-09 | Slice 4 完成记录：052 工具折叠块（SSE 消费 + 三态组件 + error 终态 + interrupted 防御，harness 13/13 + 666 全绿） |
 | v5 | 2026-08-09 | Slice 5 完成记录：049 Mermaid（懒加载/securityLevel strict/暗色独立配色/流式字面量）+ 050 KaTeX（依赖/实证/测试摘要/PRD→代码可追溯性表） |
 | v6 | 2026-08-09 | Slice 6 完成记录：051 图片显示（主进程白名单 API + blob URL + 裸路径识别 + 越权占位；接线决策/测试摘要 22+19+666/PRD→代码可追溯性表/concerns） |
+| v7 | 2026-08-09 | Slice 7 完成记录：047~054 E2E 接线收官（项目空间 seed + API 投递 + extraEnv 注入缝 + 越权强化 + 轮询角色名修正；E2E 12/12 + 回归 12/12 + 666 全绿/PRD→代码可追溯性表/concerns） |
