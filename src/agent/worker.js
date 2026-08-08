@@ -34,7 +34,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSessionToolSurface } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
@@ -454,6 +454,36 @@ function fauxEchoFor(context) {
   return fauxAssistantMessage(parts.join("\n"));
 }
 
+// —— 可编程工具调用注入缝（REQ-AGENT-043/044 T-7/T-9 E2E 测试 seam，FAUX 专属）——
+// OPC_FAUX_TOOL_SEQUENCE：JSON 数组 [{ tool, args }]（如 write/bash confirm 级工具）。
+// worker 每次 prompt 处理（FAUX 回声路径）按序列发起工具调用：FAUX 模型响应里
+// 携带 fauxToolCall 块 → pi 模型循环经工具面**真实执行**（生产路径：gotgenes
+// gate / pre-gate / 授权桥 / confirm-request → 确认卡 → 批准 → 执行 → 结果注入
+// 会话 → 回声回投，零短路），序列耗尽后回落确定性回声。生产（非 FAUX）零影响
+// ——仅 FAUX_MODE 分支引用本状态。若放 toolAdapter 也可，但工具调用起源在模型
+// 循环，worker 响应队列处注入最贴近「agent 主动发起」（build-progress Slice 6 记录）。
+let fauxToolSequence = null; // 惰性解析（FAUX 首次 prompt 时）；耗尽后置空数组
+function getFauxToolSequence() {
+  if (fauxToolSequence === null) {
+    if (!FAUX_MODE) {
+      fauxToolSequence = [];
+    } else {
+      const raw = process.env.OPC_FAUX_TOOL_SEQUENCE;
+      try {
+        const parsed = raw ? JSON.parse(raw) : [];
+        fauxToolSequence = Array.isArray(parsed)
+          ? parsed.filter((s) => s && typeof s.tool === "string")
+          : [];
+        if (raw && fauxToolSequence.length === 0) log(`OPC_FAUX_TOOL_SEQUENCE 解析为空，回落确定性回声`);
+      } catch (err) {
+        fauxToolSequence = [];
+        log(`OPC_FAUX_TOOL_SEQUENCE 解析失败，回落确定性回声 err=${err?.message ?? String(err)}`);
+      }
+    }
+  }
+  return fauxToolSequence;
+}
+
 // ModelRuntime 单例：authPath 重定向（防 ~/.pi 污染，H2）；faux 注册（H3 seam）。
 function getModelRuntime() {
   if (!runtimePromise) {
@@ -696,7 +726,15 @@ async function createSessionEntry(msg) {
     modelRuntime: runtime,
     model: modelObj,
     resourceLoader,
-    noTools: "all",
+    // 工具面激活（Slice 6 T-7/T-9 E2E 实证修复）：原 noTools:"all" 在 SDK 0.83.0
+    // 语义下 allowedToolNames=[]（空数组 truthy → 空 Set）→ isAllowedTool 全部
+    // 过滤 → agent 模型永远拿不到任何工具（tool_call 永不发生，模型循环回
+    // "Tool bash not found"）——agent 主动发起 confirm 级工具调用的生产链整体
+    // 失效（REQ-AGENT-012/032/033 契约要求工具面真实可调）。改经 tools:<自定义
+    // 工具名清单> 显式激活：语义与 noTools:"all" 意图一致（只暴露本 worker 自定义
+    // 工具面，builtin read/bash/edit/write 中同名项被自定义定义覆盖、未列名的
+    // builtin（如 edit）不激活）。
+    tools: toolSurface.toPiToolDefinitions().map((t) => t.name),
     customTools: toolSurface.toPiToolDefinitions(),
   });
 
@@ -785,8 +823,23 @@ async function handlePrompt(msg) {
     entry.queued = false;
     entry.streaming = true; // 流式保护（F2/E1：进行中的回复不掐断）
     try {
-      // FAUX 测试 seam：每轮排队一个上下文回声响应（确定性、零网络）。
-      if (FAUX_MODE) fauxHandle.appendResponses([fauxEchoFor]);
+      // FAUX 测试 seam（H3）：每轮排队一个确定性响应。可编程工具调用注入缝
+      // （REQ-AGENT-043/044，OPC_FAUX_TOOL_SEQUENCE）：序列未耗尽 → 本轮 FAUX
+      // 模型「主动发起」序列中下一个工具调用（fauxToolCall 经模型循环走生产
+      // 工具执行路径——confirm/授权桥链，零短路），随后回声响应收尾（工具
+      // 执行结果已入上下文，回声回投）；序列耗尽 → 回落确定性上下文回声。
+      if (FAUX_MODE) {
+        const seq = getFauxToolSequence();
+        if (seq.length > 0) {
+          const next = seq.shift();
+          fauxHandle.appendResponses([
+            fauxAssistantMessage([fauxToolCall(next.tool, next.args ?? {})]),
+            fauxEchoFor,
+          ]);
+        } else {
+          fauxHandle.appendResponses([fauxEchoFor]);
+        }
+      }
       // 回复文本经 message_update 事件回传（session.prompt 返回 void，spike H3）。
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
       const reply = lastReplies.get(sessionKey);
@@ -866,6 +919,15 @@ rl.on("line", (line) => {
   // 能读行就能回 pong；真崩溃（事件循环卡死/进程退出）才答不出。
   if (msg.type === "ping") {
     send({ type: "pong" });
+    return;
+  }
+  // 确认/授权桥回执带外响应（Slice 6 T-7/T-9 E2E 实证修复）：confirm-request-ack
+  // 与 permission-decision 是**纯 promise resolve**（同步、不触会话状态），而
+  // agent turn 正 await 该回执（confirm 级工具调用挂起等人工决议）——若排队，
+  // 队列被在途 prompt 占住 → 回执永不处理 → 确认链死锁（工具调用永久悬挂，
+  // 卡片已决议但执行永不发生）。与 ping 同型：事件循环能读行即能 resolve。
+  if (msg.type === "confirm-request-ack" || msg.type === "permission-decision") {
+    handleMessage(msg);
     return;
   }
   messageQueue.enqueue(() => handleMessage(msg));
