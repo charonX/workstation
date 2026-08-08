@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | REQ-AGENT-047/053 | 依赖引入 + Markdown 管线（react-markdown+remark-gfm+HTML 转义）+ 消息模型 kind:text 接入 MessageList | — | done（2026-08-09） |
 | 2 | REQ-AGENT-048 | 代码高亮（highlight.js 围栏+auto+双主题 CSS） | 1 | done（2026-08-09） |
-| 3 | REQ-AGENT-055 | worker 工具事件转发加法扩展（start+input/end+output+isError） | — | pending |
+| 3 | REQ-AGENT-055 | worker 工具事件转发加法扩展（start+input/end+output+isError） | — | done（2026-08-09；实现+harness 验证完成，业务测试 seam 待 [test] 微调，见 Slice 3 记录） |
 | 4 | REQ-AGENT-052 | 工具折叠块（消息模型 kind:tool + SSE 消费 + ToolCallBlock 三态） | 1,3 | pending |
 | 5 | REQ-AGENT-049/050 | Mermaid（securityLevel strict + 流式字面量）+ KaTeX | 1 | pending |
 | 6 | REQ-AGENT-051 | 图片（主进程 HTTP API + 白名单 + 裸路径识别） | 1 | pending |
@@ -149,9 +149,55 @@
 
 ---
 
+### Slice 3（REQ-AGENT-055 worker 工具事件转发加法扩展）— 2026-08-09
+
+**实现 commit**：`[build] slice3: worker 工具事件转发加法扩展（start+input/end+output+isError）(REQ-AGENT-055)`（见 git log）＋ `[docs] slice3 收尾`（本记录）
+
+**改动文件**：`src/agent/worker.js`（唯一实现改动；toolAdapter 未动——其自身事件契约无字段可补，见下实证）
+
+**PI 原生字段实证**（node_modules 实际源码，非仅 tech-design 引用）：
+
+| 事件 | 原生字段（实证位置） | 本次映射 |
+|---|---|---|
+| `tool_execution_start` | `{ type, toolCallId, toolName, args }`（`pi-agent-core/dist/agent-loop.js` `executeToolCallsSequential/Parallel`：`args: toolCall.arguments`，恒含） | + `input: ev.args` |
+| `tool_execution_end` | `{ type, toolCallId, toolName, result, isError }`（同 `emitToolExecutionEnd`：`result: finalized.result` / `isError: finalized.isError`，恒含；成功 false / 错误 true） | + `output: ev.result`（ToolResult 子集完整透传）+ `isError: ev.isError` |
+| toolAdapter 契约事件 | `{ type, name, status, errorCode?, errorMessage? }`（toolAdapter emitToolError；**无 args/result**） | 透传分支原样——实证：到达 mapToContractEvent 的带 `name` 事件仅有 tool_execution_error（worker 只从 toolSurface 转发 error；PI 原生事件恒为 toolName 不落该分支），无字段可补 |
+
+**实现语义**：
+- 纯增量：start/end 映射各补 2 字段；`text_delta/text_end/confirmation-pending` 及 error 事件（无 toolCallId 保持现状，I-2 的 isError 处理在 end 上）零改动。
+- 截断（`limitSize` 加法分支）：tool 事件数据载体（input=args / output=result）超 256KB → **文本化截断 + truncated 标记**（对象载体 JSON 字符串化后 slice），保留契约字段 toolCallId/name/status/isError——不再整条降级为 `{type, truncated}`（否则渲染层无法关联工具块）。沿用既有 MAX_IPC_BYTES 语义（content/delta 同型）。
+
+**测试摘要**（等价 seam 自验 harness，23/23 PASS——真实 spawn + session 句柄监听 + `process.env.OPC_FAUX_TOOL_SEQUENCE` 注入缝）：
+- 成功例（settings get）：start 含 `input`（=PI args 对象）+ toolCallId；end 含 `output`（ToolResult `{content,details}`）+ `isError === false`；start/end toolCallId 一致。
+- 失败例（project list 无参数）：tool_execution_error 携带 errorCode/errorMessage；isError end 携带错误 output。
+- 零感知：text_delta 字段集 `["delta","type"]`、text_end `["content","type"]` 不变。
+- 截断例（project profile read 300KB 文件）：end 事件 ≤256KB、`truncated: true`、output 为截断字符串、toolCallId/name/status/isError 全保留、isError 值不丢。
+
+**全量单测**：`npm run test:unit`（rebuild:node + 全量）——结果见本 slice 验证节（662 既有水位 + workerToolEventExt 4 例）。
+
+**⚠️ workerToolEventExt.test.js seam 三缺陷（本 slice 报告项，留 parent 裁决 [test] 微调；实现已验证契约满足，见 harness 23/23）**：
+1. 监听 `agentService.on("session-event")`——服务级 emitter 仅发 ready/spawn-error（agentService.js 实证），session 事件发在**会话句柄**（`session.on("session-event")`，SSE 路由同 seam）→ 4 例全部超时（含标准 3 的 text_end——即使 FAUX 回声正常）。
+2. 未注入 `OPC_FAUX_TOOL_SEQUENCE`（createAgentService 无 env 注入选项；worker 继承 spawn 时 process.env）→ 无工具事件。且各用例需不同序列（成功/失败/无），需在每例 `createAgentService` 前设 `process.env.OPC_FAUX_TOOL_SEQUENCE`（若用 write 工具还需项目行存在——`ui:project:tool-ext:*` 无项目 → default profile 无 FS 工具 → E-AGENT-UNSUPPORTED；可改用 query 级 CLI 工具如 settings get）。
+3. 标准 3 字段集断言 `["delta","sessionKey","type"]` 与现状契约不符：SSE 路由「事件 = 会话句柄 session-event 原样转发（不增删字段），sessionKey 仅订阅侧过滤用，不出现在事件帧」（routes/agentSessions.js 实证）→ 实际 text_delta 字段集 = `["delta","type"]`。
+
+**PRD→代码 可追溯性表**（I-1 / REQ-AGENT-055，逐条）：
+
+| PRD/REQ 条目 | 落点（文件/机制） | 说明 |
+|---|---|---|
+| REQ-AGENT-055 标准 1 start 含 input | worker.js mapToContractEvent `tool_execution_start` → `input: ev.args` | = PI 原生 args（agent-loop.js 实证恒含） |
+| REQ-AGENT-055 标准 2 end 含 output + isError | worker.js mapToContractEvent `tool_execution_end` → `output: ev.result` + `isError: ev.isError` | result 完整透传（256KB 上限由 limitSize 截断）；isError 不再丢弃（I-2 依赖） |
+| REQ-AGENT-055 标准 3 零感知 | 其余分支零改动（text_delta/text_end/error/透传原样） | harness 字段集断言验证 |
+| 硬约束：事件流零改动 | 纯加法 + 截断分支扩展 | 无字段删除；E2E（confirmChain*）不断言事件字段集，留 Slice 7 统一回归 |
+| 接口 1 tool 元素消费面 | 本 slice 仅转发侧；renderer 消费 = Slice 4 | output 截断为文本载体（ToolCallBlock 以文本展示语义一致） |
+
+**refactor**：本切片无独立 refactor 轮（改动面：1 文件 2 处函数加法分支；与既有 content/delta 截断语义同构）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v1 | 2026-08-09 | 初始化：切片规划 + seam 速记 |
 | v2 | 2026-08-09 | Slice 2 完成记录：高亮安全路线实证、M2 初判（16 语料）、PRD→代码 可追溯性表 |
+| v3 | 2026-08-09 | Slice 3 完成记录：055 转发加法扩展（实证 + 实现 + harness 23/23 + seam 三缺陷报告） |
