@@ -8,6 +8,7 @@
 // data-state='done'（置灰、按钮不再渲染，以结果标注替代）。
 
 import { useEffect, useRef } from "react";
+import MarkdownRenderer from "./MarkdownRenderer.jsx";
 
 // 操作描述（SSE confirmation-pending description 字段语义同构，裁决 11/8）：
 // GET 全量行无 description 字段（command + args 为真相），前端推导显示文案。
@@ -38,7 +39,10 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
               data-message-role={role}
               data-streaming={m.streaming ? "true" : undefined}
             >
-              {m.text}
+              {/* 渲染分流（tech-design 模块关系图）：text → MarkdownRenderer；
+                  tool → ToolCallBlock（Slice 4 REQ-AGENT-052 接入；当前消息流无 tool 元素
+                  产生——历史不落工具、SSE 未消费 tool 事件，故分支不触发）。 */}
+              {m.kind === "tool" ? null : <MarkdownRenderer text={m.text} streaming={m.streaming} />}
             </div>
           </div>
         );

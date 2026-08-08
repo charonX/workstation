@@ -195,6 +195,7 @@ export default function Assistant() {
         const [hist, confs] = await Promise.all([getMessages(selectedKey), listConfirmations()]);
         if (disposed) return;
         const next = (hist.messages ?? []).map((m) => ({
+          kind: "text", // 接口 1 消息模型：text 元素类型化（工具不落历史 → 无 tool 元素，B8）
           id: m.messageId ?? `${m.role}-${m.createdAt}`,
           role: m.role,
           text: m.text ?? "",
@@ -238,7 +239,7 @@ export default function Assistant() {
         const id = `agent-${Date.now()}`;
         streamBufRef.current = { text: "", id };
         setStreamingBoth(true);
-        setMessages((prev) => [...prev, { id, role: "agent", text: "", streaming: true }]);
+        setMessages((prev) => [...prev, { kind: "text", id, role: "agent", text: "", streaming: true }]);
       } else if (ev.type === "text_delta") {
         const delta = typeof ev.delta === "string" ? ev.delta : "";
         const buf = streamBufRef.current;
@@ -250,7 +251,7 @@ export default function Assistant() {
           }
         } else {
           // 防御兜底（对齐竞态后首个 delta 无流式气泡）：开新气泡续流。
-          setMessages((prev) => [...prev, { id: `agent-${Date.now()}`, role: "agent", text: delta, streaming: true }]);
+          setMessages((prev) => [...prev, { kind: "text", id: `agent-${Date.now()}`, role: "agent", text: delta, streaming: true }]);
         }
       } else if (ev.type === "text_end") {
         const endedId = streamBufRef.current?.id ?? null;
@@ -401,7 +402,7 @@ export default function Assistant() {
       setMessages((prev) =>
         prev.some((m) => m.role === "user" && m.text === text)
           ? prev
-          : [...prev, { id: `user-${Date.now()}`, role: "user", text, streaming: false }]
+          : [...prev, { kind: "text", id: `user-${Date.now()}`, role: "user", text, streaming: false }]
       );
       try {
         await sendMessage(key, text);
@@ -410,7 +411,7 @@ export default function Assistant() {
         setStreamingBoth(false);
         setMessages((prev) => [
           ...prev,
-          { id: `err-${Date.now()}`, role: "agent", text: "发送失败，请稍后重试", streaming: false },
+          { kind: "text", id: `err-${Date.now()}`, role: "agent", text: "发送失败，请稍后重试", streaming: false },
         ]);
       }
     },
