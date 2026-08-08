@@ -657,6 +657,50 @@
   accent-color: var(--ch-accent);
 }
 
+/* Mermaid（B3 / REQ-AGENT-049）：容器对齐 ux/assistant-rich.html .mermaid-block
+   （margin/border/radius/padding/overflow/background）；图表配色由组件内显式两套
+   theme 配置（D9，浅/暗随 data-theme 重渲染），本块只负责容器观感。 */
+.assistant-zone .md .mermaid-block {
+  margin: var(--ch-space-3) 0;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  padding: var(--ch-space-3);
+  background: var(--ch-surface);
+  overflow-x: auto;
+}
+.assistant-zone .md .mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.assistant-zone .md .mermaid-block svg text {
+  font-family: var(--ch-font-sans);
+  font-size: 12px;
+}
+/* 懒加载骨架（首帧不阻塞；加载中占位） */
+.assistant-zone .md .mermaid-loading {
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-sm);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+/* 语法失败回退（E1）：.mermaid-fallback 为 pre，样式继承 .md pre 块（源码文本展示） */
+.assistant-zone .md .mermaid-fallback code {
+  white-space: pre-wrap;
+}
+
+/* KaTeX（B4 / REQ-AGENT-050）：katex.min.css 提供基础样式（字体/元素）；
+   此处仅块公式容器间距 + 超宽公式横向滚动（不破气泡） */
+.assistant-zone .md .katex-display {
+  margin: var(--ch-space-3) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.assistant-zone .md .katex-display::-webkit-scrollbar {
+  height: 6px;
+}
+
 /* 空态 / 引导态 */
 .empty-state {
   flex: 1;

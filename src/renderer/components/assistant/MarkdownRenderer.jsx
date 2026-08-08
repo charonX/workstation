@@ -1,7 +1,9 @@
 // src/renderer/components/assistant/MarkdownRenderer.jsx
-// Markdown 渲染组件（tech-design 接口 2 / REQ-AGENT-047 B1 + REQ-AGENT-053 B7 + REQ-AGENT-048 B2）。
+// Markdown 渲染组件（tech-design 接口 2 / REQ-AGENT-047 B1 + REQ-AGENT-053 B7 + REQ-AGENT-048 B2
+//   + REQ-AGENT-049 B3 + REQ-AGENT-050 B4）。
 //
-// - 渲染：react-markdown + remark-gfm（GFM 全量：标题/列表/表格/引用/链接/代码块/任务列表）。
+// - 渲染：react-markdown + remark-gfm（GFM 全量：标题/列表/表格/引用/链接/代码块/任务列表）
+//   + remark-math/rehype-katex（B4 公式：$ 行内 / $$ 块）。
 // - 安全：HTML 全转义——不引 rehype-raw，react-markdown 默认把原始 HTML（<script> 等）
 //   转为转义源码文本节点，零 XSS 面（PRD D3 / §12.1 范围外 1）。
 // - 代码高亮（B2 / REQ-AGENT-048）：components.code 注入——围栏语言标记为主
@@ -12,17 +14,36 @@
 //   dangerouslySetInnerHTML 零注入面（实测 `<script>` 内容 → &lt;script&gt;）。不手工预转义
 //   （hljs 自身已转义，再转义会导致 & 双重转义）。
 //   双主题：.hljs-* 类 → var(--ch-code-*) token 映射（assistant.css），随 data-theme 三块自动切换。
+// - KaTeX（B4 / REQ-AGENT-050）：remarkPlugins + remark-math、rehypePlugins + rehype-katex
+//   （options {throwOnError:false, strict:false}——pi-web 同款）；katex CSS 引入（katex.min.css）。
+//   失败回退（E2）：rehype-katex 内置两轮——首轮 throwOnError:true，ParseError 捕获后第二轮
+//   throwOnError:false + strict:'ignore' → 源码文本包 span.katex-error 显示（不崩），
+//   见 node_modules/rehype-katex/lib/index.js 实证。
+// - Mermaid（B3 / REQ-AGENT-049）：```mermaid 围栏 → MermaidBlock 组件（不走 hljs）：
+//   · 懒加载：await import("mermaid") 动态加载（首帧不阻塞；加载中显示骨架占位）；
+//   · securityLevel:'strict' 显式（I-6 硬约束——click 指令/HTML label 不注入；strict 下
+//     mermaid 输出经 DOMPurify 清洗，node_modules/mermaid/dist/mermaid.core.mjs render() 实证
+//     ——非 loose 均 sanitize，dangerouslySetInnerHTML 零注入面）；
+//   · 暗色独立配色（D9）：浅/暗两套显式 theme 配置（MERMAID_THEMES），随 data-theme
+//     变化重渲染（MutationObserver）；
+//   · 流式未闭合围栏（W-1）：streaming 下 react-markdown 把未闭合围栏解析为 EOF 块，
+//     findUnclosedFence 判定 → 显示字面量（闭合才渲染，避免每帧跑慢速 mermaid → 掉帧
+//     + 错误回退闪烁）；
+//   · 语法失败 → 回退显示围栏源码文本（E1）。
 // - 兜底：错误边界（E5 / REQ-AGENT-047 标准 4）——渲染抛错回退纯文本，不白屏、不崩。
 // - 样式：渲染产物包 .md 类（ux/assistant-rich.html .md 样式语义，CSS 在 assistant.css）。
-// - 性能：React.memo 按 text 缓存；hljs 用 core + 常用语言注册（不整包引入，tech-design 性能项）。
+// - 性能：React.memo 按 text 缓存；hljs 用 core + 常用语言注册（不整包引入）；mermaid 懒加载。
 //
 // props（接口 2）：
 //   text        string   markdown 源文本
-//   streaming?  boolean  流式态（Slice 5 W-1：未闭合 mermaid 围栏流式期间字面量判定用）
+//   streaming?  boolean  流式态（W-1：未闭合 mermaid 围栏流式期间字面量判定）
 //   projectDir? string   图片解析根（Slice 6 REQ-AGENT-051 接入；本切片不使用）
-import { Component, createContext, memo, useContext } from "react";
+import { Component, createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import hljs from "highlight.js/lib/core";
 
 // —— highlight.js：core + 常用语言注册（tech-design 性能：按语言加载，不整包引入）——
@@ -97,6 +118,186 @@ const AUTO_DETECT_SUBSET = Object.keys(HIGHLIGHT_LANGUAGES).filter(
   (name) => name !== "kotlin" && name !== "markdown" && name !== "plaintext"
 );
 
+// —— KaTeX（B4 / REQ-AGENT-050）——
+// pi-web 同款 options；rehype-katex 内置错误回退（见文件头"失败回退（E2）"实证），
+// throwOnError:false 语义由库首轮 throwOnError:true + 捕获后第二轮兜底实现。
+const KATEX_OPTIONS = { throwOnError: false, strict: false };
+
+// —— Mermaid（B3 / REQ-AGENT-049）——
+// 浅/暗两套显式主题配置（D9：暗色独立配色，非 token 自动映射）。
+// 色值对齐 ux/assistant-rich.html .mm-node/.mm-edge 浅暗两套（浅：节点 #e8f0fe/#4285f4、
+// 文本 #1a2333、边 #5f6368；暗：#1e3a5f/#4c8dff、#dbe7ff、#8ab4f8）。
+// 变量实证（node_modules/mermaid/dist/.../chunk-I66GZJ75.mjs + chunk-W5SLKNZC.mjs）：
+// flowchart 节点 fill = themeVariables.mainBkg（非 primaryColor——暗色主题构造器无条件
+// 设 mainBkg='#1f2020'、updateColors 再无条件 nodeBkg=mainBkg；themeVariables 覆盖在
+// calculate 尾轮重放故 mainBkg 覆盖生效）；节点描边 = nodeBorder、节点文本 = nodeTextColor。
+const MERMAID_THEMES = {
+  light: {
+    theme: "default",
+    themeVariables: {
+      mainBkg: "#e8f0fe",
+      nodeBorder: "#4285f4",
+      nodeTextColor: "#1a2333",
+      primaryTextColor: "#1a2333",
+      lineColor: "#5f6368",
+      edgeLabelBackground: "#ffffff",
+    },
+  },
+  dark: {
+    theme: "dark",
+    themeVariables: {
+      mainBkg: "#1e3a5f",
+      nodeBorder: "#4c8dff",
+      nodeTextColor: "#dbe7ff",
+      primaryTextColor: "#dbe7ff",
+      lineColor: "#8ab4f8",
+      edgeLabelBackground: "#161b22",
+    },
+  },
+};
+
+// 主题判定（SSR 防御：document 缺失时按浅色——SSR 下 MermaidBlock 只渲染骨架，
+// 真实渲染发生在挂载后浏览器环境）。
+function getDataTheme() {
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
+// 懒加载缓存：mermaid 体积大，动态 import 首帧不阻塞（PRD §13 / tech-design 性能项）。
+// 包仅导出 default（mermaid.core.mjs 实证：export { mermaid_default as default }）。
+// 加载失败清缓存允许重试（E5 渲染依赖加载失败面：组件内回退骨架/源码，不白屏）。
+let mermaidModulePromise = null;
+function getMermaid() {
+  if (!mermaidModulePromise) {
+    mermaidModulePromise = import("mermaid")
+      .then((mod) => mod.default)
+      .catch((err) => {
+        mermaidModulePromise = null;
+        throw err;
+      });
+  }
+  return mermaidModulePromise;
+}
+
+// W-1 流式未闭合围栏判定：扫描源码文本的围栏开合状态（CommonMark：未闭合围栏块
+// 延伸到 EOF——react-markdown 把尾部未闭合代码块解析为 EOF 块，码内无后续块）。
+// 返回 { language, openerEndOffset }——文档结束于未闭合围栏内时该围栏的语言与
+// 开启行结束偏移（含换行）；无未闭合围栏 → null。
+// 注：闭合围栏可带 0-3 空格缩进（CommonMark），4+ 空格为缩进代码块不按围栏处理。
+function findUnclosedFence(source) {
+  let inFence = false;
+  let language = null;
+  let openerEndOffset = -1;
+  let offset = 0;
+  for (const line of source.split("\n")) {
+    const trimmed = line.replace(/^ {0,3}/, "").trimEnd();
+    if (/^`{3,}/.test(trimmed)) {
+      if (inFence) {
+        inFence = false; // 闭合
+        language = null;
+      } else {
+        inFence = true;
+        const m = /^`{3,}\s*([^\s`]+)?/.exec(trimmed);
+        language = m && m[1] ? m[1].toLowerCase() : null;
+        openerEndOffset = offset + line.length + 1; // 开启行结束偏移（跳过换行）
+      }
+    }
+    offset += line.length + 1;
+  }
+  return inFence ? { language, openerEndOffset } : null;
+}
+
+// 当前 code 块是否 = 流式未闭合 mermaid 围栏的 EOF 块（W-1）：
+// 判定 = code 文本（尾换行归一）=== 源码中未闭合开启行之后全部文本（尾换行归一）。
+// （react-markdown 传给 components 的 node 为 hast code 元素，其 position 覆盖整个
+// 围栏块（含开启/闭合行，实证 start.offset = 开启行首），不可用于内容偏移判定——
+// 尾部文本比对为精确判定：闭合围栏的码内容 ≠ 开启行后全部源码（尾部含闭合行）。）
+function isUnclosedMermaidBlock(codeText, unclosed, sourceText) {
+  return (
+    sourceText.slice(unclosed.openerEndOffset).replace(/\n$/, "") ===
+    codeText.replace(/\n$/, "")
+  );
+}
+
+// 流式未闭合围栏上下文（W-1）：{ unclosedMermaid, sourceText }，供 code 组件判定。
+const UnclosedFenceContext = createContext(null);
+
+let mermaidInstanceId = 0;
+
+/**
+ * Mermaid 围栏渲染（B3 / REQ-AGENT-049）：懒加载 + securityLevel:'strict' +
+ * 暗色独立配色 + 失败回退源码。
+ * - 挂载/主题变化 → 动态 import mermaid → initialize（strict + 按 data-theme 的
+ *   两套主题配置）→ render → svg；
+ * - 加载中 → 骨架占位；语法失败/异常 → 回退围栏源码文本（E1，不崩）。
+ */
+function MermaidBlock({ code }) {
+  const [state, setState] = useState({ phase: "loading" });
+  const [theme, setTheme] = useState(getDataTheme);
+  const containerRef = useRef(null);
+
+  // 主题跟随（REQ-AGENT-049 标准 3 / F6 步骤 2）：data-theme 变化 → 换主题配置重渲染
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(getDataTheme()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  // 渲染（懒加载 + 显式主题配置 + 失败回退）
+  useEffect(() => {
+    let cancelled = false;
+    setState({ phase: "loading" });
+    (async () => {
+      try {
+        const mermaid = await getMermaid();
+        if (cancelled) return;
+        const themeConfig = MERMAID_THEMES[theme] ?? MERMAID_THEMES.light;
+        // I-6 硬约束：securityLevel:'strict' 显式（不依赖运行库默认）；startOnLoad:false
+        // 由本组件显式驱动 render（懒加载语义）。
+        mermaid.initialize({
+          securityLevel: "strict",
+          startOnLoad: false,
+          theme: themeConfig.theme,
+          themeVariables: themeConfig.themeVariables,
+        });
+        const id = `mmd-${mermaidInstanceId++}`;
+        const { svg } = await mermaid.render(id, code);
+        if (cancelled) return;
+        setState({ phase: "ready", svg });
+      } catch {
+        if (!cancelled) setState({ phase: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, theme]);
+
+  if (state.phase === "error") {
+    // E1：语法失败/异常 → 回退显示围栏源码文本（不崩）
+    return (
+      <pre className="mermaid-fallback">
+        <code className="language-mermaid">{code}</code>
+      </pre>
+    );
+  }
+  if (state.phase === "ready") {
+    // strict 下 mermaid 输出已 DOMPurify 清洗（见文件头实证）——零注入面。
+    return (
+      <div className="mermaid-block" ref={containerRef} dangerouslySetInnerHTML={{ __html: state.svg }} />
+    );
+  }
+  // 懒加载中：骨架占位（首帧不阻塞）
+  return (
+    <div className="mermaid-block mermaid-loading" ref={containerRef}>
+      <span className="mermaid-loading-hint">图表渲染中…</span>
+    </div>
+  );
+}
+
 /**
  * 代码高亮（B2）：返回 { html }（安全 HTML）或 { plain: true }（兜底原文）。
  * - 围栏语言标记：getLanguage 命中（含别名）→ hljs.highlight；
@@ -126,6 +327,17 @@ function highlightCode(code, language) {
 const InPreContext = createContext(false);
 
 function MdPre({ node: _node, children, ...props }) {
+  // ```mermaid 围栏：MdCode 输出 MermaidBlock（自包含容器）/字面量 code——
+  // 不套 pre 包裹（避免 pre 内嵌 div / 嵌套 pre 的非法结构；MermaidBlock 自带容器）。
+  // 判定 = pre 的直接子元素（components.code 元素）className 含 language-mermaid。
+  const child = Array.isArray(children) ? children[0] : children;
+  if (
+    child &&
+    typeof child.props?.className === "string" &&
+    child.props.className.includes("language-mermaid")
+  ) {
+    return <>{children}</>;
+  }
   return (
     <pre {...props}>
       <InPreContext.Provider value>{children}</InPreContext.Provider>
@@ -134,6 +346,39 @@ function MdPre({ node: _node, children, ...props }) {
 }
 
 function MdCode({ node: _node, className, children, ...props }) {
+  const match = /language-([\w-]+)/.exec(className || "");
+  const language = match ? match[1] : undefined;
+  const text = (
+    Array.isArray(children) ? children.join("") : String(children ?? "")
+  ).replace(/\n$/, "");
+
+  // B3 / REQ-AGENT-049：```mermaid 围栏 → MermaidBlock（不走 hljs）。
+  // 顺序在 inPre 判定之前：MdPre 对 mermaid 围栏 unwrap（不提供 InPreContext），
+  // 故此处不能依赖 inPre；行内 code 不可能带 language-mermaid（围栏 info 串专属）。
+  if (language === "mermaid") {
+    const unclosedCtx = useContext(UnclosedFenceContext);
+    const unclosed =
+      unclosedCtx && unclosedCtx.unclosedMermaid
+        ? unclosedCtx.unclosedMermaid
+        : null;
+    if (
+      unclosed &&
+      isUnclosedMermaidBlock(text, unclosed, unclosedCtx.sourceText)
+    ) {
+      // W-1：流式未闭合 mermaid 围栏 → 字面量（闭合才渲染；不跑慢速 mermaid
+      // → 无错误回退闪烁）
+      return (
+        <code
+          className={`${className ?? ""} language-mermaid`.trim()}
+          {...props}
+        >
+          {text}
+        </code>
+      );
+    }
+    return <MermaidBlock code={text} />;
+  }
+
   const inPre = useContext(InPreContext);
   if (!inPre) {
     return (
@@ -142,11 +387,7 @@ function MdCode({ node: _node, className, children, ...props }) {
       </code>
     );
   }
-  const match = /language-([\w-]+)/.exec(className || "");
-  const language = match ? match[1] : undefined;
-  const text = (
-    Array.isArray(children) ? children.join("") : String(children ?? "")
-  ).replace(/\n$/, "");
+
   const result = highlightCode(text, language);
   if (result.plain) {
     // plaintext 兜底（E4 / REQ-AGENT-048 标准 3：plaintext 类、不报错）
@@ -187,20 +428,35 @@ class MarkdownErrorBoundary extends Component {
   }
 }
 
+// react-markdown components（模块级常量：memo 缓存下引用稳定，避免每帧重建对象）
+const MD_COMPONENTS = { pre: MdPre, code: MdCode };
+
+// remark/rehype 插件（模块级常量，同上）
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [[rehypeKatex, KATEX_OPTIONS]];
+
 function MarkdownRenderer(props) {
-  const { text = "" } = props;
-  // props.streaming / props.projectDir：接口 2 预留（W-1 mermaid 流式字面量 / 图片解析根），
-  // 由后续切片（5/6）消费；本切片只做纯 GFM + HTML 转义 + 代码高亮 + 流式文本渲染接入。
+  const { text = "", streaming = false } = props;
+  // props.projectDir：接口 2 预留（Slice 6 图片解析根），本切片不消费。
+
+  // W-1：流式未闭合 mermaid 围栏判定（findUnclosedFence 源码实证——react-markdown
+  // 把未闭合围栏解析为 EOF 码块）。非流式直接渲染（历史/完成态文本围栏必闭合）。
+  const unclosedFence = streaming ? findUnclosedFence(text) : null;
+  const unclosedMermaid =
+    unclosedFence && unclosedFence.language === "mermaid" ? unclosedFence : null;
 
   return (
     <MarkdownErrorBoundary text={text}>
       <div className="md">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{ pre: MdPre, code: MdCode }}
-        >
-          {text}
-        </ReactMarkdown>
+        <UnclosedFenceContext.Provider value={{ unclosedMermaid, sourceText: text }}>
+          <ReactMarkdown
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            components={MD_COMPONENTS}
+          >
+            {text}
+          </ReactMarkdown>
+        </UnclosedFenceContext.Provider>
       </div>
     </MarkdownErrorBoundary>
   );
