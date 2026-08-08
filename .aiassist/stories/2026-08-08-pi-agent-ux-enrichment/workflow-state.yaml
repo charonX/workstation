@@ -1,0 +1,39 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-08-pi-agent-ux-enrichment
+intention: >-
+  PI agent 对话在本机 UI 会话区只有纯文本回显，读长回复费劲、工具调用零呈现、代码无高亮——需要一次对话输出的富呈现升级（GFM/高亮/Mermaid/公式/图片/工具折叠块），对齐 pi-web 式工作台体验。
+
+phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-08
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-08, from: THINK, to: PRD, note: "需求洞察完成：主菜=输出呈现层（D1 其余意图不本期）/ D2 深度 A+B（GFM+高亮双主题+Mermaid+KaTeX——实证 pi-web 无高亮无 Mermaid，我们超过）/ D3 HTML 不做（全转义零 XSS）/ D4 工具折叠块（默认收起、错误展开标红）/ D5 流式实时增量 / D6 历史统一管线（存储不动、工具块不落历史）/ D7 方向 A（react-markdown 系）/ D8 图片显示 / D9 暗色独立配色。interview-notes.md 定稿 → prd.md v0.1（8 稳定块 + 2 移动块 M1 性能 M2 自动检测质量）"}
+  - {at: 2026-08-08, from: PRD, to: DESIGN, note: "模式 C 迭代 UX 原型：assistant-rich.html（GFM 富文本/代码高亮五色/表格/引用/Mermaid 静态 SVG 近似+暗色独立配色/KaTeX 近似/图片/工具折叠块三态/流式中间态/主题切换可交互）——人确认。设计系统演进（模式 A 最小更新）：tokens.css 补 --ch-code-* 六枚（浅/暗两套）+ 错误统一 --ch-error。预览 localhost:4312"}
+  - {at: 2026-08-08, from: DESIGN, to: TECH-DESIGN, note: "tech-design 三轮单题收敛：①消息模型元素类型化（kind:text/tool，事件序=渲染序；历史对齐零工具块）/ ②高亮库 highlight.js（自动检测硬需求+轻量+双主题）/ ③图片项目目录白名单（历史留存防敏感影像入史）。工具事件契约实证：toolCallId 存在（start/end 携带），error 无 id → 关联最近 running 块。依赖 spike PASS（react-markdown 10 兼容 React 19，全纯 JS）。ADR-021 计划（对话渲染安全边界）。PRD 无需反向更新 → tech-design.md v0.1"}
+  - {at: 2026-08-09, from: TECH-DESIGN, to: CRYSTALLIZE, note: "review-tech WARN（0 阻塞 6 IMPORTANT+4 WARN+2 SUGGESTION）全修复：三裁决（工具事件加法扩展/补裸路径识别/项目内绝对可渲染）+ I-2 error 终态双保险 + I-3 图片主进程 HTTP API→blob URL + I-6 mermaid securityLevel strict + W-1 mermaid 流式字面量 + W-3 tokens.css 第三块 + S-1/S-2。tech-design v0.2 + PRD v0.2 → 结晶 B1-B8+I-1 → REQ-AGENT-047~055（requirements v1, hash dfd35b8a, M1/M2 留 PRD）。渲染断言策略：真实 Electron E2E（seed 消息 + 复用 OPC_FAUX_TOOL_SEQUENCE 注入缝），不引入组件测试框架。能力地图登记"}
+  - {at: 2026-08-09, from: CRYSTALLIZE, to: TEST, note: "test-author 骨架生成：4 测试文件（3 E2E + 1 api），全 node --check 通过；断言直接写实（吸取上 story 占位教训），待签。test-plan.md 落盘（seam 依赖：startElectronApp extraEnv 透传 / OPC_FAUX_TOOL_SEQUENCE 复用 / markdown seed 经 FAUX 回声 / locator 约定待实现接线）。无人工(仅视觉)项（配色观感留 REFLECT）"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"                # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true                # 运行时拷贝已导入（项目无 compile 脚本，html 直接引 _ds/global/*.css）
+  preview: "assistant-rich.html"
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []
+
+# 已生成的变体(按需)。
+variants:
+  active: []
