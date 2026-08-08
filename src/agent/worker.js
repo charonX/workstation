@@ -338,6 +338,11 @@ function send(msg) {
 }
 
 // 单条事件 ≤ 256KB：超限截断文本载体 + truncated 标记（REQ-AGENT-006 标准 5）。
+// 加法扩展（REQ-AGENT-055）：tool_execution 事件数据载体（input=PI args /
+// output=PI result）同样按「截断数据载体、保留契约字段」语义处理——对象载体
+// JSON 字符串化后截断（renderer 以文本展示输出，ToolCallBlock 语义一致），
+// 不再整条降级为 { type, truncated }（否则 toolCallId/name/status/isError 全丢，
+// 渲染层无法关联工具块）。
 function limitSize(event) {
   const size = JSON.stringify(event).length;
   if (size <= MAX_IPC_BYTES) return event;
@@ -348,6 +353,21 @@ function limitSize(event) {
   } else if (typeof out.delta === "string") {
     out.delta = out.delta.slice(0, MAX_IPC_BYTES - 256);
     out.truncated = true;
+  } else if (out.input !== undefined || out.output !== undefined) {
+    // 工具事件数据载体（input=PI args / output=PI result）超限 → 文本化截断 +
+    // truncated 标记（renderer 以文本展示输出，ToolCallBlock 语义一致），保留
+    // 契约字段 toolCallId/name/status/isError——不整条降级为 {type, truncated}
+    // （否则渲染层无法关联工具块）。JSON 序列化转义（引号/控制字符 → \uXXXX）
+    // 可能使截断后仍超限（主进程 enforceSizeLimit 对 tool 事件无数据载体分支，
+    // 超限会整条降级丢契约字段）→ 迭代收紧保证出站 JSON 恒 ≤ MAX_IPC_BYTES。
+    const carrier = out.input !== undefined ? "input" : "output";
+    const value = out[carrier];
+    let text = typeof value === "string" ? value : JSON.stringify(value);
+    while (JSON.stringify({ ...out, [carrier]: text }).length > MAX_IPC_BYTES && text.length > 1) {
+      text = text.slice(0, Math.floor(text.length / 2));
+    }
+    out[carrier] = text;
+    out.truncated = true;
   } else {
     return { type: event.type, truncated: true };
   }
@@ -357,6 +377,11 @@ function limitSize(event) {
 // PI 事件 → 签核事件契约（session-event：text_delta/text_end/tool_execution_*）。
 // 工具面适配器事件（REQ-AGENT-012：tool_execution_start/end/error，含 name/status）
 // 已是契约形态 → 直接透传；PI 原生事件（toolName 字段）走下方映射。
+// 透传分支实证（REQ-AGENT-055）：到达本函数、带 name 字段的 tool_execution_* 事件
+// 仅有 toolAdapter 的 tool_execution_error（worker 只从 toolSurface 转发 error——
+// adapter 的 start/end 不经 onEvent 转发；PI 原生事件恒为 toolName 字段不落本分支），
+// 且 adapter 事件不含 args/result → 无字段可补，透传原样（error 无 toolCallId 保持
+// 现状，I-2 的 isError 处理在 end 上）。
 function mapToContractEvent(ev) {
   if (
     typeof ev?.type === "string" &&
@@ -374,9 +399,29 @@ function mapToContractEvent(ev) {
       return null;
     }
     case "tool_execution_start":
-      return { type: "tool_execution_start", name: ev.toolName, status: "running", toolCallId: ev.toolCallId };
+      // 加法扩展（REQ-AGENT-055，review I-1）：start 补 input = PI 原生 args
+      // （实证：pi-agent-core agent-loop.js tool_execution_start 恒含
+      // args = toolCall.arguments；缺失时 undefined）。
+      return {
+        type: "tool_execution_start",
+        name: ev.toolName,
+        status: "running",
+        toolCallId: ev.toolCallId,
+        input: ev.args,
+      };
     case "tool_execution_end":
-      return { type: "tool_execution_end", name: ev.toolName, status: "completed", toolCallId: ev.toolCallId };
+      // 加法扩展（REQ-AGENT-055）：end 补 output = PI 原生 result（ToolResult
+      // 子集完整透传，256KB 上限由 limitSize 按数据载体截断）+ isError = PI
+      // 布尔透传（实证：emitToolExecutionEnd 恒含 result/isError，成功 false/
+      // 失败 true——不再丢弃，I-2 依赖）。超限截断见 limitSize。
+      return {
+        type: "tool_execution_end",
+        name: ev.toolName,
+        status: "completed",
+        toolCallId: ev.toolCallId,
+        output: ev.result,
+        isError: ev.isError,
+      };
     default:
       return null;
   }
