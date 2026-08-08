@@ -36,7 +36,7 @@
     工具执行/IPC/流式     sessions Map + lastActiveAt
                         sweep(60s): TTL 1h / LRU 50 / 同组单活
                         豁免: 流式·队列中 → 延迟淘汰
-                        dispose → 辅助Map×4 清理 → session-evicted
+                        dispose → 辅助Map×3 清理 → session-evicted
                         恢复: session-config → SessionManager.open(JSONL)
 
   policyRules(规则表,唯一真源)
@@ -48,7 +48,7 @@
 
 ## 数据流
 
-1. **TTL/LRU 淘汰**：sweep 每 60s 扫注册表 → `lastActiveAt` 超 1h（或 Map 超 50 取最久未活动）且非流式/队列中 → dispose + 清理辅助 Map ×3（toolContexts/sessionQueues/lastReplies）+ 记入 tombstone 集合 → 发 `session-evicted` → 主进程丢句柄（store 行保留）。`keySecrets` **不随单会话淘汰清理**——它按 `keyRef`（`key:${provider}:${generation}`）键控、多会话共享（条目有界：provider×generation），误删会破坏存活会话的 `redact()` 脱敏与懒恢复重注入；主进程侧同样保留（接口 2），两侧一致。`confirmAcks`/`permissionDecisions`（confirmId 键控）不强制同步清理，随既有超时兜底（30s/10min）自然释放。
+1. **TTL/LRU 淘汰**：LRU 修剪在新会话到达时触发（注册时注册表超 50 取最久未活动非流式会话淘汰；REQ-AGENT-036 文本为准）；sweep 仅 TTL 淘汰 + 组冷却延迟淘汰，不做 LRU 修剪——sweep 每 60s 扫注册表 → `lastActiveAt` 超 1h 且非流式/队列中 → dispose + 清理辅助 Map ×3（toolContexts/sessionQueues/lastReplies）+ 记入 tombstone 集合 → 发 `session-evicted` → 主进程丢句柄（store 行保留）。`keySecrets` **不随单会话淘汰清理**——它按 `keyRef`（`key:${provider}:${generation}`）键控、多会话共享（条目有界：provider×generation），误删会破坏存活会话的 `redact()` 脱敏与懒恢复重注入；主进程侧同样保留（接口 2），两侧一致。`confirmAcks`/`permissionDecisions`（confirmId 键控）不强制同步清理，随既有超时兜底（30s/10min）自然释放。
 2. **同组单活冷却**：`session-config`/`prompt` 到达 key K → 纯函数 `groupOf(K)`（`feishu:<chatId>`→自身；`ui:copilot:*`→**copilot 组（所有通用会话全组单热）**；`ui:project:<pid>:*`→pid 组）→ 组内其他 key 立即进入淘汰（流式中标记延迟，流结束执行）→ 同数据流 1 通知链。跨组不互汰。
 3. **透明懒恢复**：被淘汰/历史会话的下次交互 → 主进程 getOrCreate（store 行）→ 重发 `session-config`（同 sessionRef，世代不变）→ worker `createSessionEntry` 命中既有 JSONL → `SessionManager.open` 恢复（REQ-AGENT-005 标准 3 已证链路，零新造）。
 4. **启动/崩溃重启水合（窗口规则化）**：`store.list()` → 过滤 JSONL mtime ≤ 1h → 仅水合活跃窗口行；历史行不水合，按数据流 3 懒恢复。启动与崩溃重启同一条规则。

@@ -106,7 +106,7 @@
 | B4 行为保持：除 035/036/037/038 新语义外 worker 可观察行为不变（618+148 水位不退） | `worker.js` 行为保持改造（无其他重构） | `sessionLifecycleModule` 标准3 占位 + 回归（builtin-agent 33/33、ui-copilot 80/80、全量 657/661） | COVERED（全仓回归；全量红仅 docAssets=Slice 5 seam 预期） |
 | F2 流式保护：进行中回复不掐断；流结束重新进入可淘汰集合 | `worker.js`（entry.queued/streaming 标记 + finally 复位）；`sessionLifecycle.js`（豁免活读） | `sessionIdleEviction` 标准1b、`sessionLruCap` 标准2 | COVERED |
 | F3 步骤4：（飞书）`/reset` 沿用现状 dispose+重建，语义不回退 | `worker.js` handleResetSession（lifecycle.remove 显式路径不触发 onEvict） | `sessionReset.test.js` 回归 | COVERED |
-| §8 E1 流式中会话被纳入候选 → 豁免（正常保护分支，记诊断日志） | `sessionLifecycle.js`（豁免分支经 onWarn 输出 `[E1]` 诊断行） | 模块面豁免断言（035 标准1b）；日志面无签核断言 | PARTIAL（豁免行为 COVERED；E1 诊断行经 onWarn 输出，自动化断言留 QA 观测） |
+| §8 E1 流式中会话被纳入候选 → 豁免（正常保护分支，记诊断日志） | `sessionLifecycle.js`（sweep TTL 豁免分支经 onWarn 输出 `[E1]` 诊断行，格式仿 [E5]，仅超窗豁免时记防刷屏——PRD 对齐修复 M3 已落地） | 模块面豁免断言（035 标准1b）；日志面无签核断言 | PARTIAL（豁免行为 COVERED；E1 诊断行经 onWarn 输出已实现，自动化断言留 QA 观测） |
 | §8 E5 LRU 候选全在流式保护中 → 上限暂时让位 + 诊断日志；流结束回归 | `sessionLifecycle.js`（onWarn `[E5]` 让位） | `sessionLruCap` 标准2（logs 断言） | COVERED |
 | §10.1 三个辅助 Map（toolContexts/sessionQueues/lastReplies）随会话一并管理、淘汰同步清理 | `worker.js` onEvict 回调（delete ×3） | onEvict 触发断言（模块面）+ 冒烟实测 | COVERED（worker 侧；Map 内容断言留集成面） |
 | 035 标准2：keySecrets 不随单会话淘汰清理（keyRef 级共享缓存） | `worker.js` onEvict 不含 keySecrets（keyRef 保留，redact 可用） | 035 标准2 注释占位（Slice 3 集成面验证） | PARTIAL（实现已按契约；集成断言留 Slice 3） |
@@ -115,11 +115,46 @@
 
 **refactor 结果**：无（模块 183 行单文件新增 + worker 委托点局部改造；未触发 refactor 轮）
 
+### Slice 2 PRD 对齐修复（2026-08-08，PRD 对齐子代理 MISALIGNMENT_FOUND 处置）
+
+PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 6/037 标准 3 对齐缺口，全部处置如下：
+
+**M1（行为缺陷，主）：组内流式延迟淘汰被 touch 语义抵消**
+- 根因：worker `forwardEvent` 对每个流式/工具事件调 `lifecycle.touch()`；`touch()` 无条件 `pendingEvictions.delete(key)` → 组冷却标记的延迟淘汰在首个流式事件后被清除，流结束不再淘汰 → 组内双热并存（违反 PRD F3「组内热会话数恒 ≤1」与 REQ-AGENT-037 标准 3）。
+- 修复：`touch(key, { clearPending = true })` 区分活动来源——用户新活动（handlePrompt / session-config 到达 → touch 默认清 pending，用户回来了）vs 会话自身流式/工具事件（forwardEvent → `touch(sessionKey, { clearPending: false })` 仅刷新 lastActiveAt 不清 pending，延迟淘汰保留到流结束）。
+- 测试：`sessionGroupCooling.test.js` 新增用例「pending 窗口内流式 touch 后流结束仍应淘汰」+ 用户 touch 清 pending 对照断言（不改变已签断言语义）。
+
+**M2：worker 未注入 onWarn → E5 让位诊断不输出**
+- 修复：`worker.js` 创建 lifecycle 处注入 `onWarn: (m) => log(m)`——E5（LRU 让位）/E1（流式中豁免延迟）诊断生产可见。
+
+**M3：E1 诊断缺失 + 可追溯性表 E1 行不实**
+- 修复：`sessionLifecycle.js` sweep TTL 豁免分支补 `[E1]` 诊断（经 onWarn 输出，格式仿 [E5]；仅对真正超窗（idle > TTL）的豁免会话记日志，避免 60s sweep 周期刷屏）。
+- 文档：本表 E1 行修正（此前声称「豁免分支经 onWarn 输出 [E1]」与代码不符，现为真实）。
+
+**U1（035 标准 6 的 worker 面落地）：worker 侧 tombstone 判别**
+- 修复：`worker.js` handlePrompt 未知 sessionKey 分支——`lifecycle.tombstonedKeys().includes(sessionKey)` → 回 `session-error {code:"evicted"}`（形态仿既有 session-error，含 sessionKey + userMessage）；否则保持 `E-AGENT-NO-SESSION`。
+- 主进程侧重投（重发 config + 重投一次）归 Slice 3，本修复不做。
+
+**U2/U3（tech-design 文档一行修正）**
+- 数据流 1 补注：「LRU 修剪在新会话到达时触发（REQ 文本为准）；sweep 仅 TTL + 延迟淘汰，不做 LRU 修剪」。
+- 模块关系图「辅助 Map×4 清理」→「×3」（与接口 1/数据流 1/实现一致）。
+
+**测试命令与输出摘要**（先 `npm run rebuild:node`）：
+
+| 命令 | 结果 |
+|---|---|
+| 4 slice 文件（`NODE_ENV=test node --import ./scripts/session-lifecycle-seam.mjs --test <sessionLifecycleModule\|sessionIdleEviction\|sessionLruCap\|sessionGroupCooling>.test.js`） | 20/20 pass（含新增 M1 用例；既有 19 用例语义不变全绿） |
+| 回归 `2026-08-02-ui-copilot/api` workerAssembly/sessionEvents/sessionReset/sessionMessage 4 文件 | 全绿 |
+| 回归 `2026-08-02-builtin-agent/api` 全量 | 全绿 |
+
+**commit 记录**：`[test]`（新增测试用例，单独 commit）+ `[build]`（实现修复 + 文档修正，实现与测试不混 commit）。
+
 ---
 
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v3 | 2026-08-08 | Slice 2 PRD 对齐修复记录：M1 touch 来源区分（clearPending）、M2 onWarn 注入、M3 E1 诊断 + 表修正、U1 worker 侧 tombstone 判别（evicted）、U2/U3 tech-design 数据流 1 与模块关系图修正 |
 | v2 | 2026-08-08 | Slice 2 记录：sessionLifecycle 模块（抽取+TTL/LRU/组冷却/tombstone）+ worker 委托 + seam 注入 |
 | v1 | 2026-08-08 | 初始化：切片规划 + seam 速记 |

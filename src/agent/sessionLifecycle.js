@@ -94,13 +94,20 @@ export function createSessionLifecycle({
   // 活动刷新（prompt 开始 / 流式事件 / 工具事件，REQ-AGENT-035 标准 1）：
   // 刷新 lastActiveAt；活动亦取消延迟淘汰标记（会话重新热起来不再被组冷却追偿）。
   // 未知 key → 静默 no-op（消息乱序容忍）。
-  function touch(key) {
+  // clearPending 区分活动来源（2026-08-08 PRD 对齐修复 M1）：
+  // - true（默认）：用户新活动（prompt 到达 / session-config 到达）→ 用户回来了，
+  //   清延迟淘汰标记（不再被组冷却追偿）；
+  // - false：会话自身流式/工具事件（worker forwardEvent）→ 仅刷新 lastActiveAt，
+  //   不清 pending——组冷却的延迟淘汰必须保留到流结束，否则流式事件 touch 会在
+  //   首个流式事件后清掉标记、流结束不再淘汰，组内双热并存（违反 PRD F3「组内
+  //   热会话数恒 ≤1」与 REQ-AGENT-037 标准 3）。
+  function touch(key, { clearPending = true } = {}) {
     const entry = sessions.get(key);
     if (!entry) return;
     const t = now();
     entry.lastActiveAt = t;
     entry.lastTouchAt = t;
-    pendingEvictions.delete(key);
+    if (clearPending) pendingEvictions.delete(key);
   }
 
   // 同组单活（REQ-AGENT-037 标准 2/3/4）：key K 有活动到达（session-config/prompt）
@@ -138,7 +145,19 @@ export function createSessionLifecycle({
       if (!entry.streaming && !entry.queued) evict(key, entry); // 流结束立即淘汰
     }
     for (const [key, entry] of sessions) {
-      if (entry.streaming || entry.queued) continue; // 流式/队列豁免（TTL/LRU 回归候选）
+      if (entry.streaming || entry.queued) {
+        // 流式/队列豁免（TTL/LRU 回归候选）。E1 诊断（PRD §8）：流式/队列中会话
+        // 被纳入淘汰候选 → 豁免延迟（正常保护分支，记诊断日志；格式仿 [E5]）。
+        // 仅对真正超窗（idle > TTL）的豁免会话记日志——60s sweep 周期下对一切
+        // 流式会话逐周期刷屏无诊断价值，「命中候选」以实际超窗为准。
+        const idle = t - (entry.lastActiveAt ?? t);
+        if (idle > TTL_MS && onWarn) {
+          onWarn(
+            `[E1] 流式/队列中会话被纳入淘汰候选，豁免延迟：session=${key}（idle=${idle}ms > TTL=${TTL_MS}ms，流结束回归淘汰集合）`
+          );
+        }
+        continue;
+      }
       const idle = t - (entry.lastActiveAt ?? t);
       if (idle > TTL_MS && (entry.lastTouchAt === undefined || entry.lastTouchAt < previousSweepTime)) {
         evict(key, entry);

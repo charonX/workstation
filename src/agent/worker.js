@@ -389,9 +389,13 @@ const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
 function forwardEvent(sessionKey, ev) {
   const mapped = mapToContractEvent(ev);
   if (!mapped) return;
-  // 流式/工具事件 = 会话活动（REQ-AGENT-035 标准 1）：刷新 lastActiveAt。
+  // 流式/工具事件 = 会话自身活动（REQ-AGENT-035 标准 1）：刷新 lastActiveAt。
+  // clearPending:false（PRD 对齐修复 M1）：会话自身事件不清组冷却的延迟淘汰标记
+  // ——pending 窗口内流式 touch 若清掉标记，流结束不再淘汰，组内双热并存（违反
+  // F3 恒 ≤1 与 REQ-AGENT-037 标准 3）；「用户回来了」才由 handlePrompt/session-config
+  // 的 touch（默认 clearPending=true）清除。
   // 未知 sessionKey → 模块内静默 no-op（消息乱序容忍，接口 1 业务错误行）。
-  lifecycle.touch(sessionKey);
+  lifecycle.touch(sessionKey, { clearPending: false });
   if (mapped.type === "text_end") lastReplies.set(sessionKey, mapped.content);
   send({ type: "session-event", sessionKey, event: limitSize(mapped) });
 }
@@ -406,6 +410,7 @@ function forwardEvent(sessionKey, ev) {
 //   重投）；keySecrets 不动（keyRef 级共享缓存，035 标准 2）；confirmAcks/
 //   permissionDecisions 不随淘汰清理（035 标准 7，随 30s/10min 超时兜底释放）。
 const lifecycle = createSessionLifecycle({
+  onWarn: (m) => log(m), // E5（LRU 让位）/E1（流式中豁免延迟）诊断生产可见（PRD 对齐修复 M2）
   onEvict: (key, entry) => {
     if (entry) disposeSession(entry);
     toolContexts.delete(key);
@@ -523,6 +528,10 @@ async function handleSessionConfig(msg) {
   // 同组单活（REQ-AGENT-037 标准 2/5）：session-config 到达 = 本空间有活动 →
   // 冷却同组其他会话（组内流式中 → 模块标记延迟淘汰，流结束立即执行）。
   lifecycle.evictGroupPeers(sessionKey);
+  // session-config 到达 = 用户新活动（PRD 对齐修复 M1）：touch 默认 clearPending=true
+  // 清本会话自身的延迟淘汰标记（用户回来了不再被组冷却追偿）。新会话路径为
+  // 静默 no-op（未知 key），注册时 register 本就会清 pending。
+  lifecycle.touch(sessionKey);
   // 工具上下文（Slice 8 G1）：随 session-config 更新（新会话与热更新共用；
   // toolSurface 经 getDefaultTarget 惰性读取，无需重建 PI 会话）。
   if (toolContext && typeof toolContext === "object") {
@@ -743,15 +752,25 @@ async function handlePrompt(msg) {
   // 诊断：worker 收到 prompt。
   log(`prompt 进入 session=${sessionKey} id=${id} session存在=${!!entry} text=${String(text ?? "").slice(0, 60)}`);
   if (!entry) {
-    // 非 tombstone 未知 key → 保持既有 E-AGENT-NO-SESSION（孤儿/旧世代不复活；
-    // tombstone 判别 + evicted 重投为接口 3，Slice 3 接主进程侧）。
+    // tombstone 判别（tech-design 接口 3；REQ-AGENT-035 标准 6 worker 侧，U1 裁决落地）：
+    // - tombstoned key（本运行亲手淘汰、JSONL 在盘可懒恢复）→ session-error
+    //   {code:"evicted"}——主进程收到后重发 session-config + 重投该 prompt 一次
+    //   （重投编排归 Slice 3 主进程侧，本处只负责判别与回错）；
+    // - 非 tombstone 未知 key → 保持既有 E-AGENT-NO-SESSION（孤儿/旧世代不复活）。
+    if (lifecycle.tombstonedKeys().includes(sessionKey)) {
+      const error = { code: "evicted", reason: "会话刚被淘汰，等待自动恢复" };
+      send({ type: "session-error", sessionKey, ...error, userMessage: "会话正在恢复，请重试" });
+      send({ type: "prompt-result", id, sessionKey, ok: false, error });
+      return;
+    }
     const error = { code: "E-AGENT-NO-SESSION", reason: "会话不存在" };
     send({ type: "session-error", sessionKey, ...error, userMessage: "会话不存在，请重试" });
     send({ type: "prompt-result", id, sessionKey, ok: false, error });
     return;
   }
-  // prompt 到达 = 活动（REQ-AGENT-035 标准 1：刷新 lastActiveAt）+ 同组单活
-  // （REQ-AGENT-037 标准 2：冷却同组其他会话）。
+  // prompt 到达 = 用户新活动（REQ-AGENT-035 标准 1：刷新 lastActiveAt + 清延迟淘汰
+  // 标记——用户回来了不再被组冷却追偿）+ 同组单活（REQ-AGENT-037 标准 2：冷却同组
+  // 其他会话）。touch 默认 clearPending=true（PRD 对齐修复 M1）。
   lifecycle.touch(sessionKey);
   lifecycle.evictGroupPeers(sessionKey);
   entry.queued = true; // 排队中豁免（F2：TTL/LRU/组冷却不淘汰排队中的会话）
