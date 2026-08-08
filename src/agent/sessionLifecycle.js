@@ -48,7 +48,17 @@ export function createSessionLifecycle({
   // 可被本模块读写的 streaming/queued 流式豁免标记与 lastActiveAt/lastTouchAt）
   const tombstones = new Set(); // 本运行亲手淘汰的 key（接口 3 判别依据）
   const pendingEvictions = new Set(); // 组冷却命中的流式/队列中会话 → 流结束立即淘汰
-  let previousSweepTime = -Infinity; // 上一次 sweep 的时钟值（首 sweep = 远古）
+  let lastSweepAt = -Infinity; // 上一次 sweep 的时钟值（首 sweep = 远古）
+
+  // 流式/队列豁免判定（F2/E1：进行中的回复不掐断；TTL/LRU/组冷却三触发均豁免）。
+  function isExempt(entry) {
+    return entry.streaming || entry.queued;
+  }
+
+  // 距 lastActiveAt 的 idle 时长（无活跃时间戳 → 0，不因未知年龄被误汰）。
+  function idleMs(entry, t) {
+    return t - (entry.lastActiveAt ?? t);
+  }
 
   function evict(key, entry) {
     if (!sessions.has(key)) return; // 幂等：重复淘汰同 key no-op
@@ -74,33 +84,31 @@ export function createSessionLifecycle({
       const candidates = [];
       for (const [k, e] of sessions) {
         if (k === key) continue; // 新会话自身永不作为 LRU 牺牲品（刚注册，属最新活动）
-        if (e.streaming || e.queued) continue;
+        if (isExempt(e)) continue;
         candidates.push([k, e]);
       }
       if (candidates.length === 0) {
-        if (onWarn) {
-          onWarn(
-            `[E5] LRU 上限让位：候选会话全部处于流式/队列豁免，上限暂时让位（size=${sessions.size}/${maxSessions}，豁免会话流结束后回归淘汰集合）`
-          );
-        }
+        // 候选全部豁免 → 上限让位（新会话照常创建，E5 诊断经 onWarn）。
+        onWarn?.(
+          `[E5] LRU 上限让位：候选会话全部处于流式/队列豁免，上限暂时让位（size=${sessions.size}/${maxSessions}，豁免会话流结束后回归淘汰集合）`
+        );
       } else {
         // 最久未活动优先；lastActiveAt 相同 → 先注册者先汰（Map 插入序稳定）。
-        candidates.sort((a, b) => (a[1].lastActiveAt ?? 0) - (b[1].lastActiveAt ?? 0));
-        evict(candidates[0][0], candidates[0][1]);
+        candidates.sort(([, a], [, b]) => (a.lastActiveAt ?? 0) - (b.lastActiveAt ?? 0));
+        const [victimKey, victimEntry] = candidates[0];
+        evict(victimKey, victimEntry);
       }
     }
   }
 
   // 活动刷新（prompt 开始 / 流式事件 / 工具事件，REQ-AGENT-035 标准 1）：
-  // 刷新 lastActiveAt；活动亦取消延迟淘汰标记（会话重新热起来不再被组冷却追偿）。
-  // 未知 key → 静默 no-op（消息乱序容忍）。
-  // clearPending 区分活动来源（2026-08-08 PRD 对齐修复 M1）：
-  // - true（默认）：用户新活动（prompt 到达 / session-config 到达）→ 用户回来了，
-  //   清延迟淘汰标记（不再被组冷却追偿）；
+  // 刷新 lastActiveAt；未知 key → 静默 no-op（消息乱序容忍）。
+  // clearPending 区分活动来源（2026-08-08 PRD 对齐修复 M1，约束 PRD F3「组内热
+  // 会话数恒 ≤1」与 REQ-AGENT-037 标准 3）：
+  // - true（默认）：用户新活动（prompt/session-config 到达）→ 用户回来了，清延迟
+  //   淘汰标记（不再被组冷却追偿）；
   // - false：会话自身流式/工具事件（worker forwardEvent）→ 仅刷新 lastActiveAt，
-  //   不清 pending——组冷却的延迟淘汰必须保留到流结束，否则流式事件 touch 会在
-  //   首个流式事件后清掉标记、流结束不再淘汰，组内双热并存（违反 PRD F3「组内
-  //   热会话数恒 ≤1」与 REQ-AGENT-037 标准 3）。
+  //   保留 pending——否则首个流式事件即清掉标记、流结束不再淘汰，组内双热并存。
   function touch(key, { clearPending = true } = {}) {
     const entry = sessions.get(key);
     if (!entry) return;
@@ -119,7 +127,7 @@ export function createSessionLifecycle({
     for (const [k, entry] of sessions) {
       if (k === key) continue;
       if (groupOf(k) !== group) continue;
-      if (entry.streaming || entry.queued) {
+      if (isExempt(entry)) {
         pendingEvictions.add(k); // 流式豁免：标记延迟，流结束立即淘汰（不等 TTL）
       } else {
         evict(k, entry);
@@ -142,15 +150,15 @@ export function createSessionLifecycle({
         pendingEvictions.delete(key);
         continue;
       }
-      if (!entry.streaming && !entry.queued) evict(key, entry); // 流结束立即淘汰
+      if (!isExempt(entry)) evict(key, entry); // 流结束立即淘汰
     }
     for (const [key, entry] of sessions) {
-      if (entry.streaming || entry.queued) {
+      if (isExempt(entry)) {
         // 流式/队列豁免（TTL/LRU 回归候选）。E1 诊断（PRD §8）：流式/队列中会话
         // 被纳入淘汰候选 → 豁免延迟（正常保护分支，记诊断日志；格式仿 [E5]）。
         // 仅对真正超窗（idle > TTL）的豁免会话记日志——60s sweep 周期下对一切
         // 流式会话逐周期刷屏无诊断价值，「命中候选」以实际超窗为准。
-        const idle = t - (entry.lastActiveAt ?? t);
+        const idle = idleMs(entry, t);
         if (idle > TTL_MS && onWarn) {
           onWarn(
             `[E1] 流式/队列中会话被纳入淘汰候选，豁免延迟：session=${key}（idle=${idle}ms > TTL=${TTL_MS}ms，流结束回归淘汰集合）`
@@ -158,12 +166,11 @@ export function createSessionLifecycle({
         }
         continue;
       }
-      const idle = t - (entry.lastActiveAt ?? t);
-      if (idle > TTL_MS && (entry.lastTouchAt === undefined || entry.lastTouchAt < previousSweepTime)) {
+      if (idleMs(entry, t) > TTL_MS && (entry.lastTouchAt === undefined || entry.lastTouchAt < lastSweepAt)) {
         evict(key, entry);
       }
     }
-    previousSweepTime = t;
+    lastSweepAt = t;
   }
 
   // 显式移除（/reset、重建路径）：不触发 onEvict（非淘汰）；清 tombstone 与延迟

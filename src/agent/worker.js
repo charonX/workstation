@@ -409,16 +409,20 @@ function forwardEvent(sessionKey, ev) {
 // - tombstone 由模块内部记录（tombstonedKeys；接口 3 判别依据，Slice 3 接 evicted
 //   重投）；keySecrets 不动（keyRef 级共享缓存，035 标准 2）；confirmAcks/
 //   permissionDecisions 不随淘汰清理（035 标准 7，随 30s/10min 超时兜底释放）。
+// 淘汰副作用（onEvict 回调，worker 侧）：dispose + 辅助 Map×3（toolContexts/
+// sessionQueues/lastReplies）清理 + 发 session-evicted IPC（接口 2）。
+function handleSessionEvicted(key, entry) {
+  if (entry) disposeSession(entry);
+  toolContexts.delete(key);
+  sessionQueues.delete(key);
+  lastReplies.delete(key);
+  send({ type: "session-evicted", sessionKey: key });
+  log(`会话淘汰 session=${key}（JSONL 保留，下次活动懒恢复）`);
+}
+
 const lifecycle = createSessionLifecycle({
   onWarn: (m) => log(m), // E5（LRU 让位）/E1（流式中豁免延迟）诊断生产可见（PRD 对齐修复 M2）
-  onEvict: (key, entry) => {
-    if (entry) disposeSession(entry);
-    toolContexts.delete(key);
-    sessionQueues.delete(key);
-    lastReplies.delete(key);
-    send({ type: "session-evicted", sessionKey: key });
-    log(`会话淘汰 session=${key}（JSONL 保留，下次活动懒恢复）`);
-  },
+  onEvict: handleSessionEvicted,
 });
 
 // sweep 周期（signoff 裁决 2：60s 语义）；unref：不阻塞进程退出。
@@ -746,6 +750,13 @@ async function resolveModel(runtime, provider, model, apiKey) {
   return modelObj;
 }
 
+// 无法投递 prompt 的统一失败回包（session-error + prompt-result 双发；tombstone
+// 判别 evicted 与既有 E-AGENT-NO-SESSION 共用同一发送形态）。
+function sendPromptError(id, sessionKey, error, userMessage) {
+  send({ type: "session-error", sessionKey, ...error, userMessage });
+  send({ type: "prompt-result", id, sessionKey, ok: false, error });
+}
+
 async function handlePrompt(msg) {
   const { id, sessionKey, text } = msg;
   const entry = lifecycle.get(sessionKey);
@@ -758,14 +769,10 @@ async function handlePrompt(msg) {
     //   （重投编排归 Slice 3 主进程侧，本处只负责判别与回错）；
     // - 非 tombstone 未知 key → 保持既有 E-AGENT-NO-SESSION（孤儿/旧世代不复活）。
     if (lifecycle.tombstonedKeys().includes(sessionKey)) {
-      const error = { code: "evicted", reason: "会话刚被淘汰，等待自动恢复" };
-      send({ type: "session-error", sessionKey, ...error, userMessage: "会话正在恢复，请重试" });
-      send({ type: "prompt-result", id, sessionKey, ok: false, error });
+      sendPromptError(id, sessionKey, { code: "evicted", reason: "会话刚被淘汰，等待自动恢复" }, "会话正在恢复，请重试");
       return;
     }
-    const error = { code: "E-AGENT-NO-SESSION", reason: "会话不存在" };
-    send({ type: "session-error", sessionKey, ...error, userMessage: "会话不存在，请重试" });
-    send({ type: "prompt-result", id, sessionKey, ok: false, error });
+    sendPromptError(id, sessionKey, { code: "E-AGENT-NO-SESSION", reason: "会话不存在" }, "会话不存在，请重试");
     return;
   }
   // prompt 到达 = 用户新活动（REQ-AGENT-035 标准 1：刷新 lastActiveAt + 清延迟淘汰
