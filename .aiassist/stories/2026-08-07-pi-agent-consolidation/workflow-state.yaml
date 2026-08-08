@@ -8,7 +8,7 @@ intention: >-
   有规则级重复确认角落、worker/桥/策略文件职责交叠——需要一次整体的整理与优化，
   而不是继续贴补丁。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: TEST        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-07
@@ -17,6 +17,10 @@ created: 2026-08-07
 history:
   - {at: 2026-08-07, from: -, to: THINK, note: "创建 story（原 2026-08-07-agent-session-lifecycle 壳扩名合并——衍生自 2026-08-02-ui-copilot BUG-004 轮保活讨论 + REFLECT 遗留裁决「PI agent 整体整理优化」）。已登记议题清单：① 会话 idle TTL 淘汰 + LRU 上限（worker sessions Map 释放仅三条路径：同 key 重建/出错//reset）；② 主进程 agentService.logs 无界无消费者 + ping/pong 日志降噪；③ 进程隔离模型拍板（单进程多会话 vs 分进程——痛点轴待访谈：爆炸半径/内存共池/重启恢复成本）；④ gotgenes 规则级重复确认角落去重（`..` 相对重定向双确认卡，无安全洞）；⑤ REQ-AGENT-005 看门狗契约影响面评估。来源 story 2026-08-02-ui-copilot REFLECT 中，本 story 非 bug 回流"}
   - {at: 2026-08-07, from: THINK, to: THINK, note: "ui-copilot 门 2 验收通过，遗留转入本 story（人裁决）：③④ 维持转入（进程模型 + `..` 双确认去重）+ T-7/T-9 两条全链 test-gap 并入（UI 空间 confirm 全链用例 / bash pre-gate→授权桥→批准→执行全链用例）。handoff.md 落盘——新会话自包含简报（议题实证 file:line、方向已议定项勿重谈、硬约束 REQ-AGENT-005/ADR-014/015/017、环境 ABI 备忘、续跑入口）。forge 打包冒烟维持延后无归属"}
+  - {at: 2026-08-07, from: THINK, to: PRD, note: "需求洞察完成：D1 ③降级ADR(d无事故痛感) / D2 ⑤根A+根B收敛(agentService不拆) / D3 两路径零交叠澄清 / D4 术语归位 / D5 ①TTL1h+LRU50+手动新增即淘汰 / D6 根A代码为源+JSON生成化+配平 / D7 ②ring1000、⑥挂本story新REQ、成功标准六条+范围外五条逐字签核。interview-notes.md 定稿 → prd.md v0.1 合成（11 稳定块 + 1 移动块 M1 冷恢复延迟阈值）"}
+  - {at: 2026-08-08, from: PRD, to: TECH-DESIGN, note: "tech-design 四轮单题收敛：①淘汰归属=worker自扫(ADR-015同理直贴着事件源) / ②B3收敛为同组单活(用户提出,取代retireSpaceKey信号;纯函数分组零新IPC,跨组并发) / ③生成器=手动脚本+golden检入+配平(借满gotgenes原生两级分层+信任门) / ④发现水合击穿风险→水合窗口规则化(mtime≤TTL,对齐REQ-AGENT-005标准3「各活跃空间」原意,不改REQ)。PRD反向同步(B3改写、新增B12) → tech-design.md v0.1"}
+  - {at: 2026-08-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "review-tech FAIL(2阻塞5警告)修复：阻塞1 keySecrets不随会话淘汰(keyRef共享)/阻塞2 接口3 tombstone判别(孤儿不误复活)；警告全裁决(copilot同规则单热无特殊逻辑、ADR-020独立成文)。tech-design v0.3+PRD v0.3 → 结晶 B1-B12 → REQ-AGENT-035~046（requirements v1, hash 2bc5b491, M1留PRD QA消化）。能力地图登记"}
+  - {at: 2026-08-08, from: CRYSTALLIZE, to: TEST, note: "test-author 骨架生成：11 测试文件（8 api + 2 e2e + 1 docAssets 双REQ），全 node --check 通过；断言全部占位待签（ASSERTIONS-SIGNED: false）。test-plan.md 落盘（seam 依赖清单、HTML 原型映射自 ui-copilot assistant.html、REFLECT 人工项、待签清单）。无人工(仅视觉)项——12 REQ 全自动化覆盖"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
