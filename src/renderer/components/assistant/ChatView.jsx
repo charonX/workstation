@@ -19,6 +19,7 @@ export default function ChatView({
   onGoConfigure,
   composer,
   onSend,
+  projectDir,
 }) {
   return (
     <main className="assistant-chat">
@@ -30,7 +31,7 @@ export default function ChatView({
       {/* 消息区：有历史气泡或确认卡即渲染（确认卡 = 历史的一部分，REQ-AGENT-030
           标准 3「卡片留历史」——纯确认卡会话也走消息区）；否则空态/未配置引导态。 */}
       {messages.length > 0 || confirmations.length > 0 ? (
-        <MessageList messages={messages} confirmations={confirmations} onApprove={onApprove} onReject={onReject} />
+        <MessageList messages={messages} confirmations={confirmations} onApprove={onApprove} onReject={onReject} projectDir={projectDir} />
       ) : unconfigured ? (
         // agent 未配置引导态（§8 错误态；原型 guide-card 含「去配置」入口 → Settings > Agent tab）
         <div className="empty-state" data-testid="unconfigured-state">

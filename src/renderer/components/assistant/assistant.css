@@ -649,6 +649,29 @@
   text-align: left;
 }
 .assistant-zone .md th { background: var(--ch-surface-high); font-weight: var(--ch-weight-semibold); }
+
+/* 图片（B5 / REQ-AGENT-051）：img 样式对齐 ux/assistant-rich.html（max-width/
+   radius/border——大图不撑破气泡、圆角描边观感）；img-fallback 占位（E3：越权/
+   不存在/非白名单/无解析根 → 虚线框占位提示，不崩溃）。 */
+.assistant-zone .md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--ch-radius-md);
+  border: 1px solid var(--ch-border);
+  vertical-align: middle;
+}
+.assistant-zone .md .img-fallback {
+  display: inline-block;
+  padding: var(--ch-space-3);
+  border: 1px dashed var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-sm);
+  text-align: center;
+}
+/* 裸路径回退原文（I-4 误判控制）：加载失败/无解析根时保持原文文本，视觉同正文。 */
+.assistant-zone .md .md-bare-path { word-break: break-all; }
+
 /* 任务列表（GFM）：remark-gfm 产物类名 contains-task-list / task-list-item
    （原型 `.md ul.task-list` 为展示近似，真实类名以上为准——观感等价） */
 .assistant-zone .md ul.contains-task-list { list-style: none; padding-left: var(--ch-space-1); }

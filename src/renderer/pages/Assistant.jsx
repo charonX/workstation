@@ -548,6 +548,14 @@ export default function Assistant() {
   const chatTitle = selectedSession?.title ?? "新对话";
   const showEmpty = messages.length === 0;
   const unconfigured = agentConfigured === false;
+  // 图片解析根（REQ-AGENT-051 / I-5 口径）：项目空间会话（ui:project:<pid>:<sid>）→
+  // projectId——主进程按 projects 表 registry 解析实际项目目录（renderer 不持有
+  // 绝对路径，白名单判定在主进程）；通用/飞书/孤儿空间 → undefined（无解析根 →
+  // Markdown 语法图片占位、裸路径回退原文）。
+  const selectedProjectDir = (() => {
+    const m = PROJECT_PREFIX_RE.exec(selectedKey ?? "");
+    return m ? m[1] : undefined;
+  })();
 
   return (
     <div className="assistant-zone" data-testid="screen-assistant">
@@ -580,6 +588,7 @@ export default function Assistant() {
           spaceName: space.name,
         }}
         onSend={handleSend}
+        projectDir={selectedProjectDir}
       />
     </div>
   );

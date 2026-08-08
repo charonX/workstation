@@ -66,6 +66,23 @@ export function rejectConfirmation(confirmId) {
 }
 
 /**
+ * 项目图片读取（REQ-AGENT-051 / I-3 访问机制）：GET /api/agent/files/image——
+ * 主进程按 projectId 解析项目目录并做白名单判定（目录边界 + 扩展名）后回传二进制，
+ * renderer 转 blob URL 渲染。越权/不存在/非白名单 → 响应非 ok → 抛错（调用方转占位）。
+ * @param {string} projectId 项目空间会话的项目 ID（主进程按 registry 解析实际目录）
+ * @param {string} imagePath 原始路径（相对按项目目录解析；项目内绝对路径直接请求）
+ * @returns {Promise<Blob>}
+ */
+export async function fetchProjectImage(projectId, imagePath) {
+  const qs = new URLSearchParams();
+  qs.set("projectId", String(projectId ?? ""));
+  qs.set("path", String(imagePath ?? ""));
+  const res = await fetch(`${API_BASE()}/api/agent/files/image?${qs.toString()}`);
+  if (!res.ok) throw new Error(`IMAGE_FETCH_FAILED:${res.status}`);
+  return res.blob();
+}
+
+/**
  * SSE 订阅封装（tech-design F2）：EventSource 原生自动重连（断线不崩、重连可再建），
  * 每次连接建立（含首次与断线重连）触发 onOpen —— 调用方在 onOpen 中先 GET .../messages
  * 全量对齐再续流（SSE 只推增量，不做事件回溯）。事件帧 = agentService session-event

@@ -31,13 +31,28 @@
 //     + 错误回退闪烁）；
 //   · 语法失败 → 回退显示围栏源码文本（E1）。
 // - 兜底：错误边界（E5 / REQ-AGENT-047 标准 4）——渲染抛错回退纯文本，不白屏、不崩。
+// - 图片（B5 / REQ-AGENT-051，Slice 6）：
+//   · 识别：① Markdown 图片语法 `![alt](path)` → mdast image → components.img；
+//     ② 裸路径后处理（I-4）——段落 text 节点中匹配「路径形态 + 图片扩展名」的裸路径
+//     → remark 插件拆分为 image 节点（data-bare-path 标记，经同一 img 管线）；
+//   · 口径（I-5）：相对路径按 <projectDir>/<path> 解析；项目目录内绝对路径可渲染；
+//     解析后出项目目录/不存在/非白名单扩展名 → 占位（E3）；
+//   · 访问机制（I-3）：components.img → GET /api/agent/files/image（主进程白名单
+//     判定）→ blob → URL.createObjectURL（组件卸载 revoke，防泄漏）；
+//   · 误判控制（I-4）：裸路径仅「加载成功」才显示为图——失败/无解析根回退原文文本
+//     （等价于「必须真实存在才转」，零额外探测请求）；Markdown 语法图片失败 → 占位；
+//   · 无解析根（通用/飞书/孤儿空间 → projectDir 缺省）：Markdown 语法图片 → 占位、
+//     裸路径 → 原文（tech-design 接口 2「无 projectDir → 占位」）；
+//   · 远程 URL（带 scheme / 协议相对）→ 浏览器直连 <img>（本地白名单不适用）。
 // - 样式：渲染产物包 .md 类（ux/assistant-rich.html .md 样式语义，CSS 在 assistant.css）。
 // - 性能：React.memo 按 text 缓存；hljs 用 core + 常用语言注册（不整包引入）；mermaid 懒加载。
 //
 // props（接口 2）：
 //   text        string   markdown 源文本
 //   streaming?  boolean  流式态（W-1：未闭合 mermaid 围栏流式期间字面量判定）
-//   projectDir? string   图片解析根（Slice 6 REQ-AGENT-051 接入；本切片不使用）
+//   projectDir? string   图片解析根（Slice 6 REQ-AGENT-051 接入）：项目空间会话 =
+//                        项目 ID（主进程按 projects 表 registry 解析实际目录，renderer
+//                        不持有绝对路径）；通用/飞书/孤儿空间 = undefined（无解析根）。
 import { Component, createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -45,6 +60,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import hljs from "highlight.js/lib/core";
+import { fetchProjectImage } from "../../api/agentSessions.js";
 
 // —— highlight.js：core + 常用语言注册（tech-design 性能：按语言加载，不整包引入）——
 // 别名（库自带）：js/jsx/mjs/cjs（javascript）、ts/tsx/mts/cts（typescript）、py（python）、
@@ -326,6 +342,149 @@ function highlightCode(code, language) {
 // InPreContext 标记"在 pre 内"——行内代码不高亮（保持轻量、避免误染）。
 const InPreContext = createContext(false);
 
+// —— 图片（B5 / REQ-AGENT-051，Slice 6）——
+// 解析根上下文：值 = 项目空间会话的项目 ID（主进程按 registry 解析实际目录）；
+// undefined（通用/飞书/孤儿空间）→ 无解析根（图片不可渲染）。
+const ProjectDirContext = createContext(null);
+
+// 远程/协议 URL（带 scheme 如 http:/https:/data:，或协议相对 //）→ 浏览器直连
+// （本地文件白名单仅约束本地路径面；主进程 API 不经手网络 URL）。
+const REMOTE_SRC_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+// 本地图片扩展名白名单（与主进程 /api/agent/files/image 同判——非白名单不发请求）。
+const LOCAL_IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+// I-4 裸路径识别（REQ-AGENT-051 标准 2）：段落 text 节点中匹配「路径形态 + 图片
+// 扩展名」的裸路径 → 拆分为 image 节点（经 components.img 统一管线）。
+// 误判控制（I-4「路径必须真实存在才转」）：
+// - 形态保守：必须含路径分隔符（./ ../ ~/ / 或 a/b/ 相对路径）——裸文件名
+//   （如 "chart.png" 单独出现）不转；前后不得粘连路径字符（lookbehind/lookahead）；
+// - 父节点限定 paragraph / listItem（紧凑列表的直接文本）：链接/图片/行内代码内
+//   的文本不转（链接内的路径是链接文本）；
+// - 存在性 = 加载成功才显示为图：失败回退原文文本（不占位、零探测请求）。
+// - 结尾容忍英文句号（"见 ./chart.png。" 句子结束标点剥离）。
+const BARE_PATH_RE =
+  /(?<![\w.@~\-/:])((?:\.{1,2}\/|~\/|\/)?(?:[\w.@~-]+\/)*[\w.@~-]+\.(?:png|jpe?g|gif|webp|svg))(?![A-Za-z0-9_/~@-])/gi;
+
+// 文本 → 分段（[{type:"text"|"image", ...}]）；无匹配 → null（保持原文本）。
+function splitBareImagePaths(text) {
+  const parts = [];
+  let last = 0;
+  let matched = false;
+  for (const m of text.matchAll(BARE_PATH_RE)) {
+    if (!m[0].includes("/")) continue; // 裸文件名（无路径分隔符）不转
+    const lead = text.slice(last, m.index);
+    if (lead) parts.push({ type: "text", text: lead });
+    parts.push({ type: "image", path: m[0] });
+    last = m.index + m[0].length;
+    matched = true;
+  }
+  if (!matched) return null;
+  const tail = text.slice(last);
+  if (tail) parts.push({ type: "text", text: tail });
+  return parts;
+}
+
+// remark 插件：mdast 文本节点后处理（I-4）。手写遍历（不引 mdast-util-visit 依赖）：
+// 自底向上 + 子节点逆序遍历——splice 替换不使未处理索引失效；注入的 image/text 节点
+// 无需再遍历（split 已产出最大分段）。
+function remarkBareImagePaths() {
+  return (tree) => {
+    (function walk(node) {
+      if (!node || typeof node !== "object") return;
+      const children = node.children;
+      if (!Array.isArray(children)) return;
+      for (let i = children.length - 1; i >= 0; i--) {
+        const child = children[i];
+        if (!child || typeof child !== "object") continue;
+        walk(child);
+        if (child.type !== "text" || (node.type !== "paragraph" && node.type !== "listItem")) continue;
+        const parts = splitBareImagePaths(String(child.value ?? ""));
+        if (!parts) continue;
+        node.children.splice(
+          i,
+          1,
+          ...parts.map((p) =>
+            p.type === "image"
+              ? {
+                  type: "image",
+                  url: p.path,
+                  alt: "",
+                  data: { hProperties: { "data-bare-path": "true" } },
+                }
+              : { type: "text", value: p.text }
+          )
+        );
+      }
+    })(tree);
+  };
+}
+
+/**
+ * 图片渲染（REQ-AGENT-051 / I-3 机制）：本地路径 → 主进程 HTTP API 读文件 →
+ * blob URL（卸载 revoke）；越权/不存在/非白名单 → 占位（Markdown 语法）或回退原文
+ * （裸路径，I-4 误判控制）；远程 URL → 浏览器直连；无解析根 → 占位/原文。
+ * 卸载 revoke：effect cleanup 对 objectUrlRef 中旧 URL revoke（防 blob URL 泄漏）。
+ */
+function MdImage({ src, alt, "data-bare-path": bare, ..._rest }) {
+  const projectId = useContext(ProjectDirContext);
+  const [state, setState] = useState({ phase: "loading" });
+  const objectUrlRef = useRef(null);
+  const barePath = bare === "true" || bare === true;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!projectId) {
+      // 无解析根（通用/飞书/孤儿空间）：不请求（tech-design 接口 2）。
+      setState({ phase: "no-root" });
+      return undefined;
+    }
+    if (typeof src !== "string" || src === "" || REMOTE_SRC_RE.test(src)) {
+      setState({ phase: "remote" });
+      return undefined;
+    }
+    if (!LOCAL_IMAGE_EXT_RE.test(src)) {
+      // 非白名单扩展名：主进程同判 404，不发请求（E3）。
+      setState({ phase: "invalid" });
+      return undefined;
+    }
+    setState({ phase: "loading" });
+    fetchProjectImage(projectId, src)
+      .then((blob) => {
+        if (cancelled) return;
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrlRef.current = objectUrl;
+        setState({ phase: "ok", url: objectUrl });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ phase: "fail" });
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, [src, projectId]);
+
+  // E3 占位（Markdown 语法图片失败态）。
+  const placeholder = <span className="img-fallback">图片不可用</span>;
+  // 裸路径回退原文（I-4：加载成功才显示为图，失败保持原文）。
+  const bareText = <span className="md-bare-path">{src}</span>;
+
+  if (state.phase === "remote") {
+    return <img src={src} alt={alt ?? ""} />;
+  }
+  if (state.phase === "ok") {
+    return <img src={state.url} alt={alt ?? ""} />;
+  }
+  if (state.phase === "fail" || state.phase === "invalid" || state.phase === "no-root") {
+    return barePath ? bareText : placeholder;
+  }
+  return null; // loading：不占位不闪烁（最终态快速到达；流式路径闭合即渲染）
+}
+
 function MdPre({ node: _node, children, ...props }) {
   // ```mermaid 围栏：MdCode 输出 MermaidBlock（自包含容器）/字面量 code——
   // 不套 pre 包裹（避免 pre 内嵌 div / 嵌套 pre 的非法结构；MermaidBlock 自带容器）。
@@ -429,15 +588,16 @@ class MarkdownErrorBoundary extends Component {
 }
 
 // react-markdown components（模块级常量：memo 缓存下引用稳定，避免每帧重建对象）
-const MD_COMPONENTS = { pre: MdPre, code: MdCode };
+const MD_COMPONENTS = { pre: MdPre, code: MdCode, img: MdImage };
 
-// remark/rehype 插件（模块级常量，同上）
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
+// remark/rehype 插件（模块级常量，同上；remarkBareImagePaths = I-4 裸路径识别）
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBareImagePaths];
 const REHYPE_PLUGINS = [[rehypeKatex, KATEX_OPTIONS]];
 
 function MarkdownRenderer(props) {
-  const { text = "", streaming = false } = props;
-  // props.projectDir：接口 2 预留（Slice 6 图片解析根），本切片不消费。
+  const { text = "", streaming = false, projectDir } = props;
+  // props.projectDir：接口 2 图片解析根（Slice 6 REQ-AGENT-051）——项目空间会话 =
+  // 项目 ID（主进程按 registry 解析实际目录）；无解析根 → 图片占位/原文回退。
 
   // W-1：流式未闭合 mermaid 围栏判定（findUnclosedFence 源码实证——react-markdown
   // 把未闭合围栏解析为 EOF 码块）。非流式直接渲染（历史/完成态文本围栏必闭合）。
@@ -449,13 +609,15 @@ function MarkdownRenderer(props) {
     <MarkdownErrorBoundary text={text}>
       <div className="md">
         <UnclosedFenceContext.Provider value={{ unclosedMermaid, sourceText: text }}>
-          <ReactMarkdown
-            remarkPlugins={REMARK_PLUGINS}
-            rehypePlugins={REHYPE_PLUGINS}
-            components={MD_COMPONENTS}
-          >
-            {text}
-          </ReactMarkdown>
+          <ProjectDirContext.Provider value={projectDir}>
+            <ReactMarkdown
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
+              components={MD_COMPONENTS}
+            >
+              {text}
+            </ReactMarkdown>
+          </ProjectDirContext.Provider>
         </UnclosedFenceContext.Provider>
       </div>
     </MarkdownErrorBoundary>

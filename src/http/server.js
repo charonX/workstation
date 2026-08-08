@@ -22,6 +22,7 @@ import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
 import { handleAgentSessions, buildSessionConfig, attachPendingSseSubs } from "./routes/agentSessions.js";
+import { handleAgentFiles } from "./routes/agentFiles.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
 import { createAgentRouter } from "../services/agentRouter.js";
@@ -488,6 +489,13 @@ async function handleRequest(req, res, server) {
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
       // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
       // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
+      if (subPath[0] === "files") {
+        // 图片文件（REQ-AGENT-051 / I-3 访问机制）：GET /api/agent/files/image——
+        // 主进程白名单判定（项目目录边界 + 扩展名）后读文件回传二进制，renderer 转
+        // blob URL（I-3 裁决：dev/prod origin 一致，file:// 直链在 dev 被 Chromium
+        // scheme 混合规则拦截）。无需 server 引用（projectService 直接映射）。
+        return handleAgentFiles(req, res, subPath.slice(1));
+      }
       return handleAgentConfirmations(req, res, body, subPath, {
         getConfirmationService: () => server._opcConfirmationServiceFactory?.(),
       });

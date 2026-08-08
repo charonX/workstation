@@ -19,7 +19,7 @@ function cardDescription(c) {
   return argsText === "{}" ? c.command : `${c.command}（参数：${argsText}）`;
 }
 
-export default function MessageList({ messages, confirmations, onApprove, onReject }) {
+export default function MessageList({ messages, confirmations, onApprove, onReject, projectDir }) {
   const listRef = useRef(null);
 
   // 滚动跟随（体感优化；观感入 REFLECT）。
@@ -46,7 +46,9 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
               {m.kind === "tool" ? (
                 <ToolCallBlock tool={m} />
               ) : (
-                <MarkdownRenderer text={m.text} streaming={m.streaming} />
+                // projectDir：接口 2 图片解析根（REQ-AGENT-051）——项目空间会话 =
+                // 项目 ID（主进程按 registry 解析实际目录）；无解析根 → 图片占位/原文回退。
+                <MarkdownRenderer text={m.text} streaming={m.streaming} projectDir={projectDir} />
               )}
             </div>
           </div>
