@@ -57,6 +57,27 @@
 | 授权桥 | gotgenes 权限评估 `ask` → 确认挂起队列的接缝（ADR-017）：一套队列、按空间前缀分流渲染（UI 内联确认卡 / 飞书卡片）；**唯一执行者**=worker 侧（permission 行主进程不 execute），**单一评估**=同一命令不二次 ask（2026-08-07 BUG-001/002 修订） | 确认挂起 | 权限层（FS/脚本高危） |
 | 卡片定型 | 飞书 CardKit 流式卡片在流式结束/错误/任务终态时的收口动作：`PATCH /cardkit/v1/cards/:id/settings` 关 `streaming_mode` + `summary` 换正文摘要——不做则会话列表永远卡初始 summary（如「[生成中...]」）直到 10 分钟窗口自动关闭（BUG-004/005） | 通道 | 回复卡片 / 任务卡片 |
 
+## 「agent」一词三义（2026-08-08 归位，B11）
+
+> 同一词「agent」在代码与文档中承载三个互不重叠的义项；阅读/写作时必须消歧（D4 访谈裁决）。
+
+| 义项 | 英文 | 定义 | 代码映射 | 使用场景 |
+|------|------|------|----------|----------|
+| PI 对话 agent | PI conversational agent | **交互会话**形态的 agent：有会话生命周期、有看门狗心跳、经权限层，服务对话空间（飞书/UI 通用/UI 项目）；「内置 agent」默认指它 | `src/agent/worker.js`（PI 运行时子进程）、`src/services/agentService.js`（看门狗/水合） | 对话空间 / 会话区 |
+| flow 的 agent 节点 | Flow agent node | flow 图中的**一次性执行**节点：经 Claude Agent SDK 执行，无会话、无看门狗、bypassPermissions；与本 story 权限/生命周期议题零交叠（D3） | `src/flowEngine/claudeAgentAdapter.js` | flow 执行（provider=anthropic） |
+| Agent Registry 外部 agent CLI | External agent CLI | Agent Registry 目录约定表（75 项，vercel-labs/skills 快照）中的**外部 agent**：skill 安装兼容层（软链分发目标），非运行时 agent | Agent Registry（`agentTypes` / 建链 / 收敛） | 项目创建/编辑、技能分发 |
+
+## 会话生命周期术语（2026-08-08 归位，B11 + review-tech 警告5 扩围）
+
+| 术语 | 英文 | 定义 | 关联实体 | 上下文 |
+|------|------|------|----------|--------|
+| 淘汰 | Eviction | 会话按三触发（idle TTL 1h / LRU 上限 50 / 同组单活冷却）被 dispose 出内存；JSONL 保留、可透明恢复；流式中/队列中豁免（进行中的回复不掐断） | 对话空间 | 会话生命周期（REQ-AGENT-035~037） |
+| 懒恢复 | Lazy Restore | 被淘汰或未水合的历史会话下次交互时，主进程重发 session-config → worker `SessionManager.open` 从 JSONL 透明恢复续聊（复用 REQ-AGENT-005 标准 3 链路，零新造）；用户无重建感知 | 对话空间 | 会话生命周期 |
+| 水合窗口 | Hydration Window | 启动/崩溃重启只水合 JSONL mtime ≤ TTL(1h) 窗口的行（对齐 REQ-AGENT-005「各活跃空间」原意）；历史行不水合、按懒恢复兜底；消除全行水合击穿内存上界 | 对话空间 | 重启恢复（REQ-AGENT-038） |
+| 同组单活 | Single-Hot per Group | 同组（`ui:project:<pid>` 项目组 / `ui:copilot:*` 通用组，2026-08-08 人裁决同一规则）任一活动（session-config/prompt 到达）即冷却组内其他热会话（流式中延迟到流结束）；组内热会话恒 ≤1；跨组不互汰 | 对话空间 | 会话生命周期（REQ-AGENT-037） |
+| session-evicted | session-evicted | worker → 主进程的 IPC 通知（淘汰已发生）：主进程丢 `sessions` 句柄、store 行保留、keySecrets 保留（懒恢复重注入需要）；重复通知幂等 | 对话空间 | IPC（worker → 主进程） |
+| evicted | evicted | prompt 竞态兜底错误码：tombstoned key（本运行刚被淘汰）的 prompt 到达 → worker 回 `session-error {code:"evicted"}`，主进程重发 config + 重投该 prompt 恰一次；非 tombstone 未知 key 回 E-AGENT-NO-SESSION 不复活 | 对话空间 | 竞态兜底（接口 3） |
+
 ## 状态与生命周期
 
 | 术语 | 定义 | 所属实体 | 状态转换 |
@@ -77,10 +98,12 @@
 
 ## 变更记录
 
+- 2026-08-08：新增「agent 一词三义」归位 + 会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted）（2026-08-07-pi-agent-consolidation）
 - 2026-08-02：新增实体「发布物 Release」（2026-08-01-macos-distribution）
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-08 | 「agent 一词三义」归位（PI 对话 agent / flow agent 节点 / Agent Registry 外部 CLI）；新增会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted） | 2026-08-07-pi-agent-consolidation |
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |
 | 2026-07-08 | 更新 CLI 与 HTTP API 术语定义 | codex-harness-desktop attempt-2 tech-design |
 | 2026-07-16 | 新增 skill-repo、skill symlink、dependency cascade、orphan skill 术语 | codex-harness-desktop /reflect |

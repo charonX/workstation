@@ -12,7 +12,7 @@
 | 2 | REQ-AGENT-035/036/037/039 | sessionLifecycle 模块（抽取+TLL/LRU/组冷却+tombstone/evicted worker 侧） | — | **complete**（420ddf9 + cd674ef[test] + 05de628 对齐修复 + 7e6233a refactor） |
 | 3 | REQ-AGENT-038 | 水合窗口规则化（agentService 面，含 035 主进程集成面） | 2 | **complete**（本 slice commit） |
 | 4 | REQ-AGENT-041/042 | 权限缝（policyRules+生成器+配平+语料矩阵） | — | pending |
-| 5 | REQ-AGENT-045/046 | 文档（ADR-019/020 + CONTEXT 术语归位） | — | pending |
+| 5 | REQ-AGENT-045/046 | 文档（ADR-019/020 + CONTEXT 术语归位） | — | **complete**（本 slice commit） |
 | 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | pending |
 
 ## 关键 seam 契约速记（供子代理简报引用）
@@ -281,10 +281,64 @@ PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 
 
 ---
 
+### Slice 5：REQ-AGENT-045/046 文档（ADR-019/020 + CONTEXT 术语归位）（2026-08-08）
+
+**实现文件**（纯文档，零代码改动，Rule 0.5 范围纪律；ADR 编号经 README 索引核对无冲突）：
+
+- `.aiassist/global/adr/ADR-019-keep-single-process-agent-runtime.md`（新增，B10 / D1 裁决）：
+  - 决策 1 维持单进程（ADR-014 单一 worker 子进程形态不拆分；REQ-AGENT-005/ADR-014/ADR-015 硬约束）；
+  - 决策 2 ①落地后（TTL 1h + LRU 50 + 同组单活 + 懒恢复 + 水合窗口）崩溃/全量重启恢复 = 窗口内活跃会话重水合 + 历史行透明懒恢复，代价可接受（用户 D1 原话「全部重新拉起应该也没有太大的问题」）；
+  - 决策 3 重估触发条件：真实崩溃发生且影响不可接受 / 空间间隔离需求出现（如多租户）；
+  - 决策 4 不变关系声明：REQ-AGENT-005 / ADR-014 / ADR-015 不因本决策改变；
+  - 替代方案：方向 A 分进程建造（隔离性 vs 契约变更 + 启动延迟 + 恢复编排复杂度，不推荐本轮）。
+- `.aiassist/global/adr/ADR-020-policy-rules-single-source-of-truth.md`（新增，B6/B7 文档面 / D6 裁决 + 2026-08-08 独立成文人裁决）：
+  - 决策 1 代码规则表（`policyRules.js` `BASH_RULES`）为唯一真源，评估器与生成器共同消费；
+  - 决策 2 部署 JSON（`agent-policy/pi-permission-config.json`）降级为生成产物（gen-agent-policy + golden 检入 + 配平 --check 锁死「生成 == 部署」）；
+  - 决策 3 不可见族只活在 pre-gate，生成产物不出现；
+  - 决策 4 **修订关系**：ADR-017「策略文件=契约」→「代码规则表=真源，部署 JSON=生成产物」；ADR-017 其余（gotgenes 引擎/授权桥/单卡/唯一执行者/单一评估）不变；
+  - 决策 5 项目级覆盖 JSON（`.pi/...`）机制不变（用户自定义口子保留）；
+  - 替代方案：JSON 为真源（方向 C，不推荐）/ 维持双真源 / ADR-017 补充节形态（人裁决独立成文）。
+- `.aiassist/global/adr/README.md`（索引 +2 行：ADR-019/020，含标题/状态/日期/相关 REQ）。
+- `.aiassist/global/CONTEXT.md`（B11 术语归位 + review-tech 警告5 扩围）：
+  - 「agent」一词三义节：PI 对话 agent（交互会话，worker/agentService 映射）/ flow 的 agent 节点（SDK 一次性执行，claudeAgentAdapter）/ Agent Registry 外部 agent CLI（skill 安装兼容层）；
+  - 会话生命周期术语节（6 行）：淘汰 / 懒恢复 / 水合窗口 / 同组单活 / `session-evicted` / `evicted`，每行含定义 + 关联实体 + 上下文，字面与代码/IPC 实际命名一致（接口 2/接口 3）；
+  - 变更记录追加 2026-08-08 行 + 首条 bullet。
+
+**测试命令与输出摘要**（先 `npm run rebuild:node`）：
+
+| 命令 | 结果 |
+|---|---|
+| `docAssets.test.js`（REQ-AGENT-045/046，5 用例） | 5/5 pass（045 标准1/2：ADR-019 存在 + 三关键字面 + README 索引；046 标准1/2/3：三义 + 六术语 + 字面一致） |
+| `policyCodegen.test.js`（REQ-AGENT-041，6 用例） | 6/6 pass——**标准 6 转绿**（ADR-020 落盘 + 修订 ADR-017 关系 + README 索引；此前 Slice 4 记录的 4 fail 中最后一项闭合） |
+| 全量 api/cli 回归（`--import ./scripts/session-lifecycle-seam.mjs` 同形命令，662 用例 151 suites） | **662/662 pass**（全绿；043/044 E2E 不在单测范围） |
+
+**PRD→代码 可追溯性表**：
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| B10 稳定块：进程隔离模型 ADR——维持单进程的理由 + 重估触发条件（真实崩溃发生 / 空间隔离需求出现）；REQ-AGENT-005/ADR-014/015 不动 | `adr/ADR-019-keep-single-process-agent-runtime.md`（决策 1/3/4） | `docAssets.test.js` 045 标准1（维持单进程/重估触发条件/REQ-AGENT-005\|ADR-014\|ADR-015 字面）+ 标准2（README 索引） | COVERED |
+| B10 用户故事 6：暂不分进程决定有据可查（含何时回来重谈） | ADR-019 决策 3（重估触发条件）+ 后果段 | 045 标准1 + REFLECT 人工评审 | COVERED |
+| D1 裁决 (d)：从未真崩过、预防性结构洁癖；①落地后全量重启恢复 = 窗口内重水合 + 历史懒恢复，代价可接受 | ADR-019 决策 2（引用 TTL/LRU/组冷却/懒恢复/水合窗口落地形态） | 045 标准1（「维持单进程」字面） | COVERED |
+| §10.2 硬约束：REQ-AGENT-005（看门狗契约）/ADR-014（子进程）/ADR-015（心跳控制面）不变关系声明 | ADR-019 决策 4 + 背景段 | 045 标准1（不变关系字面） | COVERED |
+| B6 单一真源化文档面：ADR-020 记录决策（代码规则表为真源、部署 JSON 为生成产物、配平锁死） | `adr/ADR-020-policy-rules-single-source-of-truth.md`（决策 1/2） | `policyCodegen.test.js` 041 标准6（ADR-020 存在 + ADR-017 字面 + README 索引） | COVERED |
+| B7 不可见族只活 pre-gate（生成产物不再含 `* > *` 等）文档面 | ADR-020 决策 3（golden -7 不可见族的决策记录） | policyCodegen 标准6 + permissionCorpus（Slice 4） | COVERED |
+| 2026-08-08 人裁决：ADR-020 独立成文，注明对 ADR-017「文件=契约」表述的修订关系 | ADR-020 决策 4 + 背景段（形态备选段） | policyCodegen 标准6（/ADR-017/ 字面） | COVERED |
+| D6：项目级覆盖 JSON（`.pi/...`）不动——用户自定义口子保留 | ADR-020 决策 5 | policyCodegen 标准5（Slice 4 既有，行为面未变更） | COVERED |
+| B11 agent 三义归位（PI 对话 agent / flow agent 节点 / Agent Registry 外部 CLI），D4 裁决「只文档归位不改文件名不动结构」 | `CONTEXT.md`「agent 一词三义」节（三行，含代码映射） | `docAssets.test.js` 046 标准1（三义关键字面） | COVERED |
+| B11 会话生命周期新术语（淘汰/懒恢复/水合窗口/同组单活/`session-evicted`/`evicted`）+ review-tech 警告5 扩围 | `CONTEXT.md`「会话生命周期术语」节（6 行，定义 + 关联实体 + 上下文） | docAssets 046 标准2（六术语字面） | COVERED |
+| REQ-AGENT-046 标准 3：文档术语与代码/IPC 实际命名一致（防漂移） | 术语表字面与接口 2（`session-evicted`）/接口 3（`evicted` 错误码）/groupOf 语义一致 | docAssets 046 标准3 | COVERED |
+| D7 成功标准 5：③ ADR（暂不分进程 + 重估触发条件）落盘；agent 三义写入 CONTEXT.md | ADR-019 + CONTEXT.md 三义节 | docAssets 045/046 + REFLECT 人工验收 | COVERED |
+| PRD §12 范围外：分进程任何建造 / 代码改动 / E2E | 本 slice 纯文档（4 文件，零 src/ 改动、零 E2E） | 全量 api/cli 662/662（无行为面变更） | 遵守 |
+
+**refactor 结果**：无（纯文档切片，无代码）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v6 | 2026-08-08 | Slice 5 记录：ADR-019（维持单进程 + 重估触发条件 + 不变关系）/ ADR-020（权限单一真源化 + 修订 ADR-017 关系）+ adr/README 索引 +2 + CONTEXT.md 术语归位（agent 三义 + 六术语）+ docAssets 5/5 与 policyCodegen 标准6 转绿 + 全量 662/662 + PRD→代码可追溯性表 |
 | v5 | 2026-08-08 | Slice 4 记录：权限缝（policyRules 规则表唯一真源 + 评估器消费规则表 + gen-agent-policy 生成器 + golden 重生成 -7 不可见族/+2 pnpm 补全）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v4 | 2026-08-08 | Slice 3 记录：水合窗口规则化（统一水合循环 + hydrationWindowMs seam + 诊断日志）+ session-evicted 丢句柄（接口 2）+ evicted 重投（接口 3，防环一次）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v3 | 2026-08-08 | Slice 2 PRD 对齐修复记录：M1 touch 来源区分（clearPending）、M2 onWarn 注入、M3 E1 诊断 + 表修正、U1 worker 侧 tombstone 判别（evicted）、U2/U3 tech-design 数据流 1 与模块关系图修正 |
