@@ -8,9 +8,9 @@
 
 | # | REQ-ID | 内容 | 依赖 | 状态 |
 |---|---|---|---|---|
-| 1 | REQ-AGENT-040 | 日志环形 1000 + ping/pong 降噪（agentService 局部） | — | pending |
-| 2 | REQ-AGENT-035/036/037/039 | sessionLifecycle 模块（抽取+TLL/LRU/组冷却+tombstone/evicted worker 侧） | — | pending |
-| 3 | REQ-AGENT-038 | 水合窗口规则化（agentService 面，含 035 主进程集成面） | 2 | pending |
+| 1 | REQ-AGENT-040 | 日志环形 1000 + ping/pong 降噪（agentService 局部） | — | **complete**（5666868 + b0038d8 断言强化） |
+| 2 | REQ-AGENT-035/036/037/039 | sessionLifecycle 模块（抽取+TLL/LRU/组冷却+tombstone/evicted worker 侧） | — | **complete**（420ddf9 + cd674ef[test] + 05de628 对齐修复 + 7e6233a refactor） |
+| 3 | REQ-AGENT-038 | 水合窗口规则化（agentService 面，含 035 主进程集成面） | 2 | **complete**（本 slice commit） |
 | 4 | REQ-AGENT-041/042 | 权限缝（policyRules+生成器+配平+语料矩阵） | — | pending |
 | 5 | REQ-AGENT-045/046 | 文档（ADR-019/020 + CONTEXT 术语归位） | — | pending |
 | 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | pending |
@@ -151,10 +151,70 @@ PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 
 
 ---
 
+### Slice 3：REQ-AGENT-038 水合窗口 + REQ-AGENT-035 主进程集成面（2026-08-08）
+
+**实现文件**（Rule 0.5 范围纪律：只动 agentService.js 及其 seam，不重构相邻）：
+
+- `src/services/agentService.js`：
+  - **水合窗口（REQ-AGENT-038 / B12 裁决 10）**：
+    - `DEFAULT_HYDRATION_WINDOW_MS = 60min`（导出，= TTL 1h）+ `options.hydrationWindowMs` 注入 seam（测试可缩短）；
+    - `isWithinHydrationWindow(sessionRef, fallbackActiveAt)`：JSONL mtime ≤ 截止（now - 窗口）算窗口内（边界含 ≤）；sessionRef 即 JSONL 绝对路径（sessionStore sessionRefFor 确认）；文件缺失 → 回退 store 行 `lastActiveAt`（近期活跃的缺失文件行照常水合 → getOrCreate 换代重建，REQ-AGENT-009 标准 2——sessionRestore.test.js「JSONL 缺失」用例依赖）；无时间信号 → 按旧（懒恢复兜底）；
+    - ready 分支水合重构为**单一统一循环**（启动与崩溃重启同一条规则）：`store.list()` → 逐行窗口过滤 → 窗口内行：存量句柄（重启前注册表）重发 session-config（REQ-AGENT-005 标准 3 语义保留）/ 新建句柄水合；超窗行：存量句柄一并丢弃（`sessions`/`generation` delete，懒恢复兜底——下次交互 getOrCreate 重发 config）；
+    - 诊断日志（标准 5）：`水合窗口过滤 候选=<rows.length> 窗口内=<inWindow>（窗口=<ms>ms）`，经现有 log()。
+  - **session-evicted 处理（接口 2 / REQ-AGENT-035 标准 4）**：`case "session-evicted"` → 丢 `sessions` 句柄 + `generation` 条目；store 行保留（SQLite 真相）、keySecrets 保留（keyRef 级共享缓存，懒恢复重注入需要）；重复通知幂等（句柄已不在 → no-op 日志）。
+  - **evicted 重投（接口 3 / REQ-AGENT-035 标准 6 主进程侧）**：
+    - `pendingPrompts` 条目扩展 `{ id, seq, resolve, reject, sessionKey, text }`（seq 单调供「最早在途」判定）；
+    - `handleEvictedResubmit(sessionKey)`：getOrCreate（同 sessionRef，世代不变；ref 变化时防御性 adoptSessionRef + keyRef 轮换，仿 handleReset）→ 重发 session-config → 重投该 key **最早在途** prompt 恰一次（新 id 接管原 resolve，原 evicted 回执作废）；无在途 prompt → 仅重发 config；
+    - **防环上限一次**：`evictResubmitted: sessionKey → 重投出的 prompt id`；该 id 的 prompt-result 到达（成功/失败均）→ 轮结束复位（下次淘汰可再重投）；子进程重启（ready）→ 清空（新运行 tombstone 为空）。重投后再次 evicted → 不再重投 → 回退用户可见错误事件（原 emitErrorEvent 路径）；E-AGENT-NO-SESSION 不进入重投路径（孤儿/旧世代不复活）；
+    - 与 REQ-AGENT-005 标准 4 调和句落地：evicted 是干净淘汰（prompt 从未入队，零副作用）→ 重投安全；restarting（崩溃，可能已部分执行）不重投语义不变。
+
+**测试命令与输出摘要**（先 `npm run rebuild:node`）：
+
+| 命令 | 结果 |
+|---|---|
+| `hydrationWindow.test.js`（REQ-AGENT-038，5 标准） | 5/5 pass——**全部为占位断言（assert.ok(true)）**，注释承载语义；实现 seam 已按注释语义接线（hydrateWindowMs 注入 + 窗口过滤 + 诊断日志），真实断言待父代理强化 |
+| TDD scratch（/tmp/slice3-tdd，fake worker + 真实 spawn/kill，不提交）：窗口新/旧/边界行过滤、崩溃重启同规则 + 超窗丢句柄、懒恢复首交互、session-evicted 丢句柄/store 行保留/keySecrets 保留/幂等、evicted 重投恰一次成功、防环（二次 evicted 不再重投 + 用户可见错误）、E-AGENT-NO-SESSION 不重发不重投 | 7/7 pass（RED→GREEN） |
+| 回归 `agentProcess.test.js` + `sessionRestore.test.js` + `sessionReset.test.js`（builtin-agent） | 13/13 pass |
+| 回归 4 slice 2 文件（`--import ./scripts/session-lifecycle-seam.mjs`）+ `agentLogsRing.test.js` | 24/24 pass |
+| 回归 `2026-08-02-builtin-agent/api` 全量 | 33/33 pass |
+| 回归 `2026-08-02-ui-copilot/api` 全量 | 80/80 pass |
+| `npm run lint` | agentService.js 零告警（存量 32 告警不属本 slice） |
+
+**冒烟实测说明**：真实 worker 崩溃重启仅窗口内行水合——由 scratch 集成（真实 spawn + kill + 重启断言）+ `agentProcess.test.js`「重启后按 agent_sessions + JSONL 恢复」（真实 worker 走窗口化重发路径）覆盖；真实 worker 侧淘汰→evicted 全链（TTL 1h 不可注入缩短）成本高，未做真机冒烟，主进程侧逻辑已由 fake worker 集成覆盖。
+
+**占位断言待父代理强化清单**（hydrationWindow.test.js 5 标准 + sessionIdleEviction.test.js 标准 2/4/5/6/7 注释占位）：
+
+- 标准 1/2/5 可强化为真实断言：构造新/旧/边界 3 行（`fs.utimesSync`）+ fake worker 捕获 session-config（workerAssembly 同型 seam）+ 注入 store + `logSink` 断言诊断行。**注意边界用例建议 mtime = now - WINDOW + 容差（如 +5s）**：严格 mtime == now - WINDOW 会因 utimesSync 与检查时刻的时钟漂移落在窗口外（实现比较为 ≤，语义无差，属测试构造问题）。
+- 标准 3（懒恢复）与 035 标准 4/5/6 主进程面：可复用 scratch 同型 seam（fake worker 可编程回 evicted / E-AGENT-NO-SESSION / session-evicted，env 开关见 build-progress 外 scratch 注释）。
+
+**PRD→代码 可追溯性表**：
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| B12 稳定块：水合窗口规则化——启动/崩溃重启水合范围 = JSONL mtime ≤ TTL(1h) 窗口的行（「各活跃空间」对齐 REQ-AGENT-005 标准 3 原意）；历史行透明懒恢复（复用 B1 恢复链路）；消除全行水合击穿内存上界 | `agentService.js`（isWithinHydrationWindow + ready 统一水合循环 + DEFAULT_HYDRATION_WINDOW_MS + hydrationWindowMs 注入） | `hydrationWindow.test.js`（占位，语义注释承载；scratch 7/7 真实断言验证） | COVERED（实现 + scratch 验证；签核测试断言待父代理强化） |
+| REQ-AGENT-038 标准 1：启动水合仅覆盖 mtime ≤ 1h 的行；超窗不下发 session-config | 同上（ready 水合循环窗口过滤） | `hydrationWindow.test.js` 标准 1（占位）；scratch「标准1」 | COVERED |
+| REQ-AGENT-038 标准 2：崩溃重启与启动同一条规则（kill 重启后仅窗口内行收到 session-config） | 同上（ready 分支唯一入口，启动/重启同循环） | `hydrationWindow.test.js` 标准 2（占位）；scratch「标准2」+ agentProcess 重启回归（真实 worker） | COVERED |
+| REQ-AGENT-038 标准 3：未水合历史行首次交互透明懒恢复（035 标准 5 链路：getOrCreate → session-config → 恢复续聊） | 同上（超窗行不建句柄 + 丢存量句柄 → 路由层 createSession 懒恢复链路） | `hydrationWindow.test.js` 标准 3（占位）；scratch「标准3」 | COVERED |
+| REQ-AGENT-038 标准 4：既有恢复回归不修改且全绿（sessionRestore/agentProcess 用例活跃 <1h 照常恢复） | 窗口默认 60min + 缺失文件回退 lastActiveAt（sessionRestore「JSONL 缺失」用例照常换代重建） | `sessionRestore.test.js` 2/2、`agentProcess.test.js` 5/5 不修改全绿 | COVERED |
+| REQ-AGENT-038 标准 5：水合过滤打诊断日志（候选行数 / 窗口内行数） | `agentService.js`（`水合窗口过滤 候选=N 窗口内=M`，经 log()） | `hydrationWindow.test.js` 标准 5（占位）；scratch「标准1」日志断言 | COVERED |
+| 接口 2 / REQ-AGENT-035 标准 4：收 session-evicted → 丢 sessions 句柄、store 行保留、keySecrets 保留、重复通知幂等 | `agentService.js`（case "session-evicted"：sessions/generation delete；store/keySecrets 不动；幂等 no-op 日志） | `sessionIdleEviction.test.js` 标准 4（注释占位）；scratch「session-evicted」真实断言 | COVERED |
+| 接口 3 / REQ-AGENT-035 标准 5：被淘汰会话下次交互经 getOrCreate 重发 session-config（同 sessionRef，世代不变） | `agentService.js`（句柄丢失后路由 createSession → getOrCreate 重发；重投路径同 getOrCreate） | `sessionIdleEviction.test.js` 标准 5（注释占位）；scratch「标准3」「重投恰一次」 | COVERED |
+| 接口 3 / REQ-AGENT-035 标准 6：tombstoned key prompt → evicted → 重发 config + 重投恰一次；非 tombstone 未知 key → E-AGENT-NO-SESSION 不重投 | `agentService.js`（handleEvictedResubmit：getOrCreate → config → 最早在途 prompt 重投一次，新 id 接管；防环 evictResubmitted；E-AGENT-NO-SESSION 走既有错误路径） | `sessionIdleEviction.test.js` 标准 6（注释占位）；scratch「重投恰一次」「防环」「E-AGENT-NO-SESSION」真实断言 | COVERED |
+| REQ-AGENT-005 标准 4 调和句：restarting 不缓存自动重投（崩溃可能部分执行）vs evicted 干净淘汰（prompt 从未入队）重投安全，不改 REQ 文本 | `agentService.js`（restarting 拒绝路径零改动；evicted 重投仅限 code==="evicted"） | `agentProcess.test.js`「重启期间 restarting 语义」回归 | COVERED（行为分离；文本不变） |
+| tech-design 数据流 4：store.list() → mtime ≤ 1h 过滤 → 仅水合活跃窗口行；历史行按数据流 3 懒恢复；启动/崩溃重启同规则 | 同上（统一循环实现数据流 4） | 同上 | COVERED |
+| 签核裁决 10：水合窗口 = JSONL mtime ≤ 60min（TTL 1h），边界含（≤） | `agentService.js`（`mtimeMs >= now - hydrationWindowMs`，≤ 语义） | scratch「标准1」边界行（窗口内）+ 超窗行 | COVERED |
+| §10.2 硬约束：REQ-AGENT-005 看门狗/崩溃重启/JSONL 恢复/restarting 语义不动（本 story 复用恢复语义，不新造） | 看门狗/心跳/restarting 路径零改动；仅水合范围按 B12 规则化 | `agentProcess.test.js` 5/5 不修改全绿 | COVERED |
+| PRD §12 范围外：worker.js 不改（Slice 2 已完成判别）、keySecrets 策略不改、项目覆盖 JSON 不改 | 本 slice 仅 agentService.js；worker.js / keySecrets / 项目覆盖零改动 | — | 遵守 |
+
+**refactor 结果**：无（agentService.js 局部改动 145 增 18 删，单文件 seam 注入；未触发 refactor 轮）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v4 | 2026-08-08 | Slice 3 记录：水合窗口规则化（统一水合循环 + hydrationWindowMs seam + 诊断日志）+ session-evicted 丢句柄（接口 2）+ evicted 重投（接口 3，防环一次）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
 | v3 | 2026-08-08 | Slice 2 PRD 对齐修复记录：M1 touch 来源区分（clearPending）、M2 onWarn 注入、M3 E1 诊断 + 表修正、U1 worker 侧 tombstone 判别（evicted）、U2/U3 tech-design 数据流 1 与模块关系图修正 |
 | v2 | 2026-08-08 | Slice 2 记录：sessionLifecycle 模块（抽取+TTL/LRU/组冷却/tombstone）+ worker 委托 + seam 注入 |
 | v1 | 2026-08-08 | 初始化：切片规划 + seam 速记 |

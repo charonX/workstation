@@ -77,6 +77,12 @@ const MAX_CONSECUTIVE_RESTARTS = 5;
 // 恒 ≤1000 条，超限覆盖最旧（保留最新尾部）。导出供测试注入共享。
 export const DEFAULT_LOG_RING_LIMIT = 1000;
 
+// 水合窗口（REQ-AGENT-038 / B12 拍板、签核裁决 10）：启动/崩溃重启仅水合
+// JSONL mtime ≤ 窗口（= TTL 1h）的 store 行（「各活跃空间」，对齐 REQ-AGENT-005
+// 标准 3 原意）；历史行不水合，按数据流 3 透明懒恢复。默认 60min；
+// options.hydrationWindowMs 可注入（测试 seam，缩短窗口做快速断言）。
+export const DEFAULT_HYDRATION_WINDOW_MS = 60 * 60 * 1000;
+
 // 心跳消息类型判别（REQ-AGENT-040 标准 2）：ping/pong 收发不逐条入 logs[]——
 // 仅日志面过滤；看门狗心跳语义（2s ping/pong 收发、入站计存活 ADR-015）不变。
 export function isHeartbeatMessageType(type) {
@@ -430,7 +436,12 @@ function createProcessAgentService(options = {}) {
   const sessions = new Map(); // spaceKey → 会话句柄
   const keySecrets = new Map(); // keyRef → 明文 key（内存仅持）
   const generation = new Map(); // spaceKey → JSONL 世代（provider/key 变更重建）
-  const pendingPrompts = new Map(); // prompt id → { resolve, reject }
+  const pendingPrompts = new Map(); // prompt id → { id, seq, resolve, reject, sessionKey, text }
+  // evicted 重投防环（REQ-AGENT-035 标准 6 / 接口 3）：sessionKey → 本重投轮
+  // 重投出的 prompt id（「重投恰一次」计数）；该 id 的 prompt-result 到达（成功/
+  // 失败均）→ 轮结束复位，下次淘汰可获得新一次重投；子进程重启（ready）→ 清空
+  //（新运行 tombstone 为空，旧标记无意义）。
+  const evictResubmitted = new Map();
   const logs = [];
   // 环形上界（REQ-AGENT-040 标准 1）：默认 1000（D7 拍板）；options.logRingLimit
   // 可注入（测试 seam：缩小环形做快速满环断言，或与 DEFAULT_LOG_RING_LIMIT 共享）。
@@ -438,6 +449,11 @@ function createProcessAgentService(options = {}) {
     Number.isInteger(options.logRingLimit) && options.logRingLimit > 0
       ? options.logRingLimit
       : DEFAULT_LOG_RING_LIMIT;
+  // 水合窗口（REQ-AGENT-038 标准 1/2）：默认 TTL 1h（B12 拍板）；options.hydrationWindowMs
+  // 可注入（测试 seam：缩短窗口做超窗快速断言）。
+  const hydrationWindowMs = Number.isFinite(Number(options.hydrationWindowMs))
+    ? Number(options.hydrationWindowMs)
+    : DEFAULT_HYDRATION_WINDOW_MS;
 
   // 会话存储（REQ-AGENT-008/009）：SQLite agent_sessions 为真相（W-3），本服务
   // 注册表仅为活跃句柄缓存。未显式注入时按 cwd 派生默认库（随工作目录隔离，
@@ -494,6 +510,23 @@ function createProcessAgentService(options = {}) {
       registerResetListener(defaultStore);
     }
     return defaultStore;
+  }
+
+  // 水合窗口判定（REQ-AGENT-038 标准 1/2、签核裁决 10：边界含——mtime === 截止
+  // 算窗口内，≤）。sessionRef 即 JSONL 绝对路径（sessionStore sessionRefFor）。
+  // 文件缺失（删除/损坏）→ 回退 store 行 lastActiveAt：近期活跃的缺失文件行照常
+  // 水合（getOrCreate 换代重建，REQ-AGENT-009 标准 2，sessionRestore 回归依赖）；
+  // 无时间信号 → 按「旧」处理（不水合，懒恢复兜底）。
+  function isWithinHydrationWindow(sessionRef, fallbackActiveAt, now = Date.now()) {
+    const cutoff = now - hydrationWindowMs;
+    let mtimeMs;
+    try {
+      mtimeMs = fs.statSync(sessionRef).mtimeMs;
+    } catch {
+      mtimeMs = Date.parse(String(fallbackActiveAt ?? ""));
+      if (!Number.isFinite(mtimeMs)) return false;
+    }
+    return mtimeMs >= cutoff;
   }
 
   let child = null;
@@ -642,6 +675,57 @@ function createProcessAgentService(options = {}) {
     });
   }
 
+  // evicted 重投（tech-design 接口 3 / REQ-AGENT-035 标准 6 主进程侧）：
+  // worker 对 tombstoned key 的 prompt 回 session-error {code:"evicted"}——prompt
+  // 从未入队（worker 没见过它），零副作用，重投安全（与 REQ-AGENT-005 标准 4
+  // 调和句：restarting 不缓存自动重投针对 worker 崩溃，prompt 可能已部分执行；
+  // evicted 是干净淘汰，语义不同，不改 REQ 文本）。
+  // 流程：getOrCreate（同 sessionRef，世代不变）→ 重发 session-config → 重投
+  // 该 prompt 恰一次（取该 key 最早在途 prompt——worker 每 key 串行，evicted
+  // 错误对应在途首条；原回执作废，新 id 接管其 resolve）。重投计数上限一次
+  // （evictResubmitted，重投出的 id 的 prompt-result 到达即复位——成功/失败均，
+  // 下次淘汰可再重投；ready 清空）：重投后再次 evicted 不再重投，回退用户可见
+  // 错误。E-AGENT-NO-SESSION 不进入本路径（不重投，孤儿/旧世代不复活）。
+  function handleEvictedResubmit(sessionKey) {
+    if (evictResubmitted.get(sessionKey)) return false;
+    const session = sessions.get(sessionKey);
+    if (!session) return false;
+    const store = getStore();
+    const info = store ? store.getOrCreate(sessionKey, { sessionDir }) : null;
+    if (info?.sessionRef && info.sessionRef !== session.sessionRef) {
+      // 防御：JSONL 缺失换代等——同步句柄引用与 keyRef 轮换（仿 handleReset）。
+      adoptSessionRef(session, info.sessionRef);
+      const newKeyRef = keyRefFor(session.provider, generation.get(session.spaceKey));
+      const oldKey = keySecrets.get(session.keyRef);
+      keySecrets.delete(session.keyRef);
+      session.keyRef = newKeyRef;
+      if (oldKey !== undefined) keySecrets.set(newKeyRef, oldKey);
+    }
+    sendToChild(buildConfigMessage(sessionKey, session));
+    // 重投该 prompt 恰一次：该 key 最早在途（seq 最小）。
+    let targetId = null;
+    for (const [id, p] of pendingPrompts) {
+      if (p.sessionKey === sessionKey && (targetId === null || p.seq < pendingPrompts.get(targetId).seq)) {
+        targetId = id;
+      }
+    }
+    if (targetId === null) {
+      log(`evicted 重投 session=${sessionKey}（无在途 prompt，仅重发 config）`);
+      return true;
+    }
+    const pending = pendingPrompts.get(targetId);
+    pendingPrompts.delete(targetId); // 原 prompt-result（evicted 回执）作废
+    const seq = nextPromptId;
+    const id = `p${seq}`;
+    nextPromptId += 1;
+    pendingPrompts.set(id, { ...pending, id, seq });
+    // 防环：本重投轮计数（重投出的 id；prompt-result 到达即复位）。
+    evictResubmitted.set(sessionKey, id);
+    sendToChild({ type: "prompt", id, sessionKey, text: pending.text });
+    log(`evicted 重投 session=${sessionKey} id=${id}（接管 ${targetId}）`);
+    return true;
+  }
+
   function handleChildMessage(msg) {
     // 有流量即存活（BUG-008 补强）：任何子进程消息（含流式 session-event）
     // 都证明进程健康，刷新心跳基线，避免长生成期间被看门狗误判崩溃。
@@ -652,16 +736,17 @@ function createProcessAgentService(options = {}) {
         readyCount += 1;
         consecutiveRestarts = 0;
         lastPongAt = Date.now();
+        // 新 worker 运行：tombstone 为空，evicted 重投防环标记全部失效 → 清空。
+        evictResubmitted.clear();
         log(`子进程就绪（第 ${readyCount} 次）pid=${msg.pid}`);
         emitter.emit("ready");
-        // 重启后：存量会话按注册表重新下发 session-config（子进程按
-        // agent_sessions 引用 + JSONL 恢复，REQ-AGENT-005 标准 3）。
-        for (const [spaceKey, session] of sessions) {
-          sendToChild(buildConfigMessage(spaceKey, session));
-        }
         // 应用/子进程重启后：按 SQLite agent_sessions 行水合会话（SQLite 为真相，
         // W-3；REQ-AGENT-009 标准 1：SessionManager.open 恢复上下文）。JSONL
         // 缺失/损坏 → getOrCreate 换代新建 + recoveryHint（REQ-AGENT-009 标准 2）。
+        // 水合窗口（B12 / REQ-AGENT-038 数据流 4，签核裁决 10）：仅 JSONL mtime
+        // ≤ 窗口 的行水合——启动与崩溃重启同一条规则；存量句柄（重启前注册表，
+        // REQ-AGENT-005 标准 3）按同一窗口规则重发 session-config；超窗行丢句柄，
+        // 首次交互经 getOrCreate 透明懒恢复（数据流 3）。
         {
           const store = getStore();
           if (store) {
@@ -681,8 +766,26 @@ function createProcessAgentService(options = {}) {
                 hydratedKey = undefined;
               }
             }
-            for (const row of store.list()) {
-              if (sessions.has(row.spaceKey)) continue;
+            const rows = store.list();
+            let inWindow = 0;
+            for (const row of rows) {
+              // 窗口过滤：超窗（含文件缺失且行活跃时间旧）不水合。
+              if (!isWithinHydrationWindow(row.sessionRef, row.lastActiveAt)) {
+                // 存量句柄一并丢弃（懒恢复兜底：下次交互 getOrCreate 重发 config）。
+                if (sessions.has(row.spaceKey)) {
+                  sessions.delete(row.spaceKey);
+                  generation.delete(row.spaceKey);
+                  log(`水合窗口过滤 丢句柄 session=${row.spaceKey}（JSONL 超窗，懒恢复兜底）`);
+                }
+                continue;
+              }
+              inWindow += 1;
+              const existing = sessions.get(row.spaceKey);
+              if (existing) {
+                // 存量句柄（崩溃重启前注册表）按同一窗口规则重发（REQ-AGENT-005 标准 3）。
+                sendToChild(buildConfigMessage(row.spaceKey, existing));
+                continue;
+              }
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
               const gen = generationFromRef(info.sessionRef);
               generation.set(info.spaceKey, gen);
@@ -701,6 +804,8 @@ function createProcessAgentService(options = {}) {
               sessions.set(info.spaceKey, session);
               sendToChild(buildConfigMessage(info.spaceKey, session));
             }
+            // 诊断日志（REQ-AGENT-038 标准 5）：候选行数 / 窗口内行数。
+            log(`水合窗口过滤 候选=${rows.length} 窗口内=${inWindow}（窗口=${hydrationWindowMs}ms）`);
           }
         }
         break;
@@ -725,6 +830,15 @@ function createProcessAgentService(options = {}) {
         log(`会话换代重建（JSONL 损坏）session=${msg.sessionKey} ref=${msg.sessionRef}`);
         break;
       }
+      case "session-evicted": {
+        // 接口 2（REQ-AGENT-035 标准 4）：worker 淘汰会话 → 主进程丢 sessions
+        // 句柄；store 行保留（SQLite 真相）、keySecrets 保留（keyRef 级共享缓存，
+        // 懒恢复重注入需要）。重复通知幂等（句柄已不在 → no-op）。
+        const dropped = sessions.delete(msg.sessionKey);
+        generation.delete(msg.sessionKey);
+        log(`session-evicted session=${msg.sessionKey}${dropped ? "" : "（幂等 no-op）"}`);
+        break;
+      }
       case "session-event": {
         const session = sessions.get(msg.sessionKey);
         if (session) session.emit("session-event", enforceSizeLimit(msg.event));
@@ -732,19 +846,29 @@ function createProcessAgentService(options = {}) {
       }
       case "session-error": {
         const session = sessions.get(msg.sessionKey);
-        if (session) {
-          emitErrorEvent(session, {
-            code: msg.code,
-            reason: msg.reason,
-            userMessage: msg.userMessage ?? `操作失败：${msg.code}`,
-          });
+        if (!session) break;
+        if (msg.code === "evicted") {
+          // 接口 3（REQ-AGENT-035 标准 6 主进程侧）：tombstoned key 的 prompt →
+          // worker 回 evicted → 重发 session-config + 重投该 prompt 恰一次（上限
+          // 一次防环）。成功路径不弹错误事件（透明恢复，用户无感）；重投后再次
+          // evicted（防环命中）→ 回退用户可见错误（下方 emitErrorEvent）。
+          if (handleEvictedResubmit(msg.sessionKey)) break;
         }
+        emitErrorEvent(session, {
+          code: msg.code,
+          reason: msg.reason,
+          userMessage: msg.userMessage ?? `操作失败：${msg.code}`,
+        });
         break;
       }
       case "prompt-result": {
         const pending = pendingPrompts.get(msg.id);
         if (!pending) break;
         pendingPrompts.delete(msg.id);
+        // evicted 重投轮结束（成功/失败均复位防环标记，下次淘汰可再重投）。
+        if (evictResubmitted.get(msg.sessionKey) === msg.id) {
+          evictResubmitted.delete(msg.sessionKey);
+        }
         if (msg.ok) {
           // reply = 本轮回复最终文本（text_end.content，worker 侧收集）；
           // 无文本（静默失败等）时缺省，与内存版「事件即结果」语义一致。
@@ -932,8 +1056,12 @@ function createProcessAgentService(options = {}) {
           reject(noSessionError());
           return;
         }
-        const id = `p${nextPromptId++}`;
-        pendingPrompts.set(id, { resolve, reject });
+        // 条目携带 text/sessionKey/seq：evicted 重投（接口 3）需取该 key 最早
+        // 在途 prompt 并重投其文本；seq 单调递增供「最早在途」判定。
+        const seq = nextPromptId;
+        const id = `p${seq}`;
+        nextPromptId += 1;
+        pendingPrompts.set(id, { id, seq, resolve, reject, sessionKey: spaceKey, text });
         sendToChild({ type: "prompt", id, sessionKey: spaceKey, text });
       });
     },
