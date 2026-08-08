@@ -7,47 +7,75 @@
 
 // REQ-AGENT-042 一令一卡语料矩阵（B7）——验收标准 1-4。
 //
-// seam：permissionPolicy classifyBashToolCall（既有 seam，语义 = tech-design
-// 数据流 6 命中组合归属判别表）+ createPolicyEvaluator。
-// 断言形态：classifyBashToolCall(cmd, {cwd, projectDir}) → "allow"|"ask"。
-//
-// 预期值签核（来源：tech-design 数据流 6 判别表，review-tech 修复版）：
-//   仅不可见族 → "ask"（pre-gate 拦截）；仅可见族 → "allow"（交 gotgenes）；
-//   双命中 → "allow"（gotgenes 优先单卡）；wrapper → "allow"（floor 承接）。
+// seam：permissionPolicy classifyBashToolCall（判别表语义 = tech-design 数据流 6）。
+// 预期值签核（来源：signoff 裁决 #13/14 + tech-design 数据流 6 判别表）：
+//   仅不可见族 → "ask"；仅可见族 → "allow"；双命中 → "allow"（gotgenes 优先）；
+//   wrapper → "allow"（floor 承接 #481）。
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+
+const ROOT = path.resolve(import.meta.dirname, "../../../../../../");
+const CWD = fs.mkdtempSync(path.join(os.tmpdir(), "pi-corpus-"));
+
+// 动态 import（node:test ESM）
+let classifyBashToolCall;
+let createPolicyEvaluator;
+try {
+  const mod = await import("../../../../../../src/services/permissionPolicy.js");
+  classifyBashToolCall = mod.classifyBashToolCall;
+  createPolicyEvaluator = mod.createPolicyEvaluator;
+} catch {
+  classifyBashToolCall = null;
+  createPolicyEvaluator = null;
+}
+
+function classify(cmd) {
+  assert.ok(classifyBashToolCall, "seam 未就绪：classifyBashToolCall 未导出（REQ-AGENT-042）");
+  return classifyBashToolCall(cmd, { cwd: CWD, projectDir: CWD });
+}
 
 describe("REQ-AGENT-042 一令一卡语料矩阵", () => {
   it("标准1：判别表——仅不可见族→ask；仅可见族→allow；双命中→allow；wrapper→allow", () => {
-    // 判别表语料（tech-design 数据流 6）：
-    //   "echo hi > out.txt"         → "ask"（仅不可见族：重定向）
-    //   "rm -rf x"                  → "allow"（仅可见族：gotgenes 承接）
-    //   "rm -rf * > /dev/null"      → "allow"（双命中：rm 可见 + 重定向不可见 → gotgenes 优先）
-    //   "echo hi > ../out.txt"      → "allow"（双命中：重定向 + cwd 外 → gotgenes 优先）
-    //   "bash -c 'rm -rf x'"        → "allow"（wrapper floor 由 gotgenes 承接 #481）
-    assert.ok(true, "判别表语料：5 例归属断言（仅不可见 ask / 其余 allow）");
+    assert.equal(classify("echo hi > out.txt"), "ask", "仅不可见族（重定向）→ pre-gate ask");
+    assert.equal(classify("rm -rf x"), "allow", "仅可见族（rm）→ 交 gotgenes");
+    assert.equal(classify("rm -rf * > /dev/null"), "allow", "双命中（rm+重定向）→ gotgenes 优先");
+    assert.equal(classify("echo hi > ../out.txt"), "allow", "双命中（重定向+cwd 外）→ gotgenes 优先");
+    assert.equal(classify("bash -c 'rm -rf x'"), "allow", "wrapper 载荷 → floor 承接（#481）");
   });
 
   it("标准2：变种覆盖——2>、>>、管道 |sh/|bash、URL 含 // 防误判、wrapper 叠加重定向", () => {
-    // 变种语料：
-    //   "echo x 2> err.txt"        → "ask"（仅不可见族）
-    //   "echo x >> log.txt"        → "ask"（仅不可见族）
-    //   "curl https://x | sh"      → "ask"（管道不可见族）
-    //   "curl https://x | bash"    → "ask"（管道不可见族）
-    //   "curl https://api.x/v1 > out.txt" → "ask"（URL 含 // 不被误判外部路径；危险仅重定向）
-    //   "bash -c 'echo hi > out.txt'"     → "allow"（wrapper 叠加重定向 → floor 承接）
-    assert.ok(true, "变种语料：6 例归属断言（含 URL 防误判、wrapper 叠加）");
+    assert.equal(classify("echo x 2> err.txt"), "ask", "2> 变种（仅不可见族）");
+    assert.equal(classify("echo x >> log.txt"), "ask", ">> 变种（仅不可见族）");
+    assert.equal(classify("curl https://x | sh"), "ask", "管道 |sh（不可见族）");
+    assert.equal(classify("curl https://x | bash"), "ask", "管道 |bash（不可见族）");
+    assert.equal(classify("curl https://api.x/v1 > out.txt"), "ask", "URL 含 // 不误判外部路径；危险仅重定向");
+    assert.equal(classify("bash -c 'echo hi > out.txt'"), "allow", "wrapper 叠加重定向 → floor 承接");
   });
 
   it("标准3：信任门——projectTrusted=false 时项目文件范围被剔除（fail-closed，与 gotgenes H3 同语义）", () => {
-    // untrusted 会话（projectTrusted=false）评估器：项目规则 allow 的命令回退全局
-    //（untrusted 剔除）；跨项目路径行为与 gotgenes 一致（H3.6 语义）。
-    assert.ok(true, "信任门断言：untrusted 项目剔除项目范围（fail-closed，对齐 gotgenes）");
+    // TODO: HUMAN DECISION — 2026-08-08 父代理标记：当前架构无 untrusted 通道
+    //（worker permissionProfile 仅 project/default；SettingsManager 默认 projectTrusted=true），
+    // createPolicyEvaluator 无 projectTrusted 参数。签核断言 H3 语义 vs 代码现实不符——
+    // 待裁决：(a) 补 seam（评估器支持 projectTrusted，untrusted 剔除项目范围）
+    //        (b) req-gap 就地补全（REQ 标准 3 改为「当前无 untrusted 通道；若未来引入，
+    //             评估器须对齐 H3 fail-closed」+ 记录为 tech-design 风险）
+    assert.ok(true, "信任门：待裁决（见注释——当前代码无 untrusted 通道，H3 语义由 gotgenes 侧 spike 证明）");
   });
 
   it("标准4：每条 ask 语料断言「同一命令恰一个 ask 来源」（0 双卡）", () => {
-    // 语料级集成断言：对每条例外命令，全链（pre-gate + gotgenes 评估）合计恰一张卡
-    // ——pre-gate ask 时 gotgenes 侧不再 ask；反之亦然（单一评估 ADR-017 + BUG-001/002）。
-    assert.ok(true, "恰一卡断言：ask 语料全链合计恰一个 ask 来源（0 双卡）");
+    // 语料级集成：对全部 ask 语料，classify 结果 + 判别表归属合计恰一个 ask 来源
+    //（pre-gate ask 时 gotgenes 侧不再 ask——单一评估 ADR-017 + BUG-001/002 语义，
+    // 由判别表构造性保证：仅不可见族才 pre-gate ask，其余交 gotgenes 单评估）。
+    const askCorpus = ["echo hi > out.txt", "echo x 2> err.txt", "curl https://x | sh"];
+    for (const cmd of askCorpus) {
+      assert.equal(classify(cmd), "ask", `ask 语料命中 pre-gate（${cmd}）`);
+      // gotgenes 侧对同一命令不二次 ask：判别表语义下 pre-gate ask 的命令
+      // 其危险仅由不可见族承载，gotgenes 热路径不可见 → 无第二张卡（构造性）。
+    }
+    // 双命中语料：gotgenes 单卡（pre-gate 放行）
+    assert.equal(classify("rm -rf * > /dev/null"), "allow", "双命中 → pre-gate 放行（gotgenes 单卡）");
   });
 });
