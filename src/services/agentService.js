@@ -1053,8 +1053,39 @@ function createProcessAgentService(options = {}) {
         }
         const session = sessions.get(spaceKey);
         if (!session) {
-          reject(noSessionError());
-          return;
+          // 懒恢复入口（REQ-AGENT-035 标准 5 / 038 标准 3，数据流 3）：无句柄但
+          // store 有行（历史/被淘汰会话）→ getOrCreate → 建句柄 → 重发
+          // session-config（同 sessionRef，世代不变）→ 继续 prompt（worker 侧
+          // SessionManager.open 恢复上下文）。store 无行（从未存在/孤儿已删）→
+          // E-AGENT-NO-SESSION（不复活）。
+          const store = getStore();
+          const info = store ? store.getOrCreate(spaceKey, { sessionDir }) : null;
+          if (!info?.sessionRef) {
+            reject(noSessionError());
+            return;
+          }
+          const settings = settingsService.loadSettings();
+          const agentCfg = settings.agent ?? {};
+          const provider = agentCfg.provider || "deepseek";
+          const gen = generationFromRef(info.sessionRef);
+          generation.set(spaceKey, gen);
+          const keyRef = keyRefFor(provider, gen);
+          const lazyHandle = createSessionHandle({
+            spaceKey,
+            provider,
+            model: DEFAULT_MODELS[provider] ?? provider,
+            keyRef,
+            identity: agentCfg.identity,
+            sessionRef: info.sessionRef,
+          });
+          if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
+            try {
+              const k = decryptSecret(agentCfg.apiKeyEncrypted);
+              if (k !== undefined) keySecrets.set(keyRef, k);
+            } catch { /* 未配置语义保持（不注入） */ }
+          }
+          sessions.set(spaceKey, lazyHandle);
+          sendToChild(buildConfigMessage(spaceKey, lazyHandle));
         }
         // 条目携带 text/sessionKey/seq：evicted 重投（接口 3）需取该 key 最早
         // 在途 prompt 并重投其文本；seq 单调递增供「最早在途」判定。
