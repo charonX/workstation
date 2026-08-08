@@ -155,6 +155,7 @@ capability/entity 落位：`agent-dialogue/conversation-space`（生命周期/�
 | 语料矩阵覆盖双确认家族全部变种 | ④回归无牙，变种漏网 | TECH-DESIGN（语料补充，不动结构） | 能（语料先行 spike） |
 | gotgenes 上游 schema 稳定 | 生成器输出与新版 schema 不符 | TECH-DESIGN（生成器跟进） | 能（/sync-refs 时检查） |
 | 同组单活无误伤场景（同组确无双热需求） | 用户同组并行工作流被冷却 | PRD（B3 语义收窄/放宽） | 不能（需真实使用反馈，REFLECT 观察项） |
+| 信任门（2026-08-08 req-gap 裁决入表）：当前架构无 untrusted 通道（createPolicyEvaluator 无 projectTrusted 参数；worker permissionProfile 仅 project/default；项目空间全 trusted——H3 的 projectTrusted 为 gotgenes 内部选项） | 未来若引入 untrusted 项目通道，评估器若不剔除项目文件范围则违反 H3 fail-closed 语义 | TECH-DESIGN（届时按 H3 语义补评估器参数与判别） | 能（引入 untrusted 通道时 spike 验证） |
 
 ## 范围外与约束
 

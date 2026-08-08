@@ -109,7 +109,7 @@
 验收标准：
 1. 判别表语料断言：仅不可见族（`echo hi > out.txt`）→ pre-gate `ask`；仅可见族（`rm -rf x`）→ pre-gate 放行；双命中（`rm -rf * > /dev/null`、`echo hi > ../out.txt`）→ pre-gate 放行（gotgenes 优先单卡）；wrapper 载荷（`bash -c`/`eval`）→ pre-gate 跳过。
 2. 变种覆盖：`2>`、`>>`、管道 `|sh`/`|bash` 组合、URL 含 `//` 防误判、wrapper 叠加重定向。
-3. 信任门：projectTrusted=false 时项目文件范围被剔除（与 gotgenes H3 fail-closed 同语义），评估器与 gotgenes 取舍一致。
+3. 信任门（2026-08-08 req-gap 就地补全，人裁决）：当前架构**无 untrusted 通道**——`createPolicyEvaluator` 无 `projectTrusted` 参数、worker permissionProfile 仅 project/default、项目空间全 trusted（H3 的 projectTrusted 为 gotgenes 内部选项，从未设置 false）。标准改为：**若未来引入 untrusted 项目通道，评估器须对齐 gotgenes H3 fail-closed 语义**（untrusted 时项目文件范围被剔除）；当前 trusted 面行为与 gotgenes 一致由既有 permissionPolicy.test.js 覆盖。此裁决记入 tech-design 风险表。
 4. 每条 ask 语料断言"同一命令恰一个 ask 来源"（0 双卡）。
 
 - seam/测试：`tests/capabilities/agent-dialogue/conversation-space/2026-08-07-pi-agent-consolidation/api/permissionCorpus.test.js`
