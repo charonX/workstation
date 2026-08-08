@@ -13,7 +13,7 @@
 | 3 | REQ-AGENT-038 | 水合窗口规则化（agentService 面，含 035 主进程集成面） | 2 | **complete**（本 slice commit） |
 | 4 | REQ-AGENT-041/042 | 权限缝（policyRules+生成器+配平+语料矩阵） | — | pending |
 | 5 | REQ-AGENT-045/046 | 文档（ADR-019/020 + CONTEXT 术语归位） | — | **complete**（本 slice commit） |
-| 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | **complete**（验证切片：实现零改动，确认链路无回归；2 个新 E2E 签核文件测试侧偏差 D1-D5 记录待父代理裁决） |
+| 6 | REQ-AGENT-043/044 | E2E T-7/T-9 全链（真实 Electron） | 2,4 | **complete**（验证切片 + 收尾：注入缝 [build] + 生产缺陷修复 2 处 + E2E D1-D5 就地补全 [test]；6/6 E2E 真实跑绿，见下「Slice 6 收尾」） |
 
 ## 关键 seam 契约速记（供子代理简报引用）
 
@@ -377,10 +377,59 @@ PRD 对齐子代理审查 Slice 2 实现与 PRD F3/E1/E5、REQ-AGENT-035 标准 
 
 ---
 
+### Slice 6 收尾：T-7/T-9 E2E 真实跑绿（2026-08-08，人裁决「新 seam 方案」）
+
+**人裁决**：新增可编程工具调用注入缝（FAUX 下可指定工具调用序列），T-7/T-9 验证真实「agent 发起」全链；业务测试文件按 test-gap 就地补全（断言语义不变，接线/locator/seam 对齐）。
+
+**实现文件**（[build] 0210088，仅 `src/agent/worker.js` 三处）：
+
+1. **可编程工具调用注入缝**（REQ-AGENT-043/044 测试 seam，FAUX 专属，生产零影响）：
+   - 环境变量 `OPC_FAUX_TOOL_SEQUENCE`（JSON 数组 `[{ tool, args }]`）→ worker 每次 prompt 处理（FAUX 回声路径）按序列发起工具调用：FAUX 模型响应携带 `fauxToolCall` 块 → pi 模型循环经工具面**真实执行**（生产 confirm/授权桥链：gotgenes gate → 授权桥 permission-ask / pre-gate → 确认卡 → 决议 → 执行 → 工具结果入上下文 → 回声回投，零短路）；序列耗尽回落确定性回声；
+   - 设计落点：工具调用起源在模型循环，worker 响应队列处注入最贴近「agent 主动发起」（若放 toolAdapter 需绕过模型循环，语义不符）；`fauxToolCall` 为 pi-ai 原生 API（响应可含 ToolCall 块，循环经 `toPiToolDefinitions.execute` 走生产执行面）。
+2. **生产缺陷修复 1（noTools 语义，E2E 实证）**：SDK 0.83.0 下 `noTools:"all"` → `allowedToolNames=[]`（空数组 truthy → 空 Set）→ `isAllowedTool` 全部过滤 → agent 模型拿不到任何工具（tool_call 永不发生，模型循环回 "Tool bash not found"）——agent 主动发起 confirm 级工具调用的生产链整体失效。改经 `tools: <自定义工具名清单>` 显式激活（语义与 noTools:"all" 意图一致：只暴露自定义工具面，builtin 同名项被自定义定义覆盖、未列名 builtin 不激活）。
+3. **生产缺陷修复 2（确认链死锁，E2E 实证）**：`confirm-request-ack` / `permission-decision` 为纯 promise resolve（同步、不触会话状态），原经全局串行队列 → 队列被在途 prompt 占住 → 回执永不处理 → agent turn 永久悬挂（实证：卡片已决议「已确认并执行」但执行永不发生、发送按钮恒置灰）。与 ping 同型带外处理。
+
+**E2E 修正记录**（[test] 242ec2a，D1-D5 处置；断言语义不变）：
+
+| # | 偏差 | 处置 |
+|---|---|---|
+| D1 | 启动接线缺失（裸 page + goto） | startElectronApp 夹具（同 assistantConfirm）+ seedAgentConfig + API 建项目/项目会话 + 打开会话再发消息；注入缝 env 经 extraEnv 透传 |
+| D2 | `getByTestId("confirm-card")` 无对应元素 | 改 `[data-confirm-card]`（既有已验收约定） |
+| D3 | `/批准\|允许/` 永不匹配 | `[data-testid='confirm-approve-button']`（「确认执行」）/ `[data-testid='confirm-reject-button']`（「拒绝」） |
+| D4 | `[data-testid*='confirm']` 计数匹配 2 按钮 | 恰一卡改 `[data-confirm-card]` toHaveCount(1) |
+| D5 | FAUX 下 agent 从不调工具 | 注入缝（见上）；测试路径 = 项目空间（write/bash 工具面）→ gotgenes gate / pre-gate → 授权桥 → 确认卡 → 决议 → 执行 → fs 副作用断言 + 回声回投 |
+
+另：标准3 `../` 相对重定向目标经「项目 localPath 嵌套子目录」落在本测试唯一临时目录（多文件并行不撞车）。
+
+**测试命令与输出摘要**（先 `npm run rebuild:electron`；E2E 跑完切回 `rebuild:node` 再跑单测——ABI 互斥备忘见 testing.md）：
+
+| 命令 | 结果 |
+|---|---|
+| `npx playwright test .../2026-08-07-pi-agent-consolidation/e2e/`（2 文件 6 用例） | **6/6 pass（7.8s）**——T-7 标准1/2/3 + T-9 标准1/2/3 全绿（真实 Electron） |
+| 回归 `.../2026-08-02-ui-copilot/e2e/assistantConfirm.test.cjs`（4 用例） | 4/4 pass（9.1s）——既有确认卡链路（种子 seam 路径）未回归 |
+| `npm run rebuild:node` + 全量单测（662 用例 151 suites） | **662/662 pass**——注入缝/工具激活/带外回执不破坏 FAUX 对话与既有确认 IPC 腿 |
+| `npx oxlint` 改动文件 | 零告警 |
+| worker 级探针（真实 worker + FAUX + 序列 + 自动 allow） | 写入执行 + 回声回投实证（修复前后对照：修复前 file=MISSING 悬挂） |
+
+**PRD→代码 可追溯性表**：
+
+| PRD 意图 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| B8 T-7 UI confirm 生产全链（REQ-AGENT-043）：agent 发起 confirm 级工具 → IPC confirm-request/permission-ask → 卡 → 批准/拒绝 → 执行/不执行 → 结果回投 | `worker.js`（注入缝 + tools 激活 + 带外回执；confirm 链零改动——链路实证 intact 后接线补齐） | `confirmChainUi.test.cjs` 标准1/2/3（真实 Electron） | COVERED |
+| B9 T-9 bash pre-gate→授权桥→批准→执行全链（REQ-AGENT-044）：副作用 fs 断言、批准前不执行、批准后恰一次（唯一执行者）、恰一卡 | 同上（pre-gate 判别 Slice 4 已锁；授权桥/确认服务既有接线） | `confirmChainBash.test.cjs` 标准1/2/3（fs 副作用断言） | COVERED |
+| 裁决 16：E2E 链路（T-7/T-9 + ADR-017 唯一执行者） | 见上（生产缺陷修复 1/2 使链路真实可达） | 6/6 E2E + assistantConfirm 4/4 + 662/662 | COVERED |
+| 裁决 18：回归保全——既有测试不修改、水位不退 | 修复仅 worker.js 三处（注入缝 FAUX 专属 + 两处生产缺陷）；既有测试零修改 | assistantConfirm 4/4 + 全量 662/662 不修改全绿 | COVERED |
+| REQ-AGENT-012/032/033 工具面契约（CLI + read/write/bash 真实可调） | `worker.js` tools 激活修复（原 noTools 语义下工具面整体失效） | T-7/T-9 E2E 实证（write/bash 真实执行） | COVERED（E2E 首证） |
+
+**refactor 结果**：无（worker.js 三处局部改动 + 2 E2E 文件重写；未触发 refactor 轮）。
+
+
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v8 | 2026-08-08 | Slice 6 收尾记录：可编程工具调用注入缝（OPC_FAUX_TOOL_SEQUENCE，FAUX 专属）+ 生产缺陷修复 2 处（noTools 语义致工具面整体失效 / confirm-request-ack·permission-decision 队列死锁）——T-7/T-9 6/6 E2E 真实跑绿（真实 Electron），assistantConfirm 4/4 + 全量 662/662 不修改全绿；E2E D1-D5 处置表 + PRD→代码可追溯性表（B8/B9 COVERED） |
 | v7 | 2026-08-08 | Slice 6 记录：E2E T-7/T-9 验证切片（实现零改动）——确认链路无回归（assistantConfirm 4/4 绿 + diff 0 功能改动 + 662/662 含 IPC 腿）；2 个新 E2E 签核文件 6/6 在 page.goto 即失败（测试侧偏差 D1-D5 记录：启动接线/locator D2-D4/seam D5），待父代理 /test-author 重写；PRD→代码可追溯性表 |
 | v6 | 2026-08-08 | Slice 5 记录：ADR-019（维持单进程 + 重估触发条件 + 不变关系）/ ADR-020（权限单一真源化 + 修订 ADR-017 关系）+ adr/README 索引 +2 + CONTEXT.md 术语归位（agent 三义 + 六术语）+ docAssets 5/5 与 policyCodegen 标准6 转绿 + 全量 662/662 + PRD→代码可追溯性表 |
 | v5 | 2026-08-08 | Slice 4 记录：权限缝（policyRules 规则表唯一真源 + 评估器消费规则表 + gen-agent-policy 生成器 + golden 重生成 -7 不可见族/+2 pnpm 补全）+ 占位断言待强化清单 + PRD→代码可追溯性表 |
