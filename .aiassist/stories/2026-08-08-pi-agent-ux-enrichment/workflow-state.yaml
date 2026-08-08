@@ -5,7 +5,7 @@ story_id: 2026-08-08-pi-agent-ux-enrichment
 intention: >-
   PI agent 对话在本机 UI 会话区只有纯文本回显，读长回复费劲、工具调用零呈现、代码无高亮——需要一次对话输出的富呈现升级（GFM/高亮/Mermaid/公式/图片/工具折叠块），对齐 pi-web 式工作台体验。
 
-phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA           # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-08
@@ -17,6 +17,8 @@ history:
   - {at: 2026-08-08, from: DESIGN, to: TECH-DESIGN, note: "tech-design 三轮单题收敛：①消息模型元素类型化（kind:text/tool，事件序=渲染序；历史对齐零工具块）/ ②高亮库 highlight.js（自动检测硬需求+轻量+双主题）/ ③图片项目目录白名单（历史留存防敏感影像入史）。工具事件契约实证：toolCallId 存在（start/end 携带），error 无 id → 关联最近 running 块。依赖 spike PASS（react-markdown 10 兼容 React 19，全纯 JS）。ADR-021 计划（对话渲染安全边界）。PRD 无需反向更新 → tech-design.md v0.1"}
   - {at: 2026-08-09, from: TECH-DESIGN, to: CRYSTALLIZE, note: "review-tech WARN（0 阻塞 6 IMPORTANT+4 WARN+2 SUGGESTION）全修复：三裁决（工具事件加法扩展/补裸路径识别/项目内绝对可渲染）+ I-2 error 终态双保险 + I-3 图片主进程 HTTP API→blob URL + I-6 mermaid securityLevel strict + W-1 mermaid 流式字面量 + W-3 tokens.css 第三块 + S-1/S-2。tech-design v0.2 + PRD v0.2 → 结晶 B1-B8+I-1 → REQ-AGENT-047~055（requirements v1, hash dfd35b8a, M1/M2 留 PRD）。渲染断言策略：真实 Electron E2E（seed 消息 + 复用 OPC_FAUX_TOOL_SEQUENCE 注入缝），不引入组件测试框架。能力地图登记"}
   - {at: 2026-08-09, from: CRYSTALLIZE, to: TEST, note: "test-author 骨架生成：4 测试文件（3 E2E + 1 api），全 node --check 通过；断言直接写实（吸取上 story 占位教训），待签。test-plan.md 落盘（seam 依赖：startElectronApp extraEnv 透传 / OPC_FAUX_TOOL_SEQUENCE 复用 / markdown seed 经 FAUX 回声 / locator 约定待实现接线）。无人工(仅视觉)项（配色观感留 REFLECT）"}
+  - {at: 2026-08-09, from: TEST, to: BUILD, note: "门 1 签核通过（人逐项确认 6 项 TODO）：MD_FIXTURE/STREAM_FIXTURE/locator 四属性/三处接线强化/16 用例断言/依赖引入。commits: c0da2ec[docs] + 116591c[ux] + 1464be4[test] assertion-signoff + 47a9079[bootstrap]。解锁 BUILD"}
+  - {at: 2026-08-09, from: BUILD, to: QA, note: "BUILD 完成（7 切片）：S1 Markdown 管线(react-markdown+remark-gfm+转义, 打包兼容验证) / S2 高亮(hljs 围栏+auto+双主题, 安全路线: 库内转义+只喂产物) / S3 worker 转发加法扩展(055 转绿) / S4 工具折叠块(kind:tool+三态+error 终态+interrupted, 13/13 自验) / S5 Mermaid(strict+暗色配色+流式字面量)+KaTeX(19/19 浏览器 harness) / S6 图片(主进程白名单 API 22/22+blob URL+裸路径识别) / S7 E2E 接线(12/12 绿+回归 12/12 含 confirmChain 首次回归)。单测 666/666 全绿。test-gap 就地补全 1（workerToolEventExt seam 三缺陷——监听句柄/注入缝/字段集）。M1/M2 待 QA 验证"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
