@@ -11,7 +11,7 @@
 | 1 | REQ-AGENT-047/053 | 依赖引入 + Markdown 管线（react-markdown+remark-gfm+HTML 转义）+ 消息模型 kind:text 接入 MessageList | — | done（2026-08-09） |
 | 2 | REQ-AGENT-048 | 代码高亮（highlight.js 围栏+auto+双主题 CSS） | 1 | done（2026-08-09） |
 | 3 | REQ-AGENT-055 | worker 工具事件转发加法扩展（start+input/end+output+isError） | — | done（2026-08-09；实现+harness 验证完成，业务测试 seam 待 [test] 微调，见 Slice 3 记录） |
-| 4 | REQ-AGENT-052 | 工具折叠块（消息模型 kind:tool + SSE 消费 + ToolCallBlock 三态） | 1,3 | pending |
+| 4 | REQ-AGENT-052 | 工具折叠块（消息模型 kind:tool + SSE 消费 + ToolCallBlock 三态） | 1,3 | done（2026-08-09） |
 | 5 | REQ-AGENT-049/050 | Mermaid（securityLevel strict + 流式字面量）+ KaTeX | 1 | pending |
 | 6 | REQ-AGENT-051 | 图片（主进程 HTTP API + 白名单 + 裸路径识别） | 1 | pending |
 | 7 | REQ-AGENT-054 | E2E 接线（3 个 E2E 跑绿）+ 主题切换 + 历史统一管线验证 | 全部 | pending |
@@ -194,6 +194,62 @@
 
 ---
 
+### Slice 4（REQ-AGENT-052 工具折叠块）— 2026-08-09
+
+**实现 commit**：`[build] slice4: ...`（见 git log）＋ `[docs] slice4 收尾`（本记录）
+
+**实现文件**（Rule 0.5：仅此四处）：
+
+| 文件 | 变更 | 说明 |
+|---|---|---|
+| `src/renderer/pages/Assistant.jsx` | 改 | SSE 消费 tool_execution_start/end/error（现零消费 → 新增分支，纯归约函数 reduceToolEvent 模块级导出）；text_end 内 markInterruptedTools 防御 |
+| `src/renderer/components/assistant/ToolCallBlock.jsx` | 新增 | 接口 3 组件：三态渲染（收起=工具名+摘要+chevron / 展开=输入/输出/耗时 / 错误=默认展开+error 色+「执行失败」徽标）；interrupted 弱化态；locator 契约 4 项 |
+| `src/renderer/components/assistant/MessageList.jsx` | 改 | kind:"tool" → ToolCallBlock（原占位 null 替换）；tool 气泡独立类 tool-bubble |
+| `src/renderer/components/assistant/assistant.css` | 改 | tool-block 样式块（对齐 assistant-rich.html：border/radius/header hover/chevron 旋转/error 色 --ch-error/超长输出折叠内滚动 max-height 240px） |
+
+**SSE 消费语义**（tech-design 数据流 3/4 / 接口 1 全落）：
+
+| 事件 | 处理 |
+|---|---|
+| `tool_execution_start` | append `{kind:"tool", id:toolCallId, name, input, status:"running", startedAt}`（输入摘要截断 ≤80 在展示层）；id 缺失防御兜底 `tool-<ts>` |
+| `tool_execution_end` | 按 toolCallId 更新 `{output, status: isError? "error" : "completed", durationMs = now - startedAt, interrupted:false}`；**isError:true → error 态**（I-2）；**error 终态**：块已 error 时其后 completed end 不降级（保留 errorCode/errorMessage） |
+| `tool_execution_error` | 无 toolCallId（toolAdapter.js:359 实证）→ **倒序扫匹配该 turn 最近 running 块**；SSE 未来补 toolCallId 则优先精确匹配（双分支）；error 更新带 errorCode/errorMessage/durationMs |
+| `text_end` | **markInterruptedTools**：仍 running 的块标记 `interrupted:true`（状态枚举保持签核契约 running/completed/error 不变——以 running+interrupted 表达，视觉态由组件渲染"已中断"；迟到 end/error 仍可正确收尾并清除标记） |
+
+**interrupted 表达决策**（实现者定项）：状态枚举 `"running"|"completed"|"error"` 是签核契约（接口 1），不新增 `"interrupted"` 枚举值——以 `running + interrupted:true` 标记表达。理由：① 契约枚举零偏离；② 迟到 end/error 语义更正确（interrupted 块仍可被迟到 error 命中升级为 error、被迟到 end 收尾为 completed）。E2E 只断言视觉态（非 running），不触碰状态值。
+
+**测试摘要**：
+
+- lint：0 error（改动文件零告警）。
+- `vite build`（renderer）：通过——ToolCallBlock 打包兼容（899.06kB/gzip 269.06kB，较 Slice 2 基线 +3.5kB，chunk 警告为既有量级）。
+- **组件链自验**（vite ssrLoadModule + react-dom/server + 纯归约函数断言）：**13/13 PASS**，覆盖：
+  - 消息模型演化：start→end 成功（id/status/input/output/durationMs）／isError:true end → error 态／**start→error→end 序贯后块仍 error（error 终态）**／**error 无 id 匹配最近 running（多块逐次命中）**／error 带 id 精确匹配（未来优先分支）／**text_end 中断 + 迟到 end 收尾**／防御路径（缺 id 兜底、无匹配 no-op）。
+  - 三态渲染 SSR：收起态（无 open 类、body 隐藏类、无徽标）／展开态（输入/输出/耗时 sections）／**错误态默认展开 + error 类 + 「执行失败」徽标 + 错误 section**／interrupted 弱化态（「已中断」提示）／摘要截断 ≤80 字符／MessageList 分流（tool→ToolCallBlock、text→MarkdownRenderer、**历史无 tool 块**）。
+  - 点击展开/收起与 running→error 自动展开的交互路径由真实浏览器 E2E（toolCallBlock 用例，Slice 7 接线）覆盖——SSR 已断言错误态默认展开的渲染契约。
+- 单元回归 `npm run test:unit`（rebuild:node + 全量）：**tests 666 / pass 666 / fail 0 全绿**（workerToolEventExt 补全后基线全绿，本切片零回归）。
+- E2E：toolCallBlock 3 用例按规划留 Slice 7 统一接线（startElectronApp extraEnv 注入缝确认）。
+
+**PRD→代码 可追溯性表**（B6 / REQ-AGENT-052，逐条）：
+
+| PRD/REQ 条目 | 落点（文件/机制） | 说明 |
+|---|---|---|
+| B6 / F4 步骤 1 折叠块出现+默认收起 | Assistant.jsx reduceToolEvent start 分支 + ToolCallBlock 收起态 | start 创建 tool 元素；无 open 类 → body display:none（E2E 标准 1 断言面） |
+| F4 步骤 2 点击展开显示输入/输出/耗时 | ToolCallBlock header onClick 切换 + body sections | 纯组件状态；E2E 标准 2 断言面（body 含 "hello"） |
+| F4 步骤 3 错误默认展开标红 | ToolCallBlock isError → open 初值 + useEffect 自动展开 + error 类/徽标 | start→error 状态迁移也强制展开（useEffect on isError）；E2E 标准 3 断言面 |
+| REQ-AGENT-052 标准 4 error 终态 | reduceToolEvent end 分支 `m.status === "error" → 不降级` | start→error→end 序贯后仍 error（I-2 双保险，harness 断言） |
+| REQ-AGENT-052 标准 5 error 无 id 匹配最近 running | reduceToolEvent error 分支倒序扫 | toolAdapter.js:359 实证无 toolCallId；工具串行执行语义安全；未来补 id 精确匹配优先 |
+| REQ-AGENT-052 标准 6 text_end 中断 | Assistant.jsx text_end → markInterruptedTools | running 块标 interrupted；组件渲染"已中断"弱化态（非 running 视觉态）；迟到 end 收尾 |
+| 接口 1 tool 元素生命周期 | reduceToolEvent / markInterruptedTools（模块级导出，SSR 自验 seam） | start 创建 → end|error 更新 → error 终态 → interrupted 防御；状态枚举契约零偏离 |
+| 接口 3 ToolCallBlock props | ToolCallBlock.jsx `{tool, defaultOpen?}` | 三态渲染 + 交互；props 签名与 tech-design 一致 |
+| 数据流 3/4 SSE 消费 | Assistant.jsx handleEvent tool 分支 | 离散增量不经 rAF 缓冲（text 路径不变）；切会话 setMessages 全量替换自然清理（无需额外清理） |
+| locator 约定（signoff 裁决 3） | ToolCallBlock `data-tool-block/header/body/error-badge` | 与 e2e/toolCallBlock.test.cjs 常量逐一对应（实现时对齐验证） |
+| B8 历史无 tool 元素 | 历史对齐只产 kind:"text"（Slice 1 既有）+ MessageList 分流 | 渲染面断言：历史消息 SSR 无 data-tool-block（richRender 054 标准 3 断言面） |
+| 硬约束：事件流/存储零改动 | 未触碰 worker/存储/API | 渲染层纯前端加法；Slice 3 事件字段直接消费 |
+
+**refactor**：本切片无独立 refactor 轮（改动面：1 新组件 + 2 文件接线 + 1 CSS 块；归约函数/组件 memo 为内置形态）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
@@ -201,3 +257,4 @@
 | v1 | 2026-08-09 | 初始化：切片规划 + seam 速记 |
 | v2 | 2026-08-09 | Slice 2 完成记录：高亮安全路线实证、M2 初判（16 语料）、PRD→代码 可追溯性表 |
 | v3 | 2026-08-09 | Slice 3 完成记录：055 转发加法扩展（实证 + 实现 + harness 23/23 + seam 三缺陷报告） |
+| v4 | 2026-08-09 | Slice 4 完成记录：052 工具折叠块（SSE 消费 + 三态组件 + error 终态 + interrupted 防御，harness 13/13 + 666 全绿） |
