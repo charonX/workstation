@@ -65,6 +65,32 @@ describe("REQ-AGENT-037 同组单活", () => {
     assert.deepEqual(evicted, ["ui:project:p1:s1"], "流结束立即淘汰，不等 TTL（clock 未推进）");
   });
 
+  it("标准3（PRD 对齐修复 M1）：pending 窗口内流式 touch 后流结束仍应淘汰（会话自身事件不清 pending）", () => {
+    const evicted = [];
+    const clock = makeClock();
+    const lc = createSessionLifecycle({ now: clock.now, onEvict: (k) => evicted.push(k) });
+    const a = makeEntry("ui:project:p1:s1", { streaming: true });
+    lc.register("ui:project:p1:s1", a);
+    lc.register("ui:project:p1:s2", makeEntry("ui:project:p1:s2"));
+    lc.evictGroupPeers("ui:project:p1:s2"); // s2 活动 → s1 流式中标记延迟淘汰
+    assert.deepEqual(evicted, [], "流式中不立即淘汰（标记延迟）");
+    // s1 流式事件继续 touch（clearPending:false，会话自身活动）——延迟淘汰标记保留
+    lc.touch("ui:project:p1:s1", { clearPending: false });
+    a.streaming = false; // 流结束
+    lc.sweep();
+    assert.deepEqual(evicted, ["ui:project:p1:s1"], "流式 touch 不清 pending → 流结束仍淘汰，组内回 ≤1");
+    // 对照：用户新活动 touch（默认 clearPending=true）→ 清延迟标记，流结束不被追偿
+    const b = makeEntry("ui:project:p1:s3", { streaming: true });
+    lc.register("ui:project:p1:s3", b);
+    lc.register("ui:project:p1:s4", makeEntry("ui:project:p1:s4"));
+    lc.evictGroupPeers("ui:project:p1:s4"); // s4 活动 → s3 流式中标记延迟（s2 非流式被冷却）
+    lc.touch("ui:project:p1:s3"); // 用户新活动（默认 clearPending=true）→ 清延迟标记
+    b.streaming = false;
+    lc.sweep();
+    assert.deepEqual(evicted, ["ui:project:p1:s1", "ui:project:p1:s2"], "用户 touch 清 pending → s3 流结束不被淘汰");
+    assert.equal(lc.has("ui:project:p1:s3"), true, "s3 保留（用户回来了）");
+  });
+
   it("标准4：跨组不互汰——项目A会话活动不影响 项目B/copilot/飞书 会话热度", () => {
     const evicted = [];
     const lc = createSessionLifecycle({ onEvict: (k) => evicted.push(k) });
