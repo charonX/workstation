@@ -600,6 +600,41 @@
   line-height: 1.6;
   display: block;
 }
+/* 代码高亮（B2 / REQ-AGENT-048）：hljs token 类 → 设计系统五色语义
+   （--ch-code-kw/str/fn/num/cmt，浅/暗/@media 三块已备），双主题随 data-theme 自动切换；
+   观感对齐 ux/assistant-rich.html .hl-kw/.hl-str/.hl-fn/.hl-num/.hl-cmt。
+   scoped 在 .md pre code 内，不落全局。未映射的 token（operator/punctuation/variable）
+   继承 --ch-code-text 基色。 */
+.assistant-zone .md pre code .hljs-keyword,
+.assistant-zone .md pre code .hljs-selector-tag,
+.assistant-zone .md pre code .hljs-built_in,
+.assistant-zone .md pre code .hljs-type {
+  color: var(--ch-code-kw);
+}
+.assistant-zone .md pre code .hljs-string,
+.assistant-zone .md pre code .hljs-regexp,
+.assistant-zone .md pre code .hljs-doctag {
+  color: var(--ch-code-str);
+}
+.assistant-zone .md pre code .hljs-title,
+.assistant-zone .md pre code .hljs-title.function_,
+.assistant-zone .md pre code .hljs-title.class_,
+.assistant-zone .md pre code .hljs-function,
+.assistant-zone .md pre code .hljs-params,
+.assistant-zone .md pre code .hljs-attr {
+  color: var(--ch-code-fn);
+}
+.assistant-zone .md pre code .hljs-number,
+.assistant-zone .md pre code .hljs-literal,
+.assistant-zone .md pre code .hljs-symbol,
+.assistant-zone .md pre code .hljs-meta {
+  color: var(--ch-code-num);
+}
+.assistant-zone .md pre code .hljs-comment,
+.assistant-zone .md pre code .hljs-quote {
+  color: var(--ch-code-cmt);
+  font-style: italic;
+}
 /* 表格（GFM） */
 .assistant-zone .md table {
   margin: var(--ch-space-3) 0;

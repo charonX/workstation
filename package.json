@@ -28,6 +28,7 @@
     "@larksuiteoapi/node-sdk": "1.71.1",
     "better-sqlite3": "^12.11.1",
     "electron-squirrel-startup": "^1.0.1",
+    "highlight.js": "^11.11.1",
     "i18next": "^26.3.5",
     "i18next-browser-languagedetector": "^8.2.1",
     "jiti": "2.7.0",
