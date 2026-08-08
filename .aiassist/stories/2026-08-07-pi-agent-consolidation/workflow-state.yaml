@@ -8,7 +8,7 @@ intention: >-
   有规则级重复确认角落、worker/桥/策略文件职责交叠——需要一次整体的整理与优化，
   而不是继续贴补丁。
 
-phase: TEST        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-07
@@ -21,6 +21,7 @@ history:
   - {at: 2026-08-08, from: PRD, to: TECH-DESIGN, note: "tech-design 四轮单题收敛：①淘汰归属=worker自扫(ADR-015同理直贴着事件源) / ②B3收敛为同组单活(用户提出,取代retireSpaceKey信号;纯函数分组零新IPC,跨组并发) / ③生成器=手动脚本+golden检入+配平(借满gotgenes原生两级分层+信任门) / ④发现水合击穿风险→水合窗口规则化(mtime≤TTL,对齐REQ-AGENT-005标准3「各活跃空间」原意,不改REQ)。PRD反向同步(B3改写、新增B12) → tech-design.md v0.1"}
   - {at: 2026-08-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "review-tech FAIL(2阻塞5警告)修复：阻塞1 keySecrets不随会话淘汰(keyRef共享)/阻塞2 接口3 tombstone判别(孤儿不误复活)；警告全裁决(copilot同规则单热无特殊逻辑、ADR-020独立成文)。tech-design v0.3+PRD v0.3 → 结晶 B1-B12 → REQ-AGENT-035~046（requirements v1, hash 2bc5b491, M1留PRD QA消化）。能力地图登记"}
   - {at: 2026-08-08, from: CRYSTALLIZE, to: TEST, note: "test-author 骨架生成：11 测试文件（8 api + 2 e2e + 1 docAssets 双REQ），全 node --check 通过；断言全部占位待签（ASSERTIONS-SIGNED: false）。test-plan.md 落盘（seam 依赖清单、HTML 原型映射自 ui-copilot assistant.html、REFLECT 人工项、待签清单）。无人工(仅视觉)项——12 REQ 全自动化覆盖"}
+  - {at: 2026-08-08, from: TEST, to: BUILD, note: "门 1 签核通过（人「签核」）：11 文件 44 用例断言全部签核（ASSERTIONS-SIGNED: true），98 处占位清零；signoff.md 18 条裁决落盘（TTL 1h/sweep 60s/LRU 50/组冷却/tombstone 判别/水合窗口/ring 1000/判别表/信任门/E2E 链路/文档断言/回归保全）。commits: 6ab8ab8[docs] + c5331bd[bootstrap] + 005049c[test] assertion-signoff。解锁 BUILD"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
