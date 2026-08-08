@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-07-pi-agent-consolidation/REQ-AGENT-045, 2026-08-07-pi-agent-consolidation/REQ-AGENT-046
-// REQ-VERSION: v1-hash:2bc5b491ca5f1826acb810baef5baacbdb70e369ddb71546103967c9aeccdf8b
+// REQ-VERSION: v1-hash:b8623e43fa224a212bb884effd47066c81d246467aa97a9ff2be12e5c10c3c09
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent

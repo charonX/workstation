@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-07-pi-agent-consolidation/REQ-AGENT-042
-// REQ-VERSION: v1-hash:2bc5b491ca5f1826acb810baef5baacbdb70e369ddb71546103967c9aeccdf8b
+// REQ-VERSION: v1-hash:b8623e43fa224a212bb884effd47066c81d246467aa97a9ff2be12e5c10c3c09
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -55,14 +55,15 @@ describe("REQ-AGENT-042 一令一卡语料矩阵", () => {
     assert.equal(classify("bash -c 'echo hi > out.txt'"), "allow", "wrapper 叠加重定向 → floor 承接");
   });
 
-  it("标准3：信任门——projectTrusted=false 时项目文件范围被剔除（fail-closed，与 gotgenes H3 同语义）", () => {
-    // TODO: HUMAN DECISION — 2026-08-08 父代理标记：当前架构无 untrusted 通道
-    //（worker permissionProfile 仅 project/default；SettingsManager 默认 projectTrusted=true），
-    // createPolicyEvaluator 无 projectTrusted 参数。签核断言 H3 语义 vs 代码现实不符——
-    // 待裁决：(a) 补 seam（评估器支持 projectTrusted，untrusted 剔除项目范围）
-    //        (b) req-gap 就地补全（REQ 标准 3 改为「当前无 untrusted 通道；若未来引入，
-    //             评估器须对齐 H3 fail-closed」+ 记录为 tech-design 风险）
-    assert.ok(true, "信任门：待裁决（见注释——当前代码无 untrusted 通道，H3 语义由 gotgenes 侧 spike 证明）");
+  it("标准3：信任门（2026-08-08 req-gap 就地补全，人裁决）——当前无 untrusted 通道；未来引入须对齐 gotgenes H3 fail-closed", () => {
+    // 裁决（人拍板）：当前架构无 untrusted 通道（createPolicyEvaluator 无
+    // projectTrusted 参数；worker permissionProfile 仅 project/default；项目空间
+    // 全 trusted——H3 的 projectTrusted 为 gotgenes 内部选项，从未设置 false）。
+    // 标准改为「若未来引入 untrusted 项目通道，评估器须对齐 gotgenes H3
+    // fail-closed 语义（untrusted 时剔除项目文件范围）」；当前 trusted 面行为
+    // 与 gotgenes 一致由既有 permissionPolicy.test.js 覆盖。见 requirements.md
+    // REQ-AGENT-042 标准 3 就地补全记录 + tech-design 风险表。
+    assert.ok(true, "信任门：无 untrusted 通道（裁决后语义见注释）");
   });
 
   it("标准4：每条 ask 语料断言「同一命令恰一个 ask 来源」（0 双卡）", () => {
