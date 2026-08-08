@@ -90,7 +90,7 @@
 | cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `tests/capabilities/command-interface/cli/2026-07-29-multi-agent-skills/cli/` | REQ-CLI-001~002 | `cli.test.js`, `skillCli.test.js` |
 
 ### agent-dialogue
-> 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式（含定型：PATCH settings 关 streaming_mode + summary 换正文摘要）、权限策略（gotgenes+授权桥：唯一执行者/单一评估，ADR-017 补充）、会话生命周期（淘汰/懒恢复/水合窗口/同组单活）、权限出厂策略单一真源（规则表+生成配平）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展并验收 2026-08-07；2026-08-07-pi-agent-consolidation 结晶中）
+> 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式（含定型：PATCH settings 关 streaming_mode + summary 换正文摘要）、权限策略（gotgenes+授权桥：唯一执行者/单一评估，ADR-017 补充）、会话生命周期（淘汰/懒恢复/水合窗口/同组单活）、权限出厂策略单一真源（规则表+生成配平）、对话富呈现（GFM/高亮/Mermaid/KaTeX/图片/工具折叠块）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展并验收 2026-08-07；2026-08-07-pi-agent-consolidation 结晶中；2026-08-08-pi-agent-ux-enrichment 结晶中）
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
@@ -102,6 +102,7 @@
 | conversation-space (ui-copilot) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/`, `.../e2e/` | REQ-AGENT-026~034（2026-08-07 验收） | `sessionSpace/sessionReset/sessionMessage/sessionEvents/sessionList/uiConfirmation/skillInjection/workerAssembly/toolSurface/permissionPolicy/authorizerBridge/feishuReadonly.test.js` + E2E `assistantNav/assistantChat/assistantSessions/assistantConfirm/assistantFeishu.test.cjs` |
 | conversation-space (pi-agent-consolidation) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-07-pi-agent-consolidation/api/` | REQ-AGENT-035~042, 045, 046（结晶 v1，未签核） | `sessionIdleEviction/sessionLruCap/sessionGroupCooling/hydrationWindow/sessionLifecycleModule/agentLogsRing/policyCodegen/permissionCorpus/docAssets.test.js`（计划） |
 | confirmation (pi-agent-consolidation) | `tests/capabilities/agent-dialogue/confirmation/2026-08-07-pi-agent-consolidation/e2e/` | REQ-AGENT-043, 044（结晶 v1，未签核） | E2E `confirmChainUi/confirmChainBash.test.cjs`（计划） |
+| conversation-space (ux-enrichment) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-08-pi-agent-ux-enrichment/e2e/`, `.../api/` | REQ-AGENT-047~055（结晶 v1，未签核） | E2E `richRender/toolCallBlock/streamingRender.test.cjs` + api `workerToolEventExt.test.js`（计划） |
 
 ## 能力依赖图
 
