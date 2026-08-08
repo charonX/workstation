@@ -9,7 +9,7 @@
 | # | REQ-ID | 内容 | 依赖 | 状态 |
 |---|---|---|---|---|
 | 1 | REQ-AGENT-047/053 | 依赖引入 + Markdown 管线（react-markdown+remark-gfm+HTML 转义）+ 消息模型 kind:text 接入 MessageList | — | done（2026-08-09） |
-| 2 | REQ-AGENT-048 | 代码高亮（highlight.js 围栏+auto+双主题 CSS） | 1 | pending |
+| 2 | REQ-AGENT-048 | 代码高亮（highlight.js 围栏+auto+双主题 CSS） | 1 | done（2026-08-09） |
 | 3 | REQ-AGENT-055 | worker 工具事件转发加法扩展（start+input/end+output+isError） | — | pending |
 | 4 | REQ-AGENT-052 | 工具折叠块（消息模型 kind:tool + SSE 消费 + ToolCallBlock 三态） | 1,3 | pending |
 | 5 | REQ-AGENT-049/050 | Mermaid（securityLevel strict + 流式字面量）+ KaTeX | 1 | pending |
@@ -86,8 +86,72 @@
 
 ---
 
+### Slice 2（REQ-AGENT-048 代码高亮）— 2026-08-09
+
+**实现 commit**：`[build] slice2: 代码高亮（highlight.js 围栏+auto 检测+双主题 token 映射）(REQ-AGENT-048)`（8c086dd）＋ `[docs] slice2 收尾`（本记录）
+
+**依赖清单**（signoff 裁决 6）：
+
+| 依赖 | 版本 | 用途 | 说明 |
+|---|---|---|---|
+| `highlight.js` | ^11.11.1 | 代码高亮（围栏标记 + highlightAuto 兜底） | 只用 `lib/core` + 26 常用语言注册，不整包引入（tech-design 性能项）；别名覆盖 js/jsx/mjs/cjs、ts/tsx/mts/cts、py、sh/zsh、console/shellsession、yml、md、text/txt |
+
+**实现文件**（Rule 0.5：仅此三处）：
+
+| 文件 | 变更 | 说明 |
+|---|---|---|
+| `src/renderer/components/assistant/MarkdownRenderer.jsx` | 改 | components 注入 `pre`/`code`：围栏语言标记 → hljs.highlight（ignoreIllegals:true）；无标记 → highlightAuto（AUTO_DETECT_SUBSET 23 语言）；无匹配/未注册 → plaintext 兜底（E4）；行内代码不高亮（InPreContext 区分）；输出走 dangerouslySetInnerHTML（安全路线见下） |
+| `src/renderer/components/assistant/assistant.css` | 改 | `.md pre code .hljs-*` → var(--ch-code-kw/str/fn/num/cmt) 五色 token 映射（kw: keyword/selector-tag/built_in/type；str: string/regexp/doctag；fn: title/function_/class_/params/attr；num: number/literal/symbol/meta；cmt: comment/quote 斜体）——双主题随 data-theme 三块自动切换（tokens.css 浅/暗/@media），观感对齐原型 .hl-kw/.hl-str/.hl-fn/.hl-num/.hl-cmt |
+| `package.json` / `package-lock.json` | 改 | + highlight.js |
+
+**高亮安全路线（确认并落地）**：`dangerouslySetInnerHTML` + 依赖 hljs 自身转义，**不做手工预转义**。
+- 实证：hljs v11 `lib/core.js:61 escapeHTML` / `:157 addText → buffer += escapeHTML(text)`——HTMLRenderer 对全部文本先转义（& < > "），value 输出 = 库生成 span + 已转义文本，无原始 HTML。
+- 实测：`<script>alert('xss')</script>` 代码内容 → 输出 `&lt;...&gt;` 实体（span 内），DOM 无 script 元素（SSR 断言）。
+- 若手工先转义再喂 hljs 会双重转义 `&`（`&amp;` → `&amp;amp;`），故不预转义。
+- 检测失败/任何异常 → try/catch 回退 plaintext 原文渲染（React 转义），不抛错（E4 / REQ-AGENT-048 标准 3）。
+
+**测试摘要**：
+
+- lint：0 error（改动文件零告警；既有 warnings 不动）。
+- `vite build`（renderer）：通过——highlight.js core+26 语言打包兼容（150ms；renderer 总包 895.60kB/gzip 268.16kB，含 hljs 增量约 +100kB gzip，chunk>500kB 警告为既有量级，非回归）。
+- SSR 自验（vite ssrLoadModule 真实 MarkdownRenderer）：**10/10 PASS**——```js → code 保留 language-js 类 + hljs-keyword/hljs-number span；无标记 js 代码 → auto 检测出 hljs span；```html 内 `<script>` → 转义实体零注入（无 script 元素）；无标记 `<script>` 块 → 同安全（auto 判 xml + 嵌套 js span）；裸命令（npm install && node build.js）→ 不崩 plaintext；裸日志 → 不崩；行内代码 → 无 hljs span；未知语言围栏 → 不崩兜底；```mermaid 围栏（Slice 5 前）→ 不崩；纯文本段落正常。
+- 单元回归 `npm run test:unit`（rebuild:node + 全量）：**tests 666 / pass 662 / fail 4**——662 既有水位全绿（水位不退 ✅）；fail 4 = 本 story `workerToolEventExt.test.js`（REQ-AGENT-055，Slice 3 seam 依赖实现，与切片规划一致，非本切片回归）。
+- E2E：richRender 高亮用例依赖其他 slice（Mermaid/KaTeX/图片），按规划留 Slice 7 统一接线（054 标准 4 主题切换同仓）。
+
+**PRD→代码 可追溯性表**（B2 本切片范围，逐条）：
+
+| PRD 条目 | 落点（文件/机制） | 说明 |
+|---|---|---|
+| B2 围栏语言标记为主 | MarkdownRenderer `components.code` + hljs.highlight | `language-xxx` → getLanguage（含别名 js/ts/py/sh…）→ 按语言高亮；ignoreIllegals:true 兜 LLM 输出非法语法不抛错 |
+| B2 无标记自动检测兜底 | highlightAuto + AUTO_DETECT_SUBSET | 无语言类围栏块自动检测着色（rel>0）；裸命令/日志低相关命中保留基础着色（B2 目标），完全无匹配 rel=0 → plaintext |
+| B2 浅/暗双主题 | assistant.css .hljs-* → var(--ch-code-*) | 五色语义 token 映射，随 data-theme 浅/暗/@media 三块自动切换（F6 步骤 2 / REQ-048 标准 4 断言面） |
+| F1 步骤 2 代码块高亮 | code 元素保留 language-js 类 + hljs span | E2E richRender 标准 1/2 断言面（`.hljs-keyword` 可见 + `span[class*='hljs']`） |
+| E4 自动检测失败兜底 | try/catch → plaintext 原文 + language-plaintext 类 | 未注册语言/检测无匹配/任何异常 → 不报错、无着色（REQ-048 标准 3 "plaintext 类"） |
+| M2 自动检测质量（验证点） | AUTO_DETECT_SUBSET 设计 | 实测依据见下"M2 初判"；不达标收窄点 = 子集删语言或 rel 阈值上调（一行改动） |
+| §12.1 范围外 1 HTML 不渲染 | dangerouslySetInnerHTML 仅喂 hljs 转义产物 | 零原始 HTML 入 DOM（见安全路线实证） |
+| 接口 2 components 注入 | react-markdown `components={{pre, code}}` | pre>code 围栏块经 InPreContext 与行内 code 区分；行内代码不高亮 |
+| 硬约束：事件流/存储零改动 | 未触碰 worker/存储/API | 纯渲染层加法 |
+
+**M2 自动检测质量初判**（实测 16 语料，子集 23 语言）：
+
+| 语料类型 | 检测结果 | 判定 |
+|---|---|---|
+| 多行真实代码（bash/rust/json/sql/yaml/css/diff） | 正确语言，rel 4-15 | 达标：着色稳定 |
+| 短 js 片段 `const x = 1;` / `git status && git diff` | javascript/bash rel 1 | 正确但低相关（留着色） |
+| 纯命令串 `npm install ... && node build.js` | rel 0 → plaintext | 达标（E4 兜底路径） |
+| py 函数 `def parse(data): ...` | **kotlin rel 5（误判）** | 已处理：kotlin 移出 auto 子集 → python rel 4 正确（```kotlin 围栏仍显式命中） |
+| 裸日志 `INFO: task ...` / 错误日志 / 英文散文 | yaml/css 误判 rel 2-3 | 低相关误染（有基础着色但语义错）；属 hljs 启发式固有边界，QA/REFLECT 观察，不达标再收窄 |
+| go/swift 短片段 | javascript/rust 误判 rel 3-5 | 同上：短片段歧义，多行真实代码正确率明显更高 |
+
+**M2 结论**：多行真实代码检测可靠（高价值面达标）；裸命令 → plaintext 兜底达标；短日志/散文低相关误染为已知边界（B2 已允许"基础着色"语义）。收窄开关：AUTO_DETECT_SUBSET / rel 阈值，均在 `highlightCode()` 一处。
+
+**refactor**：本切片无独立 refactor 轮（改动面：1 组件注入 + 1 CSS 块 + 1 依赖；try/catch 兜底与 memo 为组件内置形态）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v1 | 2026-08-09 | 初始化：切片规划 + seam 速记 |
+| v2 | 2026-08-09 | Slice 2 完成记录：高亮安全路线实证、M2 初判（16 语料）、PRD→代码 可追溯性表 |
