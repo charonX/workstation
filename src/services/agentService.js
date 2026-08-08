@@ -73,6 +73,16 @@ const HEARTBEAT_TIMEOUT_MS = 6000;
 const RESTART_DELAY_MS = 150;
 const MAX_CONSECUTIVE_RESTARTS = 5;
 
+// 日志环形上界（REQ-AGENT-040 标准 1 / 签核裁决 11，D7 拍板）：主进程 logs[]
+// 恒 ≤1000 条，超限覆盖最旧（保留最新尾部）。导出供测试注入共享。
+export const DEFAULT_LOG_RING_LIMIT = 1000;
+
+// 心跳消息类型判别（REQ-AGENT-040 标准 2）：ping/pong 收发不逐条入 logs[]——
+// 仅日志面过滤；看门狗心跳语义（2s ping/pong 收发、入站计存活 ADR-015）不变。
+export function isHeartbeatMessageType(type) {
+  return type === "ping" || type === "pong";
+}
+
 // LLM 重试语义（REQ-AGENT-007 标准 2：408/409/429/5xx 重试，尊重 retry-after；
 // 耗尽后进入错误消息路径）。
 const RETRY_STATUSES = new Set([408, 409, 429]);
@@ -422,6 +432,12 @@ function createProcessAgentService(options = {}) {
   const generation = new Map(); // spaceKey → JSONL 世代（provider/key 变更重建）
   const pendingPrompts = new Map(); // prompt id → { resolve, reject }
   const logs = [];
+  // 环形上界（REQ-AGENT-040 标准 1）：默认 1000（D7 拍板）；options.logRingLimit
+  // 可注入（测试 seam：缩小环形做快速满环断言，或与 DEFAULT_LOG_RING_LIMIT 共享）。
+  const logRingLimit =
+    Number.isInteger(options.logRingLimit) && options.logRingLimit > 0
+      ? options.logRingLimit
+      : DEFAULT_LOG_RING_LIMIT;
 
   // 会话存储（REQ-AGENT-008/009）：SQLite agent_sessions 为真相（W-3），本服务
   // 注册表仅为活跃句柄缓存。未显式注入时按 cwd 派生默认库（随工作目录隔离，
@@ -491,7 +507,14 @@ function createProcessAgentService(options = {}) {
   let consecutiveRestarts = 0;
 
   function log(line) {
-    logs.push(String(line));
+    const text = String(line);
+    // 环形有界（REQ-AGENT-040 标准 1）：超限覆盖最旧（shift 丢弃最旧行），
+    // 恒保留最新 logRingLimit 条——崩溃后可见出事前最近现场（PRD F5 标准 2）。
+    if (logs.length >= logRingLimit) logs.shift();
+    logs.push(text);
+    // 日志收集 seam（REQ-AGENT-040 / test-plan B5）：注入 logSink 行收集器——
+    // 每次入 ring 的行同步转发（测试观察/断言用；生产不注入，零开销）。
+    if (typeof options.logSink === "function") options.logSink(text);
     // 诊断用：agent 子进程 stderr / 生命周期日志同步打到主进程控制台，
     // 让 dev 终端可见（测试 NODE_ENV=test 不输出，避免污染测试流）。
     if (process.env.NODE_ENV !== "test") {
@@ -500,7 +523,9 @@ function createProcessAgentService(options = {}) {
   }
 
   // 日志红线：出站消息只记类型与 sessionKey，绝不含 key 值（签核决策 5）。
+  // REQ-AGENT-040 标准 2：心跳类型（ping/pong）不逐条入 logs[]（业务消息照常）。
   function logSend(msg) {
+    if (isHeartbeatMessageType(msg?.type)) return;
     log(`→ ${msg.type}${msg.sessionKey ? ` session=${msg.sessionKey}` : ""}`);
   }
 
@@ -681,6 +706,8 @@ function createProcessAgentService(options = {}) {
         break;
       case "pong":
         lastPongAt = Date.now();
+        // REQ-AGENT-040 标准 2：心跳收包不逐条入 logs[]——存活判定（入站计存活，
+        // ADR-015）不变，仅日志面过滤。
         break;
       case "config-ack":
         log(`config-ack session=${msg.sessionKey}`);
@@ -978,6 +1005,9 @@ function createProcessAgentService(options = {}) {
       return state === "ready" && !!child && child.exitCode === null;
     },
     logs,
+    // 测试 seam（REQ-AGENT-040 标准 1）：直调日志管线——注入行走同一环形
+    // 有界管线（「注入 1000+N 条」断言用；生产不使用，正常日志仍经 log()）。
+    log,
   };
 
   Object.defineProperty(service, "childPid", {
