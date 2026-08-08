@@ -8,7 +8,7 @@ intention: >-
   有规则级重复确认角落、worker/桥/策略文件职责交叠——需要一次整体的整理与优化，
   而不是继续贴补丁。
 
-phase: BUILD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA           # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-07
@@ -22,6 +22,7 @@ history:
   - {at: 2026-08-08, from: TECH-DESIGN, to: CRYSTALLIZE, note: "review-tech FAIL(2阻塞5警告)修复：阻塞1 keySecrets不随会话淘汰(keyRef共享)/阻塞2 接口3 tombstone判别(孤儿不误复活)；警告全裁决(copilot同规则单热无特殊逻辑、ADR-020独立成文)。tech-design v0.3+PRD v0.3 → 结晶 B1-B12 → REQ-AGENT-035~046（requirements v1, hash 2bc5b491, M1留PRD QA消化）。能力地图登记"}
   - {at: 2026-08-08, from: CRYSTALLIZE, to: TEST, note: "test-author 骨架生成：11 测试文件（8 api + 2 e2e + 1 docAssets 双REQ），全 node --check 通过；断言全部占位待签（ASSERTIONS-SIGNED: false）。test-plan.md 落盘（seam 依赖清单、HTML 原型映射自 ui-copilot assistant.html、REFLECT 人工项、待签清单）。无人工(仅视觉)项——12 REQ 全自动化覆盖"}
   - {at: 2026-08-08, from: TEST, to: BUILD, note: "门 1 签核通过（人「签核」）：11 文件 44 用例断言全部签核（ASSERTIONS-SIGNED: true），98 处占位清零；signoff.md 18 条裁决落盘（TTL 1h/sweep 60s/LRU 50/组冷却/tombstone 判别/水合窗口/ring 1000/判别表/信任门/E2E 链路/文档断言/回归保全）。commits: 6ab8ab8[docs] + c5331bd[bootstrap] + 005049c[test] assertion-signoff。解锁 BUILD"}
+  - {at: 2026-08-08, from: BUILD, to: QA, note: "BUILD 完成（6 切片，17 commits）：Slice1 日志环形 / Slice2 sessionLifecycle(PRD对齐抓 M1 缺陷修+补用例+refactor) / Slice3 水合窗口+懒恢复入口补全 / Slice4 权限单一真源(golden 重生成-7 不可见族+2 pnpm install 对齐) / Slice5 ADR-019/020+术语归位 / Slice6 E2E 注入缝+2 生产缺陷实证修复(noTools 工具面失效+确认链死锁——工具调用路径首次真实端到端验证)。全量单测 662/662 绿 + E2E 6/6 绿 + assistantConfirm 4/4 回归绿。req-gap 就地补全 1（042 信任门人裁决）+ test-gap 就地补全 1（T-7/T-9 E2E 重写）。哈希 b8623e43。M1（冷恢复延迟）待 QA 实测"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
