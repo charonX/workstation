@@ -800,7 +800,8 @@ function createProcessAgentService(options = {}) {
               const existing = sessions.get(row.spaceKey);
               if (existing) {
                 // 存量句柄（崩溃重启前注册表）按同一窗口规则重发（REQ-AGENT-005 标准 3）。
-                sendToChild(buildConfigMessage(row.spaceKey, existing));
+                // BUG-003：水合重发带 source:"hydration"——不触发同组冷却。
+                sendToChild(buildConfigMessage(row.spaceKey, existing, "hydration"));
                 continue;
               }
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
@@ -819,7 +820,7 @@ function createProcessAgentService(options = {}) {
               }
               applyRecoveryHint(session, info.recoveryHint);
               sessions.set(info.spaceKey, session);
-              sendToChild(buildConfigMessage(info.spaceKey, session));
+              sendToChild(buildConfigMessage(info.spaceKey, session, "hydration"));
             }
             // 诊断日志（REQ-AGENT-038 标准 5）：候选行数 / 窗口内行数。
             log(`水合窗口过滤 候选=${rows.length} 窗口内=${inWindow}（窗口=${hydrationWindowMs}ms）`);
@@ -988,7 +989,11 @@ function createProcessAgentService(options = {}) {
     session.emit("session-event", { type: "session-git", ...gitState });
   }
 
-  function buildConfigMessage(spaceKey, session) {
+  // BUG-003（2026-08-09）：session-config 带 source——水合（重启批量恢复）是
+  // 系统恢复不是用户活动，worker 侧不触发同组单活冷却（水合风暴误淘汰：
+  // 后水合者冷却刚水合的，idleMs=1 reason=group-cool）。缺省 undefined =
+  // 用户活动路径（新建/懒恢复/evicted 重投）照常冷却（B3 语义）。
+  function buildConfigMessage(spaceKey, session, source) {
     // M2 按空间装配（REQ-AGENT-031/032 IPC 契约）：项目空间 = 项目目录 realpath
     // + 关联 skills 技能库绝对路径 + "project"；通用/飞书 = 现状默认 cwd + 空
     // skillPaths + "default"。
@@ -1008,6 +1013,8 @@ function createProcessAgentService(options = {}) {
       permissionProfile,
       // 工具上下文（Slice 8 G1 接线）：绑定默认目标候选 → worker 工具面消费。
       ...(session.toolContext ? { toolContext: session.toolContext } : {}),
+      // BUG-003：来源标记（"hydration" = 系统恢复，不触发同组冷却）。
+      ...(source ? { source } : {}),
     };
   }
 

@@ -730,7 +730,11 @@ async function handleSessionConfig(msg) {
   log(`session-config 进入 session=${sessionKey} provider=${provider} model=${model} hasKey=${!!apiKey}`);
   // 同组单活（REQ-AGENT-037 标准 2/5）：session-config 到达 = 本空间有活动 →
   // 冷却同组其他会话（组内流式中 → 模块标记延迟淘汰，流结束立即执行）。
-  lifecycle.evictGroupPeers(sessionKey);
+  // BUG-003（2026-08-09）：水合（source:"hydration"）是系统恢复不是用户活动——
+  // 不触发冷却（否则重启时同组两会话互相踢：后水合者冷却刚水合的 idleMs=1）。
+  if (msg.source !== "hydration") {
+    lifecycle.evictGroupPeers(sessionKey);
+  }
   // session-config 到达 = 用户新活动（PRD 对齐修复 M1）：touch 默认 clearPending=true
   // 清本会话自身的延迟淘汰标记（用户回来了不再被组冷却追偿）。新会话路径为
   // 静默 no-op（未知 key），注册时 register 本就会清 pending。
