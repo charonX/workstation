@@ -60,12 +60,12 @@ export function createSessionLifecycle({
     return t - (entry.lastActiveAt ?? t);
   }
 
-  function evict(key, entry) {
+  function evict(key, entry, reason) {
     if (!sessions.has(key)) return; // 幂等：重复淘汰同 key no-op
     sessions.delete(key);
     pendingEvictions.delete(key);
     tombstones.add(key);
-    if (onEvict) onEvict(key, entry);
+    if (onEvict) onEvict(key, entry, reason);
   }
 
   // 注册（首建 / 懒恢复重注册 / provider-key 变更重建后的新注册）。
@@ -96,7 +96,7 @@ export function createSessionLifecycle({
         // 最久未活动优先；lastActiveAt 相同 → 先注册者先汰（Map 插入序稳定）。
         candidates.sort(([, a], [, b]) => (a.lastActiveAt ?? 0) - (b.lastActiveAt ?? 0));
         const [victimKey, victimEntry] = candidates[0];
-        evict(victimKey, victimEntry);
+        evict(victimKey, victimEntry, "lru");
       }
     }
   }
@@ -130,7 +130,7 @@ export function createSessionLifecycle({
       if (isExempt(entry)) {
         pendingEvictions.add(k); // 流式豁免：标记延迟，流结束立即淘汰（不等 TTL）
       } else {
-        evict(k, entry);
+        evict(k, entry, "group-cool");
       }
     }
   }
@@ -150,7 +150,7 @@ export function createSessionLifecycle({
         pendingEvictions.delete(key);
         continue;
       }
-      if (!isExempt(entry)) evict(key, entry); // 流结束立即淘汰
+      if (!isExempt(entry)) evict(key, entry, "sweep-pending"); // 流结束立即淘汰
     }
     for (const [key, entry] of sessions) {
       if (isExempt(entry)) {
@@ -167,7 +167,7 @@ export function createSessionLifecycle({
         continue;
       }
       if (idleMs(entry, t) > TTL_MS && (entry.lastTouchAt === undefined || entry.lastTouchAt < lastSweepAt)) {
-        evict(key, entry);
+        evict(key, entry, "sweep-ttl");
       }
     }
     lastSweepAt = t;

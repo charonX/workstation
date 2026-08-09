@@ -518,7 +518,7 @@ function forwardEvent(sessionKey, ev) {
 //   permissionDecisions 不随淘汰清理（035 标准 7，随 30s/10min 超时兜底释放）。
 // 淘汰副作用（onEvict 回调，worker 侧）：dispose + 辅助 Map×3（toolContexts/
 // sessionQueues/lastReplies）清理 + 发 session-evicted IPC（接口 2）。
-function handleSessionEvicted(key, entry) {
+function handleSessionEvicted(key, entry, reason) {
   if (entry) disposeSession(entry);
   toolContexts.delete(key);
   sessionQueues.delete(key);
@@ -528,7 +528,11 @@ function handleSessionEvicted(key, entry) {
   turnStartedAt.delete(key);
   clearPendingTextEnds(key);
   send({ type: "session-evicted", sessionKey: key });
-  log(`会话淘汰 session=${key}（JSONL 保留，下次活动懒恢复）`);
+  // BUG-002 诊断（2026-08-09）：淘汰日志带来源与 entry 状态——区分
+  // sweep-ttl / sweep-pending / lru / group-cool 四触发，定位误淘汰。
+  log(
+    `会话淘汰 session=${key} reason=${reason ?? "unknown"} streaming=${entry?.streaming ?? "-"} queued=${entry?.queued ?? "-"} idleMs=${entry ? (Date.now() - (entry.lastActiveAt ?? Date.now())) : "-"}（JSONL 保留，下次活动懒恢复）`
+  );
 }
 
 const lifecycle = createSessionLifecycle({
@@ -996,7 +1000,11 @@ async function handlePrompt(msg) {
         }
       }
       // 回复文本经 message_update 事件回传（session.prompt 返回 void，spike H3）。
+      // BUG-002 诊断（2026-08-09）：LLM 调用起止日志——区分「请求未发出 / 已发出
+      // 无响应 / 流式进行中」；配合淘汰 reason 日志定位误淘汰链条。
+      log(`LLM 调用开始 session=${sessionKey} id=${id}`);
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
+      log(`LLM 调用结束 session=${sessionKey} id=${id}`);
       const reply = lastReplies.get(sessionKey);
       send({
         type: "prompt-result",
