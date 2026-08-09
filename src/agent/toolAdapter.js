@@ -369,6 +369,13 @@ export function toPiToolName(name) {
   return String(name).replace(/[^a-zA-Z0-9_-]+/g, "_");
 }
 
+// BUG-004（2026-08-09）：SDK 清洗名 → 原始命令名反向映射（toPiToolDefinitions
+// 构建时填充；事件转发层用——用户可见工具名保持原始形态 "task list"）。
+const sdkNameToOriginal = new Map();
+export function getOriginalToolName(sdkName) {
+  return sdkNameToOriginal.get(sdkName) ?? sdkName;
+}
+
 // createToolSurface({ commandsDir, baseUrl, onConfirmRequest, sessionKey, getDefaultTarget }) →
 // { listTools, execute, onEvent, toPiToolDefinitions }。
 // - commandsDir：可选；提供时做注册表覆盖校验（防命令模块漂移）。
@@ -461,7 +468,7 @@ export function createToolSurface(options = {}) {
     // worker 在 createAgentSession customTools 处接线）。execute 异常/错误 →
     // PI 标记 isError 工具结果（LLM 可见错误文本，agent 继续）。
     toPiToolDefinitions() {
-      return TOOL_DEFS.map((tool) => ({
+      const defs = TOOL_DEFS.map((tool) => ({
         // BUG-002：SDK 侧工具名清洗（空格→下划线，OpenAI function.name 规范）；
         // label 保留原始命令名（LLM 可读），execute 用原始名执行。
         name: toPiToolName(tool.name),
@@ -480,6 +487,10 @@ export function createToolSurface(options = {}) {
           };
         },
       }));
+      // BUG-004（2026-08-09）：SDK 清洗名 → 原始名反向映射（事件转发用——
+      // tool_execution_start 的 name 是 SDK 侧清洗名，用户可见应为原始命令名）。
+      for (const def of defs) sdkNameToOriginal.set(def.name, def.label);
+      return defs;
     },
   };
 

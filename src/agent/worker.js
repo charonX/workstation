@@ -35,7 +35,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSessionToolSurface, toPiToolName } from "./toolAdapter.js";
+import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
 
@@ -404,7 +404,7 @@ function mapToContractEvent(ev) {
       // args = toolCall.arguments；缺失时 undefined）。
       return {
         type: "tool_execution_start",
-        name: ev.toolName,
+        name: getOriginalToolName(ev.toolName),
         status: "running",
         toolCallId: ev.toolCallId,
         input: ev.args,
@@ -416,7 +416,7 @@ function mapToContractEvent(ev) {
       // 失败 true——不再丢弃，I-2 依赖）。超限截断见 limitSize。
       return {
         type: "tool_execution_end",
-        name: ev.toolName,
+        name: getOriginalToolName(ev.toolName),
         status: "completed",
         toolCallId: ev.toolCallId,
         output: ev.result,

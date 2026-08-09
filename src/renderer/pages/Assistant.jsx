@@ -312,6 +312,10 @@ export default function Assistant() {
     setGitState(null);
     setContextUsage(null);
     setToolActive(0);
+    // BUG-004（2026-08-09）：切会话必须归零 streaming/execState——否则上个会话的
+    // 流式/执行状态跨会话残留（composer 永远「回复中…」禁用、状态栏不跟随切换）。
+    // execStateOf({streaming:false, toolActive:0}) → idle，新会话输入框立即可用。
+    setStreamingBoth(false);
     let disposed = false;
     alignedRef.current = false; // 新会话：对齐未完成（发送前等待）
 
