@@ -49,6 +49,7 @@ import * as projectService from "./projectService.js";
 import * as skillService from "./skillService.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 import { decryptSecret } from "./secretStore.js";
+import { readGitBranch } from "./gitBranch.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 
@@ -82,6 +83,10 @@ export const DEFAULT_LOG_RING_LIMIT = 1000;
 // 标准 3 原意）；历史行不水合，按数据流 3 透明懒恢复。默认 60min；
 // options.hydrationWindowMs 可注入（测试 seam，缩短窗口做快速断言）。
 export const DEFAULT_HYDRATION_WINDOW_MS = 60 * 60 * 1000;
+
+// Slice 8（REQ-AGENT-058）：worker stats 周期（默认 5s；options.statsIntervalMs 可注入
+// ——测试缩短断言；经 spawn env 透传 worker，worker 侧无硬编码默认值漂移）。
+export const DEFAULT_STATS_INTERVAL_MS = 5000;
 
 // 心跳消息类型判别（REQ-AGENT-040 标准 2）：ping/pong 收发不逐条入 logs[]——
 // 仅日志面过滤；看门狗心跳语义（2s ping/pong 收发、入站计存活 ADR-015）不变。
@@ -454,6 +459,16 @@ function createProcessAgentService(options = {}) {
   const hydrationWindowMs = Number.isFinite(Number(options.hydrationWindowMs))
     ? Number(options.hydrationWindowMs)
     : DEFAULT_HYDRATION_WINDOW_MS;
+  // Slice 8（REQ-AGENT-058）：worker stats 周期（默认 5s；测试注入缩短）——
+  // 经 spawn env 透传 worker（worker 侧读 OPC_AGENT_STATS_INTERVAL_MS）。
+  const statsIntervalMs =
+    Number.isFinite(Number(options.statsIntervalMs)) && Number(options.statsIntervalMs) > 0
+      ? Number(options.statsIntervalMs)
+      : DEFAULT_STATS_INTERVAL_MS;
+  // session-stats 缓存（REQ-AGENT-058）：worker 周期推送 → 主进程缓存（service 级
+  // Map，sessionKey → contextUsage）→ SSE 转发 renderer；renderer 切会话时经
+  // getSessionStats 可取最近值（SSE 只推增量不回溯的补位数据源）。
+  const sessionStatsCache = new Map();
 
   // 会话存储（REQ-AGENT-008/009）：SQLite agent_sessions 为真相（W-3），本服务
   // 注册表仅为活跃句柄缓存。未显式注入时按 cwd 派生默认库（随工作目录隔离，
@@ -642,6 +657,8 @@ function createProcessAgentService(options = {}) {
     env.PI_CODING_AGENT_DIR = path.join(cwd, ".agent-home");
     // 测试 seam（H3）：fauxProvider 注入，零网络（生产不设置）。
     if (process.env.NODE_ENV === "test") env.OPC_AGENT_FAUX = "1";
+    // Slice 8（REQ-AGENT-058）：stats 周期透传 worker（注入缝；默认 5s）。
+    env.OPC_AGENT_STATS_INTERVAL_MS = String(statsIntervalMs);
     if (inElectron) env.ELECTRON_RUN_AS_NODE = "1";
     const spawned = spawn(process.execPath, [entry], {
       env,
@@ -880,6 +897,24 @@ function createProcessAgentService(options = {}) {
         }
         break;
       }
+      case "session-stats": {
+        // Slice 8（REQ-AGENT-058）：worker 周期推送 → 缓存（service 级 Map）+
+        // 服务级事件（测试 seam：sessionStats 断言）+ 会话句柄 session-event
+        // （SSE 转发 renderer，形态仿既有 session-event 转发——sessionKey 仅订阅
+        // 侧过滤，不在事件帧；空态帧 sessionKey=null → 仅服务级事件，无句柄转发）。
+        const contextUsage = msg.contextUsage ?? null;
+        if (typeof msg.sessionKey === "string" && msg.sessionKey !== "") {
+          sessionStatsCache.set(msg.sessionKey, contextUsage);
+          const session = sessions.get(msg.sessionKey);
+          if (session) session.emit("session-event", { type: "session-stats", contextUsage });
+        }
+        emitter.emit("session-stats", {
+          type: "session-stats",
+          sessionKey: msg.sessionKey ?? null,
+          contextUsage,
+        });
+        break;
+      }
       case "log":
         log(`[agent] ${msg.message}`);
         break;
@@ -939,6 +974,18 @@ function createProcessAgentService(options = {}) {
       default:
         log(`未知子进程消息 type=${msg.type}`);
     }
+  }
+
+  // Slice 8（REQ-AGENT-056/058）：git 分支状态随会话创建推 renderer（SSE session-git
+  // 事件；已连接的 events 订阅即时收到——与 SSE 路由挂接时补推同源同形且幂等：
+  // agentSessions.js handleGetEvents 对每次连接补推当前态）。项目空间 → 项目目录
+  // realpath → readGitBranch（branch/detached/none 三态 + worktree）；通用/飞书 →
+  // none。句柄携带 gitBranch 供 getSession 消费方（renderer 打开会话的补位数据源）。
+  function attachGitState(spaceKey, session) {
+    const { cwd: spaceCwd } = resolveSpaceAssembly(spaceKey);
+    const gitState = spaceCwd ? readGitBranch(spaceCwd) : { state: "none" };
+    session.gitBranch = gitState;
+    session.emit("session-event", { type: "session-git", ...gitState });
   }
 
   function buildConfigMessage(spaceKey, session) {
@@ -1024,10 +1071,16 @@ function createProcessAgentService(options = {}) {
       applyRecoveryHint(session, info?.recoveryHint);
       sessions.set(spaceKey, session);
       sendToChild(buildConfigMessage(spaceKey, session));
+      attachGitState(spaceKey, session);
       return session;
     },
     getSession(spaceKey) {
       return sessions.get(spaceKey);
+    },
+    // Slice 8（REQ-AGENT-058）：最近一次 worker 周期推送的 contextUsage（renderer
+    // 切会话快速取位用；无推送 → undefined）。
+    getSessionStats(spaceKey) {
+      return sessionStatsCache.get(spaceKey);
     },
     // notify-result（REQ-AGENT-016 标准 2 / W-2）：确认执行结果经 IPC 注入子进程，
     // worker 侧以会话 prompt 驱动 agent 生成自然语言回投（流式事件回传）。

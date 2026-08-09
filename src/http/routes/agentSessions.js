@@ -55,11 +55,14 @@
 // title/lastActiveAt/sessionRef + spaceKey；组内 lastActiveAt 倒序）。
 
 import fs from "node:fs";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../db.js";
 import * as settingsService from "../../services/settingsService.js";
 import { decryptSecret } from "../../services/secretStore.js";
 import { subscribe } from "../../services/eventBus.js";
+import { readGitBranch } from "../../services/gitBranch.js";
+import { expandTilde, realpathBestEffort } from "../../services/pathUtils.js";
 
 const DEFAULT_PROVIDER = "deepseek";
 
@@ -430,6 +433,25 @@ function handleReset(res, spaceKey, store) {
 
 // —— SSE 事件流（GET .../events，REQ-AGENT-028 标准 2/5/6，D4 流式 = SSE）——
 
+// Slice 8（REQ-AGENT-056/058）：会话 git 分支状态（主进程读取——项目目录边界一致，
+// 与图片白名单/项目空间装配同源）。项目空间 → projects.localPath → readGitBranch
+// （branch/detached/none 三态 + worktree）；通用/飞书/孤儿（项目已删）→ none。
+// 每次 SSE 连接建立（会话打开/切换/重连）补推当前态——SSE 只推增量不回溯，路由层
+// 补推保证 renderer 打开会话即达（不依赖 worker 存活与 createSession 推送时机）。
+function gitStateForSpace(spaceKey) {
+  const pid = projectIdOf(spaceKey);
+  if (!pid) return { state: "none" };
+  let localPath = "";
+  try {
+    const row = getDb().prepare("SELECT localPath FROM projects WHERE id = ?").get(pid);
+    localPath = typeof row?.localPath === "string" ? row.localPath : "";
+  } catch {
+    return { state: "none" };
+  }
+  if (localPath === "") return { state: "none" };
+  return readGitBranch(realpathBestEffort(path.resolve(expandTilde(localPath))));
+}
+
 // 挂起订阅注册表：spaceKey → Set<sub>。events 连接先于首条消息打开时，agentService
 // 会话句柄尚不存在（句柄由 handlePostMessage 的 createSession 创建）——先挂起，
 // 句柄创建后经 attachPendingSseSubs 补挂接。sub.detach 时自行从注册表移除。
@@ -479,6 +501,11 @@ function handleGetEvents(res, spaceKey, store, context) {
   res.flushHeaders(); // 首包立即送达（fetch 依赖头部先到达才 resolve）
 
   const sub = createSseSubscription(res, spaceKey);
+
+  // Slice 8（REQ-AGENT-058）：git 分支状态随会话打开/切换推送（SSE 连接建立即达；
+  // renderer 切会话 = 新连接 → 即时收到；不依赖 worker 存活——打开会话未发消息时
+  // 也可见，056 标准 3/6）。幂等：与 agentService createSession 推送同源同形。
+  sub.pushFrame({ type: "session-git", ...gitStateForSpace(spaceKey) });
 
   // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
   // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
@@ -548,6 +575,9 @@ function createSseSubscription(res, spaceKey) {
       attached = true;
       session.on("session-event", onEvent);
     },
+    // Slice 8（REQ-AGENT-058）：路由层补推帧（git 分支状态随连接建立推送；
+    // 写失败 → detach，与心跳同一容错语义）。
+    pushFrame: (ev) => writeFrame(ev),
     detach() {
       if (detached) return;
       detached = true;

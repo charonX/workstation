@@ -431,7 +431,69 @@ function mapToContractEvent(ev) {
 // 供调用方拿到本轮回复文本（REQ-AGENT-006/009 断言用）。
 const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
 
+// —— Slice 8（REQ-AGENT-057）：消息元数据（B10 数据面，接口 6）——
+// text_end 转发加 `meta { durationMs, tokensIn, tokensOut }`：
+// - durationMs：回合起点 = PI assistantMessageEvent 的 text_start（缺失形态兜底
+//   首个 text_delta）记录时间戳，text_end 时按起止计算；
+// - tokensIn/Out：从 message_end 的 assistant message usage 读取（research 实证：
+//   AssistantMessage.usage 必填——pi-ai/types.d.ts:297；但流式 text_end 的 partial
+//   上 output 可能未填充最终值（anthropic-messages.js：message_delta 的最终 usage
+//   在最后一个 content_block_stop 之后））→ text_end **延迟到 message_end 后转发**
+//   （usage 完备；事件顺序不变——message_end 紧随 text_end 同轮内到达）；
+// - FAUX usage 空/0 → tokensIn/Out 按值原样带（0 → renderer 显示「-」，057 标准 4）；
+// - 兜底定时器：message_end 缺失（异常中断）→ 超时照发（仅 durationMs，不悬挂）。
+const turnStartedAt = new Map(); // sessionKey → 回合起点时间戳
+const pendingTextEnds = new Map(); // sessionKey → Array<{ content, startedAt, timer }>
+const PENDING_TEXT_END_FALLBACK_MS = 5000;
+
+function clearPendingTextEnds(sessionKey) {
+  const list = pendingTextEnds.get(sessionKey);
+  if (!list) return;
+  for (const pending of list) clearTimeout(pending.timer);
+  pendingTextEnds.delete(sessionKey);
+}
+
+// 冲刷该会话的 pending text_end（正常路径 = message_end 到达；兜底 = 定时器超时）。
+// usage 缺失（兜底路径）→ meta 仅 durationMs（renderer 显示「-」）。
+function flushPendingTextEnds(sessionKey, usage) {
+  const list = pendingTextEnds.get(sessionKey);
+  if (!list || list.length === 0) return;
+  pendingTextEnds.delete(sessionKey);
+  turnStartedAt.delete(sessionKey);
+  for (const pending of list) {
+    clearTimeout(pending.timer);
+    const meta = {};
+    if (pending.startedAt !== undefined) meta.durationMs = Math.max(0, Date.now() - pending.startedAt);
+    if (usage?.input !== undefined) meta.tokensIn = usage.input;
+    if (usage?.output !== undefined) meta.tokensOut = usage.output;
+    const event = { type: "text_end", content: pending.content };
+    if (Object.keys(meta).length > 0) event.meta = meta;
+    lastReplies.set(sessionKey, event.content);
+    send({ type: "session-event", sessionKey, event: limitSize(event) });
+  }
+}
+
 function forwardEvent(sessionKey, ev) {
+  // 消息元数据（REQ-AGENT-057）：回合起点记录 + text_end 延迟转发（message_end
+  // 冲刷时统一转发，事件顺序与既有契约一致——text_delta 后 text_end）。
+  if (ev?.type === "message_update" && ev.assistantMessageEvent) {
+    const a = ev.assistantMessageEvent;
+    if ((a.type === "text_start" || a.type === "text_delta") && !turnStartedAt.has(sessionKey)) {
+      turnStartedAt.set(sessionKey, Date.now());
+    }
+    if (a.type === "text_end") {
+      const timer = setTimeout(() => flushPendingTextEnds(sessionKey, undefined), PENDING_TEXT_END_FALLBACK_MS);
+      timer.unref?.();
+      const list = pendingTextEnds.get(sessionKey) ?? [];
+      list.push({ content: a.content, startedAt: turnStartedAt.get(sessionKey), timer });
+      pendingTextEnds.set(sessionKey, list);
+      return; // 不在此处转发（message_end 冲刷时统一转发）
+    }
+  }
+  if (ev?.type === "message_end") {
+    // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
+    flushPendingTextEnds(sessionKey, ev.message?.usage);
+  }
   const mapped = mapToContractEvent(ev);
   if (!mapped) return;
   // 流式/工具事件 = 会话自身活动（REQ-AGENT-035 标准 1）：刷新 lastActiveAt。
@@ -461,6 +523,10 @@ function handleSessionEvicted(key, entry) {
   toolContexts.delete(key);
   sessionQueues.delete(key);
   lastReplies.delete(key);
+  // Slice 8（REQ-AGENT-057）：消息元数据状态随淘汰清理（pending text_end 不悬挂——
+  // 定时器已 clear，不再对已淘汰会话补发 text_end）。
+  turnStartedAt.delete(key);
+  clearPendingTextEnds(key);
   send({ type: "session-evicted", sessionKey: key });
   log(`会话淘汰 session=${key}（JSONL 保留，下次活动懒恢复）`);
 }
@@ -479,6 +545,44 @@ const sweepTimer = setInterval(() => {
   }
 }, DEFAULT_SWEEP_INTERVAL_MS);
 sweepTimer.unref?.();
+
+// —— Slice 8（REQ-AGENT-058）：stats 周期推送（周期可注入——测试缩短；unref 定时器）——
+// 每周期对每活跃会话调 session.getContextUsage()（pi SDK 实证：agent-session.d.ts:623
+// 进程内直调，返回 ContextUsage | undefined）→ session-stats IPC → 主进程缓存 +
+// SSE 转发 renderer（StatusBar 上下文仪表）。FAUX provider usage 空/0 → contextUsage
+// 原样推送（renderer 显示占位不崩——REQ-AGENT-056 标准 5 / 058 标准 3）；无活跃会话
+// → 空态帧（周期语义保持 + 主进程服务级事件可断言；renderer 按空态隐藏/占位）。
+const DEFAULT_STATS_INTERVAL_MS = 5000;
+const statsIntervalMs = (() => {
+  const v = Number(process.env.OPC_AGENT_STATS_INTERVAL_MS);
+  return Number.isFinite(v) && v > 0 ? v : DEFAULT_STATS_INTERVAL_MS;
+})();
+
+function pushSessionStats() {
+  const entries = lifecycle.entries();
+  if (entries.length === 0) {
+    send({ type: "session-stats", sessionKey: null, contextUsage: null });
+    return;
+  }
+  for (const [sessionKey, entry] of entries) {
+    let contextUsage = null;
+    try {
+      contextUsage = entry.agentSession.getContextUsage() ?? null;
+    } catch (err) {
+      log(`stats 获取失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+    }
+    send({ type: "session-stats", sessionKey, contextUsage });
+  }
+}
+
+const statsTimer = setInterval(() => {
+  try {
+    pushSessionStats();
+  } catch (err) {
+    log(`stats 推送异常 err=${err?.message ?? String(err)}`);
+  }
+}, statsIntervalMs);
+statsTimer.unref?.();
 
 // FAUX 测试 seam（H3）的确定性回复：上下文回声——把本次模型可见的
 // system prompt 与全部消息序列化回传。零网络且可断言「回复引用了恢复前
@@ -940,6 +1044,7 @@ async function shutdownAll() {
     lifecycle.remove(key);
   }
   clearInterval(sweepTimer);
+  clearInterval(statsTimer);
 }
 
 // 全局消息串行队列：session-config 等异步处理必须先于后续 prompt 完成
@@ -987,6 +1092,9 @@ async function handleResetSession(msg) {
     await disposeSession(entry);
     lifecycle.remove(msg.sessionKey);
     lastReplies.delete(msg.sessionKey);
+    // Slice 8（REQ-AGENT-057）：消息元数据状态随 reset 清理（pending text_end 不悬挂）。
+    turnStartedAt.delete(msg.sessionKey);
+    clearPendingTextEnds(msg.sessionKey);
     log(`reset-session session=${msg.sessionKey}`);
   }
 }
