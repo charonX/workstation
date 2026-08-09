@@ -146,3 +146,75 @@ capability/entity 落位：`agent-dialogue/conversation-space`（渲染组件/�
 |---|---|---|---|
 | v0.1 | 2026-08-08 | 初稿（三轮单题收敛：消息模型类型化 / highlight.js / 图片项目白名单 + 工具事件契约实证） | AI + 人 |
 | v0.2 | 2026-08-09 | review-tech 修复（WARN，6 IMPORTANT 全裁决）：I-1 工具事件加法扩展（人裁决）/ I-2 error 终态（isError 转发 + 不降级双保险）/ I-3 图片主进程 HTTP API→blob URL（人裁决项目内绝对可渲染）/ I-4 裸路径识别（人裁决）/ I-5 PRD F3 口径同步 / I-6 mermaid securityLevel:'strict'；W-1 mermaid 流式字面量；W-2 风险表 +3；S-1 状态枚举去 rejected + spike 口径修正 | AI + 人 |
+
+---
+
+# 增量 v0.3 — 会话状态可视化（B9/B10/B11，2026-08-09 范围扩展）
+
+> 输入：PRD v0.3（B9-B11）+ research/pi-usage-token-git.md（数据源实证）
+
+## 设计目标（增量）
+
+对话窗呈现会话级与消息级状态：**composer 上方状态栏**（执行状态 + git 分支 + 上下文用量，人确认位置）+ **消息元数据**（耗时 + token）。数据全部来自 pi 官方接口（getSessionStats/getContextUsage），零自造统计。
+
+## 模块与边界（增量）
+
+| 模块 | 职责 | 是否新增 |
+|---|---|---|
+| `worker.js` stats 接入（改） | 调 `session.getSessionStats()` / `getContextUsage()`（pi SDK 实证）；git 分支读取（参考 pi footer：读 `.git/HEAD` + worktree 支持 + detached/非仓库态）；经既有 IPC 推主进程 | 否（改） |
+| 主进程 agentService（改） | 收 stats 数据 → 缓存 + 推 renderer（SSE 事件 / 轮询端点） | 否（改） |
+| `StatusBar`（renderer 新组件） | composer 上方：执行状态（空闲/回复中/工具执行中——复用 streaming + tool 事件驱动）+ git 分支 + 上下文用量（tokens/percent 仪表） | 是 |
+| `MessageMeta`（renderer 新组件/内联） | 消息下方：耗时 + in/out token（message_end 携带） | 是 |
+| 消息模型（扩展） | text 元素加 `meta: {durationMs?, tokensIn?, tokensOut?}`（完成态填充） | 是（状态形态） |
+
+### 数据流（增量）
+
+1. **消息元数据**：worker 收到 PI `message_end`（assistant message 携带 `usage`——调研实证）→ text_end 转发加 `meta {durationMs, tokensIn, tokensOut}`（durationMs 由 turn 起止计算——text_start 记录时间戳）→ renderer 完成态填充消息 meta。
+2. **上下文用量**：worker 定时（如每 5s，可注入）调 `getContextUsage()` → `session-context` IPC → 主进程缓存 → SSE/轮询推 renderer → StatusBar 仪表（tokens/contextWindow/percent；压缩后 tokens 为 null → 显示 percent 或占位）。
+3. **git 分支**：主进程（项目目录边界一致）读 `<projectDir>/.git/HEAD`（参考 pi footer-data-provider：HEAD 直读 + worktree 支持 + detached/非仓库态）→ 随会话打开/切换推 renderer；500ms debounce 监听 HEAD 变化（可选）。
+4. **执行状态**：纯 renderer 推导——streaming（回复中）+ tool 事件（工具执行中）+ 空闲——无需新数据。
+
+### 接口契约（增量）
+
+**接口 6：消息元数据（text_end 扩展）**
+
+| 项目 | 说明 |
+|---|---|
+| 扩展 | text_end 事件加 `meta: {durationMs?, tokensIn?, tokensOut?}`（pi message_end 的 usage 实证存在；durationMs 主进程/worker 按 text_start 起止） |
+| 消费方 | renderer 完成态填充消息 meta（流式期间不显示——原型语义） |
+| 兼容 | 加法字段，既有消费方零感知（text_end 字段集断言 `["content","type"]` 需更新——055 标准 3 同 seam 注意） |
+
+**接口 7：session stats（worker → 主进程 → renderer）**
+
+| 项目 | 说明 |
+|---|---|
+| worker→主 | `session-stats {contextUsage}` IPC（周期推送，周期可注入——测试缩短） |
+| 主→renderer | SSE 事件 `session-stats`（或复用轮询端点——实现者按既有 SSE 形态定） |
+| renderer | StatusBar 消费（tokens/contextWindow/percent；null → 占位） |
+| git 分支 | 会话打开/切换时经会话元数据或单独事件推（`{branch, state: "branch"|"detached"|"none"}`） |
+
+### 测试 seams（增量）
+
+| 稳定块 | Seam | 测试类型 |
+|---|---|---|
+| B9 状态栏（执行状态/git/上下文） | StatusBar 组件渲染 + E2E（FAUX 会话：状态随流式/工具切换、分支显示、上下文仪表） | 组件 / E2E |
+| B10 消息元数据 | text_end meta 断言（fake worker/集成）+ E2E（完成态 meta 出现、流式期间无） | 集成 / E2E |
+| B11 数据源 | worker stats 接入（注入缝/真实 FAUX stats——FAUX provider usage 可能为 0/估算）+ git 读取单测（临时 git 仓库 fixture：正常/detached/非仓库） | 单元 / 集成 |
+
+### 关键决策（增量）
+
+| 决策 | 选项 | 选择理由 |
+|---|---|---|
+| 元数据推送 | message_end 携带（text_end 加 meta）✅ / 轮询 | 调研实证 usage 在 assistant message 上；事件携带零轮询开销 |
+| 上下文推送 | 周期轮询（worker 侧 getContextUsage）✅ / 事件 | 无 usage 事件（调研实证）；5s 周期可注入 |
+| git 读取位置 | 主进程（项目目录边界一致）✅ / renderer 直读 | 与图片白名单同源（主进程单一权威）；参考 pi footer 实现 |
+| 成本显示 | 只显示 token ✅（2026-08-09 人拍板）/ 聚合 cost | 金额敏感 + FAUX 恒 0 测试因扰；getSessionStats 聚合 cost 留作未来项（范围外 10 更新） |
+
+### 风险（增量）
+
+| 假设 | 如果错了会怎样 | 回流到 | 能否快速验证 |
+|---|---|---|---|
+| FAUX provider 的 usage 非空（stats 有值） | 元数据/仪表在测试环境恒空 → E2E 断言难 | TECH-DESIGN（估算兜底 estimateTokens） | 能（BUILD 首切片即验） |
+| getSessionStats/getContextUsage 在 worker 集成形态可调 | 需深路径导入或 RPC（get_session_stats） | TECH-DESIGN（接入机制换） | 能（BUILD 验证） |
+| 压缩后 context tokens 为 null | 仪表显示 percent 或占位 | PRD（B9 显示语义） | 能（压缩事件实测） |
+| git HEAD 读取与 pi 行为一致 | 分支显示偏差 | TECH-DESIGN（实现对齐 footer） | 能（临时仓库 fixture） |
