@@ -133,4 +133,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
-| agent-dialogue | 5 | 165 | 2026-08-08 |
+| agent-dialogue | 5 | 180 | 2026-08-09 |
