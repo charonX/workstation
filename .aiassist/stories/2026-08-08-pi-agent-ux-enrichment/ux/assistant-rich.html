@@ -77,6 +77,39 @@
   }
   .theme-toggle:hover { color: var(--ch-text); }
 
+  /* —— 顶栏状态栏（B9，2026-08-09 范围扩展）：执行状态 + git 分支 + 上下文用量 —— */
+  .status-bar {
+    display: flex; align-items: center; gap: var(--ch-space-4);
+    padding: var(--ch-space-2) var(--ch-space-5);
+    border-bottom: 1px solid var(--ch-border);
+    background: var(--ch-surface);
+    font-size: var(--ch-text-sm);
+    color: var(--ch-text-secondary);
+  }
+  .status-item { display: flex; align-items: center; gap: var(--ch-space-2); }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ch-text-tertiary);
+    flex-shrink: 0;
+  }
+  .status-dot.running { background: var(--ch-accent); animation: blink 1s steps(1) infinite; }
+  .status-dot.tool { background: var(--ch-warning); animation: blink 1s steps(1) infinite; }
+  .status-label { font-weight: var(--ch-weight-medium); }
+  .status-value { font-family: var(--ch-font-mono); font-size: 0.92em; color: var(--ch-text); }
+  .status-branch::before { content: "⎇ "; color: var(--ch-text-tertiary); }
+  .status-context { margin-left: auto; }
+  .ctx-meter {
+    display: inline-block; width: 64px; height: 6px;
+    background: var(--ch-surface-highest);
+    border-radius: 3px; overflow: hidden;
+    vertical-align: middle; margin-right: var(--ch-space-2);
+  }
+  .ctx-meter > i {
+    display: block; height: 100%;
+    background: var(--ch-accent);
+    border-radius: 3px;
+  }
+
   .message-list { flex: 1; overflow-y: auto; padding: var(--ch-space-5) var(--ch-space-6); }
 
   /* —— 消息气泡 —— */
@@ -272,9 +305,7 @@
     font-family: var(--ch-font-mono);
   }
 
-  /* ============================================================
-     流式中间态（B7）：闪烁光标 + 未闭合语法字面量
-     ============================================================ */
+  /* 流式中间态（B7）：闪烁光标 + 未闭合语法字面量 */
   .stream-cursor {
     display: inline-block;
     width: 8px; height: 1.05em;
@@ -286,6 +317,19 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
   .stream-raw { color: var(--ch-text-tertiary); } /* 未闭合语法暂时显示字面量 */
+
+  /* —— 消息元数据（B10，2026-08-09 范围扩展）：耗时 + token 用量 —— */
+  .msg-meta {
+    display: flex; align-items: center; gap: var(--ch-space-3);
+    margin-top: var(--ch-space-1);
+    padding: 0 var(--ch-space-1);
+    font-size: 0.78em;
+    color: var(--ch-text-tertiary);
+    font-family: var(--ch-font-mono);
+  }
+  .msg-meta .meta-item { display: inline-flex; align-items: center; gap: 4px; }
+  .msg-meta .meta-item::before { content: "·"; margin-right: var(--ch-space-2); color: var(--ch-border-strong); }
+  .msg-meta .meta-item:first-child::before { content: none; }
 
   /* —— 底部 composer（沿用既有形态）—— */
   .composer {
@@ -339,6 +383,19 @@
       <h3 class="chat-title">富呈现演示</h3>
       <button class="theme-toggle" id="themeToggle">切换主题（当前：暗色）</button>
     </header>
+
+    <!-- 顶栏状态栏（B9）：执行状态 + git 分支 + 上下文用量 -->
+    <div class="status-bar" data-testid="status-bar">
+      <span class="status-item" data-testid="status-exec">
+        <i class="status-dot running" id="statusDot"></i>
+        <span class="status-label" id="statusLabel">回复中…</span>
+      </span>
+      <span class="status-item status-branch" data-testid="status-branch">feat/rich-rendering</span>
+      <span class="status-item status-context" data-testid="status-context">
+        <span class="ctx-meter"><i id="ctxMeter" style="width: 38%;"></i></span>
+        <span id="ctxText">12.4k / 200k tokens · 6%</span>
+      </span>
+    </div>
 
     <div class="message-list">
 
@@ -434,6 +491,10 @@ evicted.<span class="hl-fn">forEach</span>(<span class="hl-fn">evict</span>);</c
             </div>
           </div>
           <p style="margin: var(--ch-space-2) 0;">测试全绿，淘汰逻辑验证通过。</p>
+          <div class="msg-meta" data-testid="msg-meta">
+            <span class="meta-item">耗时 1.24s</span>
+            <span class="meta-item">in 1.2k · out 0.4k tokens</span>
+          </div>
         </div>
       </div>
 
@@ -495,6 +556,21 @@ evicted.<span class="hl-fn">forEach</span>(<span class="hl-fn">evict</span>);</c
   toggle.addEventListener("click", () => {
     const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
     setTheme(cur);
+  });
+
+  // 执行状态演示（B9）：点击状态点循环 空闲 → 回复中 → 工具执行中
+  const dot = document.getElementById("statusDot");
+  const label = document.getElementById("statusLabel");
+  const states = [
+    { cls: "", text: "空闲" },
+    { cls: "running", text: "回复中…" },
+    { cls: "tool", text: "工具执行中…" },
+  ];
+  let si = 1;
+  dot.parentElement.addEventListener("click", () => {
+    si = (si + 1) % states.length;
+    dot.className = `status-dot ${states[si].cls}`;
+    label.textContent = states[si].text;
   });
 </script>
 </body>
