@@ -1016,6 +1016,15 @@ async function handlePrompt(msg) {
       // BUG-002 诊断（2026-08-09）：LLM 调用起止日志——区分「请求未发出 / 已发出
       // 无响应 / 流式进行中」；配合淘汰 reason 日志定位误淘汰链条。
       log(`LLM 调用开始 session=${sessionKey} id=${id}`);
+      // BUG-002 诊断 3（2026-08-09）：上下文状态（消息数/末条类型）——区分
+      // 「恢复上下文异常导致模型空转」vs「provider 空返回」。
+      try {
+        const msgs = entry.agentSession.messages ?? [];
+        const last = msgs[msgs.length - 1];
+        log(`上下文诊断 session=${sessionKey} 消息数=${msgs.length} 末条=${last ? `${last.role}:${(last.content ?? []).map((c) => c.type).join(",")}` : "无"}`);
+      } catch (err) {
+        log(`上下文诊断失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+      }
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
       log(`LLM 调用结束 session=${sessionKey} id=${id}`);
       const reply = lastReplies.get(sessionKey);
