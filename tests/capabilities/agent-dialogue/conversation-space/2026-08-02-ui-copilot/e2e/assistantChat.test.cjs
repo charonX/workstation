@@ -136,10 +136,14 @@ test.describe("对话收发与 SSE 流式渲染", () => {
     // 用户气泡即时出现（不等 agent）。
     await expect(firstWindow.locator(MESSAGE_LIST).locator(USER_BUBBLE).filter({ hasText: text })).toBeVisible();
 
-    // agent 气泡进入流式态；流式中发送按钮置灰防重复提交。
+    // BUG-001 语义（2026-08-09 req-gap 就地补全）：发送成功后输入框清空。
+    await expect(firstWindow.locator(COMPOSER_INPUT)).toHaveValue("");
+
+    // agent 气泡进入流式态；流式中发送按钮置灰 + 等待态文案「回复中…」（防重复提交）。
     const streamingBubble = firstWindow.locator(AGENT_STREAMING);
     await expect(streamingBubble).toBeVisible({ timeout: STREAM_APPEAR_TIMEOUT });
     await expect(firstWindow.locator(SEND_BUTTON)).toBeDisabled();
+    await expect(firstWindow.locator(SEND_BUTTON)).toHaveText("回复中…");
 
     // 流式增量渲染：气泡文本持续增长（采样两次长度，后者更大）。
     const lenBefore = (await streamingBubble.textContent())?.length ?? 0;
@@ -147,9 +151,11 @@ test.describe("对话收发与 SSE 流式渲染", () => {
       .poll(async () => (await streamingBubble.textContent())?.length ?? 0, { timeout: STREAM_APPEAR_TIMEOUT })
       .toBeGreaterThan(lenBefore);
 
-    // 完成：streaming 属性消失，发送按钮恢复可用。
+    // 完成：streaming 属性消失，等待态结束（按钮文案恢复「发送」；按钮态随输入框内容——
+    // 文本已清空 → disabled 常态，不再断言 enabled——BUG-001 语义修正）。
     await expect(firstWindow.locator(AGENT_STREAMING)).toHaveCount(0, { timeout: STREAM_DONE_TIMEOUT });
-    await expect(firstWindow.locator(SEND_BUTTON)).toBeEnabled();
+    await expect(firstWindow.locator(SEND_BUTTON)).toHaveText("发送");
+    await expect(firstWindow.locator(SEND_BUTTON)).toBeDisabled();
 
     // FAUX 回声确定性断言：最终 agent 气泡含所发用户文本。
     await expect(firstWindow.locator(MESSAGE_LIST).locator(AGENT_BUBBLE).last()).toContainText(text);
