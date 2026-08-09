@@ -10,6 +10,7 @@
 import { useEffect, useRef } from "react";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
 import ToolCallBlock from "./ToolCallBlock.jsx";
+import { formatTokens, formatDuration } from "./format.js";
 
 // 操作描述（SSE confirmation-pending description 字段语义同构，裁决 11/8）：
 // GET 全量行无 description 字段（command + args 为真相），前端推导显示文案。
@@ -17,6 +18,23 @@ function cardDescription(c) {
   if (c.description) return c.description;
   const argsText = JSON.stringify(c.args ?? {});
   return argsText === "{}" ? c.command : `${c.command}（参数：${argsText}）`;
+}
+
+// 消息元数据行（REQ-AGENT-057 / tech-design 增量 v0.3 B10）：text_end 携带的
+// meta（接口 6）→ 完成态显示「耗时 + in/out token」；FAUX usage 空/0 → 显示
+// 「-」不误导（标准 4）；流式期间不渲染（调用方按 !streaming 过滤）。
+function MessageMeta({ meta }) {
+  if (!meta) return null;
+  const tokensIn = typeof meta.tokensIn === "number" && meta.tokensIn > 0 ? formatTokens(meta.tokensIn) : "-";
+  const tokensOut = typeof meta.tokensOut === "number" && meta.tokensOut > 0 ? formatTokens(meta.tokensOut) : "-";
+  return (
+    <div className="msg-meta" data-testid="msg-meta">
+      <span className="meta-item">耗时 {formatDuration(meta.durationMs)}</span>
+      <span className="meta-item">
+        in {tokensIn} · out {tokensOut} tokens
+      </span>
+    </div>
+  );
 }
 
 export default function MessageList({ messages, confirmations, onApprove, onReject, projectDir }) {
@@ -50,6 +68,9 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
                 // 项目 ID（主进程按 registry 解析实际目录）；无解析根 → 图片占位/原文回退。
                 <MarkdownRenderer text={m.text} streaming={m.streaming} projectDir={projectDir} />
               )}
+              {/* 消息元数据（REQ-AGENT-057 标准 1/2）：agent 消息完成态（streaming=false）
+                  且 text_end 携带 meta → 显示；流式期间/历史消息（无 meta）不显示。 */}
+              {role !== "user" && !m.streaming && m.meta ? <MessageMeta meta={m.meta} /> : null}
             </div>
           </div>
         );

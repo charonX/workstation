@@ -128,6 +128,25 @@ export function markInterruptedTools(messages) {
   return changed ? next : messages;
 }
 
+// —— 执行状态归约（REQ-AGENT-056 标准 2 / tech-design 增量 v0.3 数据流 4）——
+// 纯 renderer 推导（零新数据）：running 工具计数——tool_execution_start +1 /
+// end|error −1（floor 0）/ text_end 归零（turn 完成——仍 running 的工具已由
+// markInterruptedTools 标记中断，不再计入执行中）。导出供 SSR 自验 harness
+// 直接断言事件序列驱动。
+export function reduceExecState(prev, ev) {
+  if (!ev || typeof ev.type !== "string") return prev;
+  if (ev.type === "tool_execution_start") return prev + 1;
+  if (ev.type === "tool_execution_end" || ev.type === "tool_execution_error") return Math.max(0, prev - 1);
+  if (ev.type === "text_end") return 0;
+  return prev;
+}
+
+// 执行状态三态派生（StatusBar 输入）：工具执行中优先于回复中（工具常在流式内
+// 执行）；text_end 归零 + streaming=false → 空闲。
+export function execStateOf({ streaming, toolActive }) {
+  return toolActive > 0 ? "tool" : streaming ? "replying" : "idle";
+}
+
 // —— 空间语义（ADR-016 spaceKey 语法 + CONTEXT.md 会话区/通用空间/项目空间/孤儿会话）——
 // 返回 { kind, name（空态空间名）, badge（徽标）, readonly, reason? }。
 function spaceOf(key, sessions) {
@@ -193,6 +212,14 @@ export default function Assistant() {
   const [agentConfigured, setAgentConfigured] = useState(null);
   const [streaming, setStreaming] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
+
+  // —— 状态栏数据（REQ-AGENT-056）：git 分支 + 上下文用量 + 执行状态（tool 计数）——
+  // git = SSE session-git（路由 attach 补推 + createSession 推送，同源幂等）；
+  // context = SSE session-stats（worker 周期推送转发）；toolActive = 工具事件驱动
+  // 计数（reduceExecState）。切会话清理（标准 6：分支/上下文跟随新会话重新就绪）。
+  const [gitState, setGitState] = useState(null);
+  const [contextUsage, setContextUsage] = useState(null);
+  const [toolActive, setToolActive] = useState(0);
 
   // 忙碌/流式镜像（双击防护与 SSE 回调读当前值，避免闭包陈旧）。
   const streamingRef = useRef(false);
@@ -279,6 +306,12 @@ export default function Assistant() {
       setConfirmations([]);
       return;
     }
+    // 切会话清理（REQ-AGENT-056 标准 6）：git 分支/上下文用量/执行状态跟随新会话
+    // 重新就绪——新连接 SSE attach 即补推 session-git；session-stats 随 worker 周期
+    // 推送到达（未到前显示占位，E7 不阻塞）。
+    setGitState(null);
+    setContextUsage(null);
+    setToolActive(0);
     let disposed = false;
     alignedRef.current = false; // 新会话：对齐未完成（发送前等待）
 
@@ -351,12 +384,17 @@ export default function Assistant() {
         streamBufRef.current = null;
         flushScheduled = false; // 挂起 rAF 已无缓冲可 flush（文本在此兜底落盘）
         setStreamingBoth(false);
+        // 执行状态归零（REQ-AGENT-056 标准 2）：turn 完成——仍 running 的工具
+        // 已由 markInterruptedTools 标记中断，不再计入执行中（迟到的 end 幂等）。
+        setToolActive(0);
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === "agent" && last.streaming) {
             // text_end 时可能有 rAF 挂起未 flush 的累积 delta——兜底落盘，防尾字丢失。
-            next[next.length - 1] = { ...last, text: remaining ?? last.text };
+            // meta（REQ-AGENT-057 接口 6）：text_end 携带 → 完成态消息展示（流式
+            // settle 结束后 MessageList 渲染 msg-meta；FAUX usage 空 → 显示「-」）。
+            next[next.length - 1] = { ...last, text: remaining ?? last.text, meta: ev.meta ?? null };
           }
           // text_end 防御（接口 1 / REQ-AGENT-052 标准 6）：turn 结束时仍 running 的
           // tool 块标记 interrupted（防御：turn 结束未收到 end——块不悬挂）。
@@ -383,7 +421,21 @@ export default function Assistant() {
         // start 创建 tool 消息元素 / end|error 按 toolCallId 更新 / error 无 id 匹配
         // 最近 running / error 终态（其后 end 不降级）。纯归约函数（模块级导出，
         // SSR 自验 seam）。工具事件为离散增量，不经 rAF 缓冲（text 路径不变）。
+        // 执行状态（REQ-AGENT-056 标准 2）：start +1 / end|error −1（floor 0）。
+        setToolActive((n) => reduceExecState(n, ev));
         setMessages((prev) => reduceToolEvent(prev, ev));
+      } else if (ev.type === "session-git") {
+        // 状态栏 git 分支（REQ-AGENT-056 标准 3/6）：SSE 路由 attach 补推 + 主进程
+        // createSession 推送，同源同形幂等——打开/切换/重连即达。
+        setGitState({
+          state: ev.state === "branch" || ev.state === "detached" ? ev.state : "none",
+          branch: typeof ev.branch === "string" ? ev.branch : undefined,
+        });
+      } else if (ev.type === "session-stats") {
+        // 状态栏上下文用量（REQ-AGENT-056 标准 4/5）：worker 周期推送的
+        // contextUsage（tokens/contextWindow/percent；压缩后 tokens null → 占位）。
+        // 空态帧（sessionKey null）不转发 renderer → 保持上一值。
+        setContextUsage(ev.contextUsage ?? null);
       } else if (ev.type === "session-error") {
         setStreamingBoth(false);
       }
@@ -557,6 +609,9 @@ export default function Assistant() {
     return m ? m[1] : undefined;
   })();
 
+  // 执行状态（REQ-AGENT-056 标准 2）：工具执行中 > 回复中 > 空闲（纯推导）。
+  const execState = execStateOf({ streaming, toolActive });
+
   return (
     <div className="assistant-zone" data-testid="screen-assistant">
       <SessionList
@@ -589,6 +644,9 @@ export default function Assistant() {
         }}
         onSend={handleSend}
         projectDir={selectedProjectDir}
+        execState={execState}
+        gitState={gitState}
+        contextUsage={contextUsage}
       />
     </div>
   );

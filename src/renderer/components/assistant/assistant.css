@@ -472,7 +472,109 @@
   background: var(--ch-warning);
 }
 
-/* 输入区 */
+/* —— 状态栏（REQ-AGENT-056 / ux/assistant-rich.html B9）：执行状态 + git 分支 +
+   上下文用量 —— composer 上方三区，token 引用，深浅色自动跟随 data-theme */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-4);
+  padding: var(--ch-space-2) var(--ch-space-5);
+  border-bottom: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+}
+
+/* 状态点三态（原型语义：空闲灰 / 回复中 accent 闪烁 / 工具执行中 warning 闪烁）。
+   作用域限定 .status-bar——全局既有 .status-dot（表头徽标 6px 形态，StatusBadge 等
+   共享组件）不被覆盖。 */
+.status-bar .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ch-text-tertiary);
+  flex-shrink: 0;
+}
+.status-bar .status-dot.running {
+  background: var(--ch-accent);
+  animation: blink 1s steps(1) infinite;
+}
+.status-bar .status-dot.tool {
+  background: var(--ch-warning);
+  animation: blink 1s steps(1) infinite;
+}
+
+.status-label {
+  font-weight: var(--ch-weight-medium);
+}
+
+.status-branch {
+  font-family: var(--ch-font-mono);
+  font-size: 0.92em;
+}
+.status-branch::before {
+  content: "⎇ ";
+  color: var(--ch-text-tertiary);
+}
+
+.status-context {
+  margin-left: auto;
+  font-family: var(--ch-font-mono);
+  font-size: 0.92em;
+}
+
+.ctx-meter {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  background: var(--ch-surface-highest);
+  border-radius: 3px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: var(--ch-space-2);
+}
+.ctx-meter > i {
+  display: block;
+  height: 100%;
+  background: var(--ch-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* —— 消息元数据（REQ-AGENT-057 / ux/assistant-rich.html B10）：耗时 + in/out token
+   —— 完成态消息下方，· 分隔（原型语义） */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-3);
+  margin-top: var(--ch-space-2);
+  padding: 0 var(--ch-space-1);
+  font-size: 0.78em;
+  color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono);
+}
+.msg-meta .meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.msg-meta .meta-item::before {
+  content: "·";
+  margin-right: var(--ch-space-2);
+  color: var(--ch-border-strong);
+}
+.msg-meta .meta-item:first-child::before {
+  content: none;
+}
+
+/* —— 输入区 —— */
 .composer {
   border-top: 1px solid var(--ch-border);
   background: var(--ch-surface);

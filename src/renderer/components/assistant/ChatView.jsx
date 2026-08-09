@@ -5,6 +5,7 @@
 
 import MessageList from "./MessageList.jsx";
 import Composer from "./Composer.jsx";
+import StatusBar from "./StatusBar.jsx";
 
 export default function ChatView({
   chatTitle,
@@ -20,6 +21,9 @@ export default function ChatView({
   composer,
   onSend,
   projectDir,
+  execState,
+  gitState,
+  contextUsage,
 }) {
   return (
     <main className="assistant-chat">
@@ -56,6 +60,10 @@ export default function ChatView({
           </p>
         </div>
       ) : null}
+
+      {/* 状态栏（REQ-AGENT-056）：composer 上方——执行状态/git 分支/上下文用量。
+          渲染顺序契约：MessageList → StatusBar → Composer（E2E 断言 DOM 纵向顺序）。 */}
+      <StatusBar exec={execState} git={gitState} context={contextUsage} />
 
       <Composer
         readonly={composer.readonly}
