@@ -9,7 +9,7 @@ phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTA
 completed: true     # 门 2 最终验收通过（人授权直接开发完成）
 completed_at: 2026-08-09
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 3    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-08
 
 # 阶段流转历史。正常前进和回流都记一条。
