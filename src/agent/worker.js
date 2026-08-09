@@ -380,8 +380,9 @@ function limitSize(event) {
 // 透传分支实证（REQ-AGENT-055）：到达本函数、带 name 字段的 tool_execution_* 事件
 // 仅有 toolAdapter 的 tool_execution_error（worker 只从 toolSurface 转发 error——
 // adapter 的 start/end 不经 onEvent 转发；PI 原生事件恒为 toolName 字段不落本分支），
-// 且 adapter 事件不含 args/result → 无字段可补，透传原样（error 无 toolCallId 保持
-// 现状，I-2 的 isError 处理在 end 上）。
+// 且 adapter 事件不含 args/result → 无字段可补，透传原样（BUG-006 起 error 携带
+// toolCallId——渲染层精确归块；无 id 的旧形态保持回退关联，I-2 的 isError 处理在
+// end 上）。
 function mapToContractEvent(ev) {
   if (
     typeof ev?.type === "string" &&

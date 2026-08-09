@@ -355,8 +355,11 @@ function errorResult(errorCode, errorMessage) {
 }
 
 // 工具错误事件（REQ-AGENT-012 标准 4：结构化错误事件，含工具名与状态）。
-function emitToolError(emit, name, errorCode, errorMessage) {
-  emit({ type: "tool_execution_error", name, status: "error", errorCode, errorMessage });
+// BUG-006：携带 toolCallId（PI 调用形态可知）——并行工具调用时渲染层按 id
+// 精确归块；无 id 时回退「最近 running 块」关联（系统性错配：错误挂到相邻
+// 并发块上，真失败块只剩 isError end → 显示「未知错误」）。
+function emitToolError(emit, name, errorCode, errorMessage, toolCallId) {
+  emit({ type: "tool_execution_error", name, status: "error", errorCode, errorMessage, ...(toolCallId ? { toolCallId } : {}) });
 }
 
 // —— 工具面 ——
@@ -413,12 +416,12 @@ export function createToolSurface(options = {}) {
         }
       }
     },
-    async execute(name, args = {}) {
+    async execute(name, args = {}, toolCallId) {
       const tool = TOOL_DEFS.find((t) => t.name === name);
       if (!tool) {
         // 拒绝（REQ-AGENT-013）：release 不注入；未知工具同样明确拒绝。
         const message = `不支持该操作：${name} 不在 agent 工具面内`;
-        emitToolError(surface.emit, name, "E-AGENT-UNSUPPORTED", message);
+        emitToolError(surface.emit, name, "E-AGENT-UNSUPPORTED", message, toolCallId);
         throw new Error(message);
       }
       const { flags, positional } = prepareInvocation(tool, args);
@@ -460,7 +463,7 @@ export function createToolSurface(options = {}) {
         // （REQ-AGENT-012 标准 4：agent 可继续，不崩）。
         const errorCode = err?.code || "E-AGENT-CLI-ERROR";
         const errorMessage = err?.message ?? String(err);
-        emitToolError(surface.emit, name, errorCode, errorMessage);
+        emitToolError(surface.emit, name, errorCode, errorMessage, toolCallId);
         return errorResult(errorCode, errorMessage);
       }
     },
@@ -477,7 +480,8 @@ export function createToolSurface(options = {}) {
         parameters: schemaToTypeBox(tool.argsSchema),
         execute: async (toolCallId, params, signal) => {
           if (signal?.aborted) throw new Error("操作已取消");
-          const result = await surface.execute(tool.name, params ?? {});
+          // BUG-006：toolCallId 透传工具面——错误事件携带 id，渲染层精确归块。
+          const result = await surface.execute(tool.name, params ?? {}, toolCallId);
           if (result?.errorCode) {
             throw new Error(`[${result.errorCode}] ${result.errorMessage ?? "命令执行失败"}`);
           }
@@ -676,14 +680,14 @@ export function createSessionToolSurface(options = {}) {
       if (typeof cb === "function") listeners.push(cb);
     },
     emit,
-    async execute(name, args = {}) {
+    async execute(name, args = {}, toolCallId) {
       const tool = FS_TOOLS.find((t) => t.name === name);
-      if (!tool) return cli.execute(name, args);
+      if (!tool) return cli.execute(name, args, toolCallId);
       emit({ type: "tool_execution_start", name, status: "running" });
       try {
         const result = await executeFsTool(name, args, { cwd, boundaryAuthorized });
         if (result?.errorCode) {
-          emitToolError(emit, name, result.errorCode, result.errorMessage ?? "操作失败");
+          emitToolError(emit, name, result.errorCode, result.errorMessage ?? "操作失败", toolCallId);
         } else {
           emit({ type: "tool_execution_end", name, status: "completed" });
         }
@@ -691,7 +695,7 @@ export function createSessionToolSurface(options = {}) {
       } catch (err) {
         const errorCode = err?.code || "E-AGENT-FS-ERROR";
         const errorMessage = err?.message ?? String(err);
-        emitToolError(emit, name, errorCode, errorMessage);
+        emitToolError(emit, name, errorCode, errorMessage, toolCallId);
         return errorResult(errorCode, errorMessage);
       }
     },
@@ -703,7 +707,7 @@ export function createSessionToolSurface(options = {}) {
         parameters: schemaToTypeBox(tool.argsSchema),
         execute: async (toolCallId, params, signal) => {
           if (signal?.aborted) throw new Error("操作已取消");
-          const result = await fsSurface.execute(tool.name, params ?? {});
+          const result = await fsSurface.execute(tool.name, params ?? {}, toolCallId);
           if (result?.errorCode) {
             throw new Error(`[${result.errorCode}] ${result.errorMessage ?? "命令执行失败"}`);
           }

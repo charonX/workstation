@@ -51,6 +51,21 @@ function formatDuration(ms) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+// 错误展示文本（BUG-006）：优先 adapter 结构化错误（errorMessage/errorCode）；
+// 缺失时回退 PI end 携带的 output（ToolResult.content[].text——gate 拦截/参数
+// 校验等「无 adapter error 事件」路径的失败原因只存在于 output），避免「未知错误」。
+function errorDisplayText(tool) {
+  if (tool.errorMessage) return tool.errorMessage;
+  if (tool.errorCode) return tool.errorCode;
+  const out = tool.output;
+  if (typeof out === "string" && out !== "") return out;
+  if (Array.isArray(out?.content)) {
+    const text = out.content.map((b) => (b?.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+    if (text !== "") return text;
+  }
+  return "未知错误";
+}
+
 function ToolCallBlock({ tool, defaultOpen = false }) {
   const isError = tool.status === "error";
   const isInterrupted = tool.status === "running" && tool.interrupted === true;
@@ -94,7 +109,7 @@ function ToolCallBlock({ tool, defaultOpen = false }) {
         {isError ? (
           <div className="tool-section">
             <div className="tool-section-label">错误</div>
-            <div className="tool-section-content">{tool.errorMessage ?? tool.errorCode ?? "未知错误"}</div>
+            <div className="tool-section-content">{errorDisplayText(tool)}</div>
           </div>
         ) : (
           tool.output !== undefined && (
