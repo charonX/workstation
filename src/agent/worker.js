@@ -433,6 +433,9 @@ const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
 // BUG-002 诊断（2026-08-09）：每轮事件计数（text_delta/text_end/tool_execution）——
 // prompt-result 日志实锤事件链完整性；随轮次清理（prompt-result 后 delete）。
 const turnEventCounts = new Map(); // sessionKey → { delta, end, tool }
+// BUG-002 诊断 4（2026-08-09）：SDK 层事件到达计数（agent_start/end、turn_start/end、
+// message_update）——prompt-result 日志实锤「SDK 未产生事件」vs「worker 过滤丢弃」。
+const sdkEventCounts = new Map(); // sessionKey → { agent_start?, agent_end?, ... }
 
 // —— Slice 8（REQ-AGENT-057）：消息元数据（B10 数据面，接口 6）——
 // text_end 转发加 `meta { durationMs, tokensIn, tokensOut }`：
@@ -923,7 +926,17 @@ async function createSessionEntry(msg) {
     model,
     keyRef: keyRef ?? `key:${provider}`,
   };
-  agentSession.subscribe((ev) => forwardEvent(sessionKey, ev));
+  agentSession.subscribe((ev) => {
+    // BUG-002 诊断 4（2026-08-09）：SDK 事件到达观测——subscribe 是否收到事件
+    //（区分「SDK 层未产生事件」vs「worker 过滤丢弃」）。
+    const t = ev?.type ?? ev?.assistantMessageEvent?.type ?? "?";
+    if (t === "agent_start" || t === "agent_end" || t === "turn_start" || t === "turn_end" || t === "message_update") {
+      const c = sdkEventCounts.get(sessionKey) ?? {};
+      c[t] = (c[t] ?? 0) + 1;
+      sdkEventCounts.set(sessionKey, c);
+    }
+    forwardEvent(sessionKey, ev);
+  });
   // 经生命周期模块注册（tech-design 接口 1）：覆盖注册（懒恢复/重建）清 tombstone，
   // 并刷新活跃时间；LRU 上限由模块在注册时执行（REQ-AGENT-036）。
   lifecycle.register(sessionKey, entry);
@@ -1032,7 +1045,9 @@ async function handlePrompt(msg) {
       // 但事件链断」vs「模型空转无输出」。
       const turnStats = { delta: turnEventCounts.get(sessionKey)?.delta ?? 0, end: turnEventCounts.get(sessionKey)?.end ?? 0, tool: turnEventCounts.get(sessionKey)?.tool ?? 0 };
       turnEventCounts.delete(sessionKey);
-      log(`prompt-result session=${sessionKey} id=${id} reply=${reply !== undefined ? "有" : "无"} 事件=${JSON.stringify(turnStats)}`);
+      const sdkStats = sdkEventCounts.get(sessionKey) ?? {};
+      sdkEventCounts.delete(sessionKey);
+      log(`prompt-result session=${sessionKey} id=${id} reply=${reply !== undefined ? "有" : "无"} 事件=${JSON.stringify(turnStats)} sdk事件=${JSON.stringify(sdkStats)}`);
       send({
         type: "prompt-result",
         id,
