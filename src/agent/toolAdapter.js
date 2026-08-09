@@ -360,6 +360,15 @@ function emitToolError(emit, name, errorCode, errorMessage) {
 }
 
 // —— 工具面 ——
+// BUG-002（2026-08-09）：OpenAI 兼容 function.name 规范 `^[a-zA-Z0-9_-]+$`——
+// CLI 命令名含空格（task list / flow get / settings get 等）→ deepseek 400
+// Invalid tools[0].function.name → LLM 调用失败被 SDK 吞 → 对话空转无提示。
+// 清洗规则：SDK 侧工具名把非法字符（含空格）替换为下划线；execute 仍用
+// 原始命令名（label 语义）执行——转换只作用于 SDK 契约面。
+export function toPiToolName(name) {
+  return String(name).replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
 // createToolSurface({ commandsDir, baseUrl, onConfirmRequest, sessionKey, getDefaultTarget }) →
 // { listTools, execute, onEvent, toPiToolDefinitions }。
 // - commandsDir：可选；提供时做注册表覆盖校验（防命令模块漂移）。
@@ -453,7 +462,9 @@ export function createToolSurface(options = {}) {
     // PI 标记 isError 工具结果（LLM 可见错误文本，agent 继续）。
     toPiToolDefinitions() {
       return TOOL_DEFS.map((tool) => ({
-        name: tool.name,
+        // BUG-002：SDK 侧工具名清洗（空格→下划线，OpenAI function.name 规范）；
+        // label 保留原始命令名（LLM 可读），execute 用原始名执行。
+        name: toPiToolName(tool.name),
         label: tool.name,
         description: `${tool.description}（风险等级：${tool.riskLevel}）`,
         parameters: schemaToTypeBox(tool.argsSchema),

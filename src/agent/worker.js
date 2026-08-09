@@ -35,7 +35,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSessionToolSurface } from "./toolAdapter.js";
+import { createSessionToolSurface, toPiToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
 
@@ -1018,7 +1018,9 @@ async function handlePrompt(msg) {
         if (seq.length > 0) {
           const next = seq.shift();
           fauxHandle.appendResponses([
-            fauxAssistantMessage([fauxToolCall(next.tool, next.args ?? {})]),
+            // BUG-002：工具名清洗与 SDK 注册名一致（toPiToolName——FAUX 注入缝
+            // 的原始名 "task list" 在 SDK 侧是 "task_list"，不匹配则工具执行失败）。
+            fauxAssistantMessage([fauxToolCall(toPiToolName(next.tool), next.args ?? {})]),
             fauxEchoFor,
           ]);
         } else {
@@ -1040,6 +1042,27 @@ async function handlePrompt(msg) {
       }
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
       log(`LLM 调用结束 session=${sessionKey} id=${id}`);
+      // BUG-002 修复（2026-08-09）：LLM error 感知——SDK 吞错（请求失败 →
+      // stopReason=error，agent-loop 不抛、prompt resolve）→ worker 曾静默
+      // ok:true 无回复（对话空转）。检查末条消息 errorMessage → 回 session-error
+      //（E-AGENT-LLM-FAIL，renderer 可见错误，不再静默）。
+      let llmError = null;
+      try {
+        const msgs = entry.agentSession.messages ?? [];
+        const last = msgs[msgs.length - 1];
+        if (last?.stopReason === "error") {
+          llmError = last.errorMessage || (last.content ?? []).find((c) => c.type === "text")?.text || "LLM 调用失败（无错误详情）";
+        }
+      } catch (err) {
+        log(`error 检查失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+      }
+      if (llmError) {
+        const error = { code: "E-AGENT-LLM-FAIL", reason: llmError };
+        log(`prompt 失败（LLM error 消息）session=${sessionKey} code=${error.code} reason=${String(llmError).slice(0, 200)}`);
+        send({ type: "session-error", sessionKey, ...error, userMessage: `LLM 调用失败：${llmError}` });
+        send({ type: "prompt-result", id, sessionKey, ok: false, error });
+        return;
+      }
       // BUG-002 诊断 5（2026-08-09）：LLM 调用后读 SDK 末条消息（error 消息的
       // errorMessage）——直接暴露请求失败原因（401/404/网络/参数——SDK 吞错）。
       try {
