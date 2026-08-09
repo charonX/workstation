@@ -927,9 +927,15 @@ async function createSessionEntry(msg) {
 
 // 模型解析（H3 seam）：faux 模式直取 faux 模型（零网络）；否则注入 key 并取
 // provider/model，不可用则抛 E-AGENT-MODEL。
+// BUG-001：setRuntimeApiKey 必须显式传 { allowNetwork: false }——SDK 第三参
+// refreshOptions 缺省时，内部 refresh({}) 的 allowNetwork 回退 modelNetworkEnabled
+// （= PI_OFFLINE 未设 → true），对持凭证 provider 发起 pi.dev 远程目录刷新
+// （无 signal/超时兜底）；pi.dev 不可达时靠 undici headersTimeout 300s 解脱，
+// session-config 阻塞 5 分钟。create 时 allowModelNetwork:false 只管首次 refresh，
+// 与本注入路径互不覆盖——两处语义必须一致：本 worker 模型解析纯本地（内建 catalog）。
 async function resolveModel(runtime, provider, model, apiKey) {
   if (FAUX_MODE) return fauxHandle.getModel();
-  if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
+  if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey, { allowNetwork: false });
   const modelObj = runtime.getModel(provider, model);
   if (!modelObj) {
     throw new Error(`E-AGENT-MODEL: provider=${provider} model=${model} 不可用`);
