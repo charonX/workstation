@@ -5,7 +5,7 @@ story_id: 2026-08-08-pi-agent-ux-enrichment
 intention: >-
   PI agent 对话在本机 UI 会话区只有纯文本回显，读长回复费劲、工具调用零呈现、代码无高亮——需要一次对话输出的富呈现升级（GFM/高亮/Mermaid/公式/图片/工具折叠块），对齐 pi-web 式工作台体验。
 
-phase: BUG          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: PRD          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-08
