@@ -477,6 +477,70 @@
 
 ---
 
+### Slice 9（REQ-AGENT-056 呈现面 + REQ-AGENT-057 呈现面）— 2026-08-09
+
+> 收官切片：renderer 呈现（StatusBar 状态栏三区 + 消息元数据）+ SSE 消费接入 + E2E 接线跑绿。数据源（worker stats 推送 / text_end meta / git 分支推送 / SSE 补推）Slice 8 已就位，本切片零数据面改动。
+
+**实现 commit**：`[build] slice9: StatusBar 状态栏 + 消息元数据呈现 (REQ-AGENT-056/057)`
+
+**实现文件**：
+
+| 文件 | 变更 | 说明 |
+|---|---|---|
+| `src/renderer/components/assistant/StatusBar.jsx` | 新增 | composer 上方状态栏三区（testid 契约 status-bar/status-exec/status-branch/status-context）：执行状态三态（空闲/回复中…/工具执行中…——状态点 灰/accent 闪烁/warning 闪烁，原型语义）+ git 分支（⎇ 前缀，branch 名/分离 HEAD/无 git 三态 + 未就绪占位「—」）+ 上下文用量（ctx-meter 仪表 + `tokens / contextWindow · percent%`；tokens null → percent/占位）。`gitText/contextText/meterWidth` 导出供 SSR harness 断言 |
+| `src/renderer/components/assistant/format.js` | 新增 | 共享展示格式化纯函数：`formatTokens`（null/NaN → 「-」；≥1000 → k 记法 12.4k/200k；<1000 原值）、`formatDuration`（ms → 秒两位小数 1.24s；null → 「-」） |
+| `src/renderer/components/assistant/MessageList.jsx` | 改 | text 元素完成态（!streaming）且携带 meta → bubble 内渲染 `[data-testid='msg-meta']`（耗时 + `in N · out N tokens`；FAUX usage 0/缺省 → 「-」不误导，057 标准 4；agent 角色守卫——user/tool/历史消息不渲染） |
+| `src/renderer/components/assistant/ChatView.jsx` | 改 | 渲染顺序 MessageList → StatusBar → Composer（E2E DOM 纵向顺序断言）；execState/gitState/contextUsage 透传 |
+| `src/renderer/pages/Assistant.jsx` | 改 | ① `reduceExecState`（导出纯函数）：tool start +1 / end|error −1（floor 0）/ text_end 归零（turn 完成，中断工具不再计入）+ `execStateOf`（工具执行中 > 回复中 > 空闲）；② SSE 消费 `session-git`（路由 attach 补推 + createSession 推送幂等）→ gitState、`session-stats` → contextUsage；③ text_end 分支将 `ev.meta` 落消息完成态；④ 切会话清理三状态（056 标准 6） |
+| `src/renderer/components/assistant/assistant.css` | 改 | status-bar/status-item/状态点三态（作用域 .status-bar——既有全局 .status-dot 表头徽标不冲突）/status-label/status-branch（⎇ ::before）/status-context（margin-left:auto）/ctx-meter（仪表条 accent，width transition）/msg-meta/.meta-item（· 分隔，原型语义）；全部 token 引用（--ch-*），深浅色自动跟随 data-theme |
+
+**实现决策**（按任务授权「实现者按既有形态定」）：
+
+- **执行状态纯 renderer 推导**（tech-design 增量 v0.3 数据流 4）：running 工具计数 + streaming 布尔；工具执行中优先（工具常在流式内执行）；text_end 归零与 markInterruptedTools 语义一致（中断工具不再"执行中"）；error 事件同样递减 + floor 0 防负。零新数据。
+- **meta 渲染条件** = 完成态（!streaming）+ meta 存在 + agent 角色——流式 settle（STREAM_SETTLE_MS 1200ms）后出现，与 E2E「流式期间不显示、完成态出现」断言一致；历史消息（JSONL 无 meta）不渲染。
+- **git/context 缺失占位**（E7/E8 不阻塞）：git 帧未达 → 「—」；stats 未达 → 仪表 0 + 「—」；session-stats 空态帧（sessionKey null）不转发 renderer（agentService 过滤）→ 保持上一值。
+- **切会话清理**：selectedKey effect 内重置 gitState/contextUsage/toolActive——新连接 SSE attach 即补推 session-git（打开/切换/重连即达，Slice 8 契约路径）。
+
+**测试摘要**：
+
+- lint：0 error（改动 6 文件零告警）。
+- **组件链 SSR 自验 harness**（.agent-home/slice9-harness/ssr-check.mjs，vite ssrLoadModule + react-dom/server，临时不提交）：**50/50 PASS**——① 执行状态事件驱动序列（text_start→tool start→tool end→text_end；双工具并发部分 end 仍 tool；error 递减；floor 0；text_end 归零；text_delta 不动）；② 三态渲染（文案 + 状态点类 running/tool + 非法 exec 回落空闲）；③ locator 四契约；④ git 三态文案 + 占位；⑤ context 文本/仪表（k 记法、percent clamp、tokens null → percent/占位）；⑥ meta 完成态出现（耗时 1.24s / FAUX 0 → 「-」/ 非零 1.2k·400）/ 流式期间不显示 / 无 meta / user / tool 消息不渲染 / 仅 durationMs 兜底；⑦ format 纯函数。
+- **全量单测**（rebuild:node + `npm run test:unit`）：**tests 669 / pass 669 / fail 0 全绿**（066 既有水位 + 3 新增 sessionStats 全绿；056/057 呈现面纯 renderer 改动对 669 零影响）。
+- **E2E statusBar.test.cjs**（rebuild:electron + playwright）：**0/3**——**全部阻塞于签核业务测试自身的 seam 缺陷（test-gap，非实现缺陷）**，详见 concerns 1；实现已用证据 probe 实证满足签核断言面（见下）。
+- **E2E 证据 probe**（.agent-home/slice9-harness/e2e-probe.mjs，按既有 E2E 接线模式——seedAgentConfig + OPC_AGENT_FAUX extraEnv + 精确 spaceKey locator + 项目组展开——重放 statusBar 签核断言语义）：**12/13 PASS**——状态栏三区可见 + composer 上方 y 序 / git `feat/demo` **发消息前**（SSE attach 补推路径实证）/ 发送 → 「回复中…」→ 回空闲 / session-stats 推送 → 上下文仪表非占位（`4.6k / 128k tokens · 3.57%`）/ 流式期间无 msg-meta → 完成态 meta 出现（`耗时 0.52s · in 2.1k · out 94 tokens`）。1 FAIL = probe 自身假设错（FAUX 实证返回估算 usage 非 0——pi-ai fauxProvider 按消息内容估算；「-」路径由 SSR harness 覆盖，非实现缺陷）。
+- **回归**：同目录既有 12 用例（richRender 7 + streamingRender 2 + toolCallBlock 3）**12/12 绿**（20.5s）+ assistantChat **2/2 绿**（9.5s）——StatusBar 插入 ChatView 对既有断言零回归。
+
+**PRD→代码 可追溯性表**（B9/B10 呈现面本切片范围，逐条）：
+
+| PRD/REQ 条目 | 落点（文件/机制） | 说明 |
+|---|---|---|
+| B9 / REQ-AGENT-056 标准 1：状态栏位于 composer 上方，三区齐全 | ChatView 渲染顺序 MessageList → StatusBar → Composer + StatusBar.jsx 三区（status-exec/status-branch/status-context） | E2E 断言 DOM 纵向顺序（barBox.y+height ≤ composerBox.y+1）+ 三区 locator；probe 实证 |
+| REQ-AGENT-056 标准 2：执行状态随 streaming/tool 事件切换，完成回空闲 | Assistant.jsx `reduceExecState`（tool start/end/error/text_end 归约）+ `execStateOf`（工具执行中>回复中>空闲） | 纯 renderer 推导（数据流 4）；SSR harness 事件序列 11/11；probe 实证「回复中…→空闲」 |
+| REQ-AGENT-056 标准 3：git 分支三态（branch/detached/none） | SSE `session-git` 消费 → gitState → StatusBar `gitText`（⎇ 前缀 / 分离 HEAD / 无 git / 占位「—」） | 数据面 Slice 8（路由 attach 补推 + createSession 推送幂等）；SSR harness 三态 + 占位 6/6；probe 实证发消息前即达 |
+| REQ-AGENT-056 标准 4：上下文用量仪表（tokens/contextWindow/percent；null → 占位） | SSE `session-stats` 消费 → contextUsage → StatusBar ctx-meter + contextText（k 记法 + percent + clamp） | 数据面 Slice 8（worker 周期推送 → 主进程缓存 → SSE）；SSR harness 仪表 8/8；probe 实证 stats 到达后非占位 |
+| REQ-AGENT-056 标准 5：stats 获取失败 → 占位不阻塞（E7） | context 未达 → 仪表 0 + 「—」；session-stats 空态帧不转发（保持上一值） | SSR harness「context 未就绪→占位」；probe 实证 stats 未达时 status-context 仍可见 |
+| REQ-AGENT-056 标准 6：切会话 → 分支/上下文跟随切换 | selectedKey effect 重置 gitState/contextUsage/toolActive + 新连接 SSE attach 补推 session-git | 打开/切换/重连即达（Slice 8 路由补推契约路径）；probe 实证 |
+| B10 / REQ-AGENT-057 标准 1：回复完成 → 消息下方 meta（耗时 + in/out token） | text_end 分支 `ev.meta` 落消息 → MessageList 完成态渲染 msg-meta（`耗时 Xs · in N · out N tokens`） | 数据面 Slice 8（text_end 延迟至 message_end 转发携带 meta）；SSR harness + probe 实证 |
+| REQ-AGENT-057 标准 2：流式期间不显示 meta | 渲染条件 !streaming（settle 1200ms 后出现） | SSR harness「流式期间 meta 不显示」+ probe 实证（流式 0 个 msg-meta → 完成态出现） |
+| REQ-AGENT-057 标准 4：FAUX usage 空/0 → 「-」不误导 | formatTokens null/NaN → 「-」+ meta 渲染 `>0 ? 值 : 「-」` | SSR harness「FAUX 0 → in - · out - tokens」+「仅 durationMs → in -」 |
+| tech-design 增量 v0.3 模块表 | StatusBar（新组件）/ MessageMeta（MessageList 内联）落地；接口 6（meta 完成态消费）/ 接口 7（session-git/session-stats renderer 消费） | 数据流 1（meta 完成态填充）/3（git 随会话推送）/4（执行状态纯推导）全链路闭合 |
+
+**concerns**（回传父代理）：
+
+1. **⚠️ statusBar.test.cjs（签核业务测试）seam 缺陷——3 用例全部阻塞于 test-gap，需 /bug 裁决（test-gap → /test-author 或授权 [test] 接线微调，Slice 7 先例），实现侧已用 probe 实证满足签核断言**：
+   - **① 项目会话 locator 无效**（测试 1/2，statusBar.test.cjs:69/106/122）：`[data-session-item='ui:project:${project.id}:*']`——CSS 属性选择器 `*` 为字面量，永不匹配真实 `ui:project:<id>:<uuid>`；且项目组默认收起（SessionList.jsx:97 `data-project-sessions hidden={!isOpen}`），会话行未渲染。既有模式（richRender.test.cjs:164-166）：先 `[data-project-row='<id>']` 点击展开，再按 createSession 返回的**精确 spaceKey** 点击。
+   - **② createSession body 与 API 契约不符**（测试 3，statusBar.test.cjs:128-134）：`{spaceKey: "ui:copilot:meta-e2e", provider, apiKey}` → 400 E-SESSION-CREATE——端点只接受 `{spaceKind}`（返回随机 key），无「指定 key 建会话」端点。既有模式（streamingRender.test.cjs:56-64）：`{spaceKind: "general"}` + 用返回 spaceKey 定位。
+   - **③ 缺 seedAgentConfig**（全部 3 用例）：全新 userData 未配置 agent → composer 禁用（fill/click 失败）+ 发送 409 E-AGENT-CONFIG。本 story 每个 E2E 均先 `PUT /api/settings/agent`（richRender/streamingRender/toolCallBlock/assistantChat 同型）。
+   - **④ 缺 OPC_AGENT_FAUX extraEnv**（全部 3 用例）：NODE_ENV=development 下 worker 不自动 FAUX → 真实 deepseek provider（网络禁用）不可用，流式/meta 断言不可能成立。既有模式：`startElectronApp({ extraEnv: { OPC_AGENT_FAUX: "1", OPC_AGENT_FAUX_TPS: "200" } })`。
+   - 实证：E2E 原样跑 0/3（测试 1/2 卡在 ①，测试 3 卡在 ②——时间戳均为此类 seam 缺陷）；**probe 按 ①②③④ 正确接线后 12/13 绿**（1 FAIL 系 probe 自身对 FAUX usage 的假设错，实证 pi-ai fauxProvider 按消息内容估算 usage 非 0——057 标准 4 的「-」路径由 SSR harness 覆盖）。测试 2（git 三态）本身不涉及发送，修复 ① 后即可绿。
+2. **FAUX usage 实证更新**：Slice 8 记录「FAUX DEFAULT_USAGE 全 0」——实测 pi-ai fauxProvider（node_modules）按消息内容估算 usage（probe：tokensIn 2.1k / tokensOut 94；contextUsage `4.6k/128k·3.57%`）——非 0。057 标准 4「-」路径由 SSR harness 断言覆盖（实现按 `>0 ? 值 : 「-」` 判定，双态均实证）。
+3. **状态栏双边框观感**：status-bar border-bottom + composer border-top 相邻成 2px 分隔线——原型（assistant-rich.html）同构（status-bar 在 .composer 内带 border-bottom + composer border-top），保持一致；观感入 REFLECT。
+4. **ABI 备忘**（沿用 testing.md 既有约定）：全链路验证顺序 = rebuild:node → 单测 669 全绿 → rebuild:electron → E2E → 收尾 rebuild:node 切回（本次已执行）。
+
+**refactor**：本切片无独立 refactor 轮——改动面收敛（1 新组件 + 1 新纯函数模块 + 3 组件增量 + 1 CSS 增量；format 纯函数为 StatusBar/MessageMeta 共享，exec 归约导出为 SSR harness seam；样式全部 token 引用零硬编码色值）。renderer 呈现与 Slice 8 数据面零耦合（仅按契约字段消费）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
@@ -489,3 +553,4 @@
 | v6 | 2026-08-09 | Slice 6 完成记录：051 图片显示（主进程白名单 API + blob URL + 裸路径识别 + 越权占位；接线决策/测试摘要 22+19+666/PRD→代码可追溯性表/concerns） |
 | v7 | 2026-08-09 | Slice 7 完成记录：047~054 E2E 接线收官（项目空间 seed + API 投递 + extraEnv 注入缝 + 越权强化 + 轮询角色名修正；E2E 12/12 + 回归 12/12 + 666 全绿/PRD→代码可追溯性表/concerns） |
 | v8 | 2026-08-09 | Slice 8 完成记录：058+057 数据面（worker stats 周期推送 + text_end meta + git 分支读取模块；sessionStats 3/3 + 669 全绿 + git 三态 9/9 + SSE 端到端 6/6/PRD→代码可追溯性表/concerns） |
+| v9 | 2026-08-09 | Slice 9 完成记录：056+057 呈现面（StatusBar 三区 + 消息元数据 + SSE 消费；SSR harness 50/50 + probe 12/13 + 669 全绿 + 回归 12/12+2/2/PRD→代码可追溯性表/concerns——statusBar E2E 3 用例阻塞于测试自身 seam 缺陷，待 /bug 裁决） |
