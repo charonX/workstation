@@ -119,8 +119,48 @@
 
 ---
 
+## REQ-AGENT-056 顶栏状态栏（B9）
+
+- 优先级 P1 / 必须 / cross-module / worker, agentService, StatusBar / agent-dialogue / conversation-space / 浏览器 E2E + 集成
+- 接口契约：接口 7（session-stats 推送）；git 分支读取（主进程，参考 pi footer-data-provider）
+- UX 参照：`ux/assistant-rich.html`（composer 上方状态栏：执行状态/git 分支/上下文用量）
+
+验收标准：
+1. 状态栏位于 composer 上方，含三区：执行状态（空闲/回复中/工具执行中）、git 分支、上下文用量（tokens/contextWindow/percent 仪表）。
+2. 执行状态随 streaming（回复中）与 tool 事件（工具执行中）切换，回复完成回空闲（E2E：FAUX 会话发消息断言状态切换）。
+3. git 分支显示当前项目分支（主进程读 `.git/HEAD`，worktree 支持）；分离 HEAD → 显示 detached 态；非仓库 → 「无 git」/隐藏（E2E/单测：临时 git 仓库 fixture 三态）。
+4. 上下文用量显示 tokens/contextWindow/percent（worker 周期调 `getContextUsage()` → session-stats 推送）；压缩后 tokens 为 null → percent 或占位。
+5. stats 获取失败（worker 未就绪/异常）→ 状态栏隐藏/占位，对话不受阻（E7）。
+6. 切会话/项目 → 分支与上下文用量跟随切换。
+
+## REQ-AGENT-057 消息元数据（B10）
+
+- 优先级 P1 / 应该 / cross-module / worker, agentService, MessageList / agent-dialogue / conversation-space / 集成 + 浏览器 E2E
+- 接口契约：接口 6（text_end 加 `meta {durationMs, tokensIn, tokensOut}`——pi message_end 的 usage 实证）
+- UX 参照：`ux/assistant-rich.html`（消息下方 `· 耗时 · in/out tokens`）
+
+验收标准：
+1. agent 回复完成 → 消息下方显示 meta：耗时 + in/out token（text_end 携带的 usage）。
+2. 流式期间不显示 meta（完成态才出现）。
+3. text_end 的 meta 为加法字段：既有消费方零感知（text_delta/text_end 字段集断言同步——055 标准 3 同 seam 更新）。
+4. FAUX provider usage 为空/0 → meta 显示「-」或隐藏（不显示 0 误导）。
+
+## REQ-AGENT-058 worker stats 接入（B11）
+
+- 优先级 P1 / 必须 / cross-module / worker, agentService / agent-dialogue / conversation-space / 集成
+- 接口契约：worker 调 `getSessionStats()`/`getContextUsage()`（pi SDK 实证）→ `session-stats` IPC → 主进程缓存推 renderer；git 分支读取（`.git/HEAD` + worktree + detached/非仓库态）
+
+验收标准：
+1. worker 周期（周期可注入，测试缩短）调 `getContextUsage()` → 主进程收 `session-stats {contextUsage}` 并缓存（集成：注入周期断言推送）。
+2. git 分支读取：临时 git 仓库 fixture——正常分支名 / detached HEAD / 非仓库三态断言（含 worktree 支持）。
+3. FAUX provider：stats 无值（usage 空/0）→ 不崩、推送空态（renderer 显示占位——056 标准 5 衔接）。
+4. 既有 666 测试不回归（session-stats 为新事件，既有消费方零感知）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v1 | 2026-08-09 | 初版结晶：B1-B8 + I-1 → REQ-AGENT-047~055（M1/M2 留 PRD） | AI + 人 |
+| v2 | 2026-08-09 | 范围扩展结晶：B9-B11 → REQ-AGENT-056~058（状态栏/消息元数据/stats 接入；cost 只显示 token 人拍板） | AI + 人 |

@@ -102,7 +102,7 @@
 | conversation-space (ui-copilot) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/`, `.../e2e/` | REQ-AGENT-026~034（2026-08-07 验收） | `sessionSpace/sessionReset/sessionMessage/sessionEvents/sessionList/uiConfirmation/skillInjection/workerAssembly/toolSurface/permissionPolicy/authorizerBridge/feishuReadonly.test.js` + E2E `assistantNav/assistantChat/assistantSessions/assistantConfirm/assistantFeishu.test.cjs` |
 | conversation-space (pi-agent-consolidation) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-07-pi-agent-consolidation/api/` | REQ-AGENT-035~042, 045, 046（结晶 v1，未签核） | `sessionIdleEviction/sessionLruCap/sessionGroupCooling/hydrationWindow/sessionLifecycleModule/agentLogsRing/policyCodegen/permissionCorpus/docAssets.test.js`（计划） |
 | confirmation (pi-agent-consolidation) | `tests/capabilities/agent-dialogue/confirmation/2026-08-07-pi-agent-consolidation/e2e/` | REQ-AGENT-043, 044（结晶 v1，未签核） | E2E `confirmChainUi/confirmChainBash.test.cjs`（计划） |
-| conversation-space (ux-enrichment) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-08-pi-agent-ux-enrichment/e2e/`, `.../api/` | REQ-AGENT-047~055（结晶 v1，未签核） | E2E `richRender/toolCallBlock/streamingRender.test.cjs` + api `workerToolEventExt.test.js`（计划） |
+| conversation-space (ux-enrichment) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-08-pi-agent-ux-enrichment/e2e/`, `.../api/` | REQ-AGENT-047~055（v1）+ 056~058（v2 范围扩展，未签核） | E2E `richRender/toolCallBlock/streamingRender.test.cjs` + api `workerToolEventExt.test.js`（计划） |
 
 ## 能力依赖图
 
