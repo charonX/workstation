@@ -430,6 +430,9 @@ function mapToContractEvent(ev) {
 // 每会话最近一轮回复最终文本（text_end.content）——prompt-result 回传主进程，
 // 供调用方拿到本轮回复文本（REQ-AGENT-006/009 断言用）。
 const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
+// BUG-002 诊断（2026-08-09）：每轮事件计数（text_delta/text_end/tool_execution）——
+// prompt-result 日志实锤事件链完整性；随轮次清理（prompt-result 后 delete）。
+const turnEventCounts = new Map(); // sessionKey → { delta, end, tool }
 
 // —— Slice 8（REQ-AGENT-057）：消息元数据（B10 数据面，接口 6）——
 // text_end 转发加 `meta { durationMs, tokensIn, tokensOut }`：
@@ -474,6 +477,16 @@ function flushPendingTextEnds(sessionKey, usage) {
 }
 
 function forwardEvent(sessionKey, ev) {
+  // BUG-002 诊断（2026-08-09）：事件计数（text_delta/text_end/tool_execution）——
+  // prompt-result 日志实锤「LLM 生成了但事件链断」vs「模型空转无输出」。
+  const mappedType = ev?.assistantMessageEvent?.type ?? ev?.type;
+  if (mappedType === "text_delta" || mappedType === "text_end" || (mappedType ?? "").startsWith("tool_execution")) {
+    const c = turnEventCounts.get(sessionKey) ?? { delta: 0, end: 0, tool: 0 };
+    if (mappedType === "text_delta") c.delta += 1;
+    else if (mappedType === "text_end") c.end += 1;
+    else c.tool += 1;
+    turnEventCounts.set(sessionKey, c);
+  }
   // 消息元数据（REQ-AGENT-057）：回合起点记录 + text_end 延迟转发（message_end
   // 冲刷时统一转发，事件顺序与既有契约一致——text_delta 后 text_end）。
   if (ev?.type === "message_update" && ev.assistantMessageEvent) {
@@ -1006,6 +1019,11 @@ async function handlePrompt(msg) {
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
       log(`LLM 调用结束 session=${sessionKey} id=${id}`);
       const reply = lastReplies.get(sessionKey);
+      // BUG-002 诊断（2026-08-09）：reply 有无 + 本轮事件计数——实锤「LLM 生成了
+      // 但事件链断」vs「模型空转无输出」。
+      const turnStats = { delta: turnEventCounts.get(sessionKey)?.delta ?? 0, end: turnEventCounts.get(sessionKey)?.end ?? 0, tool: turnEventCounts.get(sessionKey)?.tool ?? 0 };
+      turnEventCounts.delete(sessionKey);
+      log(`prompt-result session=${sessionKey} id=${id} reply=${reply !== undefined ? "有" : "无"} 事件=${JSON.stringify(turnStats)}`);
       send({
         type: "prompt-result",
         id,
