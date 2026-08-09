@@ -165,4 +165,24 @@ test.describe("REQ-AGENT-056/057 状态栏与消息元数据", () => {
     const lastBubble = ctx.firstWindow.locator("[data-message-role='agent']").last();
     await expect(lastBubble.locator(META)).toBeVisible();
   });
+
+  // [BUG-004 回归（2026-08-09）：流式中切会话 → 新会话输入框/状态栏恢复]
+  test("BUG-004: 会话 A 流式中切到会话 B——B 的输入框可输入、状态栏空闲（修复前红：streaming 残留）", async () => {
+    const spaceKeyA = await createSession(ctx.apiBaseUrl, { spaceKind: "general" });
+    const spaceKeyB = await createSession(ctx.apiBaseUrl, { spaceKind: "general" });
+    await openSession(ctx.firstWindow, spaceKeyA);
+    // A 发送（FAUX TPS=200 慢流）→ 流式中
+    await ctx.firstWindow.fill(COMPOSER_INPUT, "触发慢速流式回复");
+    await ctx.firstWindow.click(SEND_BUTTON);
+    await expect(ctx.firstWindow.locator("[data-message-role='agent'][data-streaming='true']").first()).toBeVisible();
+    // 切到 B（流式中切换）
+    await ctx.firstWindow.click(sessionItem(spaceKeyB));
+    // B 的输入框可用（非「回复中…」禁用态）——修复前：streaming 残留 → 永远 busy
+    await expect(ctx.firstWindow.locator(COMPOSER_INPUT)).toBeVisible();
+    await ctx.firstWindow.fill(COMPOSER_INPUT, "在 B 中发送");
+    await expect(ctx.firstWindow.locator(SEND_BUTTON)).toBeEnabled();
+    // 状态栏空闲（修复前：execState 残留 replying）
+    await expect(ctx.firstWindow.locator(STATUS_EXEC)).toContainText("空闲");
+  });
 });
+
