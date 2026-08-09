@@ -1040,6 +1040,16 @@ async function handlePrompt(msg) {
       }
       await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
       log(`LLM 调用结束 session=${sessionKey} id=${id}`);
+      // BUG-002 诊断 5（2026-08-09）：LLM 调用后读 SDK 末条消息（error 消息的
+      // errorMessage）——直接暴露请求失败原因（401/404/网络/参数——SDK 吞错）。
+      try {
+        const msgs = entry.agentSession.messages ?? [];
+        const last = msgs[msgs.length - 1];
+        const lastErr = last?.errorMessage || (last?.content ?? []).find((c) => c.type === "text")?.text;
+        log(`末条消息 session=${sessionKey} role=${last?.role} stopReason=${last?.stopReason ?? "-"} err=${lastErr ? String(lastErr).slice(0, 200) : "无"}`);
+      } catch (err) {
+        log(`末条消息读取失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
+      }
       const reply = lastReplies.get(sessionKey);
       // BUG-002 诊断（2026-08-09）：reply 有无 + 本轮事件计数——实锤「LLM 生成了
       // 但事件链断」vs「模型空转无输出」。
