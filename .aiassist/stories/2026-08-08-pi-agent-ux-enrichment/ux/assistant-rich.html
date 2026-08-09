@@ -384,19 +384,6 @@
       <button class="theme-toggle" id="themeToggle">切换主题（当前：暗色）</button>
     </header>
 
-    <!-- 顶栏状态栏（B9）：执行状态 + git 分支 + 上下文用量 -->
-    <div class="status-bar" data-testid="status-bar">
-      <span class="status-item" data-testid="status-exec">
-        <i class="status-dot running" id="statusDot"></i>
-        <span class="status-label" id="statusLabel">回复中…</span>
-      </span>
-      <span class="status-item status-branch" data-testid="status-branch">feat/rich-rendering</span>
-      <span class="status-item status-context" data-testid="status-context">
-        <span class="ctx-meter"><i id="ctxMeter" style="width: 38%;"></i></span>
-        <span id="ctxText">12.4k / 200k tokens · 6%</span>
-      </span>
-    </div>
-
     <div class="message-list">
 
       <!-- ============ 消息 1：GFM 富文本（标题/列表/表格/引用/代码高亮） ============ -->
@@ -541,6 +528,18 @@ evicted.<span class="hl-fn">forEach</span>(<span class="hl-fn">evict</span>);</c
 
     <!-- composer -->
     <div class="composer">
+<!-- 顶栏状态栏（B9）：执行状态 + git 分支 + 上下文用量 -->
+    <div class="status-bar" data-testid="status-bar">
+      <span class="status-item" data-testid="status-exec">
+        <i class="status-dot running" id="statusDot"></i>
+        <span class="status-label" id="statusLabel">回复中…</span>
+      </span>
+      <span class="status-item status-branch" data-testid="status-branch">feat/rich-rendering</span>
+      <span class="status-item status-context" data-testid="status-context">
+        <span class="ctx-meter"><i id="ctxMeter" style="width: 38%;"></i></span>
+        <span id="ctxText">12.4k / 200k tokens · 6%</span>
+      </span>
+    </div>
       <textarea class="composer-input" placeholder="输入消息…（原型仅展示渲染，不可发送）"></textarea>
     </div>
   </main>
