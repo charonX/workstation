@@ -530,14 +530,14 @@ export async function executeToolCommand(name, args = {}, { baseUrl } = {}) {
 
 const READ_TOOL = {
   name: "read",
-  description: "读取项目目录内文件内容（cwd 外路径被权限层拦截）",
-  argsSchema: obj({ path: str("项目内文件绝对路径（必填）") }, ["path"]),
+  description: "读取项目目录内文件内容（相对路径按项目目录解析；cwd 外路径被权限层拦截）",
+  argsSchema: obj({ path: str("项目内文件路径（必填；相对路径按项目目录解析）") }, ["path"]),
 };
 const WRITE_TOOL = {
   name: "write",
-  description: "写入项目目录内文件（cwd 外路径被权限层拦截）",
+  description: "写入项目目录内文件（相对路径按项目目录解析；cwd 外路径被权限层拦截）",
   argsSchema: obj(
-    { path: str("项目内文件绝对路径（必填）"), content: str("文件内容（必填）") },
+    { path: str("项目内文件路径（必填；相对路径按项目目录解析）"), content: str("文件内容（必填）") },
     ["path", "content"]
   ),
 };
@@ -554,8 +554,11 @@ const BOUNDARY_ERROR_MESSAGE = "拒绝：目标路径在项目目录之外";
 // realpath 归一化判定：target 位于 cwd 内（含等于，signoff 裁决 18）→ 返回
 // realpath 后的目标路径；否则 null。realpathBestEffort 对不存在的尾部沿父链
 // 取最近存在祖先归一化（写入目标常尚未创建）。
+// BUG-005：相对路径以**会话项目目录**（cwd 参数）为解析基准——单参
+// path.resolve(targetPath) 以 process.cwd()（worker 进程 = 应用仓库根）为基准，
+// 相对路径静默错读/越界（生产事故：read README.md 读到仓库根同名文件）。
 function resolveInsideCwd(cwd, targetPath) {
-  const targetAbs = path.resolve(String(targetPath ?? ""));
+  const targetAbs = path.resolve(cwd, String(targetPath ?? ""));
   const targetReal = realpathBestEffort(targetAbs);
   return isInsideOrEqual(comparisonKey(targetReal), comparisonKey(cwd)) ? targetReal : null;
 }
@@ -591,7 +594,9 @@ async function runBash(command, cwd) {
 async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
   switch (name) {
     case "read": {
-      const target = boundaryAuthorized ? path.resolve(String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
+      // BUG-005：相对路径基准 = 会话项目目录（cwd）——authorized 分支此前以
+      // process.cwd() 解析且不做边界检查 = 静默边界逃逸（读出项目外同名文件）。
+      const target = boundaryAuthorized ? path.resolve(cwd, String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
       if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
         return errorResult("E-AGENT-FS-ERROR", `文件不存在或不可读：${args.path}`);
@@ -599,7 +604,7 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
       return { output: fs.readFileSync(target, "utf8") };
     }
     case "write": {
-      const target = boundaryAuthorized ? path.resolve(String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
+      const target = boundaryAuthorized ? path.resolve(cwd, String(args.path ?? "")) : resolveInsideCwd(cwd, args.path);
       if (target === null) return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, String(args.content ?? ""));
