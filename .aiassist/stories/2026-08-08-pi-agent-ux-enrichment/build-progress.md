@@ -418,6 +418,65 @@
 
 ---
 
+### Slice 8（REQ-AGENT-058 + REQ-AGENT-057 数据面）— 2026-08-09
+
+> 范围扩展（requirements v2，hash 8636a974）：B11 worker stats 接入 + B10 消息元数据数据面 + git 分支读取。renderer 呈现（StatusBar/MessageMeta）归 Slice 9；E2E 接线归 Slice 9。
+
+**实现 commit**：`[build] slice8: 数据源接入（worker stats 周期推送 + text_end meta + git 分支读取模块）(REQ-AGENT-058/057数据面)`（见版本记录）
+
+**实现文件**：
+
+| 文件 | 变更 | 说明 |
+|---|---|---|
+| `src/services/gitBranch.js` | 新增 | `readGitBranch(dir)` 三态（branch/detached/none）+ worktree（`.git` 文件 → `gitdir:` 解析）+ 向上逐级查找；参考 pi footer-data-provider 语义，零 git 子进程依赖 |
+| `src/agent/worker.js` | 改 | ① stats 周期推送（`statsIntervalMs` 可注入经 env `OPC_AGENT_STATS_INTERVAL_MS`，默认 5s，unref 定时器；每周期对每会话调 `session.getContextUsage()`（pi SDK 实证 agent-session.d.ts:623）→ `session-stats {sessionKey, contextUsage}` IPC；无活跃会话 → 空态帧 `{sessionKey:null, contextUsage:null}`——周期语义保持 + 测试可断言）；② text_end meta（B10 数据面，接口 6）：PI assistantMessageEvent text_start 记录回合起点（缺失兜底首个 text_delta）→ text_end **延迟到 message_end 后转发**（usage 完备——实证：流式 text_end 的 partial 上 output 可能未填充，最终 usage 在 message_end/final message_delta）→ `meta {durationMs, tokensIn, tokensOut}`（tokens 读 `message.usage.input/output`；FAUX 全 0 → 照带，renderer 显示「-」）；兜底定时器 5s 防 message_end 缺失悬挂；淘汰/reset/shutdown 清理元数据状态与 statsTimer |
+| `src/services/agentService.js` | 改 | ① `statsIntervalMs` 选项 → spawn env 透传 worker（默认 `DEFAULT_STATS_INTERVAL_MS` 5s）；② handleChildMessage `session-stats` 分支：缓存（service 级 Map `sessionStatsCache`）+ 服务级事件（测试 seam）+ 会话句柄 session-event（SSE 转发 renderer，形态仿 session-event 转发）；③ `getSessionStats(spaceKey)`（切会话取位数据源）；④ `attachGitState`：createSession 后推 `session-git`（SSE 事件）+ 句柄携带 `gitBranch`（项目空间 → readGitBranch(项目目录)；通用/飞书 → none） |
+| `src/http/routes/agentSessions.js` | 改 | SSE 连接建立即补推 `session-git` 帧（`gitStateForSpace`：项目空间 → projects.localPath → readGitBranch；打开/切换/重连即达，不依赖 worker 存活——E2E「发消息前断言分支」的契约路径；与 createSession 推送幂等） |
+
+**实现决策**（按任务授权「实现者按既有形态定」）：
+
+- **session-stats 零会话空态帧**：业务测试 seam 断言「注入 500ms 周期 → ≥2 次推送」且未建会话 → worker 每周期无条件推送（无会话 → 空态帧），满足 058 标准 3「推送空态」与测试断言。
+- **text_end 延迟到 message_end**：任务要求「tokens 从 message_end 的 assistant message usage 读」；实证 Anthropic 流式 text_end partial 的 usage.output 可能未填充最终值（message_delta 在最后一个 content_block_stop 之后）→ 缓冲至 message_end（同轮内微秒级延迟，事件顺序不变），5s 兜底防悬挂。055 标准 3 断言面：text_delta 字段集不变（无 text_end 字段集断言，安全）。
+- **git 推送双路径**：SSE 路由 attach 补推（权威，会话打开/切换/重连） + agentService createSession 推送（句柄状态 + 已连接订阅），同源同形幂等。
+- **git 读取位置**：主进程（tech-design 决策：与图片白名单同源，项目目录边界一致）；HEAD 直读零 git 子进程（`.invalid` HEAD 回退 git CLI 为 pi 边界 case，本范围不实现——见 concerns）。
+
+**测试摘要**：
+
+- lint：0 error（4 改动文件零告警）。
+- `api/sessionStats.test.js`（REQ-AGENT-058，真实 spawn + 注入 500ms 周期）：**3/3 绿**——标准 1 周期推送（≥2 帧、contextUsage 结构）、标准 2 git 三态（正常/detached/非仓库）、标准 4 回归保全。
+- git 三态自验 harness（临时仓库 fixture）：**9/9 PASS**——正常分支 feat/demo / 子目录向上查找 / detached / 切回 / **worktree 分支 + worktree detached** / 非仓库 / 目录不存在 / 未提交仓库（HEAD 仍为 ref → 分支名）。
+- 元数据 harness（真实 worker + FAUX）：**10/12 PASS**——text_end 含 meta（durationMs 数值 + tokensIn/tokensOut 存在）、content 保留、text_delta 先于 text_end、text_delta 字段集 `["delta","type"]` 不变、长周期下无 stats 帧不悬挂；2 FAIL = createSession 的 session-git 推送在监听器挂接前发出（emit 先于调用方 attach——设计如此，权威路径为 SSE 路由补推，harness 验证方式不当，非缺陷）。
+- **SSE 端到端 harness**（真实 server + 项目空间 git 会话）：**6/6 PASS**——① SSE 打开即达 `session-git {state:"branch", branch:"feat/demo"}`（**发消息前**——E2E 契约路径实证）；② 通用空间 `session-git {state:"none"}`；③ 发消息 202；④ SSE text_end 携带 meta；⑤ meta durationMs+tokensIn；⑥ SSE `session-stats` 帧（contextUsage 对象）转发。
+- 全量单测（rebuild:node + `npm run test:unit`）：**tests 669 / pass 669 / fail 0 全绿**（666 既有水位 + 3 新增 sessionStats 全绿；055 workerToolEventExt、sessionEvents 等 text_end 序/字段集相关套件零回归）。
+
+**PRD→代码 可追溯性表**（B9-B11 数据面本切片范围，逐条）：
+
+| PRD/REQ 条目 | 落点（文件/机制） | 说明 |
+|---|---|---|
+| B11 / REQ-AGENT-058 标准 1：worker 周期调 getContextUsage → session-stats 缓存 | worker.js `pushSessionStats`（`getContextUsage()` 实证调用 + 周期注入 env）+ agentService `session-stats` 分支（service 级 Map 缓存 + 服务级事件） | 周期默认 5s 可注入（测试 500ms 断言 ≥2 帧）；无会话 → 空态帧（058 标准 3 衔接 056 标准 5） |
+| REQ-AGENT-058 标准 2：git 分支三态（含 worktree） | `src/services/gitBranch.js` `readGitBranch` + `findGitHeadPath`（`.git` 文件 → gitdir 解析） | 正常 `ref: refs/heads/<name>` → branch / HEAD hash → detached / 无 .git → none；自验 9/9（含 worktree） |
+| REQ-AGENT-058 标准 3：FAUX stats 无值不崩、推送空态 | worker `getContextUsage() ?? null` + try/catch + 空态帧 | FAUX usage 全 0/undefined → contextUsage null 照推（harness 实证不崩） |
+| REQ-AGENT-058 标准 4：既有测试零感知 | session-stats 为新 IPC/SSE 事件；text_delta/text_end 既有形态保持 | 669 全绿（含 055/028 相关套件） |
+| B10 / REQ-AGENT-057 标准 1：text_end 携带 meta（耗时 + in/out token） | worker.js `flushPendingTextEnds`（message_end 冲刷）→ SSE 原样透传（SSE 端到端实证 meta 到达） | durationMs = text_start 起止；tokensIn/Out = `message.usage.input/output` |
+| REQ-AGENT-057 标准 2：流式期间不显示 meta | meta 仅 text_end（完成态事件）携带 | renderer 侧 Slice 9 按完成态渲染（事件面本切片保证） |
+| REQ-AGENT-057 标准 3：meta 加法字段零感知 | text_end 字段集 = `["content","meta","type"]`；text_delta 不变 | 055 断言面只含 text_delta（实证 grep）→ 无字段集断言破坏 |
+| REQ-AGENT-057 标准 4：FAUX usage 空/0 → 「-」不误导 | tokensIn/Out 按 0 原样带（renderer 显示「-」；本切片不含渲染判定） | FAUX DEFAULT_USAGE 全 0 实证（faux.js:10-19） |
+| B9 / REQ-AGENT-056 标准 3/6：git 分支随会话打开/切换显示 | SSE 路由 attach 补推 `session-git`（打开/切换/重连即达）+ createSession 推送 + 句柄 `gitBranch` 状态 | E2E「发消息前断言分支」契约路径实证（SSE harness ①）；切会话 = 新连接 → 即时收到 |
+| tech-design 增量 v0.3 数据流 2/3 | session-stats 周期推送（worker → 主进程缓存 → SSE） + git 主进程读取 | 接口 7（session-stats {contextUsage}）+ git `{state, branch}` 形态落地 |
+
+**concerns**（回传父代理）：
+
+1. **getContextUsage 集成形态实证**：worker 内 `entry.agentSession.getContextUsage()` 同步直调（agent-session.d.ts:623，`ContextUsage | undefined`）——FAUX 下 contextWindow 128000 → 返回估算 `{tokens, contextWindow, percent}`（非 null）；真实 provider 压缩后为 `{tokens:null, percent:null}`（per pi rpc.md 语义）。无会话 → worker 空态帧（sessionKey:null）。
+2. **text_end 延迟转发**：text_end 缓冲至 message_end（同轮微秒级）——顺序与契约不变（text_delta 后 text_end）；5s 兜底定时器覆盖 message_end 缺失（异常中断）路径（仅 durationMs 无 tokens）。多文本块（多 contentIndex）按序冲刷。**注意**：若未来出现「message_end 缺失 + 下一轮已开始」的极端序列，兜底冲刷可能携带 next-turn 起点误算 durationMs——已用 startedAt 捕获 + 兜底窗口压缩风险（记录，待真实 provider 观测）。
+3. **git worktree 处理**：`findGitHeadPath` 解析 `.git` 文件 `gitdir:` 指向的 HEAD（per-worktree HEAD 即分支真相，无需解析 commondir——commondir 仅共享元数据）；自验含 worktree 分支与 worktree detached 双态。pi 的 `.invalid` HEAD 回退 git CLI 属边界 case，本范围不实现（HEAD 直读零子进程依赖优先；REFLECT 可复核）。
+4. **git 分支为静态读取**：无 500ms HEAD watcher（tech-design「可选」）——分支切换需重开会话/重连 SSE 才刷新（attach 补推机制天然覆盖）；如需实时监听为后续增量。
+5. **createSession 的 session-git emit 先于调用方 attach**（emit 同步于 createSession 内）：实践上无监听者，权威路径 = SSE 路由 attach 补推（SSE 端到端实证）；createSession 推送保留为句柄状态（`session.gitBranch`）与幂等冗余。
+6. **hydrationWindow flake**（环境性，与 Slice 5/6/7 记录同源）：本次 669 全绿复跑未见。
+
+**refactor**：本切片无独立 refactor 轮（改动面：1 新模块（纯函数，零依赖）+ worker 元数据/stats 两个收敛块 + agentService 一个 IPC 分支 + 路由一个补推帧；git 路径解析与图片白名单共用 pathUtils，与 agentService 项目空间装配同源不重复实现）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 变更 |
@@ -429,3 +488,4 @@
 | v5 | 2026-08-09 | Slice 5 完成记录：049 Mermaid（懒加载/securityLevel strict/暗色独立配色/流式字面量）+ 050 KaTeX（依赖/实证/测试摘要/PRD→代码可追溯性表） |
 | v6 | 2026-08-09 | Slice 6 完成记录：051 图片显示（主进程白名单 API + blob URL + 裸路径识别 + 越权占位；接线决策/测试摘要 22+19+666/PRD→代码可追溯性表/concerns） |
 | v7 | 2026-08-09 | Slice 7 完成记录：047~054 E2E 接线收官（项目空间 seed + API 投递 + extraEnv 注入缝 + 越权强化 + 轮询角色名修正；E2E 12/12 + 回归 12/12 + 666 全绿/PRD→代码可追溯性表/concerns） |
+| v8 | 2026-08-09 | Slice 8 完成记录：058+057 数据面（worker stats 周期推送 + text_end meta + git 分支读取模块；sessionStats 3/3 + 669 全绿 + git 三态 9/9 + SSE 端到端 6/6/PRD→代码可追溯性表/concerns） |
