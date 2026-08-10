@@ -82,55 +82,58 @@ function readProjectConfig(projectConfigPath) {
 // permission 面：mergeFlatPermissions 语义——顶层 {...base}，对象键浅合并
 // （bash/path 等 pattern map 只覆盖写了的 pattern），标量键替换。
 // 未知顶层键（含 $schema）不进入 merged——与 gotgenes 行为逐字一致（对照测试）。
+
+// 顶层字段覆盖合并：override 定义了就替换，否则继承 base（与 gotgenes
+// mergeUnifiedConfigs 的 `override[key] ?? base[key]` 逐字一致）。
+function mergeOverrideOrInherit(merged, base, override, keys) {
+  for (const key of keys) {
+    const value = override[key] ?? base[key];
+    if (value !== undefined) merged[key] = value;
+  }
+}
+
+// 对象面字段合并（shellTools/permission）：两源都在 → 用 mergeFn 合并；只有一源 →
+// 原样继承（绝不丢全局条目——丢条目 = 静默放行回归）。
+function mergeObjectField(merged, key, base, override, mergeFn) {
+  if (base && override) {
+    merged[key] = mergeFn(base, override);
+  } else if (base) {
+    merged[key] = base;
+  } else if (override) {
+    merged[key] = override;
+  }
+}
+
 export function mergeUnified(base = {}, override = {}) {
   const merged = {};
 
   // 顶层布尔（override 替换 base，defined 即生效）
-  for (const key of [
+  mergeOverrideOrInherit(merged, base, override, [
     "debugLog",
     "permissionReviewLog",
     "yoloMode",
     "doublePressToConfirm",
-  ]) {
-    const value = override[key] ?? base[key];
-    if (value !== undefined) merged[key] = value;
-  }
+  ]);
 
   // 顶层数值
-  for (const key of ["toolInputPreviewMaxLength", "toolTextSummaryMaxLength"]) {
-    const value = override[key] ?? base[key];
-    if (value !== undefined) merged[key] = value;
-  }
+  mergeOverrideOrInherit(merged, base, override, [
+    "toolInputPreviewMaxLength",
+    "toolTextSummaryMaxLength",
+  ]);
 
   // 数组字段：整体替换（override wins，与标量同语义——authorizerChain/
   // piInfrastructureReadPaths，ADR-022）
-  for (const key of ["piInfrastructureReadPaths", "authorizerChain"]) {
-    const value = override[key] ?? base[key];
-    if (value !== undefined) merged[key] = value;
-  }
+  mergeOverrideOrInherit(merged, base, override, ["piInfrastructureReadPaths", "authorizerChain"]);
 
   // shellTools：按工具名浅合并——项目条目覆盖同名工具的映射，但绝不丢全局条目
   //（丢别名 = 静默放行回归）
-  const baseShell = base.shellTools;
-  const overrideShell = override.shellTools;
-  if (baseShell && overrideShell) {
-    merged.shellTools = { ...baseShell, ...overrideShell };
-  } else if (baseShell) {
-    merged.shellTools = baseShell;
-  } else if (overrideShell) {
-    merged.shellTools = overrideShell;
-  }
+  mergeObjectField(merged, "shellTools", base.shellTools, override.shellTools, (a, b) => ({
+    ...a,
+    ...b,
+  }));
 
   // permission 面：深浅合并（mergeFlatPermissions 语义）
-  const basePerm = base.permission;
-  const overridePerm = override.permission;
-  if (basePerm && overridePerm) {
-    merged.permission = mergeFlatPermissions(basePerm, overridePerm);
-  } else if (basePerm) {
-    merged.permission = basePerm;
-  } else if (overridePerm) {
-    merged.permission = overridePerm;
-  }
+  mergeObjectField(merged, "permission", base.permission, override.permission, mergeFlatPermissions);
 
   return merged;
 }
@@ -342,6 +345,8 @@ const TOP_LEVEL_LABELS = {
 // { key, family, label, readable, type, global, value, source, projectOverridden }。
 // source/origin：项目文件里有该 key → project（projectOverridden=true）；否则 global。
 
+// 取 obj 中 segments 路径的值（中途非对象 → undefined）；用于 global（部署 JSON）
+// 读取——JSON 解析对象的键全为 own，直接下标即等价 own 读。
 function valueAt(obj, segments) {
   let cur = obj;
   for (const seg of segments) {
@@ -351,23 +356,26 @@ function valueAt(obj, segments) {
   return cur;
 }
 
-function hasAt(obj, segments) {
-  let cur = obj;
+// 项目来源探测：一次遍历取 segments 路径的值 + 是否逐段 own（Object.hasOwn 防
+// 原型链污染键如 "__proto__" 被误判为项目覆盖）。{owned:false} → 跟随全局。
+function projectOwnedValueAt(project, segments) {
+  let cur = project;
   for (const seg of segments) {
     if (cur === null || cur === undefined || typeof cur !== "object" || !Object.hasOwn(cur, seg)) {
-      return false;
+      return { owned: false, value: undefined };
     }
     cur = cur[seg];
   }
-  return true;
+  return { owned: true, value: cur };
 }
 
 function sourceFor(project, segments) {
-  const projectOwned = project !== null && hasAt(project, segments);
+  const probe =
+    project !== null ? projectOwnedValueAt(project, segments) : { owned: false, value: undefined };
   return {
-    projectOwned,
-    value: projectOwned ? valueAt(project, segments) : null,
-    source: projectOwned ? "project" : "global",
+    projectOwned: probe.owned,
+    value: probe.owned ? probe.value : null,
+    source: probe.owned ? "project" : "global",
   };
 }
 
@@ -447,7 +455,7 @@ function buildRules(global, project, merged) {
   if (permission && typeof permission === "object") {
     for (const [surface, surfaceValue] of Object.entries(permission)) {
       if (surfaceValue && typeof surfaceValue === "object" && !Array.isArray(surfaceValue)) {
-        for (const [pattern] of Object.entries(surfaceValue)) {
+        for (const pattern of Object.keys(surfaceValue)) {
           rules.push(buildMapEntryRule(surface, pattern, global, project));
         }
       } else {
@@ -455,7 +463,7 @@ function buildRules(global, project, merged) {
       }
     }
   }
-  for (const [key] of Object.entries(merged)) {
+  for (const key of Object.keys(merged)) {
     if (key === "permission" || key === "shellTools" || key === "$schema") continue;
     rules.push(buildTopLevelRule(key, global, project));
   }
@@ -502,11 +510,11 @@ export function savePermission(projectId, config) {
   // containment 校验先于 mkdirSync（防 symlink 逃逸时在项目外创建目录的副作用）。
   assertProjectConfigContained(projectDir, targetDir);
 
+  const tmpPath = `${projectConfigPath}.tmp`;
   let mtime;
   try {
     fs.mkdirSync(targetDir, { recursive: true });
     const content = `${JSON.stringify(config, null, 2)}\n`;
-    const tmpPath = `${projectConfigPath}.tmp`;
     fs.writeFileSync(tmpPath, content);
     fs.renameSync(tmpPath, projectConfigPath);
     mtime = fs.statSync(projectConfigPath).mtimeMs;
@@ -514,7 +522,7 @@ export function savePermission(projectId, config) {
     // mkdir/写/rename 统一 → E-PERMISSION-WRITE（目录不可写不再裸抛 → 500
     // VALIDATION_ERROR）；原子写失败不污染现有文件。
     try {
-      fs.unlinkSync(`${projectConfigPath}.tmp`);
+      fs.unlinkSync(tmpPath);
     } catch {
       // tmp 清理失败不影响主错误
     }
