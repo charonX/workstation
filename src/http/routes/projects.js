@@ -1,5 +1,6 @@
 import * as projectService from "../../services/projectService.js";
 import * as skillService from "../../services/skillService.js";
+import * as permissionConfigService from "../../services/permissionConfigService.js";
 
 export async function handleProjects(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -86,6 +87,35 @@ export async function handleProjects(req, res, body, pathParts) {
       try {
         return ok(res, skillService.unlinkSkillsFromProject(project, body));
       } catch (err) {
+        return mapError(res, err);
+      }
+    }
+    return notFound(res);
+  }
+
+  if (pathParts.length === 2 && pathParts[1] === "permission") {
+    // PI 权限配置（REQ-AGENT-059~068，2026-08-10-pi-permission-config-ui Slice 2）。
+    // 契约（tech-design §3.1/3.2）：GET → {global, project, merged, rules[]}；
+    // PUT body=项目 JSON → {saved, mtime}。错误响应带 `code` 字段（既有 mapError
+    // 输出 `error` 字段，形态不符——分支内显式构造，最小侵入不改 mapError 既有行为）：
+    // 404 E-PROJECT-NOT-FOUND / 400 E-PERMISSION-INVALID(+issues) / 500 E-PERMISSION-WRITE。
+    if (req.method === "GET") {
+      try {
+        return ok(res, permissionConfigService.getPermissionView(projectId));
+      } catch (err) {
+        if (err.code === "E-PROJECT-NOT-FOUND") return permissionError(res, 404, err.code, err.message);
+        return mapError(res, err);
+      }
+    }
+    if (req.method === "PUT") {
+      try {
+        return ok(res, permissionConfigService.savePermission(projectId, body));
+      } catch (err) {
+        if (err.code === "E-PERMISSION-INVALID") {
+          return permissionError(res, 400, err.code, err.message, { issues: err.issues });
+        }
+        if (err.code === "E-PROJECT-NOT-FOUND") return permissionError(res, 404, err.code, err.message);
+        if (err.code === "E-PERMISSION-WRITE") return permissionError(res, 500, err.code, err.message);
         return mapError(res, err);
       }
     }
@@ -191,6 +221,13 @@ function mapError(res, err) {
   if (err.invalidAgents) body.invalidAgents = err.invalidAgents;
   res.writeHead(status, { "Content-Type": "application/json" });
   return res.end(JSON.stringify(body));
+}
+
+// 权限配置端点错误响应（契约形态：顶层 `code` 字段；E-PERMISSION-INVALID 经
+// extra 透传 issues:[{path, message}]，tech-design §3.2）。
+function permissionError(res, status, code, message, extra) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  return res.end(JSON.stringify({ code, message, ...extra }));
 }
 
 function notFound(res, message = "Not found") {

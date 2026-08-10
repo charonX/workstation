@@ -469,7 +469,27 @@ async function handleRequest(req, res, server) {
   const resource = pathParts[0];
   const subPath = pathParts.slice(1);
 
-  const body = await parseBody(req);
+  let body;
+  try {
+    body = await parseBody(req);
+  } catch (err) {
+    // 非法 JSON 语法：parseBody reject（否则上层 catch → 500 INTERNAL_ERROR）。
+    // REQ-AGENT-068 AC1（tech-design §3.2）：PUT /api/projects/:id/permission 契约
+    // 要求 400 E-PERMISSION-INVALID + 路径化 issues（不落盘）。仅此端点按契约映射
+    // （错误形态属权限端点契约）；其余资源保持既有 500 行为不变（rethrow）。
+    if (resource === "projects" && subPath.length === 2 && subPath[1] === "permission" && req.method === "PUT") {
+      const message = err?.message ?? "Invalid JSON body";
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          code: "E-PERMISSION-INVALID",
+          message,
+          issues: [{ path: "(root)", message }],
+        })
+      );
+    }
+    throw err;
+  }
 
   res.setHeader("Content-Type", "application/json");
 
