@@ -42,7 +42,7 @@ PI agent 的权限策略目前只活在**代码/JSON 文件**里：全局出厂�
 | B5 | **工具级裁决 + 全局兜底可视化**：read/write/edit/create/delete/ls/grep/find → allow/ask 下拉；`permission."*"` 兜底控件 | Q5 人拍板；permissionPolicy 工具默认裁决现成 |
 | B6 | **path 白名单 / 外部目录列表编辑器**：路径列表的增删编辑 | Q5 人拍板（全量面板化含 4/5 字段域） |
 | B7 | **authorizerChain + 其他开关面板化**：authorizerChain（opc-bridge 等）链配置；yoloMode/debugLog/doublePressToConfirm/预览长度等开关 | Q5 人拍板（全量面板化含 6/7 字段域） |
-| B8 | **JSON 高级模式（单向同步）**：JSON 自由编辑；面板保存重新生成 JSON 但**保留面板不认识的字段**（标记「自定义字段」只读展示） | Q9 人拍板；文件为交汇点，运行时真相 = `.pi` 文件 |
+| B8 | **JSON 高级模式（单向同步）**：JSON 自由编辑；面板保存重新生成 JSON 但**保留面板不认识的字段**（标记「自定义字段」只读展示）——**精确语义 = permission 面内自定义规则保留**（schema 合法，z.record 宽松面，运行时安全）；**顶层未知键保存侧拒绝**（400，2026-08-10 人裁决 A：strictObject 实证 → 运行时整集 fail-closed，防「保存即全禁」） | Q9 人拍板 + 裁决 A；文件为交汇点，运行时真相 = `.pi` 文件 |
 | B9 | **首次编辑时生成**：无 `.pi` 文件 → UI 显示「未配置，全部跟随全局」；首次保存生成（模板 = 全局初始形态） | Q8 人拍板 |
 | B10 | **保存校验 fail-closed**：JSON 语法 + schema 校验（gotgenes `permissions.schema.json`），非法拒绝落盘 + 报错定位 | Q10 人拍板；gotgenes 运行侧对坏文件 `{invalid:true}` fail-closed（实证），保存侧拦截互补 |
 | B11 | **保存即生效**：保存写 `.pi` 文件 → gotgenes 下次评估自动用新配置（mtime stamp 缓存实证） | Q4 人拍板；policy-loader.ts getFileStamp 实证，零自造重载 |
@@ -140,7 +140,7 @@ PI agent 的权限策略目前只活在**代码/JSON 文件**里：全局出厂�
 | E2 保存失败 | 目录不可写/IO 异常/校验不过 | 保存 4xx + 具体原因 | 错误提示，**不落盘**；文件保持上次合法状态 | 无（原子写：临时文件 + rename） |
 | E3 项目不可用 | 项目已删除/无 localPath | 占位提示 | 页签不可编辑 | 无 |
 | E4 校验器不可用 | gotgenes schema 离线 | 降级警告 | 语法校验兜底 + 警告条 | 无 |
-| E5 自定义字段 | JSON 手写字段面板不识别 | 无（正常态） | 标记「自定义字段」只读展示 | 保存保留 |
+| E5 自定义字段 | JSON 手写字段面板不识别 | 无（正常态） | 标记「自定义字段」只读展示；**permission 面内**自定义规则保存保留；**顶层未知键保存被拒**（400，防运行时 fail-closed） | 保存保留（permission 面内） |
 | E6 运行侧坏文件（防御） | 文件被外部改坏 | 无（gotgenes `{invalid:true}` fail-closed） | agent 权限 fail-closed（拒绝），UI 若打开显示解析错误 | 对话可继续但工具受拒 |
 
 ## 9. 复杂度分级
