@@ -437,6 +437,16 @@ function createProcessAgentService(options = {}) {
     ? (fs.existsSync(options.entry) ? options.entry : defaultEntry)
     : defaultEntry;
 
+  // BUG-007（2026-08-10）：主进程 server baseUrl → spawn env 注入 worker
+  // （OPC_AGENT_SERVER_BASE_URL）+ worker 身份标记（OPC_AGENT_WORKER=1）。
+  // 根因：worker CLI 工具的 ensureServer 注册表发现在主 server 启动窗口期失败
+  // → headless 兜底超时 → worker 进程内 boot 第二个完整 server（stdout 污染 IPC
+  // 协议流 + 重复飞书连接）。注入后 worker 工具面直连本 server，发现/兜底旁路；
+  // 身份标记供 cli/server.js ensureServer 守卫禁掉任何自起路径。
+  const agentServerBaseUrl = typeof options.agentServerBaseUrl === "string" && options.agentServerBaseUrl
+    ? options.agentServerBaseUrl
+    : null;
+
   const emitter = new EventEmitter();
   const sessions = new Map(); // spaceKey → 会话句柄
   const keySecrets = new Map(); // keyRef → 明文 key（内存仅持）
@@ -657,6 +667,10 @@ function createProcessAgentService(options = {}) {
     env.PI_CODING_AGENT_DIR = path.join(cwd, ".agent-home");
     // 测试 seam（H3）：fauxProvider 注入，零网络（生产不设置）。
     if (process.env.NODE_ENV === "test") env.OPC_AGENT_FAUX = "1";
+    // BUG-007：worker 身份标记（ensureServer 守卫）+ 主进程 server baseUrl
+    //（worker 工具面直连，禁注册表发现失败后的自起兜底）。
+    env.OPC_AGENT_WORKER = "1";
+    if (agentServerBaseUrl) env.OPC_AGENT_SERVER_BASE_URL = agentServerBaseUrl;
     // Slice 8（REQ-AGENT-058）：stats 周期透传 worker（注入缝；默认 5s）。
     env.OPC_AGENT_STATS_INTERVAL_MS = String(statsIntervalMs);
     if (inElectron) env.ELECTRON_RUN_AS_NODE = "1";

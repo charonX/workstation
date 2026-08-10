@@ -123,6 +123,15 @@ export async function ensureServer() {
   const existing = await discoverServer();
   if (existing) return existing;
 
+  // BUG-007 守卫：agent worker 上下文（主进程 spawn 注入 OPC_AGENT_WORKER=1）
+  // 禁止任何 server 自起——发现失败即明确报错（工具错误可转述，agent 继续）。
+  // 根因（2026-08-09 生产事故）：启动窗口期注册表发现失败 → headless 兜底超时 →
+  // worker 进程内 boot 第二个完整 server——purge/飞书日志写 worker stdout（污染
+  // IPC 协议流，主进程逐行「子进程非法消息行」）+ 重复飞书 WebSocket 连接常驻。
+  if (process.env.OPC_AGENT_WORKER === "1") {
+    throw new Error("E-AGENT-SERVER-UNREACHABLE: 主进程 server 不可达（agent worker 禁止启动内嵌 server，请稍后重试）");
+  }
+
   try {
     return await startHeadlessServer();
   } catch (err) {

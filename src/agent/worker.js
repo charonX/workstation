@@ -38,12 +38,22 @@ import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-work
 import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
+import { setServerBaseUrlOverride } from "../cli/server.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
 const agentHome = process.env.OPC_AGENT_HOME ?? path.join(process.cwd(), ".agent-home");
 const cwd = process.env.OPC_AGENT_CWD ?? process.cwd();
 const FAUX_MODE = process.env.OPC_AGENT_FAUX === "1";
+
+// BUG-007：主进程 server baseUrl 注入（OPC_AGENT_SERVER_BASE_URL）→ 启动即
+// override——CLI 工具的 ensureServer 短路直连主进程 server，注册表发现/headless/
+// in-process 兜底整体旁路（兜底曾在启动窗口期于 worker 内 boot 第二个完整
+// server：stdout 污染 IPC + 重复飞书连接）。工具面另经 createSessionToolSurface
+// 的 baseUrl 选项逐会话接线（invokeCommandHandler 的 override 恢复语义兜底）。
+if (process.env.OPC_AGENT_SERVER_BASE_URL) {
+  setServerBaseUrlOverride(process.env.OPC_AGENT_SERVER_BASE_URL);
+}
 
 // 单条 IPC 消息上限（签核决策 15：≤ 256KB，先行约束来自飞书文本消息 150KB 上限）。
 const MAX_IPC_BYTES = 256 * 1024;
@@ -874,6 +884,9 @@ async function createSessionEntry(msg) {
     profile: permissionProfile,
     cwd: sessionCwd,
     sessionKey,
+    // BUG-007：主进程注入的 baseUrl 逐会话接线（工具命令直连主进程 server；
+    // 缺省回退注册表发现——仅手工调试/旧主进程形态，守卫见 cli/server.js）。
+    ...(process.env.OPC_AGENT_SERVER_BASE_URL ? { baseUrl: process.env.OPC_AGENT_SERVER_BASE_URL } : {}),
     getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
     boundaryAuthorized: gotgenesAssembled,
     ...(gotgenesAssembled

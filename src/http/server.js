@@ -247,6 +247,9 @@ export function startServer(options = {}) {
             cwd: process.cwd(),
             sessionDir: path.join(configDir, "agent-sessions"),
             sessionStore: getSessionStore(),
+            // BUG-007：本 server baseUrl 注入 → worker spawn env（工具面直连，
+            // 禁 worker 内 server 自起——启动窗口期注册表发现失败的兜底灾变）。
+            agentServerBaseUrl: `http://127.0.0.1:${port}`,
             // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面 confirm 级
             // 工具 → IPC confirm-request → 确认服务入队（pending + 确认卡片）。
             onConfirmRequest: (req) => getConfirmationService().submit(req),
