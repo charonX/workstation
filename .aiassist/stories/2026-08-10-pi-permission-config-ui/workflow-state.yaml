@@ -5,7 +5,7 @@ story_id: 2026-08-10-pi-permission-config-ui
 intention: >-
   PI agent 的权限策略配置（全局出厂 + 项目级覆盖）目前只能手写代码/JSON，界面零呈现，无法在 UI 中查看和管理——需要可视化管理。MCP 配置与验证单独立项（PI SDK 暂不支持 MCP）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: DESIGN      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: TECH-DESIGN  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-10
@@ -15,6 +15,7 @@ history:
   - {at: 2026-08-10, from: -, to: THINK, note: "创建 story"}
   - {at: 2026-08-10, from: THINK, to: PRD, note: "需求洞察完成（10 轮单题确认收敛方向 A）：权限配置可视化管理——项目详情页内嵌 + 继承视图（全局基底+项目覆盖高亮）+ 全量面板化（bash 族/工具级/path/外部目录/授权链/开关）+ JSON 高级模式单向同步（自定义字段保留）+ 首次编辑时生成 + 保存校验 fail-closed + 保存即生效（gotgenes mtime stamp 实证，零自造重载）。MCP 单独立项。interview-notes.md 定稿 → prd.md v0.1（12 稳定块 + 4 移动块 M1 克隆/M2 审计/M3 会话区入口/M4 全局可编辑）"}
   - {at: 2026-08-10, from: PRD, to: DESIGN, note: "人拍板先 DESIGN（UX 原型）再 TECH-DESIGN：项目详情弹窗新增权限配置页签——继承视图面板（全局基底只读 + 项目覆盖高亮）+ 全量规则可视化（bash 高危族按 family 分组 / 工具级裁决 / path 白名单列表 / 外部目录 / authorizerChain / 开关）+ JSON 模式切换 + 空态（未配置跟随全局）+ 保存校验错误呈现"}
+  - {at: 2026-08-10, from: DESIGN, to: TECH-DESIGN, note: "模式 C 迭代 UX 原型 permission-config.html（继承视图两列=全局默认+项目值、覆盖高亮+组徽标、family 分组、path/外部目录列表编辑器、authorizerChain 链、开关组、JSON 单向同步+自定义字段提示、空态新建、保存校验错误定位）——人确认样式无问题。设计系统复用 global（tokens 117 枚，check 无 issue）。record-asset approved"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -28,13 +29,13 @@ blocks: {}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
-  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
-  compiled: false           # 是否已跑过 compile-design-system
-  preview: ""               # 当前有效的 preview.html 路径
+  slug: "global"                # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true                # 是否已跑过 compile-design-system
+  preview: "permission-config.html"  # 当前有效的 preview.html 路径
 
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
-  recorded: []              # [flow-a.html, flow-b.html, ...]
+  recorded: ["permission-config.html"]  # [flow-a.html, flow-b.html, ...]
 
 # 已生成的变体(按需)。
 variants:

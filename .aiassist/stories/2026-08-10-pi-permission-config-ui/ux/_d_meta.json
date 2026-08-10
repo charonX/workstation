@@ -11,7 +11,7 @@
   ],
   "primaryDesignSystem": "global",
   "createdAt": "2026-08-10T00:00:00.000Z",
-  "updatedAt": "2026-08-10T00:00:00.000Z",
+  "updatedAt": "2026-08-10T09:45:06.671Z",
   "assets": {
     "权限配置": {
       "versions": [
@@ -19,6 +19,15 @@
           "path": "permission-config.html",
           "createdAt": "2026-08-10T00:00:00.000Z",
           "status": "needs-review"
+        }
+      ]
+    },
+    "权限配置页签": {
+      "versions": [
+        {
+          "path": "permission-config.html",
+          "createdAt": "2026-08-10T09:45:06.671Z",
+          "status": "approved"
         }
       ]
     }
