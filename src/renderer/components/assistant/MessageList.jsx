@@ -6,11 +6,14 @@
 // 确认卡渲染（REQ-AGENT-030 标准 3/4 + U-1）：数据源 = GET /api/agent/confirmations
 // 全量（含 status）——挂起队列 = SQLite 真相，页面重载后已处理卡按 status 重建为
 // data-state='done'（置灰、按钮不再渲染，以结果标注替代）。
+// BUG-008：确认卡按 createdAt 与消息时间序归并内联（chronology.js——UX 参照
+// ux/assistant.html 的消息数组内项语义），不再追加列表末尾跟随底部。
 
 import { useEffect, useRef } from "react";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
 import ToolCallBlock from "./ToolCallBlock.jsx";
 import { formatTokens, formatDuration } from "./format.js";
+import { mergeChronological } from "./chronology.js";
 
 // 操作描述（SSE confirmation-pending description 字段语义同构，裁决 11/8）：
 // GET 全量行无 description 字段（command + args 为真相），前端推导显示文案。
@@ -46,9 +49,44 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, confirmations]);
 
+  // BUG-008：消息 + 确认卡按时间序归并（确认卡内联于请求时点，done 卡沉回历史
+  // 位置；pending 新卡自然落底部保持可操作性）。
+  const items = mergeChronological(messages, confirmations);
+
   return (
     <div className="messages" data-testid="message-list" ref={listRef}>
-      {messages.map((m, idx) => {
+      {items.map((entry, idx) => {
+        if (entry.kind === "confirm") {
+          const c = entry.item;
+          const done = c.status !== "pending";
+          return (
+            <div
+              key={c.confirmId}
+              className={`confirm-card${done ? " done" : ""}`}
+              data-confirm-card
+              data-state={done ? "done" : undefined}
+            >
+              <p className="confirm-title">
+                <span className="warn-badge">高危操作</span>
+                {c.operation ?? c.command}
+              </p>
+              <p className="confirm-desc">{cardDescription(c)}</p>
+              {done ? (
+                <div className="confirm-result">{c.status === "approved" ? "已确认并执行" : "已拒绝"}</div>
+              ) : (
+                <div className="confirm-actions">
+                  <button type="button" className="btn btn-danger" data-testid="confirm-approve-button" onClick={() => onApprove(c)}>
+                    确认执行
+                  </button>
+                  <button type="button" className="btn btn-secondary" data-testid="confirm-reject-button" onClick={() => onReject(c)}>
+                    拒绝
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        }
+        const m = entry.item;
         // JSONL 角色 user/assistant → 气泡角色 user/agent（契约 data-message-role）。
         const role = m.role === "user" ? "user" : "agent";
         return (
@@ -72,35 +110,6 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
                   且 text_end 携带 meta → 显示；流式期间/历史消息（无 meta）不显示。 */}
               {role !== "user" && !m.streaming && m.meta ? <MessageMeta meta={m.meta} /> : null}
             </div>
-          </div>
-        );
-      })}
-      {confirmations.map((c) => {
-        const done = c.status !== "pending";
-        return (
-          <div
-            key={c.confirmId}
-            className={`confirm-card${done ? " done" : ""}`}
-            data-confirm-card
-            data-state={done ? "done" : undefined}
-          >
-            <p className="confirm-title">
-              <span className="warn-badge">高危操作</span>
-              {c.operation ?? c.command}
-            </p>
-            <p className="confirm-desc">{cardDescription(c)}</p>
-            {done ? (
-              <div className="confirm-result">{c.status === "approved" ? "已确认并执行" : "已拒绝"}</div>
-            ) : (
-              <div className="confirm-actions">
-                <button type="button" className="btn btn-danger" data-testid="confirm-approve-button" onClick={() => onApprove(c)}>
-                  确认执行
-                </button>
-                <button type="button" className="btn btn-secondary" data-testid="confirm-reject-button" onClick={() => onReject(c)}>
-                  拒绝
-                </button>
-              </div>
-            )}
           </div>
         );
       })}

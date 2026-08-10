@@ -329,6 +329,9 @@ export default function Assistant() {
           role: m.role,
           text: m.text ?? "",
           streaming: false,
+          // BUG-008：createdAt 随历史入渲染态——确认卡时间序内联的消息侧时间源
+          //（chronology.js 归并；此前仅用于 id 推导未入状态，卡无法按序插位）。
+          createdAt: m.createdAt,
         }));
         setMessages(next);
         setConfirmations((confs.confirmations ?? []).filter((c) => c.sessionKey === selectedKey));
@@ -368,7 +371,7 @@ export default function Assistant() {
         const id = `agent-${Date.now()}`;
         streamBufRef.current = { text: "", id };
         setStreamingBoth(true);
-        setMessages((prev) => [...prev, { kind: "text", id, role: "agent", text: "", streaming: true }]);
+        setMessages((prev) => [...prev, { kind: "text", id, role: "agent", text: "", streaming: true, createdAt: new Date().toISOString() }]);
       } else if (ev.type === "text_delta") {
         const delta = typeof ev.delta === "string" ? ev.delta : "";
         const buf = streamBufRef.current;
@@ -380,7 +383,7 @@ export default function Assistant() {
           }
         } else {
           // 防御兜底（对齐竞态后首个 delta 无流式气泡）：开新气泡续流。
-          setMessages((prev) => [...prev, { kind: "text", id: `agent-${Date.now()}`, role: "agent", text: delta, streaming: true }]);
+          setMessages((prev) => [...prev, { kind: "text", id: `agent-${Date.now()}`, role: "agent", text: delta, streaming: true, createdAt: new Date().toISOString() }]);
         }
       } else if (ev.type === "text_end") {
         const endedId = streamBufRef.current?.id ?? null;
@@ -558,7 +561,7 @@ export default function Assistant() {
       setMessages((prev) =>
         prev.some((m) => m.role === "user" && m.text === text)
           ? prev
-          : [...prev, { kind: "text", id: `user-${Date.now()}`, role: "user", text, streaming: false }]
+          : [...prev, { kind: "text", id: `user-${Date.now()}`, role: "user", text, streaming: false, createdAt: new Date().toISOString() }]
       );
       try {
         await sendMessage(key, text);
@@ -567,7 +570,7 @@ export default function Assistant() {
         setStreamingBoth(false);
         setMessages((prev) => [
           ...prev,
-          { kind: "text", id: `err-${Date.now()}`, role: "agent", text: "发送失败，请稍后重试", streaming: false },
+          { kind: "text", id: `err-${Date.now()}`, role: "agent", text: "发送失败，请稍后重试", streaming: false, createdAt: new Date().toISOString() },
         ]);
       }
     },
