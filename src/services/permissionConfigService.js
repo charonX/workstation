@@ -18,10 +18,13 @@
 // - 校验 = gotgenes `validateUnifiedConfig`（zod，config-schema.ts 实证，T5）——
 //   保存拦截的 = 运行时 fail-closed 的，同一把尺。
 //
-// 保存语义（ADR-022）：
+// 保存语义（ADR-022 + 裁决 A，2026-08-10 PRD 对齐缺口 1）：
 // - 覆盖式保存：请求体 = 项目 JSON 全量（最小覆盖集），落盘原样写入；
-// - 未知字段保留由前端视图转换承担（tech-design §4.3/§6.6：面板保存生成 payload 时
-//   读原 project JSON、保留 rules 之外的键；JSON 模式原样传）——服务端不猜模式；
+// - 顶层未知键（unifiedConfigSchema strictObject）→ 拒绝保存（400）：gotgenes 运行时
+//   对含未知键的配置整集 fail-closed（{config:{}} → 全规则集回落 ask），保存即全禁；
+//   permission 面内自定义 surface/pattern（z.record 合法）保留放行——自定义字段保留
+//   由前端视图转换承担（tech-design §4.3/§6.6：面板保存生成 payload 时读原 project
+//   JSON、保留 rules 之外的键；JSON 模式原样传）——服务端不猜模式；
 // - 首次保存生成文件（目录递归创建）；取消覆盖 = 字段不在请求 JSON → 落盘消失；
 // - 原子写：同目录 tmp + rename，失败不污染现有文件。
 
@@ -156,51 +159,94 @@ function mergeFlatPermissions(base, override) {
 // 经 jiti 同步加载 gotgenes TS 源码（对齐 worker.js loadGotgenesFactory 先例：
 // createRequire resolve 包目录 + createJiti + moduleCache:false；包 exports "." 指向
 // service.ts，config-loader.ts 是相对路径可直达的 TS 源码）。模块级缓存，仅首次
-// 编译（~120ms）。
+// 编译（~120ms）。加载失败（E4，PRD §6.2）→ 降级 JSON.parse 语法级校验 + 警告，
+// 不抛 500——schema 校验器不可用 ≠ 服务不可用。
 const workerRequire = createRequire(import.meta.url);
 let gotgenesValidationHandle = null;
 function loadGotgenesValidation() {
   if (!gotgenesValidationHandle) {
-    const serviceEntry = workerRequire.resolve("@gotgenes/pi-permission-system");
-    const entryDir = path.dirname(serviceEntry);
-    const pkgDir = path.basename(entryDir) === "src" ? path.dirname(entryDir) : entryDir;
-    const jiti = createJiti(import.meta.url, { moduleCache: false, fsCache: false });
-    const loader = jiti(path.join(pkgDir, "src", "config-loader.ts"));
-    const schema = jiti(path.join(pkgDir, "src", "config-schema.ts"));
-    gotgenesValidationHandle = {
-      validateUnifiedConfig: loader.validateUnifiedConfig,
-      unifiedConfigSchema: schema.unifiedConfigSchema,
-    };
+    try {
+      const serviceEntry = workerRequire.resolve("@gotgenes/pi-permission-system");
+      const entryDir = path.dirname(serviceEntry);
+      const pkgDir = path.basename(entryDir) === "src" ? path.dirname(entryDir) : entryDir;
+      const jiti = createJiti(import.meta.url, { moduleCache: false, fsCache: false });
+      const loader = jiti(path.join(pkgDir, "src", "config-loader.ts"));
+      const schema = jiti(path.join(pkgDir, "src", "config-schema.ts"));
+      gotgenesValidationHandle = {
+        validateUnifiedConfig: loader.validateUnifiedConfig,
+        unifiedConfigSchema: schema.unifiedConfigSchema,
+      };
+    } catch (err) {
+      // E4 降级：返回 null，上层降级 JSON.parse 语法级校验。不缓存失败（下次调用
+      // 重试，瞬时故障自愈）；每次降级均记录警告。
+      console.warn(
+        `[permissionConfig] permission.validation-downgrade: gotgenes schema 校验器不可用，` +
+          `降级 JSON.parse 语法校验: ${err?.message ?? String(err)}`
+      );
+      return null;
+    }
   }
   return gotgenesValidationHandle;
 }
 
+// 降级路径的语法级判定：JSON 对象（非数组/非 null）视为语法合法；其他形态
+// （数组/字符串/数字/null）不是合法配置对象——schema 校验器可用时同样拒绝。
+function isJsonObjectConfig(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // gotgenes 校验判定：有 issues = 非法。同步返回（permissionConfig.test.js 对照用例
-// 直接取值，不 await）。
+// 直接取值，不 await）。校验器不可用（E4 降级）→ 仅语法级判定（语法对 → 放行）。
 export function validateWithGotgenes(config) {
-  const { validateUnifiedConfig } = loadGotgenesValidation();
-  const result = validateUnifiedConfig(config);
+  const handle = loadGotgenesValidation();
+  if (!handle) return !isJsonObjectConfig(config);
+  const result = handle.validateUnifiedConfig(config);
   return result.issues.length > 0;
 }
 
-// gotgenes 的 unrecognized-key issue 形态（strictObject 未知顶层键）——B8/E5 自定义
-// 字段为 P0 功能：保存侧放行未知顶层键（文件保持 JSON 自由区语义；运行时对含未知
-// 键的配置 fail-closed 忽略——安全方向，保存侧不扩大拦截面）。
-function isUnrecognizedKeyIssue(issueText) {
-  return typeof issueText === "string" && issueText.startsWith("Unrecognized config key");
-}
-
 // 路径化校验错误（E-PERMISSION-INVALID 载荷，接口契约 3.2：issues:[{path,message}]）。
+// 裁决 A（PRD 对齐缺口 1）：顶层未知键（unifiedConfigSchema strictObject）会让
+// gotgenes 运行时整集 fail-closed（{config:{}} → 全规则集回落 ask）——顶层未知键
+// 必须进入 issues → 保存拒绝；permission 面内自定义 surface/pattern 是 z.record
+// 合法（schema 实证），永不产生 unrecognized_keys issue → 自定义字段保留不受影响。
 function validationIssues(config) {
-  const { unifiedConfigSchema } = loadGotgenesValidation();
-  const result = unifiedConfigSchema.safeParse(config);
+  const handle = loadGotgenesValidation();
+  if (!handle) {
+    // E4 降级：仅语法级校验。非 JSON 对象 → 一条 root issue；对象 → 无 issues
+    //（放行；降级警告已由 loadGotgenesValidation 记录）。
+    if (!isJsonObjectConfig(config)) {
+      return [
+        {
+          path: "(root)",
+          message: "config must be a JSON object (schema validator degraded, syntax-only validation)",
+        },
+      ];
+    }
+    return [];
+  }
+  const result = handle.unifiedConfigSchema.safeParse(config);
   if (result.success) return [];
-  return result.error.issues
-    .filter((issue) => issue.code !== "unrecognized_keys")
-    .map((issue) => ({
+  const issues = [];
+  for (const issue of result.error.issues) {
+    if (issue.code === "unrecognized_keys") {
+      // strictObject 的 unknown-key issue：zod path 为空数组（未知键不在对象内），
+      // 未知键名列在 issue.keys——逐键合成路径（顶层键 → path 即键名本身；
+      // 嵌套 strictObject（如 denyWithReason）→ 父路径.键名）。
+      const basePath = issue.path.length > 0 ? issue.path.map(String).join(".") : "";
+      for (const key of issue.keys) {
+        issues.push({
+          path: basePath ? `${basePath}.${key}` : String(key),
+          message: `Unrecognized config key '${key}'.`,
+        });
+      }
+      continue;
+    }
+    issues.push({
       path: issue.path.length > 0 ? issue.path.map(String).join(".") : "(root)",
       message: issue.message,
-    }));
+    });
+  }
+  return issues;
 }
 
 // —— 原子写（同目录 tmp + rename，失败不污染现有文件；目录递归创建）——
@@ -326,13 +372,27 @@ function sourceFor(project, segments) {
 }
 
 // bash/path/external_directory 等 pattern map：每 pattern 一条 rule。
+// family 注入（T8）：bash pattern 与 BASH_RULES glob 对齐；对齐失败（部署 JSON 含
+// 规则表没有的 bash pattern——ADR-020 配平心智下的漂移信号，tech-design §6.3）→
+// 「未分组」+ permission.meta-mismatch 警告（不再回落到 surface 名）。
 function buildMapEntryRule(surface, pattern, global, project) {
   const segments = ["permission", surface, pattern];
   const meta = surface === "bash" ? BASH_META.get(pattern) : undefined;
+  let family;
+  if (surface === "bash") {
+    family = meta?.family ?? "未分组";
+    if (!meta) {
+      console.warn(
+        `[permissionConfig] permission.meta-mismatch {pattern: ${JSON.stringify(segments.join("."))}, family: null}`
+      );
+    }
+  } else {
+    family = surface;
+  }
   const { projectOwned, value, source } = sourceFor(project, segments);
   return {
     key: segments.join("."),
-    family: meta?.family ?? surface,
+    family,
     label: meta?.label ?? MAP_SURFACE_LABELS[surface] ?? pattern,
     readable: pattern,
     type: "map-entry",
@@ -416,9 +476,12 @@ export function getPermissionView(projectId) {
 
 // —— 保存（接口契约 3.2 PUT 的数据面）——
 // 校验 fail-closed（B10/T5）：gotgenes 同一把尺（validateWithGotgenes），非法 →
-// E-PERMISSION-INVALID + 路径化 issues，不落盘。例外：未知顶层键（Unrecognized
-// config key）为 B8/E5 自定义字段（P0），保存放行（运行时 fail-closed 忽略，安全方向）。
+// E-PERMISSION-INVALID + 路径化 issues，不落盘。裁决 A：顶层未知键（strictObject）
+// 会让运行时整集 fail-closed（全规则集回落 ask = 保存即全禁）→ 拒绝保存；
+// permission 面内自定义 surface/pattern（z.record 合法）保留放行。
 // 成功 → 原子写 → { saved: true, mtime }（mtimeMs，供前端可选提示）。
+// 观测（tech-design §7）：成功/校验失败/IO 失败三态日志 permission.save
+// {projectId, mtime? | issues? | error}。
 export function savePermission(projectId, config) {
   const { projectDir, projectConfigPath } = resolveProject(projectId);
 
@@ -428,29 +491,41 @@ export function savePermission(projectId, config) {
       const err = new Error("permission config invalid");
       err.code = "E-PERMISSION-INVALID";
       err.issues = issues;
+      console.warn(
+        `[permissionConfig] permission.save {projectId: ${projectId}, issues: ${JSON.stringify(issues)}}`
+      );
       throw err;
     }
   }
 
   const targetDir = path.dirname(projectConfigPath);
-  fs.mkdirSync(targetDir, { recursive: true });
+  // containment 校验先于 mkdirSync（防 symlink 逃逸时在项目外创建目录的副作用）。
   assertProjectConfigContained(projectDir, targetDir);
 
-  const content = `${JSON.stringify(config, null, 2)}\n`;
-  const tmpPath = `${projectConfigPath}.tmp`;
+  let mtime;
   try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    const content = `${JSON.stringify(config, null, 2)}\n`;
+    const tmpPath = `${projectConfigPath}.tmp`;
     fs.writeFileSync(tmpPath, content);
     fs.renameSync(tmpPath, projectConfigPath);
+    mtime = fs.statSync(projectConfigPath).mtimeMs;
   } catch (err) {
+    // mkdir/写/rename 统一 → E-PERMISSION-WRITE（目录不可写不再裸抛 → 500
+    // VALIDATION_ERROR）；原子写失败不污染现有文件。
     try {
-      fs.unlinkSync(tmpPath);
+      fs.unlinkSync(`${projectConfigPath}.tmp`);
     } catch {
       // tmp 清理失败不影响主错误
     }
     const wrapped = new Error(`permission config write failed: ${err?.message ?? String(err)}`);
     wrapped.code = "E-PERMISSION-WRITE";
+    console.warn(
+      `[permissionConfig] permission.save {projectId: ${projectId}, error: E-PERMISSION-WRITE, message: ${err?.message ?? String(err)}}`
+    );
     throw wrapped;
   }
 
-  return { saved: true, mtime: fs.statSync(projectConfigPath).mtimeMs };
+  console.log(`[permissionConfig] permission.save {projectId: ${projectId}, mtime: ${mtime}}`);
+  return { saved: true, mtime };
 }

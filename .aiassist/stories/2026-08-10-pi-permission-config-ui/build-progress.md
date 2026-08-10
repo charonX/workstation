@@ -35,8 +35,24 @@
 
 - 实现：`src/http/routes/projects.js` handleProjects 新增 `pathParts.length === 2 && pathParts[1] === "permission"` 分支——GET → `permissionConfigService.getPermissionView(projectId)` → 200 `{global, project, merged, rules}`；PUT → `savePermission(projectId, body)` → 200 `{saved, mtime}`；其他方法 → 404。错误响应按契约形态（tech-design §3.1/3.2）在分支内显式构造（`permissionError` 辅助，顶层 `code` 字段）：404 `E-PROJECT-NOT-FOUND` / 400 `E-PERMISSION-INVALID`（err.issues 透传） / 500 `E-PERMISSION-WRITE`；不改 `mapError` 既有行为。
 - 附带（Rule 0.5 唯一例外，2 文件）：`src/http/server.js` parseBody reject 分支——非法 JSON 语法对 `PUT /api/projects/:id/permission` 按契约映射 400 `E-PERMISSION-INVALID` + issues（REQ-AGENT-068 标准 1；否则上游 catch → 500 INTERNAL_ERROR 与契约冲突）；其余资源 rethrow 保持既有 500 行为不变。不改服务层。
-- 测试：`node --test tests/capabilities/agent-dialogue/conversation-space/2026-08-10-pi-permission-config-ui/api/permissionConfig.test.js` → **16/18 绿**（S1 后全红 404 → 接线后 16 转绿）。回归：projectAgents/project/projectSkills 三个同 seam 测试文件 44/44 绿。
+- 测试：`node --test tests/capabilities/agent-dialogue/conversation-space/2026-08-10-pi-permission-config-ui/api/permissionConfig.test.js` → **16/18 绿**（S1 后全红 404 → 接线后 16 转绿；2 红为测试契约与实现语义冲突，见下「裁决」）。回归：projectAgents/project/projectSkills 三个同 seam 测试文件 44/44 绿。
 - refactor：无（Slice 2 为薄路由接线 + 一个 scoped 错误映射，无重构面）。
+
+#### Slice 2 裁决补录（2026-08-10，人裁决 ×3 + PRD 对齐缺口修复）
+
+测试契约修正（commit 30d49f6，测试作者按裁决更新）：
+- 裁决 ①（Slice 2 concern ①）：未知字段保留由 **renderer 视图转换**承担（tech-design §4.3，前端合入后发合并 payload），服务端原样写——066 标准 3 语义修正为 **permission 面内自定义字段保留**（`customSurface`，schema 合法）→ 绿。
+- 裁决 ②（Slice 2 concern ②）：`{permission:{bash:"ask"}}` 是 gotgenes schema **合法**形态（surface 级字符串 = `{"*": action}` 简写）——068 标准 2 改用真正非法语料（action 枚举外 `write:"bogus"`）→ 绿。
+- 裁决 A（PRD 对齐缺口 1，P0）：顶层未知键（unifiedConfigSchema strictObject）会让 gotgenes 运行时**整集 fail-closed**（`{config:{}}` → 全规则集回落 ask = 保存即全禁）——保存侧拒绝（400 E-PERMISSION-INVALID + issues，路径含顶层键名）；permission 面内自定义 surface/pattern 保留放行。**066 新增标准 5**（顶层未知键 → 400 + 文件未变）→ 绿。
+
+服务端修复（commit 见 Slice 2 实现提交，`[build] fix: 保存侧拒绝顶层未知键（裁决 A）+ E2 错误形态/顺序 + 观测日志 + E4 降级 (REQ-AGENT-066/068)`）：
+- 裁决 A 落地：`savePermission` 校验判定（validateWithGotgenes）不变；`validationIssues` 不再 filter 掉 `unrecognized_keys`——顶层未知键进入 issues（path 由 zod `issue.keys` 合成，如 `customTopLevelKey`），permission 面内自定义键（z.record）天然不产生 issues；删除死代码 `isUnrecognizedKeyIssue`；修正「运行时忽略」不实注释。
+- 缺口 2（P1）：`fs.mkdirSync` 移入 try/catch → 目录不可写 E-PERMISSION-WRITE（不再裸抛 → 500 VALIDATION_ERROR）；`assertProjectConfigContained` 移到 mkdirSync **之前**（防 symlink 逃逸时在项目外创建目录的副作用）。
+- 缺口 5（P1）：三态日志 `permission.save {projectId, mtime? | issues? | error}`（成功 console.log / 校验失败 / IO 失败 console.warn，前缀 `[permissionConfig]`）；family 对齐失败（BASH_RULES 无匹配）→ 「未分组」+ `permission.meta-mismatch {pattern, family:null}` 警告（tech-design §6.3/§7；不再回落到 surface 名——当前部署 JSON 的 `permission.bash.*` 兜底即此例）。
+- 缺口 3（P2，E4 降级）：`loadGotgenesValidation` 加载失败 → 降级 JSON.parse 语法级校验（`permission.validation-downgrade` 警告，不抛 500）：语法对 → 放行，非 JSON 对象 → 400 E-PERMISSION-INVALID（PRD §6.2 E4）。
+- 缺口 7（docs）：本文件记录更新。
+
+测试：`permissionConfig.test.js` **19/19 绿**（18 + 066 标准 5）+ `permissionMerge.test.js` **8/8 绿**。
 
 #### PRD→代码 可追溯性表（Slice 2）
 
@@ -45,11 +61,11 @@
 | B1 / REQ-AGENT-059（API 面） | GET permission 分支 | getPermissionView | GET「无配置项目 GET 正常 project:null」 | COVERED（UI 页签面属 Slice 3） |
 | B2/B3 / REQ-AGENT-060/061 | GET permission 分支 | getPermissionView（merge+元数据注入） | GET 5 用例（global 原文/family/label/继承态） | COVERED |
 | B4/B5/B6/B7 / REQ-AGENT-062~065 | PUT permission 分支 | savePermission | PUT 保存用例（最小覆盖集/write/path/authorizerChain/开关） | COVERED（062 UI 组面 Slice 3） |
-| B8 / REQ-AGENT-066 | PUT permission 分支 | savePermission（原样写，ADR-022） | 标准 4「取消覆盖=删除」绿；标准 3「自定义字段保留」红 | PARTIAL（见 concerns） |
+| B8 / REQ-AGENT-066 | PUT permission 分支 | savePermission（原样写，ADR-022） | 标准 4「取消覆盖=删除」绿；标准 3「permission 面内自定义字段保留」绿；标准 5「顶层未知键 → 400」绿（裁决 A） | COVERED |
 | B9 / REQ-AGENT-067 | PUT permission 分支 | savePermission | 首次保存 2 用例 | COVERED |
-| B10 / REQ-AGENT-068 | PUT + server.js 解析错误映射 | savePermission（validateWithGotgenes） | 标准 1（非法 JSON）绿；标准 3（对照）绿；标准 2（bash 字符串）红 | PARTIAL（见 concerns） |
+| B10 / REQ-AGENT-068 | PUT + server.js 解析错误映射 | savePermission（validateWithGotgenes） | 标准 1（非法 JSON）绿；标准 3（对照）绿；标准 2（action 枚举外）绿 | COVERED |
 
-#### Slice 2 concerns（2 红均不改测试——实现者对测试只读，待 /bug 或回流裁决）
+#### Slice 2 原 2 红 → 已裁决关闭（详见上方「Slice 2 裁决补录」）
 
-1. **REQ-AGENT-066 标准 3 红（customOrgKey 保留）**：第二次 PUT body 不含 customOrgKey，断言落盘文件仍含之。与服务端「原样写」语义冲突——tech-design §4.3/§6.6 明确未知字段保留由 **renderer 视图转换**承担（Slice 3），测试自身注释亦写「服务端原样写」；断言与注释自相矛盾（body 若为前端合并后 payload 应含 customOrgKey）。服务端/路由若做保留将破坏标准 4（取消覆盖=删除，现绿）与 JSON 模式全量替换（REQ-AGENT-066 标准 2「落盘=请求体」）语义——API seam 无「面板保存 vs JSON 模式」区分信号。
-2. **REQ-AGENT-068 标准 2 红（bash 字符串拒绝）**：测试前提「bash 应为对象，字符串非法」与 gotgenes schema 冲突——config-schema.ts 实证：surface 级字符串 = `{"*": action}` 简写**合法**；`validateWithGotgenes({permission:{bash:"ask"}}) = false`（接受），路由 200 与标准 3 对照断言一致（标准 3 绿）。标准 2 断言了错误形态（拒绝合法输入反而破坏「保存拦截 = 运行时 fail-closed 同一把尺」T5）。
+1. ~~REQ-AGENT-066 标准 3 红（customOrgKey 保留）~~：语义修正为 permission 面内自定义字段保留（renderer 视图转换承担未知字段保留，服务端原样写）→ 绿 + 新增标准 5（裁决 A）。
+2. ~~REQ-AGENT-068 标准 2 红（bash 字符串拒绝）~~：语料修正为 action 枚举外（`{permission:{bash:"ask"}}` 是 gotgenes schema 合法简写）→ 绿。
