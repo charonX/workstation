@@ -31,3 +31,4 @@
 | ADR-019 | 维持单进程——PI agent 运行时暂不拆分（会话隔离缓建，附重估触发条件） | 已接受 | 2026-08-08 | REQ-AGENT-045（2026-08-07-pi-agent-consolidation） |
 | ADR-020 | 权限出厂策略单一真源化——代码规则表为真源，部署 JSON 为生成产物（修订 ADR-017「文件=契约」） | 已接受 | 2026-08-08 | REQ-AGENT-041（2026-08-07-pi-agent-consolidation） |
 | ADR-021 | 对话渲染安全边界——LLM 输出 HTML 全转义（零 raw 白名单）+ 图片主进程白名单 + blob URL 访问机制 + mermaid securityLevel strict | 已接受 | 2026-08-10 | REQ-AGENT-047、REQ-AGENT-049、REQ-AGENT-051（2026-08-08-pi-agent-ux-enrichment） |
+| ADR-022 | 项目级权限配置 = 字段级覆盖语义——项目文件为最小覆盖集（未定义继承全局），取消覆盖=删除字段，保存即生效（gotgenes mtime 实证） | 已接受 | 2026-08-10 | REQ-AGENT-041 语义延伸（2026-08-10-pi-permission-config-ui） |
