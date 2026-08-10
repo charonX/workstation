@@ -17,6 +17,11 @@
 //      无序列不同）；工具用 default profile 可用的 CLI 查询级工具（settings get——
 //      write 需项目空间行）；
 //   ③ text_delta 字段集现状 = ["delta","type"]（sessionKey 仅订阅侧过滤，不在事件帧）。
+//
+// 2026-08-10 BUG-007 seam 就地补全（人裁决 A）：CLI 工具的 server 依赖由隐式
+// headless 自起（BUG-007 已禁——worker 上下文禁止任何 server 自起）改为
+// **本测试自建 server + agentServerBaseUrl 注入**（与生产 http/server.js →
+// createAgentService 接线完全同构）。断言语义不变。
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -47,16 +52,26 @@ describe("REQ-AGENT-055 worker 工具事件转发加法扩展", () => {
   let workdir;
   let agentService;
   let savedSeq;
+  let server;
+  let baseUrl;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-tool-ext-"));
     savedSeq = process.env.OPC_FAUX_TOOL_SEQUENCE;
+    // BUG-007 seam 补全：本测试自建 server（临时配置目录隔离），CLI 工具经
+    // agentServerBaseUrl 注入直连——不再依赖隐式 headless 自起。
+    process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
+    const { startServer } = await import("../../../../../../src/http/server.js");
+    ({ server, baseUrl } = await startServer({ port: 0 }));
   });
 
   afterEach(async () => {
     if (agentService) {
       try { await agentService.stop(); } catch { /* noop */ }
     }
+    const { stopServer } = await import("../../../../../../src/http/server.js");
+    try { await stopServer({ server }); } catch { /* noop */ }
+    delete process.env.OPC_WORKSTATION_CONFIG_DIR;
     if (savedSeq === undefined) delete process.env.OPC_FAUX_TOOL_SEQUENCE;
     else process.env.OPC_FAUX_TOOL_SEQUENCE = savedSeq;
     fs.rmSync(workdir, { recursive: true, force: true });
@@ -71,6 +86,9 @@ describe("REQ-AGENT-055 worker 工具事件转发加法扩展", () => {
       cwd: workdir,
       sessionDir: path.join(workdir, "sessions"),
       entry,
+      // BUG-007 seam：注入本测试 server baseUrl（生产 http/server.js 同构）——
+      // worker spawn env OPC_AGENT_SERVER_BASE_URL，工具面直连，发现/兜底旁路。
+      agentServerBaseUrl: baseUrl,
     });
     const ready = [];
     agentService.on("ready", () => ready.push(1));
