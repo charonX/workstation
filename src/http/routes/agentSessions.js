@@ -121,6 +121,13 @@ export function projectMessagesFromJsonl(sessionRef) {
       continue;
     }
     if (entry?.type !== "message" || !entry.message || typeof entry.message.role !== "string") continue;
+    // BUG-009：工具不落历史（REQ-AGENT-054 / PRD B8「工具块仅实时呈现不落历史」）。
+    // 修复前：role:"toolResult" 行原样投影 → 原始工具输出以纯文本气泡漏进历史
+    // （生产实锤 2026-08-10：重开会话后 bash ls 输出/project_list JSON 裸露）；
+    // 只含 thinking/toolCall（无 text 段）的 assistant 行投影为空文本气泡。
+    // 历史 = 对话文本：只投影 user/assistant，且空文本行（纯工具调用载体）剔除。
+    const role = entry.message.role;
+    if (role !== "user" && role !== "assistant") continue;
     const content = entry.message.content;
     let text = "";
     if (typeof content === "string") {
@@ -128,9 +135,10 @@ export function projectMessagesFromJsonl(sessionRef) {
     } else if (Array.isArray(content)) {
       text = content.map(partText).join("");
     }
+    if (text.trim() === "") continue;
     messages.push({
       messageId: String(entry.id ?? ""),
-      role: entry.message.role,
+      role,
       createdAt: typeof entry.timestamp === "string" ? entry.timestamp : "",
       text,
     });
