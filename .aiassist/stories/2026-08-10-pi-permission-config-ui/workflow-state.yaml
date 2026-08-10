@@ -5,7 +5,7 @@ story_id: 2026-08-10-pi-permission-config-ui
 intention: >-
   PI agent 的权限策略配置（全局出厂 + 项目级覆盖）目前只能手写代码/JSON，界面零呈现，无法在 UI 中查看和管理——需要可视化管理。MCP 配置与验证单独立项（PI SDK 暂不支持 MCP）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: ASSERTION-SIGNOFF  # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-10
