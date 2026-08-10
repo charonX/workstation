@@ -36,7 +36,7 @@ PI agent 的权限策略目前只活在**代码/JSON 文件**里：全局出厂�
 | # | 稳定块 | 为什么不再推翻 |
 |---|---|---|
 | B1 | **入口与承载**：管理区项目详情弹窗新增「权限配置」页签（与既有 skills 等页签并列） | Q7 人拍板；项目详情弹窗已有 tab 结构（skills），加 tab 为既有形态 |
-| B2 | **全局只读基底**：全局规则以「代码规则表 → 人可读规则列表」渲染为只读基底（标注「出厂默认，由代码规则表生成」），不提供编辑 | Q6 人拍板 + ADR-020（代码=真源）；展示走真源管线而非部署 JSON 原文 |
+| B2 | **全局只读基底**：全局规则以**部署 JSON**（`agent-policy/pi-permission-config.json`）渲染为只读基底（标注「出厂默认」），不提供编辑；**展示元数据（family/可读文案）由服务端从代码规则表 BASH_RULES 注入对齐** | Q6 人拍板：JSON 是运行时真相（代码=出厂配置语义，Q1 访谈修正）；ADR-020「代码=真源」指出厂语义，运行时执行面 = 部署 JSON |
 | B3 | **继承视图**：面板展示「全局基底 + 项目覆盖高亮」完整生效形态；项目未覆盖的规则回落全局 | Q3 人拍板；无配置文件的项目 = 干净继承态（Q8） |
 | B4 | **bash 高危族可视化**：按 family 分组（destructive-fs/privilege-escalation/redirect/pipe-to-shell/process/file-permission/disk/git-force-push/global-install），每条规则 allow/ask 切换 | Q5 人拍板（全量面板化）；BASH_RULES family 字段现成 |
 | B5 | **工具级裁决 + 全局兜底可视化**：read/write/edit/create/delete/ls/grep/find → allow/ask 下拉；`permission."*"` 兜底控件 | Q5 人拍板；permissionPolicy 工具默认裁决现成 |
@@ -156,7 +156,7 @@ PI agent 的权限策略目前只活在**代码/JSON 文件**里：全局出厂�
 
 - **渲染层新增「权限配置」页签组件**（项目详情弹窗内）：继承视图面板（全局基底只读 + 项目覆盖高亮）+ JSON 模式切换 + 保存；纯展示/编辑组件，经 HTTP API 读写，不直接碰文件系统。
 - **主进程服务层新增权限配置 API 面**：读（项目继承视图组装：全局规则表渲染 + 项目覆盖合并）、写（校验 + 原子写 `.pi` 文件）、校验（JSON 语法 + schema）；与 `policyRules.js`（真源）、`permissionPolicy.js`（工具默认裁决）同源消费，不重复实现规则语义。
-- **全局只读数据源 = 代码规则表**（BASH_RULES family/globs + permissionPolicy 工具默认），渲染为人可读规则列表——对齐 ADR-020「代码=真源」，不展示部署 JSON 原文。
+- **全局只读数据源 = 部署 JSON**（`agent-policy/pi-permission-config.json`）——运行时真相（代码规则表经生成器产出，UI 直接展示执行面；BASH_RULES 仅作 family/可读文案的元数据注入源，Q1/Q6 拍板）。
 - **保存即生效零自造**：gotgenes policy-loader 每次评估 stat 文件（mtime stamp），写文件即生效——不引入 watcher/重载通知（实证：policy-loader.ts getFileStamp）。
 - **原子写**：临时文件 + rename 落盘，失败不污染现有文件。
 - **schema 校验器来源**：gotgenes 包内 `schemas/permissions.schema.json`（本地，离线可用）——E4 降级路径仅作防御。
