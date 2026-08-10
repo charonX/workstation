@@ -54,6 +54,10 @@
 //   先例：preload contextBridge 暴露 + 主进程 IPC 处理器，NODE_ENV=development 守卫；
 //   写 <userDataDir>/agent-sessions.db，与 sessionStore 同库）。
 //   rows: [{ spaceKey, title?, createdAt?, lastActiveAt?, messages?: [{ role, text, time? }] }]
+//   - role 词表 = PI JSONL 原生（"user"|"assistant"），非 UI 气泡角色（"agent"）——
+//     投影契约 projectMessagesFromJsonl 只放行 user/assistant（BUG-009 后收紧，
+//     2026-08-10 修正：原 seed 写 "agent" 导致历史气泡被过滤，UI 气泡角色由渲染层
+//     从原生 role 映射，见 MessageList.jsx data-message-role）。
 //   - 新 spaceKey → INSERT agent_sessions 行 + 写入历史（必须可被
 //     GET /api/agent/sessions/:spaceKey/messages 投影读到，气泡渲染源）；
 //   - 已有 spaceKey → 追加 messages 并更新 lastActiveAt（模拟飞书侧新消息到达）；
@@ -131,7 +135,7 @@ test.describe("飞书只读视图 / 孤儿会话 / 无权限面 / 未配置引�
         lastActiveAt: new Date().toISOString(),
         messages: [
           { role: "user", text: "看看最近的执行情况" },
-          { role: "agent", text: "最近 24 小时共 6 次执行：4 成功 / 1 失败 / 1 执行中。" },
+          { role: "assistant", text: "最近 24 小时共 6 次执行：4 成功 / 1 失败 / 1 执行中。" },
         ],
       },
     ]);
@@ -174,7 +178,7 @@ test.describe("飞书只读视图 / 孤儿会话 / 无权限面 / 未配置引�
       {
         spaceKey: FEISHU_KEY,
         lastActiveAt: new Date().toISOString(),
-        messages: [{ role: "agent", text: "【通知】日报生成已完成（执行 #118）" }],
+        messages: [{ role: "assistant", text: "【通知】日报生成已完成（执行 #118）" }],
       },
     ]);
     await reloadAssistant(firstWindow);
@@ -200,7 +204,7 @@ test.describe("飞书只读视图 / 孤儿会话 / 无权限面 / 未配置引�
         lastActiveAt: new Date().toISOString(),
         messages: [
           { role: "user", text: "日报模板再改一版，标题带上日期" },
-          { role: "agent", text: "已更新 templates/daily.md。" },
+          { role: "assistant", text: "已更新 templates/daily.md。" },
         ],
       },
     ]);
