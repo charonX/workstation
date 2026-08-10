@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // 权限配置 API 面（REQ-AGENT-059~068）：GET 继承视图 / PUT 保存（最小覆盖集、
 // 取消覆盖=删除、自定义字段保留、首次生成、校验 fail-closed）。

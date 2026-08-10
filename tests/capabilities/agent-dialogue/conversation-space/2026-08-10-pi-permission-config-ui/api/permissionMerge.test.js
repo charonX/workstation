@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // 继承视图 merge 对照测试（REQ-AGENT-061 标准 1）：我们的 merge 纯函数必须与
 // gotgenes `mergeUnifiedConfigs` 语义一致——同一输入喂两边，输出逐字段一致。

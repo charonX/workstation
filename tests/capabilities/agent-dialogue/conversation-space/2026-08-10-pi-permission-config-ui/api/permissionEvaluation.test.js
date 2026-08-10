@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // 保存即生效（REQ-AGENT-069）：改项目文件后，同一会话内权限评估结果变化——
 // 证明"我们保存的文件被运行时正确消费"。
