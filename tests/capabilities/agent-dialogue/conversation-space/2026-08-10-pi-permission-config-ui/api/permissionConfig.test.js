@@ -178,13 +178,14 @@ describe("REQ-AGENT-062/063/064/065/067 权限配置 API：PUT 保存（最小�
     assert.equal(writeRule.projectOverridden, true);
   });
 
-  it("REQ-AGENT-066 标准 3：PUT 含自定义字段的完整 payload → 落盘原样含之（服务端不丢未知字段）", async () => {
-    // 语义修正（2026-08-10 人裁决，Slice 2 concerns ①）：未知字段保留由
-    // **renderer 视图转换**承担（tech-design §4.3——面板保存时前端读原文件、
-    // 合入未知字段、发合并后 payload）；服务端 = 原样写（ADR-022，Q5 单端点）。
-    // 本用例验证服务端对含自定义字段的完整 payload 不丢字段（API seam 面）；
-    // 前端合并逻辑由 Slice 3 组件/E2E 覆盖。
-    const full = { permission: { write: "allow" }, customOrgKey: { rule: "keep" } };
+  it("REQ-AGENT-066 标准 3：PUT permission 面内自定义字段 → 落盘原样含之（B8 自定义字段保留）", async () => {
+    // 语义修正（2026-08-10 人裁决 ×2）：① Slice 2 concerns ①——未知字段保留由
+    // **renderer 视图转换**承担（tech-design §4.3，前端合入后发合并 payload），
+    // 服务端原样写；② PRD 对齐子代理缺口 1（人裁决 A）——**顶层**未知键会导致
+    // gotgenes 运行时整集 fail-closed（strictObject 实证），保存侧拒绝顶层未知键；
+    // **permission 面内**自定义 surface/pattern 是 schema 合法（z.record 宽松面），
+    // 运行时安全——B8 自定义字段保留的精确语义 = permission 面内自定义规则。
+    const full = { permission: { write: "allow", customSurface: "ask" } };
     const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -193,8 +194,31 @@ describe("REQ-AGENT-062/063/064/065/067 权限配置 API：PUT 保存（最小�
     assert.equal(res.status, 200, await res.text());
 
     const written = JSON.parse(fs.readFileSync(piPath(), "utf8"));
-    // TODO: HUMAN ASSERTION — 确认自定义字段原样落盘（服务端不丢）
-    assert.deepEqual(written.customOrgKey, { rule: "keep" });
+    // TODO: HUMAN ASSERTION — 确认 permission 面内自定义字段原样落盘（服务端不丢）
+    assert.equal(written.permission.customSurface, "ask");
+  });
+
+  it("REQ-AGENT-066 标准 5：顶层未知键 → 保存拒绝（400 E-PERMISSION-INVALID），文件未变", async () => {
+    // 2026-08-10 人裁决 A（PRD 对齐缺口 1）：顶层未知键会导致 gotgenes 运行时
+    // 整集 fail-closed（unifiedConfigSchema strictObject → {config:{}} →
+    // invalid:true → 全规则集 floor ask）——保存侧拒绝，防「保存即全禁」。
+    // 先有合法文件，再存含顶层未知键的配置（文件不得被污染）。
+    await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permission: { write: "allow" } }),
+    });
+    const before = fs.readFileSync(piPath(), "utf8");
+
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permission: { write: "allow" }, customTopLevelKey: { rule: "keep" } }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, "E-PERMISSION-INVALID");
+    assert.equal(fs.readFileSync(piPath(), "utf8"), before, "顶层未知键拒绝后文件不得改变");
   });
 
   it("REQ-AGENT-066 标准 4：取消覆盖（字段不在请求 JSON）= 从文件删除", async () => {
