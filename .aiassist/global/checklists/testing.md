@@ -116,3 +116,15 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - [ ] agent 主动发起路径（工具调用/确认/恢复）必须有真实链路 E2E：fake IPC / seed 覆盖不到模型循环真实执行（2026-08-08 实证：noTools 工具面失效 + 确认链死锁藏三个 story）
 - [ ] 测试 seam 注入模式：node --import 预载脚本注入裸全局引用（测试文件只读不改 import 的合法通道）；E2E 用环境变量驱动 FAUX 工具调用序列（OPC_FAUX_TOOL_SEQUENCE）
 - [ ] 黄金文件断言用 try/finally 还原：--check 类测试篡改-验证-还原必须 finally 保证，防污染真源文件（policyCodegen 教训：断言失败导致 golden 停留漂移态）
+
+## 2026-08-10 追加（2026-08-08-pi-agent-ux-enrichment）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| seed 用 UI 气泡词表写存储层 | seed seam 把 `role:"agent"`（UI 词表）原样写 JSONL，投影收紧为原生词表（user/assistant）后行被过滤 → 2 E2E 回归红（BUG-010） | seed 必须用存储层原生词表（`assistant`）；UI 气泡角色由渲染层映射；seam 注释写明词表契约 |
+| 收紧/过滤型修复不回归其他 story 的 seed | BUG-009 修历史投影（按 role 过滤）只跑了本 story 回归，ui-copilot 的 assistantFeishu 2 例红（潜伏错位由修复暴露） | 按角色/字段过滤的修复，grep 全仓所有写同层数据的 seed/测试并全量 E2E 回归 |
+| 测试 seam 隐式依赖"恰好有服务在跑" | worker 上下文 ensureServer 隐式自起 server（headless 遗留），seam 依赖该隐式行为，修复共享服务边界时被拖住（BUG-007） | seam 契约显式化：注入 baseUrl/连接信息，不依赖隐式自起 |
+| 跨进程路径基准未显式定义 | read/write 相对路径按进程 cwd 解析，静默错读同名文件 + `..` 逃逸（BUG-005） | 相对路径基准写进 REQ（会话项目目录）；回归含同名文件 + 逃逸两形态 |
+| 事件契约缺关联字段靠 UI 猜测 | tool_execution_error 无 toolCallId → 并行工具错误错配块（BUG-006） | 能补字段优先补（事件携带 toolCallId）；不能补则显式关联策略（最近 running 匹配）写进 REQ 标准 |
+| 跨进程链路故障盲猜重试 | LLM 空转 5 轮诊断才定位（工具名空格 → provider 400），前 4 轮靠猜 | 先补链路诊断日志（每段转发留痕、失败显式化）让现场一次分叉，再修 |
+| 系统恢复路径被当作用户活动 | 水合 session-config 无 source 标记 → 同组冷却误淘汰（BUG-003） | 系统自动动作带显式来源标记（source:hydration），生命周期规则只对用户活动生效 |

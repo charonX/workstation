@@ -77,3 +77,14 @@
 - **看门狗心跳带外**：任何「看门狗 + 被监督进程」结构，ping/pong 不进被监督方工作队列（带外即时回应）；监督方收到被监督方任何消息（含业务事件）即刷新存活时间；杀死条件 = 完全静默超时 + exit。见 ADR-015。
 - **日志尽力投递，不得致命**：面向桌面/常驻进程，stdio 写失败（EPIPE 等）不得导致进程崩溃——进程两个入口（Electron main / headless server）首行 import 防御模块（`src/stdioGuard.js`，幂等 'error' 监听吞掉 stdio 错误；处理器内绝不二次记录）。与 ADR-009 惰性初始化并存：仅限无 env/磁盘依赖的纯防御模块可顶层安装。
 - **恢复路径能力等价**：有状态服务（会话/连接/订阅）的恢复（水合）路径必须与新建路径注入等价的能力清单（凭证/配置/回调）——恢复后应具备与新建相同的行为能力，测试断言恢复后行为而非仅状态存在。
+
+## 多进程共享服务单一权威启动者（2026-08-10，2026-08-08-pi-agent-ux-enrichment BUG-007）
+
+- 跨进程架构中「共享服务」（HTTP server / DB / 单例连接）只能有一个权威启动者（主进程）；子进程通过注入的连接信息（如 `agentServerBaseUrl`）使用，**不得隐式自起**。
+- 测试 seam 若隐式依赖"恰好有服务在跑"，必须在 seam 契约中显式化（注入 baseUrl/连接信息），否则修复共享服务边界时会被 seam 拖住。
+
+## 跨层角色词表约定（2026-08-10，2026-08-08-pi-agent-ux-enrichment BUG-009→010）
+
+- 各层有自己的角色/状态词表：存储层（PI JSONL：`user|assistant|toolResult`）≠ API 投影（`user|assistant`，历史=对话文本）≠ UI 气泡（`data-message-role='user|agent'`）。
+- 测试 seed 写入存储层数据时**必须用存储层原生词表**（JSONL 用 `assistant` 而非 UI 的 `agent`）；UI 气泡角色由渲染层从原生 role 映射，断言语义不变。
+- 按角色过滤/收紧型修复（如历史投影只放行 user/assistant）必须全量回归所有写同层数据的既有测试（含其他 story 的 seed seam），并在 seam 注释写明词表契约。

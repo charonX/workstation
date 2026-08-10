@@ -70,6 +70,14 @@ Referrer-Policy: strict-origin-when-cross-origin
 - [ ] 破坏性或不可逆操作需要确认
 - [ ] token、速率、递归/循环上限已设置
 
+## 对话富呈现安全边界（2026-08-10，ADR-021）
+
+- [ ] LLM 输出 Markdown 渲染：HTML 全转义（无 rehype-raw / 零 raw 白名单），`<script>`/`<iframe>`/事件属性渲染为转义源码文本
+- [ ] Mermaid 渲染：`securityLevel:'strict'` 显式（非 loose），click 指令/HTML label 不注入 DOM（DOMPurify 清洗）
+- [ ] 本地图片/文件访问：白名单判定在主进程（projectId → registry 解析 realpath + 扩展名白名单 + containment 校验，防 `..` 遍历/symlink 逃逸），renderer 不持有/不信任绝对路径
+- [ ] 图片访问机制走本地 HTTP API + blob URL（dev/prod origin 一致），不用 `file://` 直链
+- [ ] 高亮输出走 dangerouslySetInnerHTML 仅限喂库自身转义产物，异常 try/catch 回退 plaintext
+
 ## OWASP Top 10 速查
 
 | # | 风险 | 防护 |

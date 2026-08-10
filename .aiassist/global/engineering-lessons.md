@@ -293,3 +293,51 @@
 
 - **现象**：状态显示的 token/成本数据——PI 事件层无 usage 事件（实证），但 getSessionStats() 聚合存在（tokens/cost/contextUsage）；FAUX provider 的 usage 是消息内容估算（非 0，修正了"FAUX 全 0"的初判）；git 分支 pi 有 footer 实现可参考。
 - **结论**：呈现类需求（尤其"显示 X 数据"）先 /research 验证数据源存在性与形态，再定 REQ——调研结论直接决定可行性分层（有源/需新实现/无源估算）。
+
+---
+
+来源：2026-08-08-pi-agent-ux-enrichment /reflect（2026-08-10）
+
+## 可观测性先行：跨进程链路故障先补诊断日志再猜根因（BUG-002，5 轮诊断）
+
+- **现象**：LLM 空转（消息发出无回复）——SDK 吞掉请求失败（deepseek 400），worker 静默。5 轮诊断 commit 从「淘汰日志带来源 → LLM 调用起止 → prompt-result 带 reply → 事件计数 → 读 SDK 末条消息」逐层补可观测性，才实锤「工具名含空格 → OpenAI function.name 规范 → provider 400 → LLM 空转」。
+- **结论**：跨进程/第三方 SDK 链路的故障，第一动作是补链路诊断日志（每段转发留痕、失败显式化），让现场一次分叉定位，不要盲猜重试；诊断日志本身也是可观测性资产（淘汰/LLM 调用的来源与结果），留在代码里。
+
+## 系统恢复路径 ≠ 用户活动：生命周期规则的语义边界要显式（BUG-003）
+
+- **现象**：重启水合风暴误淘汰——session-config 不带 source 标记，worker 把系统恢复（水合）当作用户活动触发同组冷却，同组两会话重启后只剩一个。
+- **结论**：任何「系统自动动作 vs 用户主动动作」双语义的入口（水合/恢复/重连/重试），必须带显式来源标记（source:hydration），冷却/淘汰/计数规则只对用户活动生效；测试断言恢复后的行为等价（两会话句柄都在），而不只是状态存在。
+
+## 切会话/切上下文必须显式归零跨上下文状态（BUG-004）
+
+- **现象**：流式中切会话 → 新会话 composer 永远 busy、状态栏不跟随——上个会话的 streaming/execState 残留到新会话。
+- **结论**：UI 状态若按"当前选中项"派生（streaming/toolActive/git/context），切换选中项时必须显式重置全部派生状态，再依赖新连接的补推事件重新就绪；不要依赖"新数据自然覆盖"。
+
+## 跨进程文件路径解析基准要显式定义并测试（BUG-005）
+
+- **现象**：read/write 相对路径按进程 cwd 解析 → 静默错读同名文件（不同项目同名文件读错内容）+ 边界逃逸（`..` 出项目目录）。
+- **结论**：工具面的相对路径基准必须是**会话项目目录**（业务语义），不是进程 cwd；解析后 realpath containment 校验；回归测试要包含"同名文件"与"路径逃逸"两个复现形态。
+
+## 事件契约缺失字段会导致 UI 错配：错误关联策略要显式（BUG-006）
+
+- **现象**：tool_execution_error 事件不带 toolCallId → 并行工具出错时错误归到错误块（错配）；error 无 id 需倒序匹配最近 running 块。
+- **结论**：事件流契约若某些事件缺关联字段（error 无 id），渲染层必须定义显式关联策略（最近 running 匹配 + 未来补字段优先精确匹配双分支），并写进 REQ 标准（并行场景专项测试）；能补字段（携带 toolCallId）优先于猜测关联。
+
+## 子进程不得隐式自起共享服务（BUG-007）
+
+- **现象**：worker 上下文 ensureServer 隐式自起 HTTP server（headless 自起的遗留假设），子进程内 boot 第二个 server；测试 seam 依赖该隐式行为，修复后 seam 需同步注入 baseUrl。
+- **结论**：多进程架构中"共享服务"（HTTP server/DB）只能有一个权威启动者（主进程），子进程通过注入的连接信息（baseUrl）使用；测试 seam 若隐式依赖"恰好有服务在跑"，要在 seam 契约里显式化（注入 baseUrl），否则修复被 seam 拖住。
+
+## UI 气泡角色词表 ≠ 存储/JSONL 原生角色词表（BUG-009→010，双层教训）
+
+- **现象**：BUG-009 修复历史投影（只放行 user/assistant 原生角色，工具产物不落历史）后，ui-copilot 的 E2E seed 用 UI 气泡词表 `agent` 写 JSONL → 行被过滤 → 2 例回归红（REQ-AGENT-034）。历史投影自 8/7 写入后未变，潜伏错位由修复暴露。
+- **结论**：① 跨层数据（存储 JSONL / API / UI 气泡）各有自己的角色词表（PI 原生 user|assistant|toolResult vs UI data-message-role user|agent），测试 seed 必须用**存储层原生词表**，渲染层负责映射；② 收紧/过滤型修复（按角色过滤）必须全量回归所有写同层数据的既有测试，包括其他 story 的 seed seam；③ 修复时同步补 seam 注释的词表契约，避免再次错位。
+
+## 历史=对话文本：投影过滤是产品契约不是实现细节（BUG-009）
+
+- **现象**：历史消息投影原样透传 toolResult 行 → bash ls 输出/JSON 以纯文本气泡漏进历史；只含 thinking/toolCall 的 assistant 行投影为空气泡。
+- **结论**：历史视图的语义是"对话文本"（用户说了什么、agent 回了什么），工具产物是实时呈现层的事；投影层按 role 过滤 + 空文本剔除是 REQ 契约（工具不落历史，B8），不是可选的实现细节——写进 REQ 验收标准并在投影层加注释。
+
+## 渲染安全边界的成体系决策（ADR-021）
+
+- 对话富呈现的注入面有三类：HTML 全转义（零 raw 白名单）、mermaid strict（DOMPurify 清洗实证）、图片主进程白名单 + blob URL（realpath containment + 扩展名白名单）。安全姿态保守：任何未来 raw HTML 白名单需求需重新评审。详见 ADR-021。

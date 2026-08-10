@@ -56,6 +56,8 @@
 | 内联确认卡 | 对话窗内渲染的高危确认交互（确认/拒绝/稍后处理），复用确认挂起队列与既有确认回调端点 | 确认挂起 | UI 空间高危操作 |
 | 授权桥 | gotgenes 权限评估 `ask` → 确认挂起队列的接缝（ADR-017）：一套队列、按空间前缀分流渲染（UI 内联确认卡 / 飞书卡片）；**唯一执行者**=worker 侧（permission 行主进程不 execute），**单一评估**=同一命令不二次 ask（2026-08-07 BUG-001/002 修订） | 确认挂起 | 权限层（FS/脚本高危） |
 | 卡片定型 | 飞书 CardKit 流式卡片在流式结束/错误/任务终态时的收口动作：`PATCH /cardkit/v1/cards/:id/settings` 关 `streaming_mode` + `summary` 换正文摘要——不做则会话列表永远卡初始 summary（如「[生成中...]」）直到 10 分钟窗口自动关闭（BUG-004/005） | 通道 | 回复卡片 / 任务卡片 |
+| 工具折叠块 | Tool Call Block：对话流内工具调用的折叠呈现（默认收起：工具名+输入摘要；展开：输入/输出/耗时；错误默认展开标红）；由 `tool_execution_start/end/error` 事件实时驱动，**仅实时呈现不落历史**（B8 / REQ-AGENT-052/054） | 对话空间 | 富呈现（2026-08-08-pi-agent-ux-enrichment） |
+| 历史投影 | History Projection：把 PI JSONL 投影为历史消息列表的规则——**历史 = 对话文本**（只投影 user/assistant 且剔除空文本行），工具产物（toolResult/thinking 载体）不落历史（BUG-009 收紧；REQ-AGENT-054） | 对话空间 | 历史会话重开 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -98,11 +100,13 @@
 
 ## 变更记录
 
+- 2026-08-10：新增「工具折叠块」「历史投影」（2026-08-08-pi-agent-ux-enrichment /reflect）
 - 2026-08-08：新增「agent 一词三义」归位 + 会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted）（2026-08-07-pi-agent-consolidation）
 - 2026-08-02：新增实体「发布物 Release」（2026-08-01-macos-distribution）
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-10 | 新增「工具折叠块」「历史投影」（历史=对话文本，工具不落历史） | 2026-08-08-pi-agent-ux-enrichment |
 | 2026-08-08 | 「agent 一词三义」归位（PI 对话 agent / flow agent 节点 / Agent Registry 外部 CLI）；新增会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted） | 2026-08-07-pi-agent-consolidation |
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |
 | 2026-07-08 | 更新 CLI 与 HTTP API 术语定义 | codex-harness-desktop attempt-2 tech-design |
