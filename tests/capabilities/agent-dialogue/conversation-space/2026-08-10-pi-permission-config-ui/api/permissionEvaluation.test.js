@@ -17,11 +17,11 @@
 // 只兜重定向/管道不可见族，不读项目文件）——rm * 的 ask/allow 文件覆盖
 // 它测不到（测试设计修正，2026-08-10）。
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import { describe, it, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const PI_REL = path.join(".pi", "extensions", "pi-permission-system", "config.json");
 

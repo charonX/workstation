@@ -20,13 +20,14 @@
 //   权限端点（未实现 → 404/500）：GET/PUT /api/projects/:id/permission。
 //   项目删除经 DELETE /api/projects/:id（清理临时目录）。
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import { describe, it, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const { startServer, stopServer } = require("../../../../../../src/http/server.js");
+import { startServer, stopServer } from "../../../../../../src/http/server.js";
 
 async function loadPermissionModule() {
   // 权限配置服务（BUILD 产物）：动态 import，本文件可加载、测试以 RED 失败而非 import 崩溃。
@@ -41,12 +42,13 @@ async function createProject(baseUrl, { name = "PermProj", localPath } = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, localPath, agentTypes: [] }),
   });
-  assert.equal(res.status, 200, `createProject 失败: ${await res.text()}`);
+  assert.equal(res.status, 201, `createProject 状态码应为 201: ${res.status}`);
   return res.json();
 }
 
 const GLOBAL_JSON = path.resolve(
-  __dirname, "..", "..", "..", "..", "..", "..", "agent-policy", "pi-permission-config.json"
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..", "..", "..", "..", "..", "..", "agent-policy", "pi-permission-config.json"
 );
 
 describe("REQ-AGENT-059/060/061 权限配置 API：GET 继承视图", () => {

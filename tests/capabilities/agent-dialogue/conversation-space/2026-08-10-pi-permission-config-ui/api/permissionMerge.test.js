@@ -20,14 +20,14 @@
 // seam 2：gotgenes mergeUnifiedConfigs（node_modules 包源码，经 jiti 加载——
 //   对齐 worker.js loadGotgenesFactory 先例；包为 TS 源码，测试经 jiti 编译）。
 
-const { describe, it, before } = require("node:test");
-const assert = require("node:assert/strict");
-const { createRequire } = require("node:module");
-const path = require("node:path");
-const { fileURLToPath } = require("node:url");
+import { describe, it, before } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../../../../../../", import.meta.url)));
-const require = createRequire(import.meta.url);
+const nodeRequire = createRequire(import.meta.url);
 
 async function loadGotgenesMerge() {
   // mergeUnifiedConfigs 在 src/config-loader.ts（包 exports "." 指向 service.ts，
