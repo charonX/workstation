@@ -69,3 +69,48 @@
 
 1. ~~REQ-AGENT-066 标准 3 红（customOrgKey 保留）~~：语义修正为 permission 面内自定义字段保留（renderer 视图转换承担未知字段保留，服务端原样写）→ 绿 + 新增标准 5（裁决 A）。
 2. ~~REQ-AGENT-068 标准 2 红（bash 字符串拒绝）~~：语料修正为 action 枚举外（`{permission:{bash:"ask"}}` 是 gotgenes schema 合法简写）→ 绿。
+
+### Slice 3：renderer 权限配置页签（commit 2b87ead）
+
+- 实现（4 文件 + 2 新文件）：
+  - `src/renderer/components/project/PermissionConfigTab.jsx`（新）+ `PermissionConfigTab.css`（新）：继承视图（family 分组 + 全局默认只读列「出厂默认」+ 项目值列 allow/ask seg + 跟随全局/项目已改标记 + 组头覆盖徽标）、path/外部目录列表编辑器（全局条目只读 + 项目条目增删 + 空/重复就地提示）、authorizerChain/piInfrastructureReadPaths 链编辑（数组整体替换，ADR-022）、开关组（yoloMode/debugLog/doublePressToConfirm/permissionReviewLog/预览长度数值）、JSON 高级模式（原样提交 + 自定义字段保护提示条）、校验错误条（400 issues 路径定位）、空态（未配置 → 新建配置进入已配置态，文件在首次保存时生成）、继承说明脚注（「项目只覆盖你改的条目，未改的继承全局」）。
+  - 视图转换纯函数（tech-design §4.3/§6.6，模块级导出供 harness 断言）：`buildProjectJson`（覆盖项写入 / 跟随全局项不写=删除 / rules 之外键从原 project JSON 保留）、`overridesFromRules`（面板初始化 = projectOverridden 全量 → 未改动行保存时原样写回 → permission 面内自定义字段自动保留，裁决 ① 落地）、`overridesFromProjectJson`（json→vis 切换重推导）、`segmentsOf`（key 路径解析：pattern 含点/空格安全）、`groupRules`。
+  - `src/renderer/api/projects.js` 追加 `getProjectPermission`/`putProjectPermission`。
+  - `src/renderer/api/client.js`（唯一共享文件改动，纯增量）：错误响应透传修正——权限端点错误响应带**顶层 `code` 字段**（tech-design §3.2，非 mapError 的 `error` 字段，原 client.js 只读 `err.error` → permission 端点 code 丢失）+ `issues` 透传（400 E-PERMISSION-INVALID 路径化校验错误，UI 错误条定位用）。`err.code ?? err.error` 保持既有 mapError 行为不变。
+  - `src/renderer/components/project/ProjectDetailModal.jsx`：新增「权限配置」页签（`[data-perm-tab]`，activeTab === "permission" → 渲染 `<PermissionConfigTab projectId={projectId} />`）。
+- 验证：
+  - `npx vite build --config vite.renderer.config.js` 通过；`oxlint` 干净。
+  - 组件自验 harness（`.agent-home/slice3-harness/`，已 gitignore 不提交）：真实 HTTP server（startServer）+ 真实临时项目 fixture + vite dev server + playwright chromium，驱动组件全链路。**30/30 PASS**：空态/新建按钮/继承说明文案/模式按钮/rm * 行渲染/全局列只读/跟随全局无高亮/seg 切换→徽标计数 1+行高亮+项目已改+dirty 提示/保存→真实落盘断言（最小覆盖集只含 rm *:allow、未覆盖不落盘）/保存后 reload 高亮保留/JSON 模式文本区（含 rm * 覆盖）/JSON 语法错→错误条不落盘/schema 非法（write:bogus）→错误条 issues 路径 permission.write/顶层未知键→400 拒绝（裁决 A）/取消覆盖→保存→文件 rm * 删除（ADR-022）/JSON 写 customSurface→面板改 yoloMode 保存→**customSurface 仍保留**（裁决 ① 关键断言）。
+  - S1/S2 API 回归：`permissionConfig.test.js` 19/19 + `permissionMerge.test.js` 8/8 = **27/27 绿**（renderer 改动不影响）。
+- 修复（自验发现，提交前）：保存成功提示被 `reload()`（applyView 清 savedHint）吞掉 → 调整为先 reload 再置 savedHint（E2E 宽松断言 perm-saved-hint 依赖此修复）。
+- refactor：无（新组件 + 2 文件接线 + client.js 增量，无重构面）。
+
+#### PRD→代码 可追溯性表（Slice 3）
+
+| PRD/REQ（UI 面） | 组件/API 封装（renderer） | E2E（permissionConfig.test.cjs） | 状态 |
+|---|---|---|---|
+| B1 / REQ-AGENT-059（页签入口 + 空态） | ProjectDetailModal `[data-perm-tab]` + PermissionConfigTab 空态 `perm-empty-state`/`perm-create-btn` | test 1（空态 + 新建按钮） | COVERED |
+| B2 / REQ-AGENT-060（全局只读基底 + 出厂默认标注） | 规则行全局默认列（pill + 「出厂默认」，无编辑控件） | test 2（全局列只读） | PARTIAL（见偏差 1：E2E 行级 count 断言过宽） |
+| B3 / REQ-AGENT-061（继承视图：跟随全局/项目已改） | 项目值列（跟随全局 italic / 覆盖高亮 + 项目已改 + reset-chip）、组头覆盖徽标 `[data-override-badge]` | test 2/3（行可见 + 徽标） | COVERED |
+| B4 / REQ-AGENT-062（bash 高危族分组 + seg 切换） | family 分组渲染（删除文件/提权/进程/磁盘/强制推送/全局安装…）+ `[data-perm-seg]` allow/ask | test 2/3（rm * 行 + 允许切换 + 徽标 + 保存提示） | COVERED |
+| B5 / REQ-AGENT-063（工具级裁决 + 兜底） | tool 组（read/write/edit/create/delete/ls/grep/find/CLI 工具 + `*` 兜底）seg | —（API 面已绿） | COVERED（UI 面无专项 E2E，harness 覆盖） |
+| B6 / REQ-AGENT-064（path/外部目录列表编辑器） | PathEditor（全局只读 + 项目增删 + 空/重复就地提示） | —（API 面已绿） | COVERED（UI 面 harness 间接覆盖） |
+| B7 / REQ-AGENT-065（authorizerChain + 开关 + 继承说明） | ListEditor（整体替换 + 跟随全局 reset）+ toggle/数值行 + 脚注文案 | test 6（继承说明文案正则） | COVERED |
+| B8 / REQ-AGENT-066（JSON 单向同步） | JSON 模式 `perm-json-editor`（原样提交）+ 自定义字段保护提示条 + 视图转换（permission 面内保留/顶层未知键由服务端 400） | test 4（JSON 文本区） | COVERED |
+| B9 / REQ-AGENT-067（首次编辑时生成） | 空态 → 新建配置进入已配置态（首次保存生成文件，B9 语义） | test 1/2（空态 → 建配置 → 行可见） | COVERED |
+| B10 / REQ-AGENT-068（校验 fail-closed UI 面） | `perm-error-banner`（message + issues 路径列表）+ 客户端 JSON 语法预检 + client.js code/issues 透传 | test 5（非法保存 → 错误条） | COVERED |
+
+#### 与 UX 原型（permission-config.html）的已知偏差
+
+1. **跟随全局行也渲染 seg（允许/询问双按钮，未选中态）**——原型跟随全局行只有「跟随全局」文字、覆盖行才有 seg。实现取舍：seg 常驻是 allow/ask 切换的交互入口（原型的静态 mock 未表达「如何从跟随全局变为覆盖」）；覆盖态按钮高亮 + 「项目已改」。由此产生 **E2E test 2 行级 `input, select, [data-perm-seg]` count=0 断言必失败**（行内项目列有 seg；该断言本意是「全局列只读」——全局列实际无任何编辑控件，harness 已按全局列 cell 断言通过）。test 2 与 test 3（点 seg 允许）locator 互相矛盾，**S4 接线时按 test-gap 处理**（建议 E2E 断言改为定位全局列 cell）。
+2. **空态与继承视图同屏**：空态为顶部横幅（未配置时）+ 规则行全量渲染（全跟随全局）在下；原型为空态替换视图。取舍：E2E test 2 首条断言「rm * 行可见」在空态下要求行存在；且「全跟随全局」形态本身就是继承视图的有效展示（B3 语义）。「新建配置」= 隐藏横幅进入已配置态（文件仍首次保存时生成，原型 mock 的「立即生成」为示意）。
+3. **JSON 空态内容**：未配置项目切 JSON 显示 `{}`（合法 JSON，保存即生成最小文件），原型用 JS 注释占位（非法 JSON，保存必 400——不采用）。
+4. **authorizerChain 展示**：原型为链式箭头行（仅示意）；实现为可编辑列表（add/remove + 箭头连接 + 跟随全局 reset），对齐「数组整体替换」语义（REQ-AGENT-065 AC1）。
+5. **自定义字段提示条文案**按裁决 A 修正：permission 面内自定义保留 + 顶层未知键会被保存拦截（原型文案写于裁决 A 之前，未区分两层）。
+6. **文案直写中文**（E2E 断言契约先例，Assistant.jsx 同款）；i18n en-US 直译观感入 REFLECT。
+
+#### Slice 3 备注（供 S4 接线）
+
+- E2E 需 `rebuild:electron` + 全量接线，本 slice 以组件自验（30/30）+ vite build 为准；E2E 文件未跑（S4 统一）。
+- E2E test 2 的 locator 矛盾（见偏差 1）与「空态下行可见」（偏差 2 已满足）在 S4 需测试作者按 test-gap 流程确认。
+- `permission.bash.*`（bash 兜底 pattern）family 为「未分组」+ `permission.meta-mismatch` 警告——S2 已记录的设计行为（BASH_RULES 无该 glob），非本 slice 回归。
