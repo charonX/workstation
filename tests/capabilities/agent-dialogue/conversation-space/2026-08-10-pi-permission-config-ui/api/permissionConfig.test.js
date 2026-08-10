@@ -178,24 +178,22 @@ describe("REQ-AGENT-062/063/064/065/067 权限配置 API：PUT 保存（最小�
     assert.equal(writeRule.projectOverridden, true);
   });
 
-  it("REQ-AGENT-066 标准 3：面板保存保留 JSON 手写的自定义字段", async () => {
-    const custom = { permission: { write: "allow" }, customOrgKey: { rule: "keep" } };
-    await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
+  it("REQ-AGENT-066 标准 3：PUT 含自定义字段的完整 payload → 落盘原样含之（服务端不丢未知字段）", async () => {
+    // 语义修正（2026-08-10 人裁决，Slice 2 concerns ①）：未知字段保留由
+    // **renderer 视图转换**承担（tech-design §4.3——面板保存时前端读原文件、
+    // 合入未知字段、发合并后 payload）；服务端 = 原样写（ADR-022，Q5 单端点）。
+    // 本用例验证服务端对含自定义字段的完整 payload 不丢字段（API seam 面）；
+    // 前端合并逻辑由 Slice 3 组件/E2E 覆盖。
+    const full = { permission: { write: "allow" }, customOrgKey: { rule: "keep" } };
+    const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(custom),
+      body: JSON.stringify(full),
     });
-
-    // 面板保存（只改 write，不含 customOrgKey——面板不认识的字段由前端保留，服务端原样写）
-    const panel = { permission: { write: "ask" } };
-    await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(panel),
-    });
+    assert.equal(res.status, 200, await res.text());
 
     const written = JSON.parse(fs.readFileSync(piPath(), "utf8"));
-    // TODO: HUMAN ASSERTION — 确认自定义字段仍在文件中
+    // TODO: HUMAN ASSERTION — 确认自定义字段原样落盘（服务端不丢）
     assert.deepEqual(written.customOrgKey, { rule: "keep" });
   });
 
@@ -314,7 +312,12 @@ describe("REQ-AGENT-068 保存校验 fail-closed", () => {
     assert.ok(!fs.existsSync(piPath()), "非法保存不得落盘");
   });
 
-  it("REQ-AGENT-068 标准 2：schema 不合法 → 400 + issues 含路径；文件未变", async () => {
+  it("REQ-AGENT-068 标准 2：schema 不合法（action 枚举外）→ 400 + issues 含路径；文件未变", async () => {
+    // 语义修正（2026-08-10 人裁决，Slice 2 concerns ②）：原语料
+    // `{permission:{bash:"ask"}}` 是 **gotgenes schema 合法**形态（surface 级
+    // 字符串 = {"*": action} 简写，config-schema.ts 实证）——断言 400 与标准 3
+    // 对照（同输入 gotgenes 接受 → 服务端 200）自相矛盾。改用真正非法语料：
+    // action 枚举外（allow/ask 之外的值）→ schema 拒绝。
     // 先有合法文件，再存非法（覆盖语义下文件不得被污染）
     await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
       method: "PUT",
@@ -326,7 +329,7 @@ describe("REQ-AGENT-068 保存校验 fail-closed", () => {
     const res = await fetch(`${serverCtx.baseUrl}/api/projects/${project.id}/permission`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ permission: { bash: "ask" } }), // bash 应为对象，字符串非法
+      body: JSON.stringify({ permission: { write: "bogus" } }), // action 枚举外（仅 allow/ask）
     });
     assert.equal(res.status, 400);
     const body = await res.json();
