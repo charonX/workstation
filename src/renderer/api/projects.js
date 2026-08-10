@@ -51,3 +51,18 @@ export function resyncProjectSkills(projectId) {
 export function deleteProject(projectId) {
   return del(`/api/projects/${encodeURIComponent(projectId)}`);
 }
+
+// —— PI 权限配置（REQ-AGENT-059~068，2026-08-10-pi-permission-config-ui）——
+// GET → {global, project, merged, rules[]}（继承视图数据面，tech-design §3.1）；
+// project=null = 未配置（UI 空态）。
+export function getProjectPermission(projectId) {
+  return get(`/api/projects/${encodeURIComponent(projectId)}/permission`);
+}
+
+// PUT body = 完整项目配置 JSON → {saved, mtime}。400 E-PERMISSION-INVALID 时抛
+// {code, message, issues:[{path, message}]}（client.js 已透传 code/issues——
+// 权限端点错误响应带顶层 `code` 字段，permission 面内自定义字段原样写、
+// 顶层未知键拒绝保存，裁决 A）。
+export function putProjectPermission(projectId, config) {
+  return put(`/api/projects/${encodeURIComponent(projectId)}/permission`, config);
+}

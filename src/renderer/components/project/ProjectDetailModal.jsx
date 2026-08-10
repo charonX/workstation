@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useProjectDetail } from "../../hooks/useProjectDetail.js";
 import Modal from "../shared/Modal.jsx";
+import PermissionConfigTab from "./PermissionConfigTab.jsx";
 import "./ProjectDetailModal.css";
 
 /**
@@ -220,6 +221,13 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
           onClick={() => setActiveTab("skills")}
         >
           {t("skills.title")}
+        </button>
+        <button
+          className={`tab ${activeTab === "permission" ? "active" : ""}`}
+          data-perm-tab
+          onClick={() => setActiveTab("permission")}
+        >
+          权限配置
         </button>
       </div>
 
@@ -546,6 +554,12 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "permission" && (
+        <div className="tab-panel">
+          <PermissionConfigTab projectId={projectId} />
         </div>
       )}
     </Modal>

@@ -19,7 +19,12 @@ async function request(method, endpoint, body) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     const error = new Error(err.message || `HTTP ${res.status}`);
     error.status = res.status;
-    error.code = err.error;
+    // 错误响应带顶层 `code` 字段（权限配置端点契约，tech-design §3.2）或既有
+    // `error` 字段（mapError）——两形态都挂上（?? 保持既有行为不变）。
+    error.code = err.code ?? err.error;
+    // 400 E-PERMISSION-INVALID 的路径化校验错误（issues:[{path,message}]）透传，
+    // 供 UI 错误条定位展示。
+    if (Array.isArray(err.issues)) error.issues = err.issues;
     throw error;
   }
   if (res.status === 204) return undefined;
