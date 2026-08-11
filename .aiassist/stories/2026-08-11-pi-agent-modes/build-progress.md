@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | REQ-AGENT-070/072/077 | modeService 模式服务（主进程）：三档会话级状态 + 全局 lastMode（settings agent.lastMode 持久化，首次 auto / 非法回落 standard）+ 模式不改 .pi 持久配置 | — | done |
 | 2 | REQ-AGENT-073/074/075/076 | auto-judge link（worker 评估链）：authorizerChain 模型判断（allow/deny/defer + reason）+ envelope excluded 面 + 熔断计数 + review log | 1 | done |
-| 3 | 主进程接线 | 会话模式 ↔ worker 评估链 seam 接线（S1 服务暴露给评估链读取）；具体形态父代理确认 | 1, 2 | pending |
+| 3 | 主进程接线 | 会话模式 ↔ worker 评估链 seam 接线（S1 服务暴露给评估链读取）；具体形态父代理确认 | 1, 2 | done |
 | 4 | REQ-AGENT-071 | renderer 对话区模式切换工具栏（三档下拉 + 可扩展槽位） | 1, 2 | pending |
 | 5 | REQ-AGENT-071 E2E | E2E 接线跑绿 + 全量回归（单测 + 既有 E2E 水位不退） | 3, 4 | pending |
 
@@ -93,3 +93,34 @@ assert.notEqual(fresh, "strict");   // ← 红
 2. **gotgenes 注入的 AuthorizerLog（authorize 第三参）本切片未使用**：B7「对接既有 permission review log」通过 reviewLogPath 默认指向同一文件（`<agentHome>/extensions/pi-permission-system/logs/pi-permission-system-permission-review.jsonl`）实现；若 S3 需要 gotgenes 原生 review 落点（按 requestId 关联 gate 条目），可在接线时额外调 `log.review("auto_judge.decision", ...)`（本链路已保留该 seam）。
 3. **超时兜底 timer 为 unref**（不 hold 进程，对齐 worker 既有模式）；worker 事件循环常驻（IPC），decide 悬挂时 5s 后仍会如期触发 defer。
 4. **熔断回调语义**：跨阈首次触发后继续 deny 不重复回调（REQ-AGENT-075 标准 1 断言一次触发）；allow 重置后重新计数。S3 降级后用户手动切回 auto 时若需清零计数，可重建 link 实例或注入 onTripped 侧处理。
+
+### Slice 3：worker 接线（commit 见下）
+
+- 实现面（PRD→代码 追溯见下）：
+  - **模式状态与传播（REQ-AGENT-070 集成面）**：`src/services/agentService.js` 注入模式服务（`options.modeService` 可注入单例，缺省内部 `createModeService()`——测试零接线可用）；`buildConfigMessage` 携带 `mode`（modeService.getMode(spaceKey)——显式会话值/lastMode，首次默认 auto）；新增 service 方法 `setSessionMode(spaceKey, mode)`（模式服务双写 + IPC `mode-change` 下发 worker，S4 renderer 入口；非法模式 E-MODE-INVALID）与 `getSessionMode(spaceKey)`（S4 取位）。worker 侧 `sessionModes` Map（session-config 注入初始模式 + mode-change 热更新 + 熔断降级同步置 standard；随淘汰/reset 清理——模式是会话级状态，懒恢复经 session-config 重注入）；`getSessionMode` 缺省 auto（对齐 REQ-AGENT-072 标准 3 首次默认）。切换生效于下一个评估（PRD §6.2）。
+  - **strict 全确认（REQ-AGENT-070 标准 1）**：`createPermissionBridgeFactory` 扩展（mode 参数缺省 = 现状行为零变化）——tool_call pre-gate 按 **gate 等价查询**（`svc.checkPermission(surface, value).state`，PermissionQuery = 链 link 同源 seam）分类：gotgenes 会 ask/deny 的交 gotgenes 单卡/拦截（单一评估原则：不双 ask）；gotgenes 会 allow 的（含热路径盲区重定向/管道——BUG-002 同源覆盖）→ pre-gate 弹卡（授权桥挂起确认）。strict 分支 return 提前，BUG-002 bash pre-gate 不重复执行。user_bash（主进程侧，http/server.js onPermissionAsk）strict 下也全确认（覆盖评估器 allow 类）。**已知边界（concern）**：path 规则 ask（如 `path."*.env"`）与 external_directory 操作在 strict 下可能双卡（pre-gate 卡 + gotgenes 链/终端卡）——strict = 全确认语义下可接受，S4/REFLECT 复核。
+  - **链序接线（REQ-AGENT-073 标准 5）**：`agent-policy/pi-permission-config.json` authorizerChain → `["auto-judge", "opc-bridge"]`（worker 启动 deployGlobalPolicy 幂等覆盖）。**动态链可行性实证**：gotgenes `getAuthorizerChain` 每次 ask live 读 configStore 内存快照（authorizer-selection.ts resolveConfiguredLinks，ADR 0007 §4），但 configStore 为扩展工厂私有闭包、`PermissionsService` 接口无链/配置变更 API；唯一变更路径 = 写盘 + refresh/save，违反 REQ-AGENT-077（模式不改 .pi 持久配置，modeService.test.js 字节比对）且全局配置跨会话共享 → **实现面 = worker 侧模式门控**：auto-judge 注册时包一层门控（非 auto → 立即 `{kind:"defer"}`，不调 decide/不写 review log/不动熔断计数）——净效果 = 标准/严格档链 = 现状 `["opc-bridge"]`（auto-judge 不参与），auto 档链 = `["auto-judge", "opc-bridge"]`。未注册名 gotgenes 跳过（invariant 2：more prompting, never less）——注册失败 fail-safe。
+  - **auto-judge 接线（REQ-AGENT-073 默认 decide 接真实模型）**：`createSessionEntry` 每会话创建 auto-judge link 实例（熔断计数会话级，对齐 permissionBridge H4）——`decide = createSessionDecide(runtime, modelObj, sessionKey, sessionCwd)`：FAUX 注入口 `OPC_FAUX_JUDGE_RESULT`（可编程判定，单判定/判定数组，FAUX 专属零生产影响；未注入 → 显式 defer 不调 FAUX 回声模型）→ 真实路径 `runtime.complete(modelObj, {systemPrompt: 判断 prompt, messages: [user: 判断上下文]}, {maxTokens:200, timeoutMs:4500})`（复用会话 provider/key 运行时，resolveModel 已注入）→ `parseVerdict`（容忍围栏/杂文本提取 JSON；非法 → `{kind:"defer",reason:"model-unresolved"}`）；模型失败/超时 → throw（S2 映射 call-failed/timeout defer，fail-safe）；deny-first prompt（不确定一律 defer）。
+  - **熔断降级（REQ-AGENT-075）**：link `onTripped`（阈值可注入 env `OPC_AGENT_JUDGE_DENY_THRESHOLD`，缺省 5）→ worker 侧会话模式同步置 standard（下一评估即生效）+ IPC `mode-tripped`（reason = 「auto 暂停：模型频繁拒绝，已回标准模式」）→ 主进程模式服务 `setMode(spaceKey, "standard")`（会话 + lastMode 双写）+ 会话句柄 `session-event {type:"mode-degraded", mode:"standard", reason}`（用户可见提示数据面，呈现形态归 S4）。
+- 测试：**集成 harness（临时，不进契约不提交，/tmp/slice3-harness.test.js）10/10 绿**（真实 worker + 真实 gotgenes + FAUX + OPC_FAUX_JUDGE_RESULT 可编程 decide + 可编程确认决议）：standard read/bash 直放无卡；strict read（配置 allow）弹卡 + 拒绝拦截；auto allow 直执行（write 真实落盘）+ review log 记录；auto deny 拦截 + reason 回 agent；auto defer 落 opc-bridge 确认卡（链序）；判定失败 defer 弹卡；熔断降级 standard + 提示（N=2 注入，REQ-AGENT-075 标准 1/2）；allow 重置不触发（标准 3）；strict→setSessionMode(standard) 热更新下一评估生效；standard 下 auto-judge 门控（配置 ask 仍 opc-bridge 卡 + 零 review log）+ 熔断后手动切回 auto 恢复（标准 4）。
+- 回归：13 用例（modeService 6 + autoJudgeLink 7）全绿（见下）；worker 相关回归（workerServerDiscovery / agentProcess 等）见下。
+- lint：`npx oxlint src/agent/worker.js src/services/agentService.js src/http/server.js` 0 警告。
+
+#### PRD→代码 可追溯性表（Slice 3）
+
+| PRD 块 / REQ | 验收标准 | 实现 | 验证 | 状态 |
+|---|---|---|---|---|
+| B1 / REQ-AGENT-070 三档模式（集成面） | 标准 1 strict 全确认（含配置 allow 的 read/ls）；标准 2 standard 按配置；标准 3 auto 模型代问（allow 直执行/deny 拦截/defer 弹卡；配置 allow 直放不过模型）；标准 4 会话级 | worker `sessionModes` + 模式门控 + strict pre-gate（checkPermission 分类）；standard = 现状（无接线变化）；auto = 链 + decide；会话级 = 随 session-config/mode-change/淘汰清理 | 集成 harness（strict 弹卡含 read / standard 直放 / auto 三判定路径 / 热更新） | COVERED（本切片交付集成面；E2E 呈现属 S4/S5） |
+| B4 / REQ-AGENT-073 auto 引擎（接线面） | 标准 1 allow 直执行；标准 2 deny + teaching reason；标准 3 失败/超时 defer；标准 5 链序 defer 落 opc-bridge 确认卡 | 全局策略链序 `["auto-judge","opc-bridge"]` + registerAuthorizer("auto-judge") + 默认 decide 接真实模型（runtime.complete + parseVerdict） | harness（allow 直执行+review log / deny 拦截+reason / defer 落卡 / 判定失败 defer） | COVERED（标准 4 provider 未配置属 S2 契约面，已由 autoJudgeLink.test.js 覆盖） |
+| B5 / REQ-AGENT-074 envelope 从严（接线面） | envelope 对本 link 的强制在 registerAuthorizer 后生效 | 零实现（resolveConfiguredLinks 对每个已注册 link 包 encloseInDelegationEnvelope） | S2 实证用例（envelope 语义）+ 本切片接线后生效 | COVERED（实证；运行期强制由 gotgenes 承担） |
+| B6 / REQ-AGENT-075 熔断（动作面） | 标准 1 连续 deny N → 降级 standard（可注入）；标准 2 提示可见；标准 3 allow 重置；标准 4 手动切回恢复 | onTripped → worker 会话模式置 standard + mode-tripped IPC → 主进程模式服务降级 + mode-degraded 事件（提示数据面）；阈值 env 注入 | harness（N=2 降级 + lastMode 双写 + mode-degraded 事件 / allow 重置不触发 / 切回 auto 恢复） | COVERED（提示呈现形态归 S4） |
+| B7 / REQ-AGENT-076 auto 可观测（接线面） | 每次判断写 review log（含 surface/latencyMs） | link 默认 reviewLogPath 对齐 gotgenes review log（<agentHome>/extensions/...）；模式门控下非 auto 不写（仅 auto 决策留痕） | harness（auto allow 后 review log 含 allow 记录 / standard 零记录） | COVERED |
+| B8 / REQ-AGENT-077 模式不改持久配置（接线面） | 切换模式不改 .pi 配置；auto 放行不落持久配置 | 动态链改内存不可行（configStore 不暴露）→ 模式门控实现（不写任何 .pi 文件；唯一配置变更 = agent-policy 链序一次静态更新，非模式切换触发） | modeService.test.js（切换前后字节一致） | COVERED |
+
+#### Slice 3 concern（供 S4/S5 与 REFLECT 参考）
+
+1. **strict 双卡边界**：path 规则 ask（如 `path."*.env"`）与 external_directory 操作在 strict 下 = pre-gate 卡 + gotgenes 链/终端卡两次确认（pre-gate 按工具面 allow 弹卡、批准后 gotgenes 复合门仍 ask）。strict = 「所有操作都确认」语义下可接受；如需单卡，后续可让 pre-gate 对 gotgenes 可见 ask 的操作整体接管（需绕过复合门，成本高，本期不做）。
+2. **动态链不可行（实证结论）**：gotgenes `getAuthorizerChain` 每次 ask live 读 configStore 内存快照，但 configStore 为扩展私有、PermissionsService 无变更 API；写盘 + refresh 违反 REQ-AGENT-077 且跨会话污染 → 模式门控为唯一不违反契约的动态装配面。链在配置中恒为 `["auto-judge","opc-bridge"]`，非 auto 档 auto-judge 纯 defer 零副作用（不调 decide、不写日志、不动计数）——行为等价链 `["opc-bridge"]`。
+3. **FAUX decide 不调回声模型**：FAUX 未注入 OPC_FAUX_JUDGE_RESULT 时 decide 返回显式 defer（decide-deferred）——避免 consume 模型响应队列（decide 在工具调用链内执行，与 agent 主循环共用同一 faux 队列）且回声非 verdict。
+4. **review log 门控语义**：standard/strict 下 auto-judge 零日志（门控在 decide 之前）——B7「每次判断写日志」仅指 auto 模式实际发生的判断（与 PRD B7「auto 可观测」一致）。
+5. **多会话 globalThis 服务槽**（S7 既有语义延续）：`getPermissionsService()` 读 globalThis 单槽，多项目会话并发时槽被最后 session_start 的实例占用——S3 未改此形态（opc-bridge 注册同源）；harness 单会话验证通过，多会话并发留 H4 spike 既有结论。
