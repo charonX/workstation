@@ -52,6 +52,7 @@ import { decryptSecret } from "./secretStore.js";
 import { readGitBranch } from "./gitBranch.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
+import { createModeService, AGENT_MODES } from "./modeService.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 // BUG-004（code-defect）：deepseek-chat / kimi-latest 在 pi 运行时模型目录里不存在
@@ -479,6 +480,11 @@ function createProcessAgentService(options = {}) {
   // Map，sessionKey → contextUsage）→ SSE 转发 renderer；renderer 切会话时经
   // getSessionStats 可取最近值（SSE 只推增量不回溯的补位数据源）。
   const sessionStatsCache = new Map();
+  // Slice 3（REQ-AGENT-070/075）：会话模式服务——生产接线注入单例（http/server.js
+  // 与 S4 模式切换端点共用同一实例）；未注入 → 内部创建（测试零接线可用）。
+  // 职责：getMode/setMode（会话级状态 + settings lastMode 持久化，REQ-AGENT-072）+
+  // mode-change IPC 下发 worker + mode-tripped（熔断降级）回写。
+  const modeService = options.modeService ?? createModeService();
 
   // 会话存储（REQ-AGENT-008/009）：SQLite agent_sessions 为真相（W-3），本服务
   // 注册表仅为活跃句柄缓存。未显式注入时按 cwd 派生默认库（随工作目录隔离，
@@ -956,6 +962,26 @@ function createProcessAgentService(options = {}) {
           });
         break;
       }
+      case "mode-tripped": {
+        // Slice 3（REQ-AGENT-075 标准 1/2）：worker auto-judge 熔断（连续 deny 达
+        // 阈值）→ 模式服务降级 standard（会话状态 + lastMode 双写）+ 用户可见提示
+        //（session-event mode-degraded，携带「auto 暂停：模型频繁拒绝」文案——
+        // 呈现形态（对话区/状态栏）归 S4）。降级后用户手动切回 auto（setSessionMode）
+        // 恢复正常（标准 4）。
+        if (typeof msg.sessionKey === "string" && msg.sessionKey !== "") {
+          modeService.setMode(msg.sessionKey, "standard");
+          const session = sessions.get(msg.sessionKey);
+          if (session) {
+            session.emit("session-event", {
+              type: "mode-degraded",
+              mode: "standard",
+              reason: msg.reason ?? "auto 暂停：模型频繁拒绝，已回标准模式",
+            });
+          }
+          log(`auto 熔断降级 session=${msg.sessionKey} → standard`);
+        }
+        break;
+      }
       case "permission-ask": {
         // 授权桥接线（Slice 7，REQ-AGENT-033 标准 3/4）：worker 侧 gotgenes
         // authorizer 链 / uiContext 兜底 / user_bash 拦截 → IPC permission-ask →
@@ -1025,6 +1051,10 @@ function createProcessAgentService(options = {}) {
       cwd: spaceCwd ?? cwd,
       skillPaths,
       permissionProfile,
+      // Slice 3（REQ-AGENT-070）：会话初始模式（modeService：显式会话值/lastMode
+      // 默认——首次 auto，REQ-AGENT-072 标准 3）；worker 侧随 session-config 注入，
+      // 后续切换经 mode-change IPC 热更新。
+      mode: modeService.getMode(spaceKey),
       // 工具上下文（Slice 8 G1 接线）：绑定默认目标候选 → worker 工具面消费。
       ...(session.toolContext ? { toolContext: session.toolContext } : {}),
       // BUG-003：来源标记（"hydration" = 系统恢复，不触发同组冷却）。
@@ -1102,6 +1132,28 @@ function createProcessAgentService(options = {}) {
     // 切会话快速取位用；无推送 → undefined）。
     getSessionStats(spaceKey) {
       return sessionStatsCache.get(spaceKey);
+    },
+    // Slice 3（REQ-AGENT-070/072）：会话模式切换（S4 renderer 入口）——模式服务
+    //（会话级状态 + settings lastMode 持久化）+ mode-change IPC 下发 worker
+    //（生效于下一个评估，PRD §6.2；子进程未就绪/会话不存在 → 跳过下发——worker
+    // 侧在下次 session-config 收到当前模式）。
+    setSessionMode(spaceKey, mode) {
+      if (!AGENT_MODES.includes(mode)) {
+        throw Object.assign(new Error(`E-MODE-INVALID: 非法模式 ${mode}`), {
+          code: "E-MODE-INVALID",
+        });
+      }
+      modeService.setMode(spaceKey, mode);
+      if (state === "ready" && sessions.has(spaceKey)) {
+        sendToChild({ type: "mode-change", sessionKey: spaceKey, mode });
+      }
+      log(`mode-change session=${spaceKey} mode=${mode}`);
+      return modeService.getMode(spaceKey);
+    },
+    // Slice 3（REQ-AGENT-070）：当前会话模式（S4 renderer 取位；未显式切过 =
+    // lastMode，首次默认 auto）。
+    getSessionMode(spaceKey) {
+      return modeService.getMode(spaceKey);
     },
     // notify-result（REQ-AGENT-016 标准 2 / W-2）：确认执行结果经 IPC 注入子进程，
     // worker 侧以会话 prompt 驱动 agent 生成自然语言回投（流式事件回传）。

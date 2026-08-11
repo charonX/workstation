@@ -44,7 +44,10 @@ const STATIC_TEMPLATE = {
   toolInputPreviewMaxLength: 400,
   toolTextSummaryMaxLength: 120,
   piInfrastructureReadPaths: [],
-  authorizerChain: ["opc-bridge"],
+  // 链序（Slice 3，REQ-AGENT-073）：auto-judge 在前（allow 直放/deny 短路），
+  // defer 落回 opc-bridge 确认卡。非 auto 模式下 auto-judge 由 worker 侧模式门控
+  // 纯 defer（净效果 = 现状 ["opc-bridge"]）——见 build-progress Slice 3。
+  authorizerChain: ["auto-judge", "opc-bridge"],
 };
 
 // permission 块静态分段（自既有 golden 平移；CLI 面与 toolAdapter TOOL_DEFS 对应）。

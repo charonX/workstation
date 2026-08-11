@@ -31,6 +31,7 @@ import { createSessionStore } from "../services/sessionStore.js";
 import { createCardRenderer } from "../services/cardRenderer.js";
 import { createConfirmationService } from "../services/confirmationService.js";
 import { createPermissionBridge } from "../services/permissionBridge.js";
+import { createModeService } from "../services/modeService.js";
 import { executeToolCommand } from "../agent/toolAdapter.js";
 
 const activeServers = new Set();
@@ -240,6 +241,15 @@ export function startServer(options = {}) {
         return serverPermissionBridge;
       };
       server._opcPermissionBridgeFactory = getPermissionBridge;
+      // Slice 3（REQ-AGENT-070/072/075）：会话模式服务单例（agentService 注入 +
+      // S4 模式切换端点共用同一实例——会话模式状态与 lastMode 持久化单点）。
+      let serverModeService = null;
+      const getModeService = () => {
+        if (!serverModeService) {
+          serverModeService = createModeService();
+        }
+        return serverModeService;
+      };
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
@@ -250,15 +260,29 @@ export function startServer(options = {}) {
             // BUG-007：本 server baseUrl 注入 → worker spawn env（工具面直连，
             // 禁 worker 内 server 自起——启动窗口期注册表发现失败的兜底灾变）。
             agentServerBaseUrl: `http://127.0.0.1:${port}`,
+            // Slice 3（REQ-AGENT-070）：会话模式服务单例（getSessionMode/
+            // setSessionMode/mode-tripped 熔断降级共用）。
+            modeService: getModeService(),
             // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面 confirm 级
             // 工具 → IPC confirm-request → 确认服务入队（pending + 确认卡片）。
             onConfirmRequest: (req) => getConfirmationService().submit(req),
             // Slice 7 授权桥接线（REQ-AGENT-033 标准 3/4）：worker gotgenes ask →
             // IPC permission-ask → 桥建挂起行 + 决议等待 → 回传 allow/deny。
             // user_bash（tool="user_bash"）走评估器分类（allow 直放 / ask 挂起行）。
+            // Slice 3（REQ-AGENT-070 标准 1）：strict 下 user_bash 也全确认（覆盖
+            // 评估器 allow 类——strict = 所有操作都确认）。
             onPermissionAsk: async ({ confirmId, sessionKey, tool, input, description }) => {
               const bridge = getPermissionBridge();
               if (tool === "user_bash") {
+                if (getModeService().getMode(sessionKey) === "strict") {
+                  const ask = await bridge.authorize({
+                    spaceKey: sessionKey,
+                    tool: "user_bash",
+                    input: { command: input?.command },
+                    description,
+                  });
+                  return ask.decision;
+                }
                 const result = await bridge.evaluateUserBash({
                   spaceKey: sessionKey,
                   command: input?.command,

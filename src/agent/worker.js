@@ -34,10 +34,11 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall, contentText } from "@earendil-works/pi-ai";
 import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
+import { createAutoJudgeLink } from "./autoJudgeLink.js";
 import { setServerBaseUrlOverride } from "../cli/server.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
@@ -73,6 +74,18 @@ const keySecrets = new Map();
 // 候选，来自主进程 buildToolContext → session-config toolContext）。独立于会话句柄
 // 惰性读取（toolSurface 按 execute 时取值，session-config 热更新即时生效）。
 const toolContexts = new Map(); // sessionKey → { defaultTarget: { flowId, projectId } | null }
+
+// —— Slice 3（REQ-AGENT-070）：会话模式（strict/standard/auto）——
+// session-config 携带初始模式（主进程 modeService.getMode——显式会话值/lastMode）；
+// mode-change IPC 热更新（切换生效于下一个评估，PRD §6.2：当前操作不受影响）；
+// 熔断降级（REQ-AGENT-075）worker 侧同步置 standard（与主进程模式服务双写一致）。
+// 随淘汰/reset 清理（模式是会话级状态，懒恢复经 session-config 重新注入）。
+const sessionModes = new Map(); // sessionKey → "strict" | "standard" | "auto"
+function getSessionMode(sessionKey) {
+  // 未携带（旧主进程/手工调试）→ 首次默认 auto（对齐 REQ-AGENT-072 标准 3）。
+  return sessionModes.get(sessionKey) ?? "auto";
+}
+const AGENT_MODES_SET = new Set(["strict", "standard", "auto"]);
 
 // confirm-request 回执等待（Slice 8 确认接线）：confirmId → resolve(ack)。
 // 主进程确认服务入队（agent_confirmations pending + 确认卡片）后回 confirm-request-ack，
@@ -188,7 +201,28 @@ function requestPermissionDecision({ sessionKey, tool, input, description }) {
 //   其余 → 交 gotgenes 正常评估。单一评估原则（BUG-001 教训）：ask 判定已排除
 //   gotgenes 可见危险（rm/sudo/cwd 外路径/包装载荷等由其 gate 单 ask 承接），
 //   approved 后同一调用至多一次执行、不再产生二次 ask。
-function createPermissionBridgeFactory(sessionKey, sessionCwd, handle) {
+//
+// —— Slice 3（REQ-AGENT-070/073/075）mode 参数（可选）——
+// mode = { getMode, autoJudge }（缺省 = 无模式接线，行为与现状完全一致）：
+// - getMode：会话模式读取（每评估实时取值——模式切换生效于下一个评估）；
+// - autoJudge：S2 auto-judge link 实例（{ authorize }），permissions:ready 时注册
+//   "auto-judge" 到 authorizerChain（链序 ["auto-judge", "opc-bridge"] 由全局策略
+//   配置承载）。**模式门控**：非 auto 模式下 auto-judge 立即 defer（不调 decide、
+//   不写 review log、不动熔断计数）——净效果 = 标准/严格档链 = 现状 ["opc-bridge"]，
+//   auto 档链 = ["auto-judge", "opc-bridge"]（动态链可行性实证见 build-progress
+//   Slice 3：gotgenes getAuthorizerChain 每次 ask live 读 configStore 内存快照，但
+//   configStore 不对外暴露、唯一变更路径 = 写盘 + refresh，违反 REQ-AGENT-077
+//   （模式不改 .pi 持久配置）→ 实现面 = worker 侧模式门控过滤）；
+// - strict 全确认（REQ-AGENT-070 标准 1）：tool_call pre-gate 按 gate 等价查询
+//   （svc.checkPermission，PermissionQuery——链 link 同源 seam）分类——gotgenes
+//   会 ask/deny 的操作交 gotgenes 单卡/拦截（不双 ask），gotgenes 会 allow 的
+//   （含热路径盲区重定向/管道——BUG-002 同源）→ pre-gate 弹卡（挂起确认）。
+function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}) {
+  const { getMode = () => "auto", autoJudge = null } = mode;
+  // 权限服务句柄（permissions:ready 捕获）：strict pre-gate 的 gate 等价查询 +
+  // opc-bridge/auto-judge 注册共用。
+  let bridgeService = null;
+
   return async (pi) => {
     pi.events?.on("permissions:ready", () => {
       const svc = handle?.getPermissionsService?.();
@@ -196,6 +230,7 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle) {
         log(`授权桥注册跳过 session=${sessionKey}（权限服务未就绪）`);
         return;
       }
+      bridgeService = svc;
       svc.registerAuthorizer("opc-bridge", async (details) => {
         const surface = details?.accessIntent?.surface ?? details?.surface;
         if (!surface || surface === "external_directory" || surface === "path") {
@@ -212,11 +247,47 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle) {
         if (verdict.kind === "allow") return { kind: "allow" };
         return { kind: "deny", reason: verdict.reason ?? "操作已取消（用户拒绝）" };
       });
+      // Slice 3（REQ-AGENT-073）：auto-judge 注册（模式门控——非 auto 立即 defer，
+      // 链序生效面 = auto 档 ["auto-judge", "opc-bridge"]；标准/严格档净效果
+      // ["opc-bridge"]，与现状一致）。
+      if (autoJudge) {
+        svc.registerAuthorizer("auto-judge", async (details, query, log) => {
+          if (getMode() !== "auto") return { kind: "defer" };
+          return autoJudge.authorize(details, query, log);
+        });
+      }
       // 可观测性（tech-design 可观测性节）：授权桥注册留痕（permissions:ready →
       // registerAuthorizer 完成）。
       log(`授权桥注册完成 session=${sessionKey}`);
     });
     pi.on("tool_call", async (event) => {
+      // Slice 3（REQ-AGENT-070 标准 1）：strict 全确认——所有操作弹卡（含配置
+      // allow 的 read/ls/查询类）。实现面：gotgenes 会 ask/deny 的交 gotgenes
+      // 单卡/拦截（单一评估原则：不双 ask），gotgenes 会 allow 的 → pre-gate 弹卡。
+      // 本分支 return 提前——strict 下 BUG-002 bash pre-gate 不重复执行（allow 类
+      // 已在本分支弹卡，重定向/管道危险同源覆盖）。
+      if (getMode() === "strict") {
+        const svc = bridgeService;
+        if (svc && typeof svc.checkPermission === "function") {
+          const surface = event.toolName === "bash" ? "bash" : event.toolName;
+          const value = event.toolName === "bash" ? String(event.input?.command ?? "") : undefined;
+          const state = svc.checkPermission(surface, value)?.state; // "allow" | "ask" | "deny"
+          if (state === "ask" || state === "deny") return undefined; // gotgenes 单卡/拦截
+        }
+        // allow（或权限服务未就绪 → fail-closed 弹卡兜底）→ 授权桥挂起确认。
+        const command = String(event.input?.command ?? "");
+        const description = command
+          ? `${event.toolName}: ${command}`
+          : `${event.toolName}: ${JSON.stringify(event.input ?? {}).slice(0, 120) || "(无参数)"}`;
+        const verdict = await requestPermissionDecision({
+          sessionKey,
+          tool: event.toolName,
+          input: event.input ?? {},
+          description,
+        });
+        if (verdict.kind === "allow") return undefined;
+        return { block: true, reason: verdict.reason ?? "操作已取消（用户拒绝）" };
+      }
       if (event.toolName !== "bash") return undefined;
       const command = String(event.input?.command ?? "");
       if (classifyBashToolCall(command, { cwd: sessionCwd, projectDir: sessionCwd }) !== "ask") {
@@ -550,6 +621,9 @@ function handleSessionEvicted(key, entry, reason) {
   toolContexts.delete(key);
   sessionQueues.delete(key);
   lastReplies.delete(key);
+  // Slice 3（REQ-AGENT-070 标准 4）：会话模式随淘汰清理（模式是会话级状态——
+  // 懒恢复经 session-config 重新注入主进程当前模式）。
+  sessionModes.delete(key);
   // Slice 8（REQ-AGENT-057）：消息元数据状态随淘汰清理（pending text_end 不悬挂——
   // 定时器已 clear，不再对已淘汰会话补发 text_end）。
   turnStartedAt.delete(key);
@@ -664,6 +738,134 @@ function getFauxToolSequence() {
   return fauxToolSequence;
 }
 
+// —— Slice 3（REQ-AGENT-073）：auto-judge 可编程判定注入口（FAUX 专属测试 seam）——
+// OPC_FAUX_JUDGE_RESULT：JSON 单判定或判定数组（{ kind: "allow"|"deny"|"defer",
+// reason? }；裸字符串 "allow"/"deny"/"defer" 兼容）。每次 decide 取一个（数组逐次
+// 弹出）→ 驱动 auto 判定链路（allow 直执行 / deny 拦截 / defer 弹卡 / 连续 deny
+// 熔断），零网络。生产（非 FAUX）零影响——仅 FAUX_MODE 分支引用本状态；FAUX 未
+// 注入 → 显式 defer（decide-deferred，不调 FAUX 回声模型——回声非 verdict 且避免
+// 消费模型响应队列，fail-safe 弹卡语义与标准一致）。
+const FAUX_JUDGE_KINDS = new Set(["allow", "deny", "defer"]);
+let fauxJudgeResults = null; // 惰性解析；耗尽 → 空数组
+function takeFauxJudgeResult() {
+  if (fauxJudgeResults === null) {
+    fauxJudgeResults = [];
+    if (FAUX_MODE) {
+      const raw = process.env.OPC_FAUX_JUDGE_RESULT;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            fauxJudgeResults = parsed.filter((v) => v && FAUX_JUDGE_KINDS.has(v.kind));
+          } else if (parsed && FAUX_JUDGE_KINDS.has(parsed.kind)) {
+            fauxJudgeResults = [parsed];
+          } else if (FAUX_JUDGE_KINDS.has(raw)) {
+            fauxJudgeResults = [{ kind: raw }];
+          }
+        } catch {
+          if (FAUX_JUDGE_KINDS.has(raw)) fauxJudgeResults = [{ kind: raw }];
+        }
+      }
+      if (fauxJudgeResults.length === 0 && raw) log(`OPC_FAUX_JUDGE_RESULT 解析为空，回落 decide-deferred`);
+    }
+  }
+  return fauxJudgeResults.length > 0 ? fauxJudgeResults.shift() : null;
+}
+
+// —— Slice 3（REQ-AGENT-073 默认 decide 接真实模型）——
+// auto-judge 判断 prompt（PRD §10.4 decide 契约面：surface/toolName/input/cwd；
+// deny-first：不确定一律 defer，模型只 deny 不主动放行 excluded 面——envelope 兜底）。
+const AUTO_JUDGE_SYSTEM_PROMPT = [
+  "你是 PI agent 的权限判断器（auto 模式）。对一次工具操作判断是否安全直接执行。",
+  '只输出一个 JSON（不要任何其他文字/代码围栏）：{"kind":"allow"} 或 {"kind":"deny","reason":"<简短原因>"} 或 {"kind":"defer","reason":"model-unresolved"}。',
+  "- allow：操作明显安全（常见构建/测试/只读命令，如 npm test、git status、ls），直接放行；",
+  "- deny：操作危险/明显违规（删除、覆盖、外发、提权、跨项目访问等），拦截并给出简短原因；",
+  "- defer：无法确定/信息不足/无法评估，交人工确认（deny-first：不确定一律 defer）。",
+  "判断规则：写操作（写文件/删除/覆盖）默认保守；rm/sudo 等危险模式一律 deny；项目目录外的路径访问一律 defer；只读与常规命令可 allow。",
+].join("\n");
+// 模型调用超时兜底（provider 级，早于 link 的 decideTimeoutMs 5s——超时即错误，
+// link 映射 call-failed defer）。
+const AUTO_JUDGE_CALL_TIMEOUT_MS = 4500;
+// 熔断降级提示文案（PRD F3 / REQ-AGENT-075 标准 2：「auto 暂停：模型频繁拒绝，
+// 已回标准模式」；经 mode-tripped IPC → 主进程模式服务降级 + session-event 呈现）。
+const AUTO_TRIP_REASON = "auto 暂停：模型频繁拒绝，已回标准模式";
+
+// verdict 解析：容忍代码围栏/前后杂文本；提取首个 {…} JSON 并校验 kind；
+// 不可解析/非法 kind → { kind: "defer", reason: "model-unresolved" }（fail-safe）。
+function parseVerdict(text) {
+  if (typeof text !== "string" || text.trim() === "") {
+    return { kind: "defer", reason: "model-unresolved" };
+  }
+  let s = text.trim().replace(/^```[a-zA-Z]*\s*/i, "").replace(/\s*```$/i, "");
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(s.slice(start, end + 1));
+      const kind = parsed?.kind;
+      if (kind === "allow") return { kind: "allow" };
+      if (kind === "deny") {
+        return {
+          kind: "deny",
+          ...(typeof parsed.reason === "string" && parsed.reason.length > 0
+            ? { reason: parsed.reason.slice(0, 200) }
+            : {}),
+        };
+      }
+      if (kind === "defer") return { kind: "defer", reason: "model-unresolved" };
+    } catch {
+      // 回落下方 fail-safe
+    }
+  }
+  return { kind: "defer", reason: "model-unresolved" };
+}
+
+// 判断 prompt 组装（details = gotgenes 原生形态——accessIntent.surface / toolName /
+// command|path|target 双形态兼容，对齐 autoJudgeLink surfaceOf/inputOf）。
+function buildJudgePrompt(details, sessionCwd) {
+  const surface = details?.accessIntent?.surface ?? details?.surface ?? null;
+  const input = details?.input ?? details?.command ?? details?.path ?? details?.target ?? null;
+  const parts = [
+    `操作 surface: ${surface ?? "unknown"}`,
+    `工具: ${details?.toolName ?? details?.skillName ?? "unknown"}`,
+    `工作目录: ${sessionCwd ?? "unknown"}`,
+  ];
+  if (input !== null && input !== undefined && String(input) !== "") {
+    parts.push(`操作内容: ${String(input).slice(0, 500)}`);
+  }
+  return parts.join("\n");
+}
+
+// 会话级 decide（每会话独立实例——熔断计数会话级，对齐 permissionBridge H4）：
+// FAUX 注入口（可编程判定）→ 真实模型调用（runtime.complete 复用会话 provider/
+// key 运行时——resolveModel 已注入）→ 解析 verdict。模型失败/超时 → throw（link
+// 映射 call-failed/timeout defer，S2 已保证）；回复不可解析 → defer（model-unresolved）。
+function createSessionDecide(runtime, modelObj, sessionKey, sessionCwd) {
+  return async function decide(details) {
+    if (FAUX_MODE) {
+      const programmed = takeFauxJudgeResult();
+      if (programmed) return programmed;
+      return { kind: "defer", reason: "decide-deferred" };
+    }
+    const message = await runtime.complete(
+      modelObj,
+      {
+        systemPrompt: AUTO_JUDGE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: buildJudgePrompt(details, sessionCwd) }],
+      },
+      { maxTokens: 200, timeoutMs: AUTO_JUDGE_CALL_TIMEOUT_MS }
+    );
+    if (message?.stopReason === "error") {
+      throw new Error(
+        `E-AUTO-JUDGE-CALL-FAIL: ${message.errorMessage ?? "模型调用失败"}`
+      );
+    }
+    const text = message?.content ? contentText(message.content) : "";
+    if (!text) log(`auto-judge 空回复 session=${sessionKey}（回落 model-unresolved defer）`);
+    return parseVerdict(text);
+  };
+}
+
 // ModelRuntime 单例：authPath 重定向（防 ~/.pi 污染，H2）；faux 注册（H3 seam）。
 function getModelRuntime() {
   if (!runtimePromise) {
@@ -757,6 +959,12 @@ async function handleSessionConfig(msg) {
   } else {
     toolContexts.delete(sessionKey);
   }
+  // Slice 3（REQ-AGENT-070）：会话模式随 session-config 注入（初始模式 = 主进程
+  // modeService.getMode——显式会话值/lastMode；热更新时同样刷新，mode-change IPC
+  // 与其等价）。
+  if (typeof msg.mode === "string" && AGENT_MODES_SET.has(msg.mode)) {
+    sessionModes.set(sessionKey, msg.mode);
+  }
   const existing = lifecycle.get(sessionKey);
 
   if (existing) {
@@ -838,11 +1046,39 @@ async function createSessionEntry(msg) {
   if (permissionProfile === "project") {
     try {
       const handle = await loadGotgenesFactory();
+      // Slice 3（REQ-AGENT-073/075）：auto-judge link 实例（每会话独立——熔断计数
+      // 会话级，对齐 permissionBridge H4）。decide = 会话级模型判断（FAUX 注入口
+      // OPC_FAUX_JUDGE_RESULT / 真实 runtime.complete）；onTripped → 熔断降级：
+      // worker 侧会话模式同步置 standard（下一评估即生效）+ mode-tripped IPC →
+      // 主进程模式服务降级 standard + 用户可见提示（REQ-AGENT-075 标准 2，S4 呈现）。
+      // 熔断阈值可注入（测试 seam）：OPC_AGENT_JUDGE_DENY_THRESHOLD（REQ-AGENT-075
+      // 标准 1「N 可注入」；缺省 link 默认 5）。
+      let judgeDenyThreshold = null;
+      const thresholdRaw = process.env.OPC_AGENT_JUDGE_DENY_THRESHOLD;
+      if (thresholdRaw) {
+        const v = Number(thresholdRaw);
+        if (Number.isInteger(v) && v > 0) judgeDenyThreshold = v;
+      }
+      const autoJudge = createAutoJudgeLink({
+        decide: createSessionDecide(runtime, modelObj, sessionKey, sessionCwd),
+        ...(judgeDenyThreshold !== null ? { denyThreshold: judgeDenyThreshold } : {}),
+        onTripped: () => {
+          sessionModes.set(sessionKey, "standard");
+          send({ type: "mode-tripped", sessionKey, reason: AUTO_TRIP_REASON });
+          log(`auto 熔断降级 session=${sessionKey} → standard（模型频繁拒绝）`);
+        },
+      });
       // BUG-002 pre-gate：授权桥扩展排在 gotgenes **之前**——扩展 runner 按
       // extensionFactories 顺序分发 tool_call 处理器（emitToolCall 顺序遍历，
       // 首个 block 短路），pre-gate 自评估须先于 gotgenes gate 执行
       // （「worker 扩展层 gate 前自评估」，修复方向 A）。
-      gotgenesExtensions = [createPermissionBridgeFactory(sessionKey, sessionCwd, handle), handle.factory];
+      gotgenesExtensions = [
+        createPermissionBridgeFactory(sessionKey, sessionCwd, handle, {
+          getMode: () => getSessionMode(sessionKey),
+          autoJudge,
+        }),
+        handle.factory,
+      ];
       bindBridgeUi = true;
       gotgenesAssembled = true;
     } catch (err) {
@@ -1202,6 +1438,9 @@ async function handleResetSession(msg) {
     // Slice 8（REQ-AGENT-057）：消息元数据状态随 reset 清理（pending text_end 不悬挂）。
     turnStartedAt.delete(msg.sessionKey);
     clearPendingTextEnds(msg.sessionKey);
+    // Slice 3（REQ-AGENT-070）：会话模式随 reset 清理（重开会话 → 主进程新
+    // session-config 注入当前模式）。
+    sessionModes.delete(msg.sessionKey);
     log(`reset-session session=${msg.sessionKey}`);
   }
 }
@@ -1226,6 +1465,17 @@ async function handleMessage(msg) {
     case "prompt":
       await handlePrompt(msg);
       break;
+    case "mode-change": {
+      // Slice 3（REQ-AGENT-070）：会话模式热更新（S4 切换入口 → 主进程模式服务
+      // → IPC mode-change）。生效于下一个评估（PRD §6.2：当前操作不受影响）。
+      if (typeof msg.mode === "string" && AGENT_MODES_SET.has(msg.mode)) {
+        sessionModes.set(msg.sessionKey, msg.mode);
+        log(`mode-change session=${msg.sessionKey} mode=${msg.mode}`);
+      } else {
+        log(`mode-change 非法模式忽略 session=${msg.sessionKey} mode=${String(msg.mode ?? "")}`);
+      }
+      break;
+    }
     case "reset-session":
       await handleResetSession(msg);
       break;
