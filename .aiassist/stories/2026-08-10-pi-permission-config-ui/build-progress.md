@@ -311,3 +311,15 @@ package.json `dependencies`（electron-forge 打包 dependencies 进 asar）→ 
   smoke 直接走 forge 的 `getConfig` 同一条代码路径。
 - E2E 快速回归未跑（可选）：本修复只动主进程构建配置，源码形态（vite dev）E2E
   从不加载打包产物，跑 E2E 无法验证本修复；产物验证已由 smoke 承担。
+
+---
+
+#### 构建产物契约 smoke（BUG-002 护栏，2026-08-11 07:03:03）
+
+**结果：PASS**
+
+- ✅ build：vite build 成功；产物: agentRegistry.json, channelManager-DnYlUdis.js, channelManager-nsCRxjW1.js, main.js, server-9lq_Da2s.js, server-CJeNkjgG.js
+- ✅ no-require-shim：产物 5 个 js 均无 __require(（jiti 未内联）
+- ✅ bundle-load：入口加载成功，顶层 import 链评估通过（最接近真实启动）
+
+（脚本：`.agent-home/build-smoke/smoke-main-bundle.mjs`，gitignored。重新运行：`node .agent-home/build-smoke/smoke-main-bundle.mjs`）
