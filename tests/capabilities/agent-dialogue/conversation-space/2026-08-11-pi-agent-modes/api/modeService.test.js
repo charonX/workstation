@@ -86,12 +86,18 @@ describe("REQ-AGENT-070 三档模式（B1）", () => {
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("REQ-AGENT-070 标准 4：模式为会话级——切会话/重开回到全局默认（lastMode），不保留上个会话的模式", async () => {
+  it("REQ-AGENT-070 标准 4：模式为会话级——会话状态按 spaceKey 隔离，新会话回到全局 lastMode", async () => {
+    // 语义修正（2026-08-12 人授权，S1 concern）：setMode(a,"strict") 按 072 标准 1
+    // 写 lastMode="strict"；新会话 b 无会话条目 → 初始 = lastMode = "strict"。
+    // 「会话隔离」= b 不继承 a 的**会话值**（a 切走/关闭后 b 不受 a 后续 setMode
+    // 影响），而非 lastMode 不含 strict（那与 072 标准 1+2 自相矛盾）。
     await modeService.setMode("ui:copilot:a", "strict");
-    // 新会话（同 lastMode 场景下）→ 回到 lastMode（非上个会话的 strict）
-    // TODO: HUMAN ASSERTION — 确认新 spaceKey getMode = lastMode（非 strict 残留）
     const fresh = modeService.getMode("ui:copilot:b");
-    assert.notEqual(fresh, "strict");
+    assert.equal(fresh, "strict", "新会话初始 = lastMode（strict）");
+
+    // 会话隔离机制面：b 的会话状态与 a 独立——a 再切 auto，b 仍保持自己的值
+    await modeService.setMode("ui:copilot:a", "auto");
+    assert.equal(modeService.getMode("ui:copilot:b"), "strict", "b 不受 a 后续切换影响");
   });
 });
 
