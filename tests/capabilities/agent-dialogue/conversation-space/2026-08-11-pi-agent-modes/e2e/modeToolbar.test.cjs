@@ -16,6 +16,17 @@
 //
 // 环境：FAUX（零网络）+ seedAgentConfig + 既有 startElectronApp 模式。
 // 断言语义（签核 TODO）：元素存在/可见性/状态切换/纵向顺序，不验像素。
+//
+// [Slice 5 接线修正记录（2026-08-12，test-gap 就地补全，断言语义不变）]
+//   S4 concern 2：无会话下 selectedKey=null → 切档为 no-op（renderer 默认 auto =
+//   服务端首次默认，切换断言退化为默认值断言——恒绿但不走真实 PUT 流）。
+//   修正：切档类用例（标准 2/3、标准 5、072）前置建会话并打开（POST
+//   /api/agent/sessions {spaceKind:"general"} → reload → 点 [data-session-item]，
+//   statusBar 先例），使「点击 → PUT /mode → settings lastMode 持久化 → reload 后
+//   GET /mode 取位」真实链路被断言。标准 2/3 与标准 5 先切 strict 再切 auto——
+//   首次默认 = auto（REQ-AGENT-072 标准 3），直接切 auto 无文案变化可断言；
+//   072 用例切 strict（默认首档 auto → strict 真实变化），reload 后断言取位恢复
+//   strict（持久化链路失效时 reload 后回落 auto，断言可区分）。
 
 const { test, expect } = require("@playwright/test");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
@@ -37,6 +48,27 @@ async function seedAgentConfig(apiBaseUrl) {
     body: JSON.stringify({ provider: "deepseek", apiKey: "sk-e2e-faux-placeholder", identity: "" }),
   });
   expect(res.ok).toBe(true);
+}
+
+// 建通用空间会话（statusBar 先例：POST /api/agent/sessions { spaceKind } → { spaceKey }）。
+// S5 接线：切档链路依赖已选中会话（selectedKey 非空 → 点击 → PUT /mode 真实落盘）。
+async function createSession(apiBaseUrl, body) {
+  const res = await fetch(`${apiBaseUrl}/api/agent/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expect(res.ok).toBe(true);
+  return (await res.json()).spaceKey;
+}
+
+// 打开会话（statusBar 先例）：reload 后按精确 spaceKey 点击会话行——renderer 首载
+// 自动选中最近活跃会话，点击使选中确定化（切档链路必达）。
+async function openSession(firstWindow, spaceKey) {
+  await firstWindow.reload();
+  await expect(firstWindow.locator(SCREEN_ASSISTANT)).toBeVisible();
+  await firstWindow.click(`[data-session-item='${spaceKey}']`);
+  await expect(firstWindow.locator(COMPOSER)).toBeVisible();
 }
 
 test.describe("对话区模式工具栏（E2E）", () => {
@@ -71,6 +103,10 @@ test.describe("对话区模式工具栏（E2E）", () => {
   });
 
   test("REQ-AGENT-071 标准 2/3：三档下拉——展开显示三档 + 选择更新触发按钮", async () => {
+    // S5 接线：建会话并打开——切档走真实链路（点击 → PUT /mode → 取位更新）。
+    const spaceKey = await createSession(apiBaseUrl, { spaceKind: "general" });
+    await openSession(firstWindow, spaceKey);
+
     await expect(firstWindow.locator(MODE_TRIGGER)).toBeVisible();
 
     // 展开下拉
@@ -80,7 +116,13 @@ test.describe("对话区模式工具栏（E2E）", () => {
     await expect(firstWindow.locator(MODE_OPTION("standard"))).toBeVisible();
     await expect(firstWindow.locator(MODE_OPTION("auto"))).toBeVisible();
 
-    // 切到 auto → 触发按钮文案更新
+    // 切到 strict → 触发按钮文案更新（默认首档 auto → 严格，文案变化真实可断言）
+    await firstWindow.click(MODE_OPTION("strict"));
+    // TODO: HUMAN ASSERTION — 确认触发按钮显示「严格」（当前档更新）
+    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("严格");
+
+    // 再切到 auto → 触发按钮文案更新（严格 → 自动）
+    await firstWindow.click(MODE_TRIGGER);
     await firstWindow.click(MODE_OPTION("auto"));
     // TODO: HUMAN ASSERTION — 确认触发按钮显示「自动」（当前档更新）
     await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("自动");
@@ -92,8 +134,17 @@ test.describe("对话区模式工具栏（E2E）", () => {
   });
 
   test("REQ-AGENT-071 标准 5：auto 切换无额外提示", async () => {
+    // S5 接线：建会话并打开 + 先切 strict 再切 auto（真实切换链路——直接切 auto
+    // 与默认首档相同，切换为 no-op）。
+    const spaceKey = await createSession(apiBaseUrl, { spaceKind: "general" });
+    await openSession(firstWindow, spaceKey);
+
+    await firstWindow.click(MODE_TRIGGER);
+    await firstWindow.click(MODE_OPTION("strict"));
+    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("严格");
     await firstWindow.click(MODE_TRIGGER);
     await firstWindow.click(MODE_OPTION("auto"));
+    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("自动");
     // 切换后无 toast/banner（宽松：无 data-testid 提示条出现）
     // TODO: HUMAN ASSERTION — 确认无提示条（mode 切换即生效）
     const banners = await firstWindow.locator("[data-testid*='mode-toast'], [data-testid*='mode-banner']").count();
@@ -101,14 +152,27 @@ test.describe("对话区模式工具栏（E2E）", () => {
   });
 
   test("REQ-AGENT-072 标准 2（E2E 面）：新会话初始模式 = lastMode", async () => {
-    // 先切到 auto（记录 lastMode），重启应用（新会话）→ 初始模式 = auto
-    await firstWindow.click(MODE_TRIGGER);
-    await firstWindow.click(MODE_OPTION("auto"));
+    // S5 接线修正（S4 concern 2）：前置建会话——切档经真实链路（点击 → PUT /mode
+    // → 会话状态 + settings lastMode 持久化）→ reload 后 GET /mode 取位。
+    // 切 strict 而非 auto：默认首档 = auto（标准 3），切 strict 使模式真实变化——
+    // 持久化链路失效时 reload 后回落 auto，断言可区分（旧写法 auto→auto 恒绿不
+    // 能证明 lastMode 持久化生效）。
+    const spaceKey = await createSession(apiBaseUrl, { spaceKind: "general" });
+    await openSession(firstWindow, spaceKey);
+
+    // 首次（无 lastMode 记录）→ 默认 auto（REQ-AGENT-072 标准 3）
     await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("自动");
 
+    // 切到 strict（真实切换：PUT /mode → lastMode=strict 持久化）
+    await firstWindow.click(MODE_TRIGGER);
+    await firstWindow.click(MODE_OPTION("strict"));
+    // TODO: HUMAN ASSERTION — 确认触发按钮显示「严格」（当前档更新）
+    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("严格");
+
+    // reload（重开应用）→ 初始模式 = lastMode = strict（GET /mode 取位生效）
     await firstWindow.reload();
     await expect(firstWindow.locator(SCREEN_ASSISTANT)).toBeVisible();
-    // TODO: HUMAN ASSERTION — 确认 reload 后初始模式 = auto（lastMode 生效）
-    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("自动");
+    // TODO: HUMAN ASSERTION — 确认 reload 后初始模式 = strict（lastMode 生效）
+    await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("严格");
   });
 });
