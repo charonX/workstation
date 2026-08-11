@@ -1,6 +1,6 @@
 # 性能检查清单
 
-本清单用于 `/tech-design`、`/review --stage=code --mode=panel` 的 performance-auditor 维度，以及任何涉及响应时间、资源消耗或前端渲染的实现。
+本清单用于 `/to-prd`、`/tech-design`（仅 complex）、`/review --stage=code --mode=panel` 的 performance-auditor 维度，以及任何涉及响应时间、资源消耗或前端渲染的实现。
 
 ## 核心原则
 

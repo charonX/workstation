@@ -17,16 +17,16 @@
 | `/demand-insight` | 对抗式需求访谈 | 用户 |
 | `/to-prd` | 把讨论整理成 PRD | 用户 |
 | `/domain-model` | 统一领域术语与业务实体，维护 `CONTEXT.md` | 用户 |
-| `/tech-design` | 对抗式技术方案设计 | 用户 |
+| `/tech-design` | 对抗式技术方案深潜（仅 complex story），写入 `prd.md` §10 | 用户 |
 | `/design` | 设计阶段统一入口：建/更新设计系统、导入设计源、迭代 HTML UX 原型 | 用户 |
 | `/bug` | 在当前 story 内单 bug 人机协同处理：诊断根因 -> 分类（人确认）-> 修/补测试/就地补全/关闭；支持从 GitHub/GitLab issue 拉取 | 用户 |
 | `/review` | 手动审查 PRD/技术方案/代码（建议新会话）；`--stage=code --mode=panel` 启用 specialist 子代理并行审查 | 用户 |
-| `/signoff` | 门 1：签断言，把契约交给 AI | 用户 |
+| `/signoff` | 门 1：签高风险断言（初衷/跨模块契约/expected 值/安全边界），把契约交给 AI | 用户 |
 | `/reflect` | 最终验收确认 + 捕获经验教训并更新全局知识、`adr/`、`checklists/` | 用户 |
 | `/research` | 针对技术/API/库问题做带引用的调研 | 用户 |
 | `/design-handoff` | 从已批准 UX 生成开发交接包 | 用户 |
 | `/sync-refs` | 同步参考项目并吸收上游变更 | 用户 |
-| `/crystallize` | 把 PRD 稳定块转成 REQ-ID；每个 REQ 至少一个自动化测试 | 模型 |
+| `/crystallize` | 把 PRD 稳定块转成 REQ-ID；每个 REQ 至少一个自动化测试；缺口对话确认归类不阻断 | 模型 |
 | `/test-author` | 从 REQ 生成业务测试骨架；前端需求必须生成组件/浏览器结构行为测试；浏览器 E2E 默认 Playwright | 模型 |
 | `/tdd` | 内层实现纪律：RED -> GREEN 写单元测试驱动代码 | 模型 |
 | `/implementer` | 针对已签核测试实现代码；默认子代理实现切片，父代理调度验证；内部用 `/tdd` RED -> GREEN；每个 slice 绿后由 refactor subagent 做一轮安全重构 | 模型 |
@@ -53,7 +53,7 @@
                                          门 2: REFLECT（最终验收 + 知识沉淀）
 ```
 
-- **门 1 `/signoff --stage=assertion`**：人在实现前签核所有断言。**不签不准 BUILD。**
+- **门 1 `/signoff --stage=assertion`**：人在实现前签核高风险断言（初衷、跨模块契约、expected 值、安全边界），其余 AI 自检。**不签不准 BUILD。**
 - **门 2 `/reflect`**：QA 全绿、bug 处理结束后，人做最终验收确认并沉淀经验。**不接受不合并。**
 
 ### 产物目录
@@ -61,8 +61,7 @@
 ```
 .aiassist/
 ├── stories/<story-id>/
-│   ├── prd.md                 # 叙事意图（软，一挡可推翻）
-│   ├── tech-design.md         # 技术方案（一挡可推翻）
+│   ├── prd.md                 # 叙事意图 + 技术方案（软，一挡可推翻；含 §10 技术方案、§11 测试决策）
 │   ├── requirements.md        # 带 ID 的 REQ（契约）
 │   ├── requirements-v1.hash   # 版本哈希，检测过时测试
 │   ├── ux/                    # HTML UX 参照
@@ -83,7 +82,7 @@
 └── global/
     ├── CONTEXT.md              # 领域词汇表与业务实体定义（由 /domain-model 维护）
     ├── business-capabilities.md # 业务能力地图（由 /crystallize、/reflect 维护）
-    ├── adr/                     # 架构决策记录目录（由 /tech-design、/reflect 维护）
+    ├── adr/                     # 架构决策记录目录（由 /to-prd、/tech-design、/reflect 维护）
     │   └── README.md            # ADR 索引
     ├── checklists/              # 共享检查清单（由 /reflect 维护）
     │   ├── testing.md
@@ -121,7 +120,7 @@
 7. **测试按 capability/entity 组织**：`tests/capabilities/<capability>/<entity>/<story-id>/...`
 8. **主观判断不进测试**：观感/美学问题通过 `/bug` 处理为 `code-defect`；结构/行为必须有自动化测试。
 9. **story = 初衷**：初衷（痛点）不变 -> 归档重做；初衷错 -> 删 story。回流前先做根因诊断。
-10. **测试全绿只是最低门槛**：实现还必须对齐 PRD 意图、`tech-design.md` 模块/数据流/接口契约、以及 UX HTML 结构/行为。禁止为绿而硬凑。
+10. **测试全绿只是最低门槛**：实现还必须对齐 PRD 意图、`prd.md` 技术方案（§10）模块/数据流/接口契约、以及 UX HTML 结构/行为。禁止为绿而硬凑。
 11. **ADR 是硬约束**：已有 `adr/` 中的决策，在 `/tech-design`、`/review`、`/implementer` 阶段必须检查冲突。
 
 ### bug 处理

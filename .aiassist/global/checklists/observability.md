@@ -1,6 +1,6 @@
 # 可观测性检查清单
 
-本清单用于 `/tech-design` 和 `/review --stage=code` 中涉及生产代码、外部依赖、关键路径的实现。
+本清单用于 `/to-prd`、`/tech-design`（仅 complex）和 `/review --stage=code` 中涉及生产代码、外部依赖、关键路径的实现。
 
 ## 设计原则
 

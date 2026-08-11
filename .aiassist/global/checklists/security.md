@@ -1,6 +1,6 @@
 # 安全检查清单
 
-本清单用于 `/tech-design`、`/review --stage=code --mode=panel` 的 security-auditor 维度，以及任何涉及用户输入、鉴权、外部集成的实现。
+本清单用于 `/to-prd`、`/tech-design`（仅 complex）、`/review --stage=code --mode=panel` 的 security-auditor 维度，以及任何涉及用户输入、鉴权、外部集成的实现。
 
 ## 威胁建模
 
