@@ -11,7 +11,7 @@
 | 1 | REQ-AGENT-070/072/077 | modeService 模式服务（主进程）：三档会话级状态 + 全局 lastMode（settings agent.lastMode 持久化，首次 auto / 非法回落 standard）+ 模式不改 .pi 持久配置 | — | done |
 | 2 | REQ-AGENT-073/074/075/076 | auto-judge link（worker 评估链）：authorizerChain 模型判断（allow/deny/defer + reason）+ envelope excluded 面 + 熔断计数 + review log | 1 | done |
 | 3 | 主进程接线 | 会话模式 ↔ worker 评估链 seam 接线（S1 服务暴露给评估链读取）；具体形态父代理确认 | 1, 2 | done |
-| 4 | REQ-AGENT-071 | renderer 对话区模式切换工具栏（三档下拉 + 可扩展槽位） | 1, 2 | pending |
+| 4 | REQ-AGENT-071 | renderer 对话区模式切换工具栏（三档下拉 + 可扩展槽位） | 1, 2 | done |
 | 5 | REQ-AGENT-071 E2E | E2E 接线跑绿 + 全量回归（单测 + 既有 E2E 水位不退） | 3, 4 | pending |
 
 ## 关键 seam 契约速记（供子代理简报引用）
@@ -124,3 +124,38 @@ assert.notEqual(fresh, "strict");   // ← 红
 3. **FAUX decide 不调回声模型**：FAUX 未注入 OPC_FAUX_JUDGE_RESULT 时 decide 返回显式 defer（decide-deferred）——避免 consume 模型响应队列（decide 在工具调用链内执行，与 agent 主循环共用同一 faux 队列）且回声非 verdict。
 4. **review log 门控语义**：standard/strict 下 auto-judge 零日志（门控在 decide 之前）——B7「每次判断写日志」仅指 auto 模式实际发生的判断（与 PRD B7「auto 可观测」一致）。
 5. **多会话 globalThis 服务槽**（S7 既有语义延续）：`getPermissionsService()` 读 globalThis 单槽，多项目会话并发时槽被最后 session_start 的实例占用——S3 未改此形态（opc-bridge 注册同源）；harness 单会话验证通过，多会话并发留 H4 spike 既有结论。
+
+### Slice 4：renderer 模式工具栏（commit 472093c 后追加，见下）
+
+- 实现面（PRD→代码 追溯见下）：
+  - **ModeToolbar 组件（REQ-AGENT-071）**：`src/renderer/components/assistant/ModeToolbar.jsx`（新，受控组件 `{mode, onModeChange, degradedReason}`）——composer 下方工具栏，无独立背景/边框（直接贴输入区下方，Codex 式底部工具条，UX 原型对齐）：`[data-testid='mode-toolbar']` 容器（`模式` label + 三档下拉 + spacer + 未来槽位 + 提示行）；`[data-testid='mode-select']` 下拉 + `[data-testid='mode-trigger']` 触发按钮（当前档文案 + 色点：strict 红 `--ch-error` / standard 蓝 `--ch-info` / auto 绿 `--ch-accent` + 旋转 chevron）；`[data-mode='strict'|'standard'|'auto']` 档位（m-name 色点+档名 + m-desc 描述：严格=所有操作都需确认/标准=按项目权限配置执行/自动=模型判断后自动执行）；`[data-testid='toolbar-slot-model'|'toolbar-slot-attach']` 未来槽位（灰显占位 dashed 边框 + cursor:not-allowed，M4 留白）；提示行「模式仅影响当前会话」。交互：点触发展开/收起（stopPropagation）、外部点击收起（document click + contains 判定）、选档高亮（active 类随 props.mode）+ 触发按钮更新；菜单向上展开（bottom: calc(100% + 4px)——工具栏贴底，E2E 点击可见）。**auto 切换无额外提示**（无 toast/banner 渲染，REQ-AGENT-071 标准 5）。
+  - **ChatView 接线**：`</Composer>` 后插入 `<ModeToolbar mode onModeChange degradedReason />`——渲染顺序契约 MessageList→StatusBar→Composer→ModeToolbar 不破坏（E2E 断言 composer.y+h ≤ toolbar.y+1；`.assistant-chat` flex column，DOM 序 = 视觉序）。
+  - **HTTP 模式端点（调用形态——S3 未暴露，本切片补）**：`src/http/routes/agentSessions.js` 增 `GET /api/agent/sessions/:key/mode` → `{mode}`（当前会话模式，未显式切过 = lastMode）与 `PUT /api/agent/sessions/:key/mode` `{mode}` → `{mode}`（会话级切换 + settings lastMode 持久化；非法值 → 400 E-MODE-INVALID）。**惰性纪律（ADR-009）**：优先 `peekAgentService`（既有实例 → agentService.getSessionMode/setSessionMode，有实例时下发 mode-change IPC）；未创建 → 模式服务单例（server.js `_opcModeServiceFactory` 挂 server 引用，与 agentService 注入同一 createModeService 实例）——模式读写不 spawn agent 子进程（冒烟实证 server._opcAgentService 恒 null）。modeService.setMode 无返回值 → 路由 wrapper 归一化回读（PUT 响应恒携带生效值，与 setSessionMode 返回形态一致）。
+  - **renderer API**：`src/renderer/api/agentSessions.js` 增 `getSessionMode(spaceKey)` / `setSessionMode(spaceKey, mode)`（client.js get/put 封装）。
+  - **Assistant 数据流**：`src/renderer/pages/Assistant.jsx` —— 状态 `sessionMode`（默认 auto，对齐服务端首次默认）+ `modeNotice`（熔断提示）+ `sessionModeRef`（切换回退读当前值）；选中会话 effect 内**取位**（getSessionMode，切会话复位默认 + 清提示后重新取位——模式为会话级状态）；**切换** `handleModeChange`（乐观更新 + PUT + 失败回退上一档 + 响应落地前切会话不误应用（selectedKeyRef 比对）；手动切换清降级提示，REQ-AGENT-075 标准 4 恢复）；**SSE `mode-degraded` 分支**（S3 数据面 → 模式置 standard + 「auto 暂停」提示呈现）。
+  - **熔断降级呈现（REQ-AGENT-075 标准 2 呈现面）**：degradedReason 非空 → 工具栏行内 `[data-testid='mode-toolbar-degraded']` 提示（替换常规 hint，非 toast/banner——与 E2E「auto 切换无额外提示」的 `mode-toast/mode-banner` 选择器不冲突，且仅熔断事件触发、非切换触发）。
+- 测试：
+  - **组件自验 harness**（`.agent-home/slice4-harness/`，gitignored 不进契约）：vite dev server + playwright chromium 驱动 **23/23 绿**——工具栏渲染（容器/提示文案/触发按钮文案+色点）/ 三档展开可见 + 描述文案 + 当前档高亮 / 切 auto（onModeChange 记录 + 触发按钮文案/色点更新 + 菜单收起 + 再展开高亮跟随）/ 外部点击收起 / 槽位可见 + not-allowed / auto 切换无 mode-toast/banner / 降级提示出现与清除 / ChatView 装配纵向顺序（composer.y+h ≤ toolbar.y+1）+ DOM 顺序 + 工具栏无独立背景/边框 / 切 strict 色点。
+  - **HTTP 端点冒烟**（/tmp，临时不进契约）**8/8 绿**：首次无记录 → auto（REQ-AGENT-072 标准 3）/ PUT strict → 200 {mode:strict} / 同会话 GET → strict / 新会话 GET → lastMode strict（标准 2）/ settings.json agent.lastMode 持久化（标准 1）/ 非法值 → 400 E-MODE-INVALID / 未触发 agentService 惰性创建 / lastMode 更新。
+  - **回归**：story api 13/13（modeService 6 + autoJudgeLink 7）+ 会话 REST 路由 33/33（sessionMessage/Events/List/Reset/Space）全绿。
+  - **构建**：`npx vite build --config vite.renderer.config.js` ✓（2505 模块）+ `--config vite.main.config.js` ✓（771 模块）。
+  - lint：`npx oxlint` 改动文件 0 新警告（server.js 2 条警告为既有代码，非本切片引入）。
+- refactor：无（新组件 + 最小接线，无重构面）。
+
+#### PRD→代码 可追溯性表（Slice 4）
+
+| PRD 块 / REQ | 验收标准 | 实现 | 验证 | 状态 |
+|---|---|---|---|---|
+| B2 / REQ-AGENT-071 对话区模式切换工具栏 | 标准 1 工具栏位于 composer 下方（DOM 纵向顺序）；标准 2 三档下拉存在（触发按钮显示当前模式 + 色点；展开显示三档各带描述）；标准 3 选择档位 → 触发按钮更新 + 档位高亮；标准 4 未来扩展槽位灰显占位；标准 5 auto 切换无额外提示 | ModeToolbar.jsx（locator 契约 + 三档下拉 + 槽位 + hint）+ ChatView `</Composer>` 后接线 + assistant.css（token 对齐原型，无独立背景/边框） | 组件自验 23/23（含 ChatView 装配纵向顺序断言）；E2E 断言面映射见 concern 2 | COVERED（组件 + 接线面；E2E 全量跑绿归 S5） |
+| B3 / REQ-AGENT-072 全局 lastMode（renderer 面） | 标准 2 新会话初始模式 = lastMode（E2E：reload 后触发按钮 = lastMode） | GET /mode 取位（未显式切过 = lastMode；无会话/未取位时默认 auto = 首次默认） | HTTP 冒烟（新会话 GET = lastMode strict）+ 组件自验（受控模式渲染）；E2E reload 断言归 S5 | COVERED（数据面；E2E reload 用例 S5 验证） |
+| B6 / REQ-AGENT-075 熔断（呈现面） | 标准 2 降级后提示可见（「auto 暂停：模型频繁拒绝」） | S3 mode-degraded 事件 → modeNotice → 工具栏行内 mode-toolbar-degraded 提示（替换 hint） | 组件自验（降级提示出现/清除/hint 恢复） | COVERED（基础呈现；事件链路由 S3 集成 harness 验证） |
+
+- 状态口径同前。REQ-AGENT-071 的 E2E 验收（5 条标准）依赖 Electron 全量接线（rebuild:electron + FAUX + SSE），归 S5 统一跑绿；本切片交付组件 + 数据流 + 端点面并以自验 harness 佐证。
+
+#### Slice 4 concern（供 S5 与 REFLECT 参考）
+
+1. **调用形态（HTTP，非 IPC）**：S3 的 `agentService.setSessionMode/getSessionMode` 仅主进程面；renderer 走 HTTP（与既有 agentSessions API 同形态），本切片补 `GET/PUT /api/agent/sessions/:key/mode`。peek 优先（既有实例 → 下发 mode-change IPC 生效于下一个评估）+ 单例兜底（未创建 → 直写模式服务，会话创建时经 session-config 携带，等效）。模式读写不触发 agent 子进程惰性启动（ADR-009 实证）。
+2. **E2E 无会话场景退化**：modeToolbar.test.cjs 的 beforeEach 只 seed agent 配置、不建会话——全新 userDataDir 下无会话，selectedKey=null → 点击 auto 为 no-op（renderer 默认 auto = 服务端首次默认，触发按钮本就显示「自动」）→ 标准 2/3 与 072 的「切 auto」断言退化为默认值断言（恒绿但不走真实 PUT 流）。有会话时（S5 若 seed/建会话）全链路生效：点击 → PUT → lastMode 写盘 → reload 后 GET 取位。**S5 建议**：072 用例前置建会话（POST /api/agent/sessions {spaceKind:"general"}）或先切 strict 再切 auto，使切换流真实落盘。
+3. **mode-degraded 提示形态**：工具栏行内提示（mode-toolbar-degraded）替换常规 hint，非独立 toast/banner——满足 E2E「auto 切换无额外提示」选择器（mode-toast/mode-banner 恒 0）且仅熔断事件触发。REFLECT 可复核观感（行内 vs 独立提示条）。
+4. **strict 双卡边界（S3 concern 1 延续）**：UI 面无影响（切换即生效，E2E 只断言 UI 面）；评估面双卡语义 S3 已裁决可接受，REFLECT 复核。
+5. **renderer 默认模式 = auto**：首次无会话/未取位时工具栏显示「自动」（对齐 REQ-AGENT-072 标准 3 首次默认）；lastMode=strict 的会话在取位完成前有短暂「自动」闪现（E2E 断言 auto-retry 不受影响，观感可接受）。
