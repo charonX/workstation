@@ -53,15 +53,20 @@
   flex: 1;
 }
 
-.save-btn {
+/* 主按钮（顶栏保存 + 空态新建配置共用形态） */
+.save-btn,
+.create-btn {
   padding: var(--ch-space-2) var(--ch-space-5);
   background: var(--ch-accent);
   color: var(--ch-accent-text);
   border: none;
   border-radius: var(--ch-radius-md);
   font-size: var(--ch-text-sm);
-  font-weight: var(--ch-weight-medium);
   cursor: pointer;
+}
+
+.save-btn {
+  font-weight: var(--ch-weight-medium);
 }
 
 .save-btn:disabled {
@@ -79,10 +84,10 @@
   color: var(--ch-success);
 }
 
-/* ============ 校验错误条 ============ */
-.error-banner {
+/* ============ 错误提示条（校验错误 / 坏文件提示共用形态） ============ */
+.error-banner,
+.invalid-banner {
   display: flex;
-  align-items: flex-start;
   gap: var(--ch-space-2);
   background: var(--ch-error-soft);
   color: var(--ch-error);
@@ -91,6 +96,10 @@
   padding: var(--ch-space-3) var(--ch-space-4);
   margin-bottom: var(--ch-space-3);
   font-size: var(--ch-text-sm);
+}
+
+.error-banner {
+  align-items: flex-start;
 }
 
 .error-banner .err-head {
@@ -119,16 +128,7 @@
 
 /* ============ 坏文件提示（E6：projectInvalid=true） ============ */
 .invalid-banner {
-  display: flex;
   align-items: center;
-  gap: var(--ch-space-2);
-  background: var(--ch-error-soft);
-  color: var(--ch-error);
-  border: 1px solid var(--ch-error);
-  border-radius: var(--ch-radius-md);
-  padding: var(--ch-space-3) var(--ch-space-4);
-  margin-bottom: var(--ch-space-3);
-  font-size: var(--ch-text-sm);
 }
 
 /* ============ 空态（未配置跟随全局） ============ */
@@ -159,16 +159,6 @@
   background: var(--ch-surface-highest);
   padding: 1px 5px;
   border-radius: 4px;
-}
-
-.create-btn {
-  padding: var(--ch-space-2) var(--ch-space-5);
-  background: var(--ch-accent);
-  color: var(--ch-accent-text);
-  border: none;
-  border-radius: var(--ch-radius-md);
-  font-size: var(--ch-text-sm);
-  cursor: pointer;
 }
 
 /* ============ 规则分组 ============ */

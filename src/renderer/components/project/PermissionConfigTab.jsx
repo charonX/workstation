@@ -189,6 +189,22 @@ export function groupRules(rules) {
 
 // ================= 展示小工具 =================
 
+// JSON 模式文本解析：合法 JSON 对象 → {ok:true, value}；语法错/非对象 →
+// {ok:false, message}（message 可直接进错误条；switchToVis 与 handleSave 共用，
+// 保证两处提示一致）。
+function parseJsonObject(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, value: null, message: `JSON 语法错误：${e.message}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, value: null, message: "配置必须是 JSON 对象" };
+  }
+  return { ok: true, value: parsed, message: null };
+}
+
 function formatValue(value) {
   if (value === "allow") return "允许 allow";
   if (value === "ask") return "询问 ask";
@@ -228,6 +244,26 @@ function Toggle({ on, onToggle }) {
       aria-pressed={on}
       onClick={onToggle}
     />
+  );
+}
+
+// 列表编辑器共享的「添加条目」输入行（input + 添加按钮 + Enter 提交；输入态与
+// 去重/提示逻辑由父组件持有）。
+function PathAdd({ value, onChange, onAdd, placeholder }) {
+  return (
+    <div className="path-add">
+      <input
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onAdd();
+        }}
+      />
+      <button type="button" onClick={onAdd}>
+        添加
+      </button>
+    </div>
   );
 }
 
@@ -277,22 +313,15 @@ function PathEditor({ family, rules, overrides, onSet, onReset }) {
         })}
         {patternRules.length === 0 && <div className="path-empty">无条目</div>}
       </div>
-      <div className="path-add">
-        <input
-          value={input}
-          placeholder={family === "path" ? "添加路径 glob，如 src/** 或 /tmp/build-*" : "添加外部目录路径"}
-          onChange={(e) => {
-            setInput(e.target.value);
-            setMsg(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") add();
-          }}
-        />
-        <button type="button" onClick={add}>
-          添加
-        </button>
-      </div>
+      <PathAdd
+        value={input}
+        placeholder={family === "path" ? "添加路径 glob，如 src/** 或 /tmp/build-*" : "添加外部目录路径"}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setMsg(null);
+        }}
+        onAdd={add}
+      />
       {msg && <div className="path-msg">{msg}</div>}
       <div className="rule-desc">全局默认：<code>*</code> 全部允许（read/ls 类）。项目未覆盖时跟随。</div>
     </div>
@@ -330,19 +359,12 @@ function ListEditor({ items, overridden, onSet, onReset, placeholder }) {
           </span>
         ))}
       </div>
-      <div className="path-add">
-        <input
-          value={input}
-          placeholder={placeholder ?? "添加条目"}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") add();
-          }}
-        />
-        <button type="button" onClick={add}>
-          添加
-        </button>
-      </div>
+      <PathAdd
+        value={input}
+        placeholder={placeholder ?? "添加条目"}
+        onChange={(e) => setInput(e.target.value)}
+        onAdd={add}
+      />
       {overridden && (
         <button type="button" className="reset-chip" onClick={onReset}>
           ↩ 跟随全局
@@ -562,19 +584,13 @@ export default function PermissionConfigTab({ projectId }) {
   const switchToVis = useCallback(() => {
     if (mode === "vis") return;
     if (jsonText !== null) {
-      let parsed;
-      try {
-        parsed = JSON.parse(jsonText);
-      } catch (e) {
-        setError({ message: `JSON 语法错误：${e.message}`, issues: [] });
+      const parsed = parseJsonObject(jsonText);
+      if (!parsed.ok) {
+        setError({ message: parsed.message, issues: [] });
         return; // 留在 JSON 模式
       }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        setError({ message: "配置必须是 JSON 对象", issues: [] });
-        return;
-      }
-      setOverrides(overridesFromProjectJson(rules, parsed));
-      setOriginalProject(parsed);
+      setOverrides(overridesFromProjectJson(rules, parsed.value));
+      setOriginalProject(parsed.value);
       setError(null);
     }
     setMode("vis");
@@ -590,15 +606,12 @@ export default function PermissionConfigTab({ projectId }) {
     setSavedHint(null);
     let payload;
     if (mode === "json") {
-      try {
-        payload = JSON.parse(jsonText);
-        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-          throw new Error("配置必须是 JSON 对象");
-        }
-      } catch (e) {
-        setError({ message: `JSON 语法错误：${e.message}`, issues: [] });
+      const parsed = parseJsonObject(jsonText);
+      if (!parsed.ok) {
+        setError({ message: parsed.message, issues: [] });
         return;
       }
+      payload = parsed.value;
     } else {
       payload = buildProjectJson(rules, originalProject, overrides);
     }
