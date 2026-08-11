@@ -12,7 +12,7 @@
 | 2 | REQ-AGENT-073/074/075/076 | auto-judge link（worker 评估链）：authorizerChain 模型判断（allow/deny/defer + reason）+ envelope excluded 面 + 熔断计数 + review log | 1 | done |
 | 3 | 主进程接线 | 会话模式 ↔ worker 评估链 seam 接线（S1 服务暴露给评估链读取）；具体形态父代理确认 | 1, 2 | done |
 | 4 | REQ-AGENT-071 | renderer 对话区模式切换工具栏（三档下拉 + 可扩展槽位） | 1, 2 | done |
-| 5 | REQ-AGENT-071 E2E | E2E 接线跑绿 + 全量回归（单测 + 既有 E2E 水位不退） | 3, 4 | pending |
+| 5 | REQ-AGENT-071 E2E | E2E 接线跑绿 + 全量回归（单测 + 既有 E2E 水位不退） | 3, 4 | done |
 
 ## 关键 seam 契约速记（供子代理简报引用）
 
@@ -159,3 +159,32 @@ assert.notEqual(fresh, "strict");   // ← 红
 3. **mode-degraded 提示形态**：工具栏行内提示（mode-toolbar-degraded）替换常规 hint，非独立 toast/banner——满足 E2E「auto 切换无额外提示」选择器（mode-toast/mode-banner 恒 0）且仅熔断事件触发。REFLECT 可复核观感（行内 vs 独立提示条）。
 4. **strict 双卡边界（S3 concern 1 延续）**：UI 面无影响（切换即生效，E2E 只断言 UI 面）；评估面双卡语义 S3 已裁决可接受，REFLECT 复核。
 5. **renderer 默认模式 = auto**：首次无会话/未取位时工具栏显示「自动」（对齐 REQ-AGENT-072 标准 3 首次默认）；lastMode=strict 的会话在取位完成前有短暂「自动」闪现（E2E 断言 auto-retry 不受影响，观感可接受）。
+
+### Slice 5：E2E 接线 + 全量回归（commit be2c1f6 / 6ed7fd9）
+
+- **E2E 无会话退化修正（S4 concern 2 落地，commit be2c1f6）**：modeToolbar.test.cjs 切档类用例（标准 2/3、标准 5、072）前置建会话并打开（`createSession`（POST /api/agent/sessions {spaceKind:"general"}）+ `openSession`（reload → 点 `[data-session-item='<spaceKey>']`，statusBar 先例））——「点击 → PUT /mode → settings lastMode 持久化 → reload 后 GET /mode 取位」真实链路被断言。标准 2/3 与标准 5 先切 strict 再切 auto（首次默认 = auto，直接切 auto 无文案变化可断言）；072 用例切 strict 而非 auto——持久化链路失效时 reload 后回落 auto，断言可区分（旧写法 auto→auto 恒绿不能证明 lastMode 生效）。断言语义不变（signoff TODO 原位保留）。
+- **跨 story 接线修正（commit 6ed7fd9）**：全量 E2E 首跑 183/184，唯一红 = 上 story 的 permissionConfig.test.cjs REQ-AGENT-065（strict mode violation）——本 story S3（472093c）起全局 authorizerChain = `["auto-judge","opc-bridge"]`（REQ-AGENT-073 链序签核契约，agent-policy/pi-permission-config.json 单一真源），上 story 用例断言过时（.chain-item 现 2 元素；保存后项目链 = 全局基底 + 新增条目）。test-gap 就地补全：filter 逐项定位基底条目 + toEqual 期望值更新为 `["auto-judge","opc-bridge","custom-gate"]`（文件 + merged 双断言，断言语义不变）。API 面（permissionConfig.test.js 整体替换、permissionMerge.test.js 显式 fixture）不受影响（override wins 语义）。
+- **E2E 全量**：`npm run test:e2e`（rebuild:electron + playwright）→ **184/184 绿**（含本 story modeToolbar 5 用例 + 上 story permissionConfig 10 用例；水位较上 story 179 提升）。首跑 183/184 的 1 红经上述接线修正后复跑全绿。
+- **单测全量**：`npm run test:unit`（rebuild:node）→ **739/740 绿**（本 story api 13/13：modeService 6 + autoJudgeLink 7）。1 红 = 既有 hydrationWindow.test.js flake（复跑 5 次约 50% 通过率，见 concern 6——非本 story 引入，S3/S4 均未触碰 stop/水合路径）。
+- **构建**：rebuild:electron + rebuild:node 按 ABI 顺序执行，最终状态 = node ABI（单测后）。
+- refactor：无（本切片零实现改动，纯测试接线 + 文档）。
+
+#### PRD→代码 可追溯性表（Slice 5，最终版）
+
+| PRD 块 / REQ | 验收标准 | 实现 | 验证 | 状态 |
+|---|---|---|---|---|
+| B2 / REQ-AGENT-071 对话区模式切换工具栏 | 标准 1 工具栏位于 composer 下方；标准 2 三档下拉（当前档 + 色点 + 描述）；标准 3 选档 → 触发按钮更新 + 高亮；标准 4 扩展槽位灰显占位；标准 5 auto 切换无额外提示 | ModeToolbar.jsx + ChatView 接线 + Assistant 数据流（S4） | **E2E 5/5 绿**（modeToolbar.test.cjs：纵向顺序 / 展开三档 + strict→auto 真实切换文案更新 / 槽位可见 / auto 切换零 toast-banner / reload 取位） | COVERED |
+| B3 / REQ-AGENT-072 全局 lastMode（E2E 面） | 标准 2 新会话初始模式 = lastMode | GET/PUT /mode + modeService lastMode 持久化（S1/S3/S4） | **E2E 5/5 中 072 用例绿**：建会话 → 切 strict（PUT 落盘）→ reload → 取位 strict（链路失效时回落 auto 可区分） | COVERED |
+| B4 / REQ-AGENT-073 链序契约 | 链序 `["auto-judge","opc-bridge"]` | agent-policy 全局链（S3）+ 模式门控 | 上 story permissionConfig E2E 对齐修正后全绿（链呈现在权限配置 UI 可见 + 项目链整体替换含基底） | COVERED（跨 story 呈现面确认） |
+
+- 状态口径：本 story 8 条 REQ（070~077）自 S1~S4 均 COVERED（S1 的 070 标准 4 用例红经 f391884/127ce3f 语义修正后 13/13 绿）；S5 = E2E 验收面 + 全量回归收口，无新增实现面。
+- 全量水位：E2E 184/184（上 story 179 → 本 story +5）；单测 740 用例 739/740（1 红 = 既有 hydration flake，见 concern 6）。
+
+#### Slice 5 concern（供 QA/REFLECT 参考）
+
+1. **跨 story 测试契约变更（已修，建议人复核）**：permissionConfig.test.cjs REQ-AGENT-065 期望值因本 story REQ-AGENT-073 链序契约变化而更新（全局链 2 条目 + 项目链含 auto-judge 基底）。断言语义不变（仍断言基底可见 + 整体替换 + 文件/merged 双落盘），但属跨 story 业务测试期望值调整——QA/REFLECT 可复核「权限配置 UI 全局链显示 auto-judge」是否符合产品预期（备选：UI 隐藏系统级 link 需另行设计，本期按链序契约直显）。
+2. **072 E2E 断言强度**：reload 后「严格」断言依赖 GET /mode 取位完成（取位前短暂「自动」闪现，S4 concern 5）——Playwright 轮询容忍；若未来提速取位竞态需关注。
+3. **strict 双卡边界（S3/S4 concern 延续）**：E2E 只断言 UI 面（切换即生效），评估面双卡语义留 REFLECT 复核。
+4. **mode-degraded 提示形态（S4 concern 3 延续）**：行内提示（mode-toolbar-degraded）非独立 toast/banner，REFLECT 可复核观感。
+5. **全量 E2E 首跑即绿 183/184（除跨 story 契约红）**：本 story 无新增实现 flake；既有 E2E 水位 184/184 复跑稳定（1.1min 全量）。
+6. **hydrationWindow.test.js 既有 flake（非本 story 引入，建议父代理裁决处置）**：复跑 5 次约 50% 红，两种失败形态：(a) 标准 1「超窗行不水合」断言失败——`agentService.stop()` 为 fire-and-forget（SIGTERM 后立即返回，agentService.js:1274 原样），旧 worker 进程退出前仍可能触碰 JSONL → utimesSync 设的旧 mtime 被改写回 now → 水合误判；(b) 标准 5/标准 1 afterEach `fs.rmSync` ENOTEMPTY——旧进程句柄未释放。根因 = 测试时序（stop 后未等子进程真正退出即 utimes）与 stop() 语义的既有竞态；S3/S4 均未触碰该路径（git log 实证）。处置选项：(a) agentService.stop() 改为等待子进程退出（[build]，影响面需评估——stop 同步语义被多处消费）；(b) 测试侧 stop 后轮询 childPid 退出再 utimes（[test]）；(c) 接受并标注已知 flake。本切片未动该文件（跨 story 业务测试，交父代理/人裁决）。
