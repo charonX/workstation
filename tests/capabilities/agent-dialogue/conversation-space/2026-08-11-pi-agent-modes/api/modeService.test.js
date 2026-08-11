@@ -86,18 +86,22 @@ describe("REQ-AGENT-070 三档模式（B1）", () => {
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("REQ-AGENT-070 标准 4：模式为会话级——会话状态按 spaceKey 隔离，新会话回到全局 lastMode", async () => {
-    // 语义修正（2026-08-12 人授权，S1 concern）：setMode(a,"strict") 按 072 标准 1
-    // 写 lastMode="strict"；新会话 b 无会话条目 → 初始 = lastMode = "strict"。
-    // 「会话隔离」= b 不继承 a 的**会话值**（a 切走/关闭后 b 不受 a 后续 setMode
-    // 影响），而非 lastMode 不含 strict（那与 072 标准 1+2 自相矛盾）。
+  it("REQ-AGENT-070 标准 4：模式为会话级——显式会话值按 spaceKey 隔离，未设置会话跟随 lastMode", async () => {
+    // 语义修正（2026-08-12 人授权 ×2）：① setMode 写 lastMode（072 标准 1）；
+    // ② 会话隔离 = 显式会话值按 spaceKey 独立——a 的显式值不注入 b；b 未显式
+    // 设置时 = lastMode（动态跟随，每次读全局值）。
+    // 两个会话各自显式设置 → 互不影响。
     await modeService.setMode("ui:copilot:a", "strict");
-    const fresh = modeService.getMode("ui:copilot:b");
-    assert.equal(fresh, "strict", "新会话初始 = lastMode（strict）");
+    await modeService.setMode("ui:copilot:b", "auto");
+    assert.equal(modeService.getMode("ui:copilot:a"), "strict");
+    assert.equal(modeService.getMode("ui:copilot:b"), "auto", "显式会话值按 spaceKey 隔离");
 
-    // 会话隔离机制面：b 的会话状态与 a 独立——a 再切 auto，b 仍保持自己的值
+    // a 切走后不影响 b 的显式值
     await modeService.setMode("ui:copilot:a", "auto");
-    assert.equal(modeService.getMode("ui:copilot:b"), "strict", "b 不受 a 后续切换影响");
+    assert.equal(modeService.getMode("ui:copilot:b"), "auto", "a 后续切换不影响 b 的显式值");
+
+    // 未设置的会话跟随 lastMode（a 最后一次设 auto → lastMode=auto）
+    assert.equal(modeService.getMode("ui:copilot:new"), "auto", "未设置会话 = lastMode");
   });
 });
 
