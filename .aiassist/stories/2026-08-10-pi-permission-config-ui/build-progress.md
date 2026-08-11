@@ -128,3 +128,79 @@ PRD 对齐子代理（S3）报告 8 缺口，人裁决 4 项需实现侧改动�
 4. **缺口 7（key 协议含点 surface 误解析）→ 裁决：防御**。服务端 `savePermission` 拒绝 permission 面含点 surface 键（400 E-PERMISSION-INVALID，issue 提示「surface 名含点不支持」）——permission 面是 z.record（schema 接受含点键，实证），需协议层补拦；只拒段内含点的 surface 键，pattern 键（`permission.bash."rm *"` 等）不受影响。测试（S4 补）：含点 surface → 400 + 文件未变；`bash."rm *"` 类正常键照常保存。
 
 验证：`permissionConfig.test.js` 19/19 绿（新增 `projectInvalid` 字段未破坏 GET 断言——既有用例均为字段级断言，无整响应 deepEqual）+ `vite build` 通过 + slice3-harness 30/30 基线全绿（新增坏文件分支断言后 38/38）。
+
+### Slice 4：E2E 接线 + 全量回归（commit 见下）
+
+- 测试契约修正（test-gap 就地补全，人裁决 ①②，断言语义不变）：
+  - **test 2 locator 修正（人裁决 ①）**：全局列只读断言改定位 `[data-global-cell]` cell
+    ——实现全局默认列 cell 已加该属性；项目值列 seg 常驻是 allow/ask 切换交互入口
+    （S3 偏差 1，行级 count 断言与 test 3 locator 自相矛盾）。断言内容不变：全局列无
+    input/select/seg。另补 REQ-AGENT-062 AC1 组内行断言（destructive-fs 组头「删除文件」
+    可见 + 组内含 rm * 行）。
+  - **新增 4 用例（人裁决 ②，证据可复现）**：
+    - REQ-AGENT-063：工具级 write 行可见 + 全局默认值（询问 ask）→ 切「允许」→ 项目已改
+      → 保存 → .pi 文件 `write:"allow"` + GET source:project → 取消覆盖（跟随全局）→ 保存
+      → 文件字段删除 + GET 回落全局（AC2/AC3）。
+    - REQ-AGENT-064：path 组全局 `*` 只读基底 + 添加控件 → 添加 `src/**` → 保存 → 条目渲染
+      + 文件含条目 → 删除 → 保存 → 条目消失 + 文件同步删除（AC1/AC2/AC3）。
+    - REQ-AGENT-065：yoloMode 开关（aria-pressed 翻转）+ authorizerChain 添加授权器 →
+      保存 → 文件 `yoloMode:true` + `authorizerChain` 整体替换 + GET merged（AC1/AC2）。
+    - REQ-AGENT-060 E6（2026-08-11 人裁决落地）：项目 .pi 写坏 JSON → `perm-invalid-banner`
+      可见（而非「未配置」空态）→ 改规则保存 → 文件修复为合法 JSON 且含覆盖值，坏文件
+      提示消失。
+- 测试结果：
+  - 本 story E2E（rebuild:electron + playwright）：**9/10 绿**（059/060/061/062/063/065/066/068/
+    E6 坏文件）；1 红 = REQ-AGENT-064 path 增删——**实现缺陷（见下「S4 发现的实现缺陷」），
+    非测试问题**，红 = 缺陷证据。
+  - E2E 全量：**178 绿 / 1 红（179 用例）**——既有水位 169 用例全绿不退；红仅本 story 064。
+  - 单测全量（rebuild:node + node --test）：**727/727 绿（697 既有 + 本 story 30：permissionConfig
+    19 + permissionMerge 8 + permissionEvaluation 3）**。首跑 hydrationCooling 用例 afterEach
+    ENOTEMPTY 清理竞态（mtime 窗口环境性 flake，`pi-hydration-*`/`pi-bug3-*` 临时目录），复跑
+    全绿 727/727——非本 story 引入。
+- refactor：无（本 slice 只动 E2E 测试文件）。
+- ABI：E2E 用 rebuild:electron 跑通后，单测 rebuild:node——终态 node（按顺序执行完毕）。
+
+#### S4 发现的实现缺陷（REQ-AGENT-064 UI 面，报告父代理裁决，本 slice 未改实现）
+
+**症状**：path 白名单 UI 添加条目 → 保存成功提示出现（`perm-saved-hint`）→ 条目未渲染、
+文件未含该条目（E2E 红 + 确定性复现）。
+
+**根因**：`PermissionConfigTab.jsx` `buildProjectJson` 的 known-gate——
+`for (const [key, value] of Object.entries(overrides)) { if (!known.has(key)) continue; … }`——
+`known` = GET rules 的 key 集，而服务端 `buildRules` 只产出 merged 中**已存在**的键。PathEditor
+新增条目键 `permission.path.<pattern>`（fresh 项目 merged 无该 pattern）不在 known →
+保存 payload 丢弃该覆盖 → PUT `{}` → 200 落盘 `{}` → reload 后条目消失。authorizerChain /
+yoloMode 不受影响（键已在 rules 中——E2E 065 绿实证）。
+
+**证据**（确定性复现，rebuild:node 后直连真实服务）：
+```
+GET rules 含 permission.path.src/** ? false
+面板保存 SKIPPED: permission.path.src/**
+PUT status: 200
+落盘内容: {}
+```
++ E2E 失败截图（保存提示可见、path 列表仅剩全局 `*` 条目、添加输入框已清空=add 已执行）。
+
+**影响面**：REQ-AGENT-064 AC2（添加 → 保存 → 文件含条目）/ AC3（删除 → 保存 → 文件删除）
+UI 面失效；`external_directory`（同构 PathEditor）同受影响；API 面不受影响（PUT 直接携带
+条目 → 服务端原样写，permissionConfig.test.js 064 用例绿）。
+
+**修复方向（待父代理裁决）**：known-gate 放行列表编辑器生成的键（如 `permission.path.` /
+`permission.external_directory.` 前缀的 overrides 键，或改为「overrides 中所有键都写」——面板
+overrides 只含面板交互产生的键：seg/toggle/数值/链/列表新增，无任意键风险面）。
+
+#### PRD→代码 可追溯性表（Slice 4 最终版）
+
+| PRD/REQ | 实现（路由/服务/renderer） | E2E（permissionConfig.test.cjs） | API/单测 | 状态 |
+|---|---|---|---|---|
+| B1 / REQ-AGENT-059 | ProjectDetailModal `[data-perm-tab]` + 空态 | test 1（页签 + 空态 + 新建按钮） | GET project:null | COVERED |
+| B2 / REQ-AGENT-060 | GET global 原文 + 元数据注入 + 全局列只读 | test 2（全局列 `[data-global-cell]` 无编辑控件）+ test 10（E6 坏文件） | GET 5 用例 + E6 | COVERED |
+| B3 / REQ-AGENT-061 | 继承视图（跟随全局/项目已改） | test 2/3 + test 6 文案 | merge 对照 8 + GET 继承态 | COVERED |
+| B4 / REQ-AGENT-062 | family 分组 + seg 切换 | test 2（组内行）+ test 3（切换→徽标→保存） | PUT 保存 | COVERED |
+| B5 / REQ-AGENT-063 | 工具级裁决组 + 兜底 | test 3/7（write 切换保存 + 取消覆盖回落） | PUT write:allow | COVERED |
+| B6 / REQ-AGENT-064 | PathEditor 列表编辑器 | test 8（增删保存）——**红：实现缺陷待裁决** | PUT path 增删（API 面绿） | **DEFECT（UI 面）** |
+| B7 / REQ-AGENT-065 | ListEditor 链 + 开关组 + 脚注 | test 9（开关 + 链整体替换）+ test 6（文案） | PUT 整体替换/开关 | COVERED |
+| B8 / REQ-AGENT-066 | JSON 模式单向同步 + 视图转换 | test 4/5（JSON 文本区 + 非法拦截） | 标准 3/4/5 | COVERED |
+| B9 / REQ-AGENT-067 | 首次编辑时生成（最小覆盖集） | test 1/2/3（空态 → 新建 → 行操作） | PUT 首次 2 用例 | COVERED |
+| B10 / REQ-AGENT-068 | 校验 fail-closed（zod 复用） | test 5（非法 → 错误条） | 标准 1/2/3 | COVERED |
+| B11 / REQ-AGENT-069 | 保存即生效（worker 零改动） | —（非 UI 面） | permissionEvaluation 3 | COVERED |
