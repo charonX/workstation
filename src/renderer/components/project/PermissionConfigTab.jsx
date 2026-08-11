@@ -101,7 +101,18 @@ export function buildProjectJson(rules, originalProject, overrides) {
   const known = new Set((rules ?? []).map((r) => r.key));
   for (const rule of rules ?? []) deleteAt(payload, segmentsOf(rule.key));
   for (const [key, value] of Object.entries(overrides ?? {})) {
-    if (!known.has(key)) continue;
+    // known-gate（BUG-001 修复）：列表编辑器新增键放行——PathEditor 交互产生的
+    // permission.path.<pattern> / permission.external_directory.<pattern> 不在 GET
+    // rules 的 known 集（服务端 buildRules 只产出 merged 中已存在的键），原先被
+    // gate 丢弃 → 保存 payload 落盘空配置。这两个前缀是面板交互唯一的新键来源
+    // （无任意键注入面），放行；其余未知键仍走 known-gate（保守）。
+    if (
+      !known.has(key) &&
+      !key.startsWith("permission.path.") &&
+      !key.startsWith("permission.external_directory.")
+    ) {
+      continue;
+    }
     setAt(payload, segmentsOf(key), value);
   }
   return payload;

@@ -204,3 +204,32 @@ overrides 只含面板交互产生的键：seg/toggle/数值/链/列表新增，
 | B9 / REQ-AGENT-067 | 首次编辑时生成（最小覆盖集） | test 1/2/3（空态 → 新建 → 行操作） | PUT 首次 2 用例 | COVERED |
 | B10 / REQ-AGENT-068 | 校验 fail-closed（zod 复用） | test 5（非法 → 错误条） | 标准 1/2/3 | COVERED |
 | B11 / REQ-AGENT-069 | 保存即生效（worker 零改动） | —（非 UI 面） | permissionEvaluation 3 | COVERED |
+
+---
+
+#### BUG-001（code-defect，2026-08-11 人裁决 → 修复完成）
+
+**症状**：E2E REQ-AGENT-064 红——面板添加 path 条目 → 保存成功提示出现 → 条目未渲染、
+文件未含条目（PUT 落盘空配置）。
+
+**根因**：`src/renderer/components/project/PermissionConfigTab.jsx` `buildProjectJson` 的
+known-gate——`if (!known.has(key)) continue`——`known` = GET rules 的 key 集，而服务端
+`buildRules` 只产出 merged 中**已存在**的键；PathEditor 新增键
+`permission.path.<pattern>` / `permission.external_directory.<pattern>` 不在其中 →
+保存 payload 丢弃该覆盖 → PUT 200 落盘 `{}`。authorizerChain/yoloMode 不受影响（键已在
+rules）；API 面不受影响（服务端原样写）。
+
+**修复**（保守方案，前缀放行）：known-gate 对 `permission.path.` /
+`permission.external_directory.` 前缀的 overrides 键放行（这两个前缀是面板交互唯一的新键
+来源——PathEditor/ListEditor 交互产生，无任意键注入面）；其余未知键仍被 gate 拦截。
+同时确认「新增条目保存后才渲染」UX：`handleSave` 保存后 `reload()` 重新 GET（列表源 =
+GET rules），条目自然在保存后刷新出现——无需额外改动。
+
+**回归验证**：
+- 快速 API 级回归（`.agent-home/bug1-harness/build-project-json.test.mjs`，gitignored，
+  先红后绿 Prove-It）：修复前 4/6（path/external_directory 新增键断言红 = 缺陷证据）；
+  修复后 **6/6 绿**（含已知键照常写、未覆盖 known 键删除语义、$schema 保留、未知非前缀
+  键仍拦截 4 项防回归断言）。
+- `npx vite build` 通过。
+- 本 story E2E 全量（permissionConfig.test.cjs）：**10/10 绿**（含修复前红的
+  REQ-AGENT-064 增删保存）。
