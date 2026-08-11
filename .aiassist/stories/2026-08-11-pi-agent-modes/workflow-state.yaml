@@ -5,7 +5,7 @@ story_id: 2026-08-11-pi-agent-modes
 intention: >-
   PI agent 的权限只有「全人工确认」和「全放行（yoloMode）」两极：编辑文件/跑命令逐个弹确认卡太频繁，全放行又不放心——需要中间态模式（edit mode 文件编辑自动批准 + auto mode 模型判断自动批准），对齐 Claude Code 的 acceptEdits/auto。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: PRD           # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: DESIGN         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-11
@@ -14,6 +14,7 @@ created: 2026-08-11
 history:
   - {at: 2026-08-11, from: -, to: THINK, note: "创建 story"}
   - {at: 2026-08-11, from: THINK, to: PRD, note: "需求洞察完成（5 轮 frontier 访谈 + 2 项调研实证收敛方向 A）：三档模式（strict 全确认 / standard 按配置 / auto 模型代问）——会话级切换 + 对话区工具栏（可扩展容器）+ 全局 lastMode（首次 auto）；auto = authorizerChain 模型 link（接用户配置 provider，deny-first，判断不了 defer 弹卡，熔断 5 次降级）；external_directory/path 系统级从严（envelope 实证：模型 allow 降级 defer、deny 有效）；模式不改持久配置。interview-notes.md 定稿"}
+  - {at: 2026-08-11, from: PRD, to: DESIGN, note: "PRD v0.1 人确认（8 稳定块 + §10 技术方案内嵌——0.19 流程 complex 深潜）：三档模式/对话区工具栏/全局 lastMode/auto 模型 link/envelope 从严/熔断/可观测/模式不改配置。人拍板进 DESIGN（对话区工具栏 UI 原型——模式切换控件形态 + 可扩展容器）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
