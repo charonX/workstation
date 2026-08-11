@@ -117,6 +117,20 @@
   font-size: var(--ch-text-xs);
 }
 
+/* ============ 坏文件提示（E6：projectInvalid=true） ============ */
+.invalid-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+  background: var(--ch-error-soft);
+  color: var(--ch-error);
+  border: 1px solid var(--ch-error);
+  border-radius: var(--ch-radius-md);
+  padding: var(--ch-space-3) var(--ch-space-4);
+  margin-bottom: var(--ch-space-3);
+  font-size: var(--ch-text-sm);
+}
+
 /* ============ 空态（未配置跟随全局） ============ */
 .empty-state {
   border: 1px dashed var(--ch-border-strong);

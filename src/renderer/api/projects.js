@@ -53,8 +53,9 @@ export function deleteProject(projectId) {
 }
 
 // —— PI 权限配置（REQ-AGENT-059~068，2026-08-10-pi-permission-config-ui）——
-// GET → {global, project, merged, rules[]}（继承视图数据面，tech-design §3.1）；
-// project=null = 未配置（UI 空态）。
+// GET → {global, project, merged, rules[], projectInvalid}（继承视图数据面，
+// tech-design §3.1）；project=null = 未配置（UI 空态）；projectInvalid=true =
+// 项目配置文件已损坏（E6，UI 显示坏文件提示，保存即覆盖修复）。
 export function getProjectPermission(projectId) {
   return get(`/api/projects/${encodeURIComponent(projectId)}/permission`);
 }

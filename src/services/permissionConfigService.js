@@ -64,15 +64,19 @@ function readGlobalConfig() {
   }
 }
 
-// 项目配置：缺失 → null（未配置，全部跟随全局）；坏文件 → null + 警告（E6 防御面：
-// 运行侧 gotgenes 对坏文件 {invalid:true} fail-closed，UI 侧回落空态）。
+// 项目配置读取：返回 {config, invalid} 区分信号（2026-08-11 人裁决，PRD 对齐
+// 缺口 6/E6 落地）——
+// - 缺失 → {config: null, invalid: false}（未配置，全部跟随全局）；
+// - 坏文件（JSON.parse 失败）→ {config: null, invalid: true} + 警告（E6 防御面：
+//   运行侧 gotgenes 对坏文件 {invalid:true} fail-closed；UI 侧靠 invalid 信号显示
+//   坏文件提示而非「未配置」空态——project=null 无法区分「未配置」与「已损坏」）。
 function readProjectConfig(projectConfigPath) {
-  if (!fs.existsSync(projectConfigPath)) return null;
+  if (!fs.existsSync(projectConfigPath)) return { config: null, invalid: false };
   try {
-    return JSON.parse(fs.readFileSync(projectConfigPath, "utf8"));
+    return { config: JSON.parse(fs.readFileSync(projectConfigPath, "utf8")), invalid: false };
   } catch (err) {
     console.warn(`[permissionConfig] permission.read-project-invalid: ${projectConfigPath}: ${err?.message ?? String(err)}`);
-    return null;
+    return { config: null, invalid: true };
   }
 }
 
@@ -471,15 +475,43 @@ function buildRules(global, project, merged) {
 }
 
 // —— 读取：继承视图组装（接口契约 3.1 GET 的数据面）——
-// 返回 { global, project, merged, rules[] }；project=null = 未配置（空态，REQ-AGENT-067）。
+// 返回 { global, project, merged, rules[], projectInvalid }；project=null = 未配置
+// （空态，REQ-AGENT-067）；projectInvalid=true = 项目配置文件已损坏（E6，2026-08-11
+// 人裁决落地）——UI 显示坏文件提示而非「未配置」空态，保存即覆盖修复。
 export function getPermissionView(projectId) {
   const { projectConfigPath } = resolveProject(projectId);
   const global = readGlobalConfig();
-  const project = readProjectConfig(projectConfigPath);
-  // 无项目文件 → merged = 全局原文（干净继承态，REQ-AGENT-061 标准 2）。
+  const { config: project, invalid: projectInvalid } = readProjectConfig(projectConfigPath);
+  // 无项目文件 → merged = 全局原文（干净继承态，REQ-AGENT-061 标准 2）；坏文件
+  // 同样回落全局（运行时对坏文件 fail-closed，UI 侧按全局默认展示 + 坏文件提示）。
   const merged = project ? mergeUnified(global, project) : global;
   const rules = buildRules(global, project, merged);
-  return { global, project, merged, rules };
+  return { global, project, merged, rules, projectInvalid };
+}
+
+// 含点 surface 防御（PRD 对齐缺口 7，2026-08-11 人裁决落地）：renderer 面板的
+// 规则 key 协议 `permission.<surface>.<pattern>` 以点作结构分隔，segmentsOf 正则
+// 限定 surface 不含点（`[^.]+`）——含点 surface（如 permission."custom.surface"）
+// 会被面板误解析为 surface=custom + pattern=surface，面板保存生成的 payload 路径
+// 损坏（一改即坏：删除/覆盖错位）。permission 面是 z.record（config-schema.ts
+// 实证），gotgenes schema 接受任意字符串键（含点也过）——需在协议层补拦：
+// 只拒「段内含点」的 surface 键；pattern 键（permission.bash."rm *"、
+// permission.path."src/**" 等）在 map 内层，点只是 pattern 内容、非结构分隔，
+// 不受影响。
+function dotSurfaceIssues(config) {
+  const issues = [];
+  const permission = config?.permission;
+  if (permission && typeof permission === "object" && !Array.isArray(permission)) {
+    for (const key of Object.keys(permission)) {
+      if (key.includes(".")) {
+        issues.push({
+          path: `permission.${key}`,
+          message: "surface 名含点不支持（面板 key 协议以点作结构分隔，含点 surface 会被误解析）",
+        });
+      }
+    }
+  }
+  return issues;
 }
 
 // —— 保存（接口契约 3.2 PUT 的数据面）——
@@ -487,14 +519,16 @@ export function getPermissionView(projectId) {
 // E-PERMISSION-INVALID + 路径化 issues，不落盘。裁决 A：顶层未知键（strictObject）
 // 会让运行时整集 fail-closed（全规则集回落 ask = 保存即全禁）→ 拒绝保存；
 // permission 面内自定义 surface/pattern（z.record 合法）保留放行。
+// 含点 surface（dotSurfaceIssues）为 schema 之外的协议层约束，一并拒绝。
 // 成功 → 原子写 → { saved: true, mtime }（mtimeMs，供前端可选提示）。
 // 观测（tech-design §7）：成功/校验失败/IO 失败三态日志 permission.save
 // {projectId, mtime? | issues? | error}。
 export function savePermission(projectId, config) {
   const { projectDir, projectConfigPath } = resolveProject(projectId);
 
-  if (validateWithGotgenes(config)) {
-    const issues = validationIssues(config);
+  const dotIssues = dotSurfaceIssues(config);
+  if (validateWithGotgenes(config) || dotIssues.length > 0) {
+    const issues = [...validationIssues(config), ...dotIssues];
     if (issues.length > 0) {
       const err = new Error("permission config invalid");
       err.code = "E-PERMISSION-INVALID";

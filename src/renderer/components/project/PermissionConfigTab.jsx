@@ -11,16 +11,19 @@
 //   surface/pattern，schema 合法）从原 project JSON 保留——顶层未知键由服务端
 //   保存校验拦截（400，裁决 A：防 gotgenes 运行时整集 fail-closed）。
 //
-// 数据流：GET /api/projects/:id/permission → {global, project, merged, rules[]}；
-// PUT body = 面板生成/JSON 原样的项目 JSON → {saved, mtime}；400 →
-// {code:"E-PERMISSION-INVALID", issues:[{path,message}]} 显示错误条。
+// 数据流：GET /api/projects/:id/permission → {global, project, merged, rules[],
+// projectInvalid}；PUT body = 面板生成/JSON 原样的项目 JSON → {saved, mtime}；
+// 400 → {code:"E-PERMISSION-INVALID", issues:[{path,message}]} 显示错误条。
+// projectInvalid=true（E6，2026-08-11 人裁决落地）：项目配置文件已损坏（JSON.parse
+// 失败）→ 显示坏文件提示而非「未配置」空态，按全局默认展示，保存即覆盖修复。
 //
 // 文案按中文原型直写（E2E 断言契约先例，Assistant.jsx 同款；en-US 直译入
 // REFLECT）。locator 契约（E2E）：[data-perm-mode='vis'|'json'] /
 // [data-testid='perm-empty-state'] / [data-testid='perm-create-btn'] /
 // [data-testid='perm-save-btn'] / [data-rule-row='<key>'] / [data-perm-seg] /
 // [data-override-badge] / [data-testid='perm-error-banner'] /
-// [data-testid='perm-json-editor'] / [data-testid='perm-saved-hint']。
+// [data-testid='perm-json-editor'] / [data-testid='perm-saved-hint'] /
+// [data-global-cell]（全局默认列 cell）/ [data-testid='perm-invalid-banner']。
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getProjectPermission, putProjectPermission } from "../../api/projects.js";
@@ -382,7 +385,7 @@ function RuleRow({ rule, overridden, effective, onSet, onReset }) {
         <code>{rule.readable}</code>
         <div className="rule-desc">{rule.label}</div>
       </div>
-      <div>
+      <div data-global-cell>
         <div className="col-label">全局默认</div>
         <div className="global-val">
           <span className="pill">{formatValue(rule.global)}</span>
@@ -472,7 +475,7 @@ export default function PermissionConfigTab({ projectId }) {
   const [jsonText, setJsonText] = useState(null); // JSON 模式文本（null = 未进入过）
   const [overrides, setOverrides] = useState({}); // 面板覆盖态：key → 覆盖值
   const [originalProject, setOriginalProject] = useState(null); // 视图转换保留底（rules 之外键）
-  const [created, setCreated] = useState(false); // 已进入已配置态（新建配置点击/已有文件）
+  const [created, setCreated] = useState(false); // 已进入已配置态（新建配置点击/已有文件/坏文件）
   const [dirty, setDirty] = useState(false);
   const [savedHint, setSavedHint] = useState(null);
   const [error, setError] = useState(null); // {message, issues}
@@ -484,7 +487,9 @@ export default function PermissionConfigTab({ projectId }) {
     setView(data);
     setOriginalProject(data.project);
     setOverrides(overridesFromRules(data.rules));
-    setCreated(data.project !== null);
+    // 坏文件（projectInvalid=true，E6）：进入已配置态（显示规则行 + 保存入口，
+    // 保存即覆盖修复），而非「未配置」空态——空态只属于真正的未配置。
+    setCreated(data.project !== null || data.projectInvalid === true);
     setJsonText(null);
     setDirty(false);
     setSavedHint(null);
@@ -680,6 +685,14 @@ export default function PermissionConfigTab({ projectId }) {
               </ul>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 坏文件提示（E6，projectInvalid=true）：文件被外部改坏 → 按全局默认展示 +
+          提示（区别于「未配置」空态），保存即覆盖修复（保存入口始终可用）。 */}
+      {view.projectInvalid && (
+        <div className="invalid-banner" data-testid="perm-invalid-banner">
+          配置文件已损坏，已按全局默认处理——重新保存可修复
         </div>
       )}
 
