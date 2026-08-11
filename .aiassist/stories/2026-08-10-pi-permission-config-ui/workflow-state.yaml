@@ -5,7 +5,7 @@ story_id: 2026-08-10-pi-permission-config-ui
 intention: >-
   PI agent 的权限策略配置（全局出厂 + 项目级覆盖）目前只能手写代码/JSON，界面零呈现，无法在 UI 中查看和管理——需要可视化管理。MCP 配置与验证单独立项（PI SDK 暂不支持 MCP）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-10
@@ -19,6 +19,8 @@ history:
   - {at: 2026-08-10, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design v0.1 人确认（Q1-Q8 技术决策收敛）：全局基底=部署 JSON（代码规则表=出厂语义，Q1 修正）/ 项目级=字段级覆盖（gotgenes merge 实证：最小覆盖集文件，未定义继承全局）/ 单端点 PUT（一套数据源，面板+JSON 同源）/ 取消覆盖=删除字段 / 元数据=服务端从 BASH_RULES 注入对齐 / 保存覆盖式无版本协商 / zod 校验复用 gotgenes / 保存即生效零自造（每次评估 stat 文件实证）/ 测试=merge 对照单测+文件断言+1 条真实 E2E。ADR-022 落档（字段级覆盖语义契约化）。PRD 反向同步 B2（部署 JSON 渲染）"}
   - {at: 2026-08-10, from: CRYSTALLIZE, to: TEST, note: "结晶 REQ-AGENT-059~069（11 条，人确认）：入口/全局只读基底+元数据注入/继承视图（merge 对照 gotgenes）/bash 族可视化/工具级+兜底/path 列表/授权链+开关/JSON 单向同步/首次生成/校验 fail-closed/保存即生效。B12 约束不结晶；M1-M4 留 PRD。requirements v1 hash 4b944146；能力地图 agent-dialogue conversation-space 登记"}
   - {at: 2026-08-10, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 骨架生成（4 文件 22 处 TODO）+ 人逐项过 TODO：修正 2 处 seam 设计错误（merge 对照对象→mergeUnifiedConfigs 完整入口 / 评估 seam→createPolicyEvaluator 读项目文件真实路径）+ 20 处断言确认 + 保存成功提示宽松拍板。ASSERTIONS-SIGNED: true 4/4。signoff.md 落盘"}
+  - {at: 2026-08-11, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核（b343ee2）→ BUILD 完成（4 切片 + 3 轮人裁决 + BUG-001）：S1 服务层（merge 对照 gotgenes 8/8）/ S2 路由（permissionConfig 19/19）/ S3 renderer（组件 harness 44/44 + PRD 对齐 4 裁决：projectInvalid 信号、自定义字段可编辑、E2E 补测、test2 locator）/ S4 E2E 接线（E2E 179/179）+ BUG-001（path known-gate 前缀放行）。全量：单测 727/727 + E2E 179/179 全绿"}
+  - {at: 2026-08-11, from: BUILD, to: QA, note: "BUILD 收官（单测 727/727 + E2E 179/179 全绿）——进入 QA。遗留待裁决：E6 projectInvalid 已实现；缺口 8（弱对照/API seam 断言）非阻塞；hydrationWindow flake 复跑绿"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
