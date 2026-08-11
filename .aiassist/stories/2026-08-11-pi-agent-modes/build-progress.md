@@ -9,7 +9,7 @@
 | # | REQ-ID | 内容 | 依赖 | 状态 |
 |---|---|---|---|---|
 | 1 | REQ-AGENT-070/072/077 | modeService 模式服务（主进程）：三档会话级状态 + 全局 lastMode（settings agent.lastMode 持久化，首次 auto / 非法回落 standard）+ 模式不改 .pi 持久配置 | — | done |
-| 2 | REQ-AGENT-073/074/075/076 | auto-judge link（worker 评估链）：authorizerChain 模型判断（allow/deny/defer + reason）+ envelope excluded 面 + 熔断计数 + review log | 1 | pending |
+| 2 | REQ-AGENT-073/074/075/076 | auto-judge link（worker 评估链）：authorizerChain 模型判断（allow/deny/defer + reason）+ envelope excluded 面 + 熔断计数 + review log | 1 | done |
 | 3 | 主进程接线 | 会话模式 ↔ worker 评估链 seam 接线（S1 服务暴露给评估链读取）；具体形态父代理确认 | 1, 2 | pending |
 | 4 | REQ-AGENT-071 | renderer 对话区模式切换工具栏（三档下拉 + 可扩展槽位） | 1, 2 | pending |
 | 5 | REQ-AGENT-071 E2E | E2E 接线跑绿 + 全量回归（单测 + 既有 E2E 水位不退） | 3, 4 | pending |
@@ -64,3 +64,32 @@ assert.notEqual(fresh, "strict");   // ← 红
 
 - 状态口径：COVERED = 实现 + 业务测试均绿；PARTIAL = 实现完成但该 REQ 行为面未全覆盖；GAP = 未实现。
 - 说明：REQ-AGENT-070 标准 1-3（strict 全确认/standard 按配置/auto 代问的**评估行为**）依赖 worker 评估链（S2 auto-judge link + 既有 opc-bridge）验证，本切片仅交付模式服务的状态/持久化契约；REQ-AGENT-072/077 本切片全量覆盖。
+
+### Slice 2：auto-judge link（commit 见下）
+
+- 实现：`src/agent/autoJudgeLink.js`（新）——`createAutoJudgeLink({ decide, denyThreshold = 5, onTripped, reviewLogPath, decideTimeoutMs = 5000 })` → `{ authorize }`（gotgenes link 契约 `authorize(details, query, log)`，authorizer.ts 实证）：
+  - **decide 注入缝**：decide 异步 `(details) => { kind, reason? }`；默认实现 `defaultDecide`（S2 骨架）读 settings agent provider 配置（`<configDir>/settings.json` agent.provider，configDir = OPC_WORKSTATION_CONFIG_DIR / ~/.opc-workstation）——未配置 → throw（link 映射 call-failed defer，REQ-AGENT-073 标准 4）；已配置 → S3 接线前 fail-safe 显式 defer（decide-deferred，不静默放行）；
+  - **判定映射**（fail-safe，deny-first）：allow → `{kind:"allow"}`（重置熔断计数）；deny → `{kind:"deny", reason}`；defer/模型失败（decide throw → call-failed）/超时（decideTimeoutMs 兜底 → timeout）/回复不可解析（kind 非 allow/deny/defer → model-unresolved）→ `{kind:"defer"}`；deferReason 枚举（model-unresolved/timeout/call-failed/decide-deferred），非枚举 reason 回落 decide-deferred；
+  - **熔断**（REQ-AGENT-075）：实例级 denyStreak（每会话独立实例，对齐 permissionBridge H4）——deny +1、allow 清零、`denyStreak === denyThreshold` 首次跨阈触发 `onTripped()`（继续 deny 不重复触发，allow 重置后重新计数；降级 standard 动作属 S3 接模式服务）；
+  - **review log**（REQ-AGENT-076）：每次判断 JSONL 追加写 `{requestId, surface, toolName, input?, verdict, reason?, deferReason?, latencyMs, ts}`（ts = ISO，对齐 gotgenes logging.ts 形态）；requestId 缺失生成；surface 双形态（accessIntent.surface 优先回退 surface）；input 双形态（details.input / command/path/target）；写失败 try/catch 警告不致命（E4）。
+- 测试：`node --test tests/capabilities/agent-dialogue/conversation-space/2026-08-11-pi-agent-modes/api/autoJudgeLink.test.js` → **7/7 绿**（REQ-073 4 例 allow/deny+reason/defer/provider 缺失 + REQ-074 envelope 实证 1 例（jiti 加载 gotgenes 源码，不依赖本实现）+ REQ-075 熔断 1 例 + REQ-076 review log 1 例）。自建临时 harness 9/9 绿（不进契约不提交，已删）：熔断只触发一次 + allow 重置、超时 → defer、不可解析 verdict → defer、deferReason 枚举/回落、deny 无 reason、默认 decide 双态（无 provider / 有 provider）、log 字段形态、写失败不致命、gotgenes 原生 details 双形态。
+- lint：`npx oxlint src/agent/autoJudgeLink.js` 0 警告（query/log 契约参数按 oxlint 约定下划线前缀）。
+- refactor：无（新文件单职责，无重构面）。
+
+#### PRD→代码 可追溯性表（Slice 2）
+
+| PRD 块 / REQ | 验收标准 | 实现（src/agent/autoJudgeLink.js） | 测试（autoJudgeLink.test.js） | 状态 |
+|---|---|---|---|---|
+| B4 / REQ-AGENT-073 auto 引擎 | 标准 1 判安全 allow 直执行；标准 2 deny + teaching reason；标准 3 判断不了/模型失败/超时 → defer；标准 4 provider 未配置 → defer | decide 注入缝 + 判定映射（allow / deny+reason / defer fail-safe 全分支）；默认 decide 骨架读 settings agent.provider（未配置 throw → call-failed defer） | 标准 1-4 用例（4/4 绿） | COVERED（S2 验收面 = link 判定本身；链序 `["auto-judge","opc-bridge"]` 与落确认卡属 S3 接线集成） |
+| B5 / REQ-AGENT-074 envelope 从严 | 标准 1 excluded 面 allow 降级 defer；标准 2 deny 有效 | 零实现（gotgenes delegation-envelope.ts 系统强制，DELEGATION_EXCLUDED_SURFACES = {external_directory, path}） | envelope 实证用例（jiti 加载 gotgenes 源码直接验证，不依赖本实现） | COVERED（实证；envelope 对本 link 的强制在 S3 registerAuthorizer 后生效） |
+| B6 / REQ-AGENT-075 熔断 | 标准 1 连续 deny 达 N 降级；标准 3 allow 重置计数 | 实例级 denyStreak + denyThreshold 注入（默认 5）+ 跨阈首次 onTripped() 回调（allow 清零） | 熔断用例（denyThreshold=2 注入 → 2 次 deny 触发 1 次） | COVERED（S2 = 熔断回调触发；降级 standard + 提示属 S3 接模式服务） |
+| B7 / REQ-AGENT-076 auto 可观测 | 标准 1 每次判断一条记录；标准 2 defer 含 deferReason；标准 3 surface + latencyMs | reviewLogPath 注入（默认对齐 gotgenes permission review log 路径）+ JSONL 追加写 {requestId, surface, toolName, input?, verdict, reason?, deferReason?, latencyMs, ts}；写失败 try/catch 警告 | review log 用例（verdict=defer + latencyMs 存在） | COVERED |
+
+- 状态口径同 Slice 1。REQ-AGENT-073 标准 5（链序 defer 落回 opc-bridge 确认卡）与 REQ-AGENT-075 标准 2/4（降级提示、手动切回）依赖 S3 接线（worker 内 registerAuthorizer + 模式服务联动），S3 记录。
+
+#### Slice 2 concern（无测试契约冲突，供 S3 接线参考）
+
+1. **decide 的 defer 通信**：decide 契约 `{kind, reason?}`——defer 场景 reason 若为枚举值（model-unresolved 等）会被 log 原样采用，其余一律 decide-deferred（白名单归一）。S3 默认 decide 内部不可解析模型回复时返回 `{kind:"defer", reason:"model-unresolved"}` 即可对齐日志枚举。
+2. **gotgenes 注入的 AuthorizerLog（authorize 第三参）本切片未使用**：B7「对接既有 permission review log」通过 reviewLogPath 默认指向同一文件（`<agentHome>/extensions/pi-permission-system/logs/pi-permission-system-permission-review.jsonl`）实现；若 S3 需要 gotgenes 原生 review 落点（按 requestId 关联 gate 条目），可在接线时额外调 `log.review("auto_judge.decision", ...)`（本链路已保留该 seam）。
+3. **超时兜底 timer 为 unref**（不 hold 进程，对齐 worker 既有模式）；worker 事件循环常驻（IPC），decide 悬挂时 5s 后仍会如期触发 defer。
+4. **熔断回调语义**：跨阈首次触发后继续 deny 不重复回调（REQ-AGENT-075 标准 1 断言一次触发）；allow 重置后重新计数。S3 降级后用户手动切回 auto 时若需清零计数，可重建 link 实例或注入 onTripped 侧处理。
