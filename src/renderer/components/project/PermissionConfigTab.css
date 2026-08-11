@@ -211,10 +211,12 @@
   display: none;
 }
 
-/* ============ 规则行（全局默认 | 项目值 | 状态） ============ */
+/* ============ 规则行（规则名 | 全局默认 | 项目值 | 状态） ============
+   自适应列：规则名可伸（minmax 200px 起）、全局/项目值列有下限、
+   状态标记列收窄——960px 弹窗（modal--xl）下宽松，窄容器不截断。 */
 .rule-row {
   display: grid;
-  grid-template-columns: 1fr 180px 220px 130px;
+  grid-template-columns: minmax(200px, 1.4fr) minmax(140px, 1fr) minmax(180px, 1.2fr) minmax(80px, 0.6fr);
   align-items: center;
   gap: var(--ch-space-3);
   padding: var(--ch-space-2) var(--ch-space-4);

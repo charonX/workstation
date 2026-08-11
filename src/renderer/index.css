@@ -1181,6 +1181,10 @@ body {
   max-width: 640px;
 }
 
+.modal--xl {
+  max-width: 960px;
+}
+
 /* Icon button */
 .icon-btn {
   width: 32px;

@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
  *   - children: ReactNode — modal body content
  *   - footer: ReactNode — optional footer content (buttons)
  *   - testid: string — data-testid for the modal container
- *   - size: "sm" | "md" | "lg" — modal width preset (default: md)
+ *   - size: "sm" | "md" | "lg" | "xl" — modal width preset (default: md)
  */
 export default function Modal({ isOpen, onClose, title, children, footer, testid, size = "md" }) {
   const { t } = useTranslation();
@@ -20,6 +20,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, testid
     sm: "modal--sm",
     md: "modal--md",
     lg: "modal--lg",
+    xl: "modal--xl",
   }[size];
 
   return (

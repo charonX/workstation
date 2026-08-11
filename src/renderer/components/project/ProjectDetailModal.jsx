@@ -208,6 +208,7 @@ export default function ProjectDetailModal({ projectId, isOpen, onClose }) {
       title={detail?.overview?.name || t("projectDetail.title")}
       testid="project-detail-modal"
       footer={footer}
+      size="xl"
     >
       <div className="tabs">
         <button
