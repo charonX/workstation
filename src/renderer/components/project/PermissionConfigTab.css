@@ -424,7 +424,8 @@
 }
 
 .path-item .del,
-.chain-item .del {
+.chain-item .del,
+.shell-item .del {
   background: none;
   border: none;
   cursor: pointer;
@@ -480,6 +481,93 @@
   margin-top: var(--ch-space-2);
   font-size: var(--ch-text-xs);
   color: var(--ch-error);
+}
+
+/* ============ shellTools 嵌套编辑器（Shell 工具别名组，S5 补充切片） ============ */
+.shell-editor {
+  border-top: 1px solid var(--ch-border);
+  padding: var(--ch-space-3) var(--ch-space-4);
+}
+
+.shell-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-1);
+  margin-bottom: var(--ch-space-2);
+}
+
+.shell-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+  flex-wrap: wrap;
+  background: var(--ch-surface-high);
+  padding: 6px 10px;
+  border-radius: var(--ch-radius-sm);
+}
+
+.shell-item--override {
+  background: var(--ch-accent-soft);
+}
+
+.shell-tool-name {
+  font-family: var(--ch-font-mono);
+  font-size: 12px;
+  min-width: 110px;
+  color: var(--ch-text);
+}
+
+.shell-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ch-text-secondary);
+  white-space: nowrap;
+}
+
+.shell-field input {
+  width: 130px;
+  padding: 2px 8px;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface);
+  color: var(--ch-text);
+  font-family: var(--ch-font-mono);
+  font-size: 12px;
+}
+
+.shell-add {
+  display: flex;
+  gap: var(--ch-space-2);
+  flex-wrap: wrap;
+}
+
+.shell-add input {
+  flex: 1;
+  min-width: 110px;
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface);
+  color: var(--ch-text);
+  font-family: var(--ch-font-mono);
+  font-size: 12px;
+}
+
+.shell-add button {
+  padding: var(--ch-space-1) var(--ch-space-3);
+  font-size: var(--ch-text-xs);
+  background: var(--ch-surface-high);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  cursor: pointer;
+  color: var(--ch-text-secondary);
+  white-space: nowrap;
+}
+
+.shell-editor .rule-desc {
+  margin-top: var(--ch-space-2);
 }
 
 .chain-row {

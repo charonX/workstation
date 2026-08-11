@@ -102,14 +102,16 @@ export function buildProjectJson(rules, originalProject, overrides) {
   for (const rule of rules ?? []) deleteAt(payload, segmentsOf(rule.key));
   for (const [key, value] of Object.entries(overrides ?? {})) {
     // known-gate（BUG-001 修复）：列表编辑器新增键放行——PathEditor 交互产生的
-    // permission.path.<pattern> / permission.external_directory.<pattern> 不在 GET
-    // rules 的 known 集（服务端 buildRules 只产出 merged 中已存在的键），原先被
-    // gate 丢弃 → 保存 payload 落盘空配置。这两个前缀是面板交互唯一的新键来源
+    // permission.path.<pattern> / permission.external_directory.<pattern>、以及
+    // ShellToolsEditor 新增工具产生的 shellTools.<toolName> 不在 GET rules 的
+    // known 集（服务端 buildRules 只产出 merged 中已存在的键），原先被 gate 丢弃
+    // → 保存 payload 落盘空配置。这三个前缀是面板交互唯一的新键来源
     // （无任意键注入面），放行；其余未知键仍走 known-gate（保守）。
     if (
       !known.has(key) &&
       !key.startsWith("permission.path.") &&
-      !key.startsWith("permission.external_directory.")
+      !key.startsWith("permission.external_directory.") &&
+      !key.startsWith("shellTools.")
     ) {
       continue;
     }
@@ -145,6 +147,7 @@ const GROUP_ORDER = [
   "tool",
   "path",
   "external_directory",
+  "shell-tools",
   "chain",
   "未分组",
 ];
@@ -163,6 +166,7 @@ const GROUP_TITLES = {
   tool: "工具级裁决",
   path: "path 白名单",
   external_directory: "外部目录",
+  "shell-tools": "Shell 工具别名",
   chain: "授权链与开关",
   "未分组": "未分组",
 };
@@ -178,6 +182,7 @@ const GROUP_DESCS = {
   tool: "read/write/edit/… 允许或询问",
   path: "允许直接访问的路径",
   external_directory: "项目目录外的访问面",
+  "shell-tools": "非 bash 工具的 shell 语义别名（如 exec_command → cmd/workdir）",
   chain: "authorizerChain · yoloMode · debugLog · …",
 };
 
@@ -339,6 +344,132 @@ function PathEditor({ family, rules, overrides, onSet, onReset }) {
   );
 }
 
+// shellTools 嵌套编辑器（shell-tool 规则，S5 补充切片）：每工具一条规则，映射
+// 形态 {commandArgument, workdirArgument?}（gotgenes shellToolsSchema，config-schema.ts
+// 实证）——条目 = 工具名 + 两字段输入；未覆盖条目输入框预填全局值，编辑即写整条
+// 映射覆盖；覆盖条目可删除（✕ 跟随全局）；添加行 = 工具名 + 两字段 + 添加按钮。
+// 工具名含点会被 segmentsOf 误解析（key 协议以点作结构分隔，与含点 surface 同源
+// 风险）→ 添加时就地拦截；重复/空就地提示（对齐 PathEditor 形态）。
+function ShellToolsEditor({ rules, overrides, onSet, onReset }) {
+  const [name, setName] = useState("");
+  const [cmdArg, setCmdArg] = useState("");
+  const [wdArg, setWdArg] = useState("");
+  const [msg, setMsg] = useState(null);
+  const toolRules = rules.filter((r) => r.type === "shell-tool");
+  const add = () => {
+    const n = name.trim();
+    if (!n) {
+      setMsg("工具名为空");
+      return;
+    }
+    if (n.includes(".")) {
+      setMsg("工具名不能含点（面板 key 协议以点作结构分隔）");
+      return;
+    }
+    if (toolRules.some((r) => r.readable === n)) {
+      setMsg(`工具重复：${n}`);
+      return;
+    }
+    if (!cmdArg.trim()) {
+      setMsg("命令参数为空");
+      return;
+    }
+    onSet(`shellTools.${n}`, {
+      commandArgument: cmdArg.trim(),
+      ...(wdArg.trim() ? { workdirArgument: wdArg.trim() } : {}),
+    });
+    setName("");
+    setCmdArg("");
+    setWdArg("");
+    setMsg(null);
+  };
+  return (
+    <div className="shell-editor">
+      <div className="shell-list">
+        {toolRules.map((r) => {
+          const overridden = Object.hasOwn(overrides, r.key);
+          const mapping = (overridden ? overrides[r.key] : r.global) ?? {};
+          return (
+            <div
+              key={r.key}
+              className={`shell-item${overridden ? " shell-item--override" : ""}`}
+            >
+              <code className="shell-tool-name">{r.readable}</code>
+              <label className="shell-field">
+                命令参数
+                <input
+                  value={mapping.commandArgument ?? ""}
+                  placeholder="如 cmd"
+                  onChange={(e) =>
+                    onSet(r.key, { ...mapping, commandArgument: e.target.value })
+                  }
+                />
+              </label>
+              <label className="shell-field">
+                工作目录参数
+                <input
+                  value={mapping.workdirArgument ?? ""}
+                  placeholder="如 workdir（可选）"
+                  onChange={(e) => {
+                    const next = { ...mapping };
+                    if (e.target.value) next.workdirArgument = e.target.value;
+                    else delete next.workdirArgument;
+                    onSet(r.key, next);
+                  }}
+                />
+              </label>
+              {overridden && (
+                <button
+                  type="button"
+                  className="del"
+                  title="删除此工具映射（回到跟随全局）"
+                  onClick={() => onReset(r.key)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {toolRules.length === 0 && <div className="path-empty">无条目</div>}
+      </div>
+      <div className="shell-add">
+        <input
+          value={name}
+          placeholder="工具名，如 exec_command"
+          onChange={(e) => {
+            setName(e.target.value);
+            setMsg(null);
+          }}
+        />
+        <input
+          value={cmdArg}
+          placeholder="命令参数，如 cmd"
+          onChange={(e) => {
+            setCmdArg(e.target.value);
+            setMsg(null);
+          }}
+        />
+        <input
+          value={wdArg}
+          placeholder="工作目录参数（可选）"
+          onChange={(e) => {
+            setWdArg(e.target.value);
+            setMsg(null);
+          }}
+        />
+        <button type="button" onClick={add}>
+          添加
+        </button>
+      </div>
+      {msg && <div className="path-msg">{msg}</div>}
+      <div className="rule-desc">
+        非 bash 工具若带 shell 语义（如 exec_command），在此登记其命令/工作目录参数名，权限系统按 bash 规则评估。
+      </div>
+    </div>
+  );
+}
+
 // 数组字段列表编辑器（authorizerChain/piInfrastructureReadPaths；整体替换语义，
 // ADR-022：编辑即覆盖整链；未覆盖时展示全局链 + 跟随全局标记）。
 function ListEditor({ items, overridden, onSet, onReset, placeholder }) {
@@ -452,6 +583,7 @@ function RuleGroup({ group, overrides, onSet, onReset }) {
   const [closed, setClosed] = useState(false);
   const overrideCount = group.rules.filter((r) => Object.hasOwn(overrides, r.key)).length;
   const isListSurface = group.family === "path" || group.family === "external_directory";
+  const isShellTools = group.family === "shell-tools";
   return (
     <div className={`rule-group${closed ? " closed" : ""}`}>
       <div
@@ -473,7 +605,14 @@ function RuleGroup({ group, overrides, onSet, onReset }) {
       </div>
       {!closed && (
         <div className="group-body">
-          {isListSurface ? (
+          {isShellTools ? (
+            <ShellToolsEditor
+              rules={group.rules}
+              overrides={overrides}
+              onSet={onSet}
+              onReset={onReset}
+            />
+          ) : isListSurface ? (
             <PathEditor
               family={group.family}
               rules={group.rules}

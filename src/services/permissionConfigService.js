@@ -345,7 +345,8 @@ const TOP_LEVEL_LABELS = {
 
 // —— rules 组装（面板渲染数据源，接口契约 3.1）——
 // 遍历 merged：permission 面（bash 等 pattern map 每 pattern 一条 + 工具标量键）+
-// 顶层字段（跳过 permission/shellTools/$schema）。每条 rule：
+// shellTools 面（每工具一条，嵌套对象形态）+ 顶层字段（跳过 permission/shellTools/
+// $schema）。每条 rule：
 // { key, family, label, readable, type, global, value, source, projectOverridden }。
 // source/origin：项目文件里有该 key → project（projectOverridden=true）；否则 global。
 
@@ -453,6 +454,25 @@ function buildTopLevelRule(key, global, project) {
   };
 }
 
+// shellTools 面：每工具一条 rule（嵌套对象形态——{commandArgument, workdirArgument}
+// 整体是这条工具的 shell 语义映射，type:"shell-tool" 区别于 scalar/map-entry；
+// 面板编辑器负责展示/编辑两个子字段，字段级覆盖整条映射）。
+function buildShellToolRule(toolName, global, project) {
+  const segments = ["shellTools", toolName];
+  const { projectOwned, value, source } = sourceFor(project, segments);
+  return {
+    key: segments.join("."),
+    family: "shell-tools",
+    label: "非 bash 工具的 shell 语义别名（命令参数 → 命令/工作目录）",
+    readable: toolName,
+    type: "shell-tool",
+    global: valueAt(global, segments),
+    value,
+    source,
+    projectOverridden: projectOwned,
+  };
+}
+
 function buildRules(global, project, merged) {
   const rules = [];
   const permission = merged?.permission;
@@ -465,6 +485,14 @@ function buildRules(global, project, merged) {
       } else {
         rules.push(buildPermissionScalarRule(surface, global, project));
       }
+    }
+  }
+  // shellTools 面（gotgenes shellToolsSchema：record<工具名, {commandArgument,
+  // workdirArgument?}>，config-schema.ts 实证）：每工具一条 rule（非每子字段一条）。
+  const shellTools = merged?.shellTools;
+  if (shellTools && typeof shellTools === "object" && !Array.isArray(shellTools)) {
+    for (const toolName of Object.keys(shellTools)) {
+      rules.push(buildShellToolRule(toolName, global, project));
     }
   }
   for (const key of Object.keys(merged)) {

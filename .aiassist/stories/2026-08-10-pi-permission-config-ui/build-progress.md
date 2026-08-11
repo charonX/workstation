@@ -323,3 +323,49 @@ package.json `dependencies`（electron-forge 打包 dependencies 进 asar）→ 
 - ✅ bundle-load：入口加载成功，顶层 import 链评估通过（最接近真实启动）
 
 （脚本：`.agent-home/build-smoke/smoke-main-bundle.mjs`，gitignored。重新运行：`node .agent-home/build-smoke/smoke-main-bundle.mjs`）
+
+---
+
+### Slice 5：shellTools 配置项面板化（S5 补充切片，人确认补齐最后未覆盖配置项）
+
+QA 阶段人确认补做：`unifiedConfigSchema` 的 `shellTools` 字段（gotgenes config-schema.ts
+实证：`record<工具名, {commandArgument: string, workdirArgument?: string}>`——非 bash
+工具带 shell 语义的映射，如 `exec_command → {cmd, workdir}`，让权限系统对别名工具走
+与 bash 相同的评估栈）此前被 `buildRules` 显式跳过（与 permission/$schema 一起
+continue）——UI 面板完全看不到，是最后一个未面板化的配置项。
+
+- 实现（3 文件）：
+  - `src/services/permissionConfigService.js` `buildRules`：不再跳过 shellTools——为
+    `shellTools.<toolName>` 每条生成一条 rule（key=`shellTools.<toolName>`，
+    family=`"shell-tools"` 新分组，type=`"shell-tool"` 嵌套对象形态，区别于既有
+    scalar/map-entry/switch/array）；**一条规则代表整个工具映射**（内层
+    `{commandArgument, workdirArgument}` 由面板编辑器展示/编辑两个子字段）；
+    global/project/source/projectOverridden 语义同其他字段（字段级覆盖，ADR-022）。
+    保存侧零改动（确认：dotSurfaceIssues 只拦 permission 面，shellTools 键不受影响；
+    gotgenes 校验同尺）。
+  - `src/renderer/components/project/PermissionConfigTab.jsx`：GROUP_ORDER/GROUP_TITLES/
+    GROUP_DESCS 加 `"shell-tools": "Shell 工具别名"`（置于 chain 组前）；新
+    `ShellToolsEditor` 嵌套编辑器（条目 = 工具名 + commandArgument 输入 +
+    workdirArgument 输入 + 覆盖条目 ✕ 删除；添加行 = 工具名 + 两字段 + 添加按钮；
+    未覆盖条目输入框预填全局值，编辑即写整条映射覆盖；工作目录参数清空 = 删除键
+    （可选字段，防空串过不了 schema min(1)）；工具名含点/空/重复/命令参数空就地
+    提示）；RuleGroup 按 family 分发渲染。
+  - known-gate（BUG-001 同源回归）：`buildProjectJson` 放行 `shellTools.` 前缀——
+    新工具键不在 GET rules（服务端只产出 merged 已有键），不加前缀放行则面板新增
+    工具保存即丢（与 path/external_directory 同案）。
+- 验证：
+  - 组件自验 harness（`.agent-home/slice3-harness/driver.mjs` 新增第 10 节，gitignored）：
+    **先红后绿**——实现前 50 PASS / 9 FAIL（红 = shellTools 专项 9 项：GET rules 无
+    rule / 无 Shell 工具别名组 / 无编辑器）；实现后 **68 PASS / 0 FAIL**。覆盖：
+    默认全局无 shellTools → 面板不渲染新组（既有 E2E 不受影响的空态逻辑）；
+    JSON 写 shellTools 保存落盘；GET rules 含 `shellTools.exec_command`
+    （type/family/source/readable 形态）；嵌套编辑器渲染（工具名 + 两字段预填）；
+    编辑命令参数保存 → 文件整条映射更新；面板添加新工具（不在 rules）→ 保存落盘
+    （known-gate 放行）；✕ 取消覆盖 → 保存 → 文件删除该工具映射。
+  - 回归：`permissionConfig.test.js` 19/19 + `permissionMerge.test.js` 8/8 =
+    **27/27 绿**（另跑 permissionEvaluation.test.js 3/3 绿）；`npx vite build`
+    （root 壳）+ `vite.renderer.config.js` + `vite.main.config.js` 三态构建通过；
+    oxlint 干净。
+  - 既有 E2E 不受影响确认：E2E 文件无 shellTools 引用；默认全局无 shellTools →
+    无 shell-tools rule → 面板不渲染新组；GROUP_ORDER 插入不改变既有组顺序。
+- refactor：无（新增一个编辑器组件 + 服务端一个生成函数 + gate 前缀，无重构面）。
