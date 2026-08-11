@@ -47,6 +47,13 @@
 //      - REQ-AGENT-060 E6（2026-08-11 人裁决落地）：项目 .pi 写坏 JSON → 打开
 //        页签 → perm-invalid-banner 可见（而非「未配置」空态）→ 改规则保存 →
 //        文件修复为合法 JSON 且含覆盖值，坏文件提示消失。
+// [Slice 5 接线修正（2026-08-12，2026-08-11-pi-agent-modes S3 链序契约变更所致，
+//  test-gap 就地补全，断言语义不变）]
+//   REQ-AGENT-065 用例：全局 authorizerChain 自该 story S3（REQ-AGENT-073 链序
+//   ["auto-judge","opc-bridge"]）起为 2 条目——「显示全局链」断言由全量
+//   toContainText 改 filter 逐项定位（strict mode violation 修复）；保存后项目链
+//   = 全局基底 + 新增条目（编辑即覆盖整链，ADR-022），toEqual 期望值更新为
+//   ["auto-judge","opc-bridge","custom-gate"]（文件 + merged 双断言，语义不变）。
 
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
@@ -285,21 +292,28 @@ test.describe("项目权限配置页签（E2E）", () => {
     await expect(yoloRow.locator(".toggle")).toHaveAttribute("aria-pressed", "true");
 
     // AC1：authorizerChain 显示全局链（opc-bridge 只读基底）+ 添加授权器
+    // [S5 修正（2026-08-12，2026-08-11-pi-agent-modes S3 链序契约）]：全局链自
+    // REQ-AGENT-073 起 = ["auto-judge", "opc-bridge"]（agent-policy/
+    // pi-permission-config.json 单一真源）——.chain-item 现为 2 个元素，
+    // toContainText 全量匹配触发 strict mode violation；改 filter 逐项定位
+    //（断言语义不变：全局链基底条目可见，含 opc-bridge）。
     const chainRow = firstWindow.locator(RULE_ROW("authorizerChain"));
-    await expect(chainRow.locator(".chain-item")).toContainText("opc-bridge");
+    await expect(chainRow.locator(".chain-item").filter({ hasText: "opc-bridge" })).toBeVisible();
+    await expect(chainRow.locator(".chain-item").filter({ hasText: "auto-judge" })).toBeVisible();
     await chainRow.locator(".path-add input").fill("custom-gate");
     await chainRow.locator(".path-add button").click();
     await expect(chainRow.locator(".chain-item").filter({ hasText: "custom-gate" })).toBeVisible();
 
-    // 保存 → 文件断言：yoloMode 开关更新 + authorizerChain = 项目数组（整体替换）
+    // 保存 → 文件断言：yoloMode 开关更新 + authorizerChain = 项目数组（整体替换；
+    // 基底含全局链 auto-judge——S5 修正：编辑链 = 全局基底 + 新增条目）
     await firstWindow.click(PERM_SAVE_BTN);
     await expect(SAVED_HINT(firstWindow)).toBeVisible();
 
     const written = JSON.parse(fs.readFileSync(PI_FILE(workdir), "utf8"));
     expect(written.yoloMode).toBe(true);
-    expect(written.authorizerChain).toEqual(["opc-bridge", "custom-gate"]);
+    expect(written.authorizerChain).toEqual(["auto-judge", "opc-bridge", "custom-gate"]);
     const view = await (await fetch(`${apiBaseUrl}/api/projects/${project.id}/permission`)).json();
-    expect(view.merged.authorizerChain).toEqual(["opc-bridge", "custom-gate"]);
+    expect(view.merged.authorizerChain).toEqual(["auto-judge", "opc-bridge", "custom-gate"]);
   });
 
   test("REQ-AGENT-060 E6：项目 .pi 坏文件 → 坏文件提示（非空态）→ 保存即修复", async () => {
