@@ -6,6 +6,7 @@
 import MessageList from "./MessageList.jsx";
 import Composer from "./Composer.jsx";
 import StatusBar from "./StatusBar.jsx";
+import ModeToolbar from "./ModeToolbar.jsx";
 
 export default function ChatView({
   chatTitle,
@@ -24,6 +25,9 @@ export default function ChatView({
   execState,
   gitState,
   contextUsage,
+  mode,
+  onModeChange,
+  modeNotice,
 }) {
   return (
     <main className="assistant-chat">
@@ -73,6 +77,10 @@ export default function ChatView({
         spaceName={composer.spaceName}
         onSend={onSend}
       />
+
+      {/* 模式工具栏（REQ-AGENT-071）：composer 下方——既有渲染顺序契约
+          MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。 */}
+      <ModeToolbar mode={mode} onModeChange={onModeChange} degradedReason={modeNotice} />
     </main>
   );
 }

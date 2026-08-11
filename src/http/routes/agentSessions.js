@@ -63,6 +63,7 @@ import { decryptSecret } from "../../services/secretStore.js";
 import { subscribe } from "../../services/eventBus.js";
 import { readGitBranch } from "../../services/gitBranch.js";
 import { expandTilde, realpathBestEffort } from "../../services/pathUtils.js";
+import { AGENT_MODES } from "../../services/modeService.js";
 
 const DEFAULT_PROVIDER = "deepseek";
 
@@ -205,6 +206,15 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
   if (tail.length === 1 && tail[0] === "reset") {
     if (req.method === "POST") return handleReset(res, spaceKey, store);
+    return notFound(res);
+  }
+
+  // 会话模式（REQ-AGENT-071/072，Slice 4）：GET → { mode }（当前会话模式；
+  // 未显式切过 = 全局 lastMode，首次 auto）；PUT { mode } → { mode }（会话级
+  // 切换 + settings lastMode 持久化；非法值 → 400 E-MODE-INVALID）。
+  if (tail.length === 1 && tail[0] === "mode") {
+    if (req.method === "GET") return handleGetMode(res, spaceKey, context);
+    if (req.method === "PUT") return handlePutMode(res, spaceKey, body ?? {}, context);
     return notFound(res);
   }
 
@@ -437,6 +447,49 @@ function handleReset(res, spaceKey, store) {
   if (!newKey) return sendError(res, 400, "E-SESSION-CREATE", "不支持的空间 key");
   store.getOrCreate(newKey);
   return ok(res, { spaceKey: newKey });
+}
+
+// —— 会话模式端点（REQ-AGENT-071/072，Slice 4）——
+
+// 模式读写服务解析（ADR-009 惰性纪律）：优先既有 agentService 实例（未创建 →
+// null，不触发子进程启动——与 events 端点 peekAgentService 同型；有实例时经
+// setSessionMode/getSessionMode 保证 mode-change IPC 下发 worker，生效于下一个
+// 评估）；无实例 → 直接走模式服务单例（getModeService，server.js 注入）——
+// 会话尚未创建时模式由 session-config 自然携带（buildConfigMessage 读
+// modeService.getMode），等效。两者共用同一 modeService 单例，状态一致。
+function resolveModeService(context) {
+  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  if (svc && typeof svc.getSessionMode === "function" && typeof svc.setSessionMode === "function") {
+    return {
+      getMode: (key) => svc.getSessionMode(key),
+      setMode: (key, mode) => svc.setSessionMode(key, mode),
+    };
+  }
+  const ms = typeof context?.getModeService === "function" ? context.getModeService() : null;
+  return ms
+    ? {
+        getMode: (key) => ms.getMode(key),
+        // modeService.setMode 无返回值 → 归一化回读（与 agentService.setSessionMode
+        // 返回 getMode 的形态一致，PUT 响应恒携带生效值）。
+        setMode: (key, mode) => ms.setMode(key, mode) ?? ms.getMode(key),
+      }
+    : null;
+}
+
+function handleGetMode(res, spaceKey, context) {
+  const svc = resolveModeService(context);
+  if (!svc) return notFound(res);
+  return ok(res, { mode: svc.getMode(spaceKey) });
+}
+
+function handlePutMode(res, spaceKey, body, context) {
+  const mode = body?.mode;
+  if (!AGENT_MODES.includes(mode)) {
+    return sendError(res, 400, "E-MODE-INVALID", `非法模式 ${mode}（合法值：${AGENT_MODES.join("/")}）`);
+  }
+  const svc = resolveModeService(context);
+  if (!svc) return notFound(res);
+  return ok(res, { mode: svc.setMode(spaceKey, mode) });
 }
 
 // —— SSE 事件流（GET .../events，REQ-AGENT-028 标准 2/5/6，D4 流式 = SSE）——

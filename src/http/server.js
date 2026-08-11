@@ -250,6 +250,10 @@ export function startServer(options = {}) {
         }
         return serverModeService;
       };
+      // Slice 4（REQ-AGENT-071/072）：模式服务单例经 server 引用暴露给会话路由
+      //（handleRequest 同型接线——会话未创建时模式读写直接走单例，不触发 agent
+      // 子进程惰性创建，ADR-009）。
+      server._opcModeServiceFactory = getModeService;
       let serverAgentService = null;
       const getAgentService = async () => {
         if (!serverAgentService) {
@@ -531,6 +535,10 @@ async function handleRequest(req, res, server) {
           // events 端点据此判断「直接挂接既有会话句柄」还是「挂起等首条消息建句柄」；
           // 不触发惰性创建（ADR-009：打开 events 连接不启动 agent 子进程）。
           peekAgentService: () => server._opcAgentService ?? null,
+          // Slice 4（REQ-AGENT-071/072）：会话模式端点共用模式服务单例（与
+          // agentService 注入同一实例——模式状态与 lastMode 持久化单点；会话
+          // 未创建时直接走单例，创建后经 agentService setSessionMode 下发 IPC）。
+          getModeService: () => server._opcModeServiceFactory?.(),
         });
       }
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，

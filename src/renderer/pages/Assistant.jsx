@@ -25,6 +25,8 @@ import {
   approveConfirmation,
   rejectConfirmation,
   subscribeSessionEvents,
+  getSessionMode,
+  setSessionMode,
 } from "../api/agentSessions.js";
 import { getAgentConfig } from "../api/agent.js";
 import SessionList from "../components/assistant/SessionList.jsx";
@@ -221,6 +223,18 @@ export default function Assistant() {
   const [contextUsage, setContextUsage] = useState(null);
   const [toolActive, setToolActive] = useState(0);
 
+  // —— 会话模式（REQ-AGENT-071/072，Slice 4）：工具栏数据面——当前会话模式 +
+  // 熔断降级提示。初始取位 = GET mode（未显式切过 = lastMode，首次 auto——
+  // renderer 默认值与服务端首次默认一致，取位完成后覆盖）；切换 = PUT mode
+  // （乐观更新 + 失败回退）。modeNotice = S3 mode-degraded 事件文案（「auto
+  // 暂停」提示，REQ-AGENT-075 标准 2 呈现面）。
+  const [sessionMode, setSessionModeState] = useState("auto");
+  const [modeNotice, setModeNotice] = useState(null);
+  const sessionModeRef = useRef("auto");
+  useEffect(() => {
+    sessionModeRef.current = sessionMode;
+  }, [sessionMode]);
+
   // 忙碌/流式镜像（双击防护与 SSE 回调读当前值，避免闭包陈旧）。
   const streamingRef = useRef(false);
   const setStreamingBoth = useCallback((v) => {
@@ -312,6 +326,10 @@ export default function Assistant() {
     setGitState(null);
     setContextUsage(null);
     setToolActive(0);
+    // 切会话清理（Slice 4）：模式为会话级状态——复位默认 + 清降级提示，随后
+    // 经 GET mode 取该会话当前模式（未显式切过 = lastMode，REQ-AGENT-072 标准 2）。
+    setSessionModeState("auto");
+    setModeNotice(null);
     // BUG-004（2026-08-09）：切会话必须归零 streaming/execState——否则上个会话的
     // 流式/执行状态跨会话残留（composer 永远「回复中…」禁用、状态栏不跟随切换）。
     // execStateOf({streaming:false, toolActive:0}) → idle，新会话输入框立即可用。
@@ -443,10 +461,27 @@ export default function Assistant() {
         // contextUsage（tokens/contextWindow/percent；压缩后 tokens null → 占位）。
         // 空态帧（sessionKey null）不转发 renderer → 保持上一值。
         setContextUsage(ev.contextUsage ?? null);
+      } else if (ev.type === "mode-degraded") {
+        // Slice 3 熔断降级数据面 → S4 呈现（REQ-AGENT-075 标准 2）：模式回
+        // standard（会话状态与 lastMode 已由主进程双写）+ 「auto 暂停」提示
+        //（呈现形态 = 工具栏行内提示，非 toast/banner）。
+        if (typeof ev.mode === "string" && ev.mode) setSessionModeState(ev.mode);
+        if (typeof ev.reason === "string" && ev.reason) setModeNotice(ev.reason);
       } else if (ev.type === "session-error") {
         setStreamingBoth(false);
       }
     };
+
+    // 模式取位（Slice 4，REQ-AGENT-071/072）：进入/切换会话取当前模式（服务端
+    // 未显式切过 = lastMode；新会话首次 = auto）。SSE 只推增量不做事件回溯，
+    // 初始模式经 GET 对齐（不依赖事件流）。
+    getSessionMode(selectedKey)
+      .then((r) => {
+        if (!disposed && typeof r?.mode === "string" && r.mode) setSessionModeState(r.mode);
+      })
+      .catch(() => {
+        // 取位失败（服务未就绪等）：保持默认值，SSE 重连/下次切换兜底。
+      });
 
     align();
     const unsubscribe = subscribeSessionEvents(selectedKey, {
@@ -601,6 +636,27 @@ export default function Assistant() {
     }
   }, []);
 
+  // —— 模式切换（REQ-AGENT-071，Slice 4）：乐观更新（切换即生效，标准 5——
+  // auto 无额外提示）+ PUT 持久化；失败回退上一档。手动切换清除熔断降级提示
+  // （REQ-AGENT-075 标准 4：用户手动切回恢复）。
+  const handleModeChange = useCallback(async (mode) => {
+    const key = selectedKeyRef.current;
+    if (!key) return;
+    const prev = sessionModeRef.current;
+    setSessionModeState(mode);
+    setModeNotice(null);
+    try {
+      const res = await setSessionMode(key, mode);
+      // 响应落地前用户可能已切会话（模式为会话级状态）——仅当仍是原会话时应用。
+      if (selectedKeyRef.current === key && res && typeof res.mode === "string" && res.mode) {
+        setSessionModeState(res.mode);
+      }
+    } catch {
+      // 切换失败（服务未就绪等）：回退显示原档（服务端状态未变）。
+      if (selectedKeyRef.current === key) setSessionModeState(prev);
+    }
+  }, []);
+
   // —— 右栏派生 ——
   const space = spaceOf(selectedKey, sessions);
   const selectedSession = findSession(selectedKey, sessions);
@@ -654,6 +710,9 @@ export default function Assistant() {
         execState={execState}
         gitState={gitState}
         contextUsage={contextUsage}
+        mode={sessionMode}
+        onModeChange={handleModeChange}
+        modeNotice={modeNotice}
       />
     </div>
   );

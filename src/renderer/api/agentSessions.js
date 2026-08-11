@@ -17,7 +17,7 @@
 // 断线重连后调用方须先 GET .../messages 全量对齐再续流（F2——SSE 只推增量，
 // 不做事件回溯），本封装在每次连接建立（含重连）时触发 onOpen 回调。
 
-import { get, post } from "./client.js";
+import { get, post, put } from "./client.js";
 
 const API_BASE = () => (typeof window !== "undefined" && window.opc?.apiBaseUrl) || "";
 
@@ -58,6 +58,18 @@ export function listConfirmations() {
  *  结果经 notify-result 注入会话 → SSE 流式回投。 */
 export function approveConfirmation(confirmId) {
   return post(`/api/agent/confirmations/${encodeKey(confirmId)}/approve`, {});
+}
+
+/** 会话模式（REQ-AGENT-071/072，Slice 4）：GET → { mode }——当前会话模式；
+ *  未显式切过 = 全局 lastMode（首次 auto）。进入会话/切换会话/重载时取位。 */
+export function getSessionMode(spaceKey) {
+  return get(`/api/agent/sessions/${encodeKey(spaceKey)}/mode`);
+}
+
+/** 切换会话模式（REQ-AGENT-071/072）：PUT { mode } → { mode }——会话级状态 +
+ *  settings lastMode 持久化（新会话初始 = lastMode）；非法值 → 400 E-MODE-INVALID。 */
+export function setSessionMode(spaceKey, mode) {
+  return put(`/api/agent/sessions/${encodeKey(spaceKey)}/mode`, { mode });
 }
 
 /** 拒绝：不执行 + 回投「操作已取消」（confirmationService 既有注入）。 */

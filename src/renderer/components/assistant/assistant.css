@@ -636,6 +636,149 @@
   border-radius: var(--ch-radius-lg);
 }
 
+/* —— 模式工具栏（REQ-AGENT-071 / UX mode-toolbar.html）：composer 下方，Codex 式
+   底部工具条；无独立背景/边框——直接贴对话输入区下方，视觉融入底部。色点语义：
+   严格红 / 标准蓝 / 自动绿（--ch-error / --ch-info / --ch-accent）。 —— */
+.mode-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-3);
+  padding: var(--ch-space-1) var(--ch-space-5) var(--ch-space-3);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+}
+
+.toolbar-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10px;
+  color: var(--ch-text-tertiary);
+}
+
+.mode-select {
+  position: relative;
+}
+
+.mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface);
+  color: var(--ch-text);
+  font-size: var(--ch-text-xs);
+  font-family: var(--ch-font-sans);
+  cursor: pointer;
+}
+
+.mode-trigger:hover {
+  border-color: var(--ch-border-strong);
+}
+
+.mode-trigger .chevron {
+  font-size: 9px;
+  color: var(--ch-text-tertiary);
+  transition: transform 0.15s;
+}
+
+.mode-select.open .mode-trigger .chevron {
+  transform: rotate(180deg);
+}
+
+.mode-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mode-dot.strict {
+  background: var(--ch-error);
+}
+
+.mode-dot.standard {
+  background: var(--ch-info);
+}
+
+.mode-dot.auto {
+  background: var(--ch-accent);
+}
+
+.mode-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 240px;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  box-shadow: var(--ch-shadow-lg);
+  padding: var(--ch-space-1);
+}
+
+.mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-3);
+  cursor: pointer;
+  border-radius: var(--ch-radius-sm);
+}
+
+.mode-option:hover {
+  background: var(--ch-surface-high);
+}
+
+.mode-option.active {
+  background: var(--ch-accent-soft);
+}
+
+.mode-option .m-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+  color: var(--ch-text);
+}
+
+.mode-option .m-desc {
+  font-size: 11px;
+  color: var(--ch-text-tertiary);
+  margin-top: 2px;
+}
+
+.toolbar-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border: 1px dashed var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-xs);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar-hint {
+  font-size: 10px;
+  color: var(--ch-text-tertiary);
+}
+
+/* 熔断降级提示（REQ-AGENT-075 标准 2，S3 mode-degraded 数据面呈现） */
+.toolbar-degraded {
+  font-size: 10px;
+  color: var(--ch-error);
+}
+
 /* ============================================================
    Markdown 富文本渲染（2026-08-08-pi-agent-ux-enrichment B1：
    GFM 全量 + HTML 全转义；样式语义对齐 ux/assistant-rich.html .md，
