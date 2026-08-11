@@ -12,7 +12,8 @@
 //     部署 JSON（B7：不可见族只活在 pre-gate）；
 //   - family：归属族（B7 双确认家族判别定位：redirect / pipe-to-shell / destructive-fs
 //     / privilege-escalation / process / file-permission / disk / git-force-push /
-//     global-install）；
+//     global-install / git-destructive / code-execution / script-execution /
+//     global-config）；
 //   - globs：gotgenes glob 渲染清单（仅 hotPathVisible:true 且 decision:ask 的规则
 //     有部署表达面；生成器按其输出 `bash` surface，顺序即 JSON 键序）。
 //
@@ -124,6 +125,113 @@ export const BASH_RULES = [
     hotPathVisible: true,
     family: "global-install",
     globs: ["yarn global *"],
+  },
+  // ── 出厂高危清单扩围（对齐 Claude Code 分类器默认拦截面的确定性危险命令；
+  //    兜底仍为 `"*": "allow"`，命中才 ask）──
+  // git-destructive：丢弃未提交改动族（reset --hard / checkout -- / restore /
+  // clean / stash drop|clear）。
+  {
+    pattern: "(^|\\s)git\\s+reset\\s+--hard(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "git-destructive",
+    globs: ["git reset --hard*"],
+  },
+  {
+    pattern: "(^|\\s)git\\s+checkout\\s+--(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "git-destructive",
+    globs: ["git checkout --*"],
+  },
+  {
+    pattern: "(^|\\s)git\\s+restore(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "git-destructive",
+    globs: ["git restore*"],
+  },
+  {
+    pattern: "(^|\\s)git\\s+clean(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "git-destructive",
+    globs: ["git clean*"],
+  },
+  {
+    pattern: "(^|\\s)git\\s+stash\\s+(drop|clear)(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "git-destructive",
+    globs: ["git stash drop*", "git stash clear*"],
+  },
+  // code-execution：内联代码执行族（解释器 -c/-e/-r 直接执行代码串）。
+  {
+    pattern: "(^|\\s)(python|python3)\\s+-c(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "code-execution",
+    globs: ["python -c*", "python3 -c*"],
+  },
+  {
+    pattern: "(^|\\s)node\\s+(-e|--eval)(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "code-execution",
+    globs: ["node -e*", "node --eval*"],
+  },
+  {
+    pattern: "(^|\\s)perl\\s+-e(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "code-execution",
+    globs: ["perl -e*"],
+  },
+  {
+    pattern: "(^|\\s)ruby\\s+-e(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "code-execution",
+    globs: ["ruby -e*"],
+  },
+  {
+    pattern: "(^|\\s)php\\s+-r(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "code-execution",
+    globs: ["php -r*"],
+  },
+  // script-execution：直接执行脚本族（sh/bash 执行脚本或 bash -c；与既有
+  // pipe-to-shell 区分——这里是直接执行，不是管道到 shell）。bash 无参不在
+  // glob 面（`bash script.sh` 会 ask）。
+  {
+    pattern: "(^|\\s)(sh|bash)\\s+(-c\\s+)?(\\S+)?(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "script-execution",
+    globs: ["sh *", "bash *"],
+  },
+  {
+    pattern: "(^|\\s)source\\s+(\\S+)(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "script-execution",
+    globs: ["source *"],
+  },
+  // global-config：全局配置篡改族（git config --global / npm|pnpm config set）。
+  {
+    pattern: "(^|\\s)git\\s+config\\s+--global(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "global-config",
+    globs: ["git config --global*"],
+  },
+  {
+    pattern: "(^|\\s)(npm|pnpm)\\s+config\\s+set(\\s|$)",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "global-config",
+    globs: ["npm config set*", "pnpm config set*"],
   },
 ];
 
