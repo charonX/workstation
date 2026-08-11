@@ -88,3 +88,8 @@
 - 各层有自己的角色/状态词表：存储层（PI JSONL：`user|assistant|toolResult`）≠ API 投影（`user|assistant`，历史=对话文本）≠ UI 气泡（`data-message-role='user|agent'`）。
 - 测试 seed 写入存储层数据时**必须用存储层原生词表**（JSONL 用 `assistant` 而非 UI 的 `agent`）；UI 气泡角色由渲染层从原生 role 映射，断言语义不变。
 - 按角色过滤/收紧型修复（如历史投影只放行 user/assistant）必须全量回归所有写同层数据的既有测试（含其他 story 的 seed seam），并在 seam 注释写明词表契约。
+
+## 构建产物 external 契约（2026-08-11，2026-08-10-pi-permission-config-ui BUG-002）
+
+- 主进程/worker bundle 引入**任何新的 CJS 依赖**（jiti、原生模块、内部 webpack 形态的包），必须同步检查对应 vite 配置的 `rollupOptions.external`——同一依赖各 bundle（main/worker/renderer）的 external 配置要逐项对齐（BUG-002：worker 有 jiti external 而 main 没有 → 打包形态启动崩）。
+- 涉及构建产物的任何变更（新依赖、配置改动、资源拷贝），跑一次「真实构建 + 产物加载」smoke（本 story 沉淀 `.agent-home/build-smoke/`：forge 等价构建 → grep 产物无 `__require(` → node 加载产物入口）——源码启动测试永远覆盖不到打包形态。

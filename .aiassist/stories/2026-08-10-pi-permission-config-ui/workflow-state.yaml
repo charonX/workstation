@@ -5,7 +5,9 @@ story_id: 2026-08-10-pi-permission-config-ui
 intention: >-
   PI agent 的权限策略配置（全局出厂 + 项目级覆盖）目前只能手写代码/JSON，界面零呈现，无法在 UI 中查看和管理——需要可视化管理。MCP 配置与验证单独立项（PI SDK 暂不支持 MCP）。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+completed: true     # 门 2 最终验收通过（人确认 2026-08-11）
+completed_at: 2026-08-11
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-10
@@ -21,6 +23,7 @@ history:
   - {at: 2026-08-10, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 骨架生成（4 文件 22 处 TODO）+ 人逐项过 TODO：修正 2 处 seam 设计错误（merge 对照对象→mergeUnifiedConfigs 完整入口 / 评估 seam→createPolicyEvaluator 读项目文件真实路径）+ 20 处断言确认 + 保存成功提示宽松拍板。ASSERTIONS-SIGNED: true 4/4。signoff.md 落盘"}
   - {at: 2026-08-11, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核（b343ee2）→ BUILD 完成（4 切片 + 3 轮人裁决 + BUG-001）：S1 服务层（merge 对照 gotgenes 8/8）/ S2 路由（permissionConfig 19/19）/ S3 renderer（组件 harness 44/44 + PRD 对齐 4 裁决：projectInvalid 信号、自定义字段可编辑、E2E 补测、test2 locator）/ S4 E2E 接线（E2E 179/179）+ BUG-001（path known-gate 前缀放行）。全量：单测 727/727 + E2E 179/179 全绿"}
   - {at: 2026-08-11, from: BUILD, to: QA, note: "BUILD 收官（单测 727/727 + E2E 179/179 全绿）——进入 QA。遗留待裁决：E6 projectInvalid 已实现；缺口 8（弱对照/API seam 断言）非阻塞；hydrationWindow flake 复跑绿"}
+  - {at: 2026-08-11, from: QA, to: REFLECT, note: "门 2 最终验收通过（人确认 2026-08-11）：QA 全绿（单测 726/727 含 1 例 hydrationCooling 既有 flake 复跑绿 + E2E 179/179 + 打包形态启动验证）；BUG-001/002 闭环；范围扩展落地（shellTools 面板化——gotgenes 全字段域 100% 覆盖 / bash 高危清单扩围 14 条对齐 Claude Code 分类器拦截面 / auto mode 调研 → 新 story 2026-08-11-pi-agent-modes）。知识沉淀：engineering-lessons +4、STANDARDS 构建产物 external 契约、checklists testing +3 反模式、能力地图 342 用例。completed: true"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

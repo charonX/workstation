@@ -128,3 +128,11 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 事件契约缺关联字段靠 UI 猜测 | tool_execution_error 无 toolCallId → 并行工具错误错配块（BUG-006） | 能补字段优先补（事件携带 toolCallId）；不能补则显式关联策略（最近 running 匹配）写进 REQ 标准 |
 | 跨进程链路故障盲猜重试 | LLM 空转 5 轮诊断才定位（工具名空格 → provider 400），前 4 轮靠猜 | 先补链路诊断日志（每段转发留痕、失败显式化）让现场一次分叉，再修 |
 | 系统恢复路径被当作用户活动 | 水合 session-config 无 source 标记 → 同组冷却误淘汰（BUG-003） | 系统自动动作带显式来源标记（source:hydration），生命周期规则只对用户活动生效 |
+
+## 2026-08-11 追加（2026-08-10-pi-permission-config-ui）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 主进程 bundle 引入新 CJS 依赖不查 external | jiti 被内联进 ESM 主 bundle（`__require("node:os")`）→ 打包形态启动崩，E2E 全绿（源码启动不加载产物）（BUG-002） | 新 CJS 依赖必须同步检查 vite.main/worker external（与 worker 逐项对齐）；涉及 bundle 的变更跑「真实构建 + 产物加载」smoke（`.agent-home/build-smoke/`） |
+| 面板保存按规则表 known-gate 过滤新增键 | path 列表新增条目被 known-gate 丢弃 → 保存落盘空配置（BUG-001） | 列表/集合编辑器产生的键族（path/external_directory/shellTools 前缀）放行 known-gate；E2E 覆盖「面板新增 → 保存 → 落盘」端到端 |
+| 自由 JSON + 结构化面板双形态配置不补协议约束 | schema 宽松面（z.record）放行面板协议不支持的值（顶层未知键 → 运行时整集 fail-closed；含点 surface → 面板误解析损坏配置） | 协议约束在保存侧显式补拦（顶层未知键 400 / 含点 surface 400），不依赖 schema（schema 会放行协议不支持的值） |

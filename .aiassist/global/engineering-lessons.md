@@ -341,3 +341,30 @@
 ## 渲染安全边界的成体系决策（ADR-021）
 
 - 对话富呈现的注入面有三类：HTML 全转义（零 raw 白名单）、mermaid strict（DOMPurify 清洗实证）、图片主进程白名单 + blob URL（realpath containment + 扩展名白名单）。安全姿态保守：任何未来 raw HTML 白名单需求需重新评审。详见 ADR-021。
+
+---
+
+来源：2026-08-10-pi-permission-config-ui /reflect（2026-08-11）
+
+## 主进程 bundle 引入新的 CJS 依赖必须检查 external（BUG-002，构建产物盲区第三次印证）
+
+- **现象**：打包形态（.vite/build）启动即崩 `Calling "require" for "node:os"`——S1 在主进程服务层顶层 `import { createJiti } from "jiti"`，rolldown 把 jiti 的 CJS webpack chunk 内联进 ESM 主 bundle（保留 `__require("node:os")` 兜底），ESM 无 require 加载即崩。E2E 全绿（源码启动不加载打包产物）。
+- **根因**：`vite.worker.config.js` 有 `/^jiti(\/|$)/` external（worker 用 jiti 从不崩），但 `vite.main.config.js` 没有——同一依赖两个 bundle 的 external 配置不一致；rolldown 对 CJS 依赖的「require 兜底」只在不 external 时生成。
+- **结论**：① 主进程 bundle 引入任何**新的 CJS 依赖**（jiti/原生模块/内部 webpack 形态的包），必须同步检查 `vite.main.config.js` external——与 worker/renderer 配置逐项对齐；② 涉及构建产物的改动必须跑「真实构建 + 产物加载」smoke（本 story 沉淀为 `.agent-home/build-smoke/`：forge 等价构建 → grep 产物无 `__require(` → node 加载产物入口），源码启动测试永远覆盖不到打包形态；③ 这是「构建产物包含性盲区」第三次印证（agentRegistry ENOENT → bundle 语义 → require 兜底），每次都是新变体——固定动作是「任何影响 bundle 的变更跑一次真实构建冒烟」。
+
+## 面板保存的数据流：known-gate 会吞掉「面板新增但服务端规则表不认识」的键（BUG-001）
+
+- **现象**：面板添加 path 白名单条目 → 保存成功提示出现但落盘空配置——`buildProjectJson` 的 known-gate（`if (!known.has(key)) continue`）丢弃了 `permission.path.<pattern>`：known = GET rules 的 key 集，服务端 `buildRules` 只产 merged 中已存在的键，新增键不在集内。
+- **结论**：前端「按规则表生成 payload」时，**列表/集合类编辑器的键天然不在规则表**（规则表只反映已存在值）——known-gate 必须放行编辑器交互产生的键族（path/external_directory/shellTools 前缀），或直接去掉 gate（payload 只含面板交互产生的键，无任意键注入面）。回归测试要覆盖「面板新增条目 → 保存 → 落盘」的端到端（E2E 064 就是为此补的）。
+
+## 权限配置面板化的两个安全边界实证（裁决 A + 对齐）
+
+- **顶层未知键 → 运行时整集 fail-closed**：gotgenes `unifiedConfigSchema` 是 strictObject——未知顶层键导致整文件判 `{config:{}}` → `invalid:true` → 全规则集 floor ask（含全局 allow）。**保存侧必须拒绝顶层未知键**（400 + 提示），防「保存即全禁」；permission 面内自定义 surface/pattern 是 z.record 合法（运行时安全），保留放行。
+- **含点 surface 破坏面板 key 协议**：面板规则 key 以点作结构分隔（`permission.<surface>.<pattern>`），含点 surface（`"custom.surface"`）会被误解析、面板保存损坏配置——协议层拒绝含点 surface（保存 400），pattern 键含点（`bash."rm *"`）不受影响。
+- **结论**：给「自由 JSON + 结构化面板」双形态的配置做 UI 时，schema 的宽松面（z.record）与面板协议的结构约束（点分隔）会冲突——协议约束必须在保存侧显式补拦，不能依赖 schema（schema 会放行协议不支持的值）。
+
+## 权限体系的模式化（auto/edit mode）已有现成机制可借鉴（调研，输入下 story）
+
+- gotgenes `authorizerChain` 就是「模型判断 link」的官方扩展点：link 审 `ask` → allow/deny/defer，bounded-delegation 内建（link 对 external_directory/path 的 allow 降级 defer——模型永不能超策略）；官方 `@gotgenes/pi-permission-model-judge` 是 deny-first 参考实现（只 deny 笔误、永不放行、fail-safe by construction）。
+- yoloMode = gotgenes 原生的「ask→allow 全局重写」（最粗粒度 auto）。
+- 结论：做 auto mode 不需要改 gotgenes——注册 authorizerChain link 即可；deny-first + 熔断（连续 3 拒暂停）+ 短路（不匹配不调模型）是可借鉴的安全设计。详见 research/pi-auto-mode-authorizer-chain.md。
