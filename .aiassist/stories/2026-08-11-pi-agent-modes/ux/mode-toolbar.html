@@ -1,0 +1,252 @@
+<!-- @dsCard group="conversation" name="mode-toolbar" viewport="980x720" -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对话区模式工具栏 — UX 原型</title>
+<link rel="stylesheet" href="_ds/global/tokens.css">
+<link rel="stylesheet" href="_ds/global/styles.css">
+<style>
+  /* ============ 原型舞台（模拟会话中心对话窗） ============ */
+  body { background: var(--ch-bg); color: var(--ch-text); font-family: var(--ch-font-sans); }
+  .stage { max-width: 980px; margin: 24px auto; }
+  .stage-note { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-bottom: var(--ch-space-2); }
+
+  .chat-window {
+    border: 1px solid var(--ch-border);
+    border-radius: var(--ch-radius-xl);
+    background: var(--ch-surface);
+    box-shadow: var(--ch-shadow-lg);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    height: 640px;
+  }
+
+  /* ============ header（既有形态） ============ */
+  .chat-header {
+    display: flex; align-items: center; gap: var(--ch-space-3);
+    padding: var(--ch-space-3) var(--ch-space-4);
+    border-bottom: 1px solid var(--ch-border);
+  }
+  .chat-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); flex: 1; margin: 0; }
+  .status-badge {
+    font-size: 11px; padding: 2px 10px; border-radius: var(--ch-radius-full);
+    background: var(--ch-surface-high); border: 1px solid var(--ch-border); color: var(--ch-text-secondary);
+  }
+
+  /* ============ 消息区（示意） ============ */
+  .messages { flex: 1; overflow-y: auto; padding: var(--ch-space-4); display: flex; flex-direction: column; gap: var(--ch-space-3); }
+  .msg { max-width: 78%; padding: var(--ch-space-2) var(--ch-space-3); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); }
+  .msg.user { align-self: flex-end; background: var(--ch-accent-soft); color: var(--ch-accent-text); }
+  .msg.agent { align-self: flex-start; background: var(--ch-surface-high); border: 1px solid var(--ch-border); }
+
+  /* ============ StatusBar（既有形态，composer 上方） ============ */
+  .status-bar {
+    display: flex; align-items: center; gap: var(--ch-space-4);
+    padding: var(--ch-space-2) var(--ch-space-4);
+    border-top: 1px solid var(--ch-border);
+    font-size: var(--ch-text-xs); color: var(--ch-text-secondary);
+  }
+  .status-item { display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ch-border-strong); }
+  .status-dot.busy { background: var(--ch-accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+
+  /* ============ Composer（既有形态） ============ */
+  .composer {
+    border-top: 1px solid var(--ch-border);
+    padding: var(--ch-space-3) var(--ch-space-4) var(--ch-space-2);
+  }
+  .composer-row { display: flex; align-items: flex-end; gap: var(--ch-space-2); }
+  .composer-input {
+    flex: 1; min-height: 40px; max-height: 120px; resize: none;
+    border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+    background: var(--ch-surface); color: var(--ch-text);
+    padding: var(--ch-space-2) var(--ch-space-3); font-size: var(--ch-text-sm);
+    font-family: var(--ch-font-sans);
+  }
+  .send-btn {
+    padding: var(--ch-space-2) var(--ch-space-4);
+    background: var(--ch-accent); color: #fff; border: none;
+    border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); cursor: pointer;
+  }
+  .send-btn:disabled { opacity: .45; cursor: default; }
+
+  /* ============ 【新】底部工具栏（composer 下方，Codex 式） ============ */
+  .mode-toolbar {
+    display: flex; align-items: center; gap: var(--ch-space-3);
+    padding: var(--ch-space-2) var(--ch-space-4) var(--ch-space-3);
+    border-top: 1px solid var(--ch-border);
+    background: var(--ch-surface-high);
+    font-size: var(--ch-text-xs); color: var(--ch-text-secondary);
+  }
+  .toolbar-label { text-transform: uppercase; letter-spacing: .05em; font-size: 10px; color: var(--ch-text-tertiary); }
+
+  /* 模式下拉（三档） */
+  .mode-select { position: relative; }
+  .mode-trigger {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: var(--ch-space-1) var(--ch-space-3);
+    border: 1px solid var(--ch-border); border-radius: var(--ch-radius-sm);
+    background: var(--ch-surface); color: var(--ch-text);
+    font-size: var(--ch-text-xs); cursor: pointer;
+  }
+  .mode-trigger .chevron { font-size: 9px; color: var(--ch-text-tertiary); transition: transform .15s; }
+  .mode-select.open .mode-trigger .chevron { transform: rotate(180deg); }
+  .mode-trigger .mode-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .mode-dot.strict { background: var(--ch-error); }
+  .mode-dot.standard { background: var(--ch-info); }
+  .mode-dot.auto { background: var(--ch-accent); }
+
+  .mode-menu {
+    display: none; position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 50;
+    min-width: 240px;
+    background: var(--ch-surface); border: 1px solid var(--ch-border);
+    border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-lg);
+    padding: var(--ch-space-1); overflow: hidden;
+  }
+  .mode-select.open .mode-menu { display: block; }
+  .mode-option {
+    display: flex; align-items: flex-start; gap: var(--ch-space-2);
+    padding: var(--ch-space-2) var(--ch-space-3);
+    cursor: pointer; border-radius: var(--ch-radius-sm);
+  }
+  .mode-option:hover { background: var(--ch-surface-high); }
+  .mode-option.active { background: var(--ch-accent-soft); }
+  .mode-option .m-name { font-size: var(--ch-text-xs); font-weight: var(--ch-weight-medium); color: var(--ch-text); display: flex; align-items: center; gap: 6px; }
+  .mode-option .m-desc { font-size: 11px; color: var(--ch-text-tertiary); margin-top: 2px; }
+
+  /* 未来扩展槽位（灰显占位，本期隐藏/禁用） */
+  .toolbar-slot {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: var(--ch-space-1) var(--ch-space-3);
+    border: 1px dashed var(--ch-border); border-radius: var(--ch-radius-sm);
+    color: var(--ch-text-tertiary); font-size: var(--ch-text-xs);
+    cursor: not-allowed; opacity: .55;
+  }
+  .toolbar-spacer { flex: 1; }
+  .toolbar-hint { font-size: 10px; color: var(--ch-text-tertiary); }
+
+  .footnote { margin-top: var(--ch-space-4); font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="stage-note">UX 原型 · 对话区底部模式工具栏（composer 下方，Codex 式布局）· 交互：下拉三档切换 / 未来槽位占位</div>
+
+  <div class="chat-window">
+    <!-- header（既有） -->
+    <div class="chat-header">
+      <h2 class="chat-title">日报模板项目</h2>
+      <span class="status-badge">项目 · 日报模板</span>
+    </div>
+
+    <!-- 消息区（示意） -->
+    <div class="messages">
+      <div class="msg agent">最近 24 小时共 6 次执行：4 成功 / 1 失败 / 1 执行中。</div>
+      <div class="msg user">帮我把 daily.md 的标题加上日期</div>
+      <div class="msg agent">好的，我来更新 templates/daily.md。文件编辑已自动批准（标准模式）。</div>
+    </div>
+
+    <!-- StatusBar（既有，composer 上方） -->
+    <div class="status-bar">
+      <span class="status-item"><span class="status-dot"></span>空闲</span>
+      <span class="status-item">⎇ feat/demo</span>
+      <span class="status-item">4.6k / 128k tokens · 3.57%</span>
+    </div>
+
+    <!-- Composer（既有） -->
+    <div class="composer">
+      <div class="composer-row">
+        <textarea class="composer-input" placeholder="输入消息…">帮我把 daily.md 的标题加上日期</textarea>
+        <button class="send-btn">发送</button>
+      </div>
+    </div>
+
+    <!-- ============ 【新】底部工具栏（composer 下方） ============ -->
+    <div class="mode-toolbar" data-testid="mode-toolbar">
+      <span class="toolbar-label">模式</span>
+
+      <!-- 三档下拉 -->
+      <div class="mode-select" data-testid="mode-select" id="modeSelect">
+        <button class="mode-trigger" data-testid="mode-trigger" id="modeTrigger">
+          <span class="mode-dot standard" id="modeDot"></span>
+          <span id="modeLabel">标准</span>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="mode-menu" id="modeMenu">
+          <div class="mode-option" data-mode="strict">
+            <div>
+              <div class="m-name"><span class="mode-dot strict"></span>严格</div>
+              <div class="m-desc">所有操作都需确认，包括读取/查询</div>
+            </div>
+          </div>
+          <div class="mode-option active" data-mode="standard">
+            <div>
+              <div class="m-name"><span class="mode-dot standard"></span>标准</div>
+              <div class="m-desc">按项目权限配置执行（默认）</div>
+            </div>
+          </div>
+          <div class="mode-option" data-mode="auto">
+            <div>
+              <div class="m-name"><span class="mode-dot auto"></span>自动</div>
+              <div class="m-desc">常规操作由模型判断后自动执行；危险/项目外仍拦截</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <span class="toolbar-spacer"></span>
+
+      <!-- 未来扩展槽位（占位灰显：模型选择 / 附件） -->
+      <span class="toolbar-slot" data-testid="toolbar-slot-model" title="后续版本开放">模型</span>
+      <span class="toolbar-slot" data-testid="toolbar-slot-attach" title="后续版本开放">附件</span>
+
+      <span class="toolbar-hint">模式仅影响当前会话</span>
+    </div>
+  </div>
+
+  <div class="footnote">
+    原型说明（非实现）：
+    · 工具栏位于 composer 下方（Codex 式底部工具条），不改变既有 MessageList→StatusBar→Composer 顺序契约。
+    · 三档下拉：严格（全确认）/ 标准（按配置）/ 自动（模型代问）；auto 切换无额外提示（人拍板）。
+    · 未来扩展槽位（模型/附件）本期灰显占位，容器结构可扩展。
+    · 模式仅影响当前会话；全局默认 = 上次选择（lastMode），首次 = 自动。
+  </div>
+</div>
+
+<script>
+  // —— 原型交互：下拉三档切换（纯前端模拟）——
+  const select = document.getElementById("modeSelect");
+  const trigger = document.getElementById("modeTrigger");
+  const menu = document.getElementById("modeMenu");
+  const label = document.getElementById("modeLabel");
+  const dot = document.getElementById("modeDot");
+
+  const MODE_META = {
+    strict: { label: "严格", cls: "strict" },
+    standard: { label: "标准", cls: "standard" },
+    auto: { label: "自动", cls: "auto" },
+  };
+  let current = "standard";
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    select.classList.toggle("open");
+  });
+  document.addEventListener("click", () => select.classList.remove("open"));
+
+  menu.querySelectorAll(".mode-option").forEach((opt) => {
+    opt.addEventListener("click", () => {
+      current = opt.dataset.mode;
+      const meta = MODE_META[current];
+      label.textContent = meta.label;
+      dot.className = `mode-dot ${meta.cls}`;
+      menu.querySelectorAll(".mode-option").forEach((o) => o.classList.toggle("active", o === opt));
+      select.classList.remove("open");
+    });
+  });
+</script>
+</body>
+</html>
