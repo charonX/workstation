@@ -114,3 +114,17 @@
 - E2E 需 `rebuild:electron` + 全量接线，本 slice 以组件自验（30/30）+ vite build 为准；E2E 文件未跑（S4 统一）。
 - E2E test 2 的 locator 矛盾（见偏差 1）与「空态下行可见」（偏差 2 已满足）在 S4 需测试作者按 test-gap 流程确认。
 - `permission.bash.*`（bash 兜底 pattern）family 为「未分组」+ `permission.meta-mismatch` 警告——S2 已记录的设计行为（BASH_RULES 无该 glob），非本 slice 回归。
+
+#### Slice 3 PRD 对齐裁决补录（2026-08-11，人裁决 ×4，commit 见下）
+
+PRD 对齐子代理（S3）报告 8 缺口，人裁决 4 项需实现侧改动；测试契约由 S4 测试作者更新（E2E test 2 locator 改定位 `[data-global-cell]` + 补用例），本补录不碰测试文件：
+
+1. **缺口 6（P2，E6 坏文件 projectInvalid 信号）→ 裁决：本期补**。
+   - 服务端：`readProjectConfig` 返回区分信号 `{config, invalid}`（坏文件 invalid:true，缺失 invalid:false）；`getPermissionView` 响应加 `projectInvalid`（坏文件 true）；E-PROJECT-NOT-FOUND 语义不变。
+   - renderer：`projectInvalid === true` → 显示坏文件提示「配置文件已损坏，已按全局默认处理——重新保存可修复」（`[data-testid='perm-invalid-banner']`，错误色），替代「未配置」空态；进入已配置态（规则行 + 保存入口可用，保存即覆盖修复）。
+   - docs：tech-design §3.1 GET 契约补 `projectInvalid` 字段说明。
+2. **缺口 4（E5 自定义字段只读标记 vs 实现可编辑行）→ 裁决：接受现状**。permission 面内自定义字段以普通可编辑行渲染保持不变；prd.md E5 行与 B8 中「标记「自定义字段」只读展示」→「以可编辑行呈现（B5 全量面板化语义）」；顶层未知键仍保存拒绝（裁决 A 不变）。
+3. **E2E test 2 全局列 locator（行级 count 断言与 test 3 矛盾）→ 裁决：改测试定位**。实现侧配合：全局默认列 cell 加 `[data-global-cell]` 属性（S4 测试作者将 test 2 断言改定位到它；实现侧不改测试）。
+4. **缺口 7（key 协议含点 surface 误解析）→ 裁决：防御**。服务端 `savePermission` 拒绝 permission 面含点 surface 键（400 E-PERMISSION-INVALID，issue 提示「surface 名含点不支持」）——permission 面是 z.record（schema 接受含点键，实证），需协议层补拦；只拒段内含点的 surface 键，pattern 键（`permission.bash."rm *"` 等）不受影响。测试（S4 补）：含点 surface → 400 + 文件未变；`bash."rm *"` 类正常键照常保存。
+
+验证：`permissionConfig.test.js` 19/19 绿（新增 `projectInvalid` 字段未破坏 GET 断言——既有用例均为字段级断言，无整响应 deepEqual）+ `vite build` 通过 + slice3-harness 30/30 基线全绿（新增坏文件分支断言后 38/38）。

@@ -67,7 +67,12 @@
 200 →
 {
   "global": { ...完整全局 JSON },            // 部署 JSON 原文（只读基底）
-  "project": { ...项目 JSON } | null,        // null = 未配置
+  "project": { ...项目 JSON } | null,        // null = 未配置或已损坏（见 projectInvalid）
+  "projectInvalid": false,                   // true = 项目配置文件已损坏（JSON.parse
+                                             //   失败，E6，2026-08-11 人裁决落地）：
+                                             //   UI 显示坏文件提示而非「未配置」空态，
+                                             //   按全局默认展示，保存即覆盖修复；
+                                             //   project=null 无法区分两态
   "merged": { ...字段级 merge 结果 },        // 权威生效视图（校验/展示锚点）
   "rules": [                                  // 面板渲染数据源（扁平化 + 元数据）
     {
@@ -94,7 +99,12 @@
 body = { ...完整项目配置 JSON }   // 面板模式：前端生成（已知字段取面板值 +
                                  // 未知字段保留原文件值）；JSON 模式：原样传
 200 → { "saved": true, "mtime": "<文件 mtimeMs>" }   // mtime 供前端可选提示
-400 → { code: "E-PERMISSION-INVALID", "issues": [     // zod 路径化错误（T5）
+400 → { code: "E-PERMISSION-INVALID", "issues": [     // zod 路径化错误（T5）+
+                                             // 协议层防御（2026-08-11 人裁决落地）：
+                                             // permission 面内含点 surface 键
+                                             // （如 "custom.surface"）→ 拒绝（面板
+                                             // key 协议以点作结构分隔，含点 surface
+                                             // 会被误解析；pattern 键含点不受影响）
          { "path": "permission.bash.rm *", "message": "..." }
        ] }                                            // 不落盘
 500 → { code: "E-PERMISSION-WRITE" }                  // IO 失败，文件保持原状
