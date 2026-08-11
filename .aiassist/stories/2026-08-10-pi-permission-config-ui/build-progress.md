@@ -233,3 +233,81 @@ GET rules），条目自然在保存后刷新出现——无需额外改动。
 - `npx vite build` 通过。
 - 本 story E2E 全量（permissionConfig.test.cjs）：**10/10 绿**（含修复前红的
   REQ-AGENT-064 增删保存）。
+
+---
+
+#### 构建产物契约 smoke（BUG-002 护栏，2026-08-11 06:37:08）
+
+**结果：FAIL (no-require-shim, bundle-load)**
+
+- ✅ build：vite build 成功；产物: agentRegistry.json, channelManager-BTHrtHm0.js, channelManager-DnerOb7g.js, main.js, server-Blt0_XLj.js, server-DvNWaOgw.js
+- ❌ no-require-shim：产物含 require 兜底（jiti 被内联？）: channelManager-DnerOb7g.js:Calling `require`@1417
+- ❌ bundle-load：加载失败（非 require 类，疑环境不匹配）: M.AsyncLocalStorage is not a constructor
+
+（脚本：`.agent-home/build-smoke/smoke-main-bundle.mjs`，gitignored。重新运行：`node .agent-home/build-smoke/smoke-main-bundle.mjs`）
+---
+
+#### 构建产物契约 smoke（BUG-002 护栏，2026-08-11 06:49:01）
+
+**结果：FAIL (no-require-shim, bundle-load)**
+
+- ✅ build：vite build 成功；产物: agentRegistry.json, channelManager-BTHrtHm0.js, channelManager-DnerOb7g.js, main.js, server-BrWqE4RF.js, server-Dvqg9MKa.js
+- ❌ no-require-shim：产物含 require 兜底（jiti 被内联？）: channelManager-DnerOb7g.js:Calling `require`@1417
+- ❌ bundle-load：加载抛 require 错误（jiti 未 external？）: Calling `require` for "node:os" in an environment that doesn't expose the `require` function. See https://rolldown.rs/in-depth/bundling-cjs#require-external-modules for more details.
+
+（脚本：`.agent-home/build-smoke/smoke-main-bundle.mjs`，gitignored。重新运行：`node .agent-home/build-smoke/smoke-main-bundle.mjs`）
+---
+
+#### 构建产物契约 smoke（BUG-002 护栏，2026-08-11 06:56:20）
+
+**结果：PASS**
+
+- ✅ build：vite build 成功；产物: agentRegistry.json, channelManager-DnYlUdis.js, channelManager-nsCRxjW1.js, main.js, server-9lq_Da2s.js, server-CJeNkjgG.js
+- ✅ no-require-shim：产物 5 个 js 均无 __require(（jiti 未内联）
+- ✅ bundle-load：入口加载成功，顶层 import 链评估通过（最接近真实启动）
+
+（脚本：`.agent-home/build-smoke/smoke-main-bundle.mjs`，gitignored。重新运行：`node .agent-home/build-smoke/smoke-main-bundle.mjs`）
+---
+
+#### BUG-002（code-defect，QA blocker：打包形态启动崩溃 → 修复完成）
+
+**症状**：`npm start`（打包形态，.vite/build 产物）启动即崩：
+`Error: Calling "require" for "node:os" in an environment that doesn't expose the "require" function`，
+栈指向 `.vite/build/channelManager-*.js`（实际根因在主进程 bundle 内联的 jiti 代码）。
+
+**根因**（已实证）：S1 服务层 `src/services/permissionConfigService.js` 顶层
+`import { createJiti } from "jiti"`（加载 gotgenes TS 源码做校验）——jiti 是 CJS
+（dist/jiti.cjs），rolldown 内联它时保留其内部 webpack chunk 的
+`__require("node:os")` 等 require 兜底调用（CJS require-of-external 形态），而主
+bundle 是 ESM（vite.main.config.js `formats: ["es"]`）无 require → 加载即崩。
+对比：`vite.worker.config.js` 早就有 `/^jiti(\/|$)/` external（worker 用 jiti 从不
+崩）——jiti 必须 external（运行期从 node_modules/asar 加载，内部动态
+import/fs 加载 .ts 源码，不可内联）。为何 E2E 全绿：E2E 从 src 源码启动（vite
+dev），从不加载 .vite/build 打包产物——「构建产物包含性是源码启动测试盲区」
+（agentRegistry ENOENT 同源教训）。
+
+**修复**（commit 见下）：`vite.main.config.js` `rollupOptions.external` 增加
+`/^jiti(\/|$)/`（regex 覆盖子路径，对齐 worker 配置同规则 + 注释）。产物侧实证：
+修复后主 bundle 保留 `import { createJiti } from "jiti"` 外部导入，无任何
+`__require(`；server chunk 1,653 kB → 1,420 kB（jiti 不再内联）。jiti 在
+package.json `dependencies`（electron-forge 打包 dependencies 进 asar）→ 运行期
+可加载。仅加 jiti，未扩大范围（其余 external 保持原样；claude-agent-sdk 等 ESM
+依赖走 ESM import 天然 external 化，不需要 require 兜底）。
+
+**回归验证**（构建产物契约 smoke，`.agent-home/build-smoke/`，gitignored）：
+- 新增 `smoke-main-bundle.mjs` 回归护栏：forge 等价配置真实构建（临时 outDir
+  .agent-home/build-smoke/out）+ 断言产物无 `__require(` / `Calling `require`` +
+  node 加载产物入口（electron stub 垫底，评估顶层 import 链，最接近真实启动）。
+  **先红后绿**：修复前 → 产物含 `Calling `require`` 且加载抛
+  `Calling `require` for "node:os"...`（与生产崩溃逐字一致）；修复后 → 产物无
+  require 兜底 + 入口加载成功。
+- 裸 `npx vite build --config vite.main.config.js --outDir .agent-home/build-smoke/raw-out`
+  同样通过：产物无 `__require(`，jiti 保持外部 import。
+- **为何 smoke 用 forge 等价配置而非裸命令**：forge 构建会 merge 进
+  `resolve.conditions:['node']` + 全部 node builtin external（vite.base.config.js）；
+  裸构建缺这些 → vite 把依赖里的 node builtin 替换成 `__vite-browser-external`
+  空桩（实证：裸构建里 async_hooks 变空桩 → `new AsyncLocalStorage()` 崩，
+  而旧 .vite/build 产物里是真 external import）——裸构建与生产产物语义不同。
+  smoke 直接走 forge 的 `getConfig` 同一条代码路径。
+- E2E 快速回归未跑（可选）：本修复只动主进程构建配置，源码形态（vite dev）E2E
+  从不加载打包产物，跑 E2E 无法验证本修复；产物验证已由 smoke 承担。
