@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // 模式服务（REQ-AGENT-070 三档 / 072 lastMode / 077 模式不改持久配置）。
 //

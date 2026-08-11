@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // auto 引擎（REQ-AGENT-073 link 判断 / 074 envelope 从严 / 075 熔断 / 076 可观测）。
 //

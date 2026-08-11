@@ -3,7 +3,7 @@
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true
 
 // 对话区模式工具栏 E2E（REQ-AGENT-071 工具栏 / 072 lastMode 初始模式）。
 //
