@@ -75,6 +75,13 @@ const HEARTBEAT_TIMEOUT_MS = 6000;
 const RESTART_DELAY_MS = 150;
 const MAX_CONSECUTIVE_RESTARTS = 5;
 
+// stop() 等待子进程退出（hydrationWindow flake 根因修复）：SIGTERM 后最多等
+// STOP_EXIT_TIMEOUT_MS 仍不退 → SIGKILL 强制终止，再给 STOP_KILL_GRACE_MS
+// 宽限；仍不退则放弃等待并警告——不无限挂起。消除「stop 返回但 worker 仍在
+// 跑」竞态（stop 后立刻 utimes/清目录会与仍在收尾的 worker 抢 JSONL/句柄）。
+const STOP_EXIT_TIMEOUT_MS = 5000;
+const STOP_KILL_GRACE_MS = 1000;
+
 // 日志环形上界（REQ-AGENT-040 标准 1 / 签核裁决 11，D7 拍板）：主进程 logs[]
 // 恒 ≤1000 条，超限覆盖最旧（保留最新尾部）。导出供测试注入共享。
 export const DEFAULT_LOG_RING_LIMIT = 1000;
@@ -1276,9 +1283,38 @@ function createProcessAgentService(options = {}) {
       clearInterval(heartbeatTimer);
       clearTimeout(restartTimer);
       rejectPendingPrompts(restartingError());
+      // 修复：SIGTERM 后等待子进程真正退出再 resolve——消除「stop 返回但
+      // worker 仍在跑」竞态（测试 stop 后立刻 utimesSync/清理目录，会与仍在
+      // 收尾的 worker 抢 JSONL mtime / 文件句柄 → hydrationWindow flake 两种
+      // 形态：超窗行误水合 + afterEach ENOTEMPTY）。超时兜底：SIGKILL 强制
+      // 终止 + 短宽限；仍不退则放弃等待（警告日志，不无限挂起）。
+      const exiting = child && child.exitCode === null ? child : null;
       killChild("SIGTERM");
       child = null;
       state = "stopped";
+      if (!exiting || exiting.exitCode !== null) return Promise.resolve();
+      return new Promise((resolve) => {
+        let settled = false;
+        let killTimer = null;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          exiting.off("exit", onExit);
+          clearTimeout(killTimer);
+          resolve();
+        };
+        const onExit = () => settle();
+        exiting.once("exit", onExit);
+        killTimer = setTimeout(() => {
+          log(`stop() 等待子进程退出超时（${STOP_EXIT_TIMEOUT_MS}ms），SIGKILL 强制终止`);
+          try {
+            exiting.kill("SIGKILL");
+          } catch {
+            // 已退出则 exit 事件接管。
+          }
+          killTimer = setTimeout(settle, STOP_KILL_GRACE_MS);
+        }, STOP_EXIT_TIMEOUT_MS);
+      });
     },
     kill() {
       // 模拟崩溃（任意退出码）→ 看门狗重启（REQ-AGENT-005 标准 2/3/4）。

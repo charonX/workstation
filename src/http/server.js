@@ -454,7 +454,9 @@ export function stopServer({ server }) {
     // prevents leaked subprocesses across tests and on production shutdown.
     if (server._opcAgentService) {
       try {
-        server._opcAgentService.stop();
+        // stop() 现返回 promise（等待 agent 子进程退出）：await 保证关停时
+        // worker 已真正退出，不留「关停后仍在收尾」的子进程/句柄。
+        await server._opcAgentService.stop();
       } catch {
         // ignore
       }
