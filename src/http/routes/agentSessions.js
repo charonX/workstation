@@ -492,6 +492,30 @@ function handlePutMode(res, spaceKey, body, context) {
   return ok(res, { mode: svc.setMode(spaceKey, mode) });
 }
 
+// —— 全局 lastMode（BUG-001 裁决 A：无会话切模式 = 改全局默认）——
+// PUT /api/agent/mode/last { mode } → { mode }（server.js resource="agent"、
+// subPath[0]="mode" 挂接）：renderer 无会话（selectedKey 为 null）时切换不再
+// 静默丢弃——落盘 settings agent.lastMode（modeService.setLastMode），后续新建
+// 会话取位 = 新 lastMode（REQ-AGENT-072 标准 2）。无会话即「模式 = 全局默认」态，
+// 无 worker 会话可下发 → 只走模式服务单例（getModeService，与与会话级
+// resolveModeService 的单例兜底分支共用同一实例，状态一致）；非法值 → 400
+// E-MODE-INVALID（与会话级 PUT mode 同契约）。
+export function handleAgentLastMode(req, res, body, context = {}) {
+  const ms = typeof context?.getModeService === "function" ? context.getModeService() : null;
+  if (!ms || typeof ms.setLastMode !== "function" || typeof ms.getLastMode !== "function") {
+    return notFound(res);
+  }
+  if (req.method === "PUT") {
+    const mode = body?.mode;
+    if (!AGENT_MODES.includes(mode)) {
+      return sendError(res, 400, "E-MODE-INVALID", `非法模式 ${mode}（合法值：${AGENT_MODES.join("/")}）`);
+    }
+    ms.setLastMode(mode);
+    return ok(res, { mode: ms.getLastMode() });
+  }
+  return notFound(res);
+}
+
 // —— SSE 事件流（GET .../events，REQ-AGENT-028 标准 2/5/6，D4 流式 = SSE）——
 
 // Slice 8（REQ-AGENT-056/058）：会话 git 分支状态（主进程读取——项目目录边界一致，

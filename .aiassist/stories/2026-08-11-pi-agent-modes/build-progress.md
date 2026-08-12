@@ -188,3 +188,17 @@ assert.notEqual(fresh, "strict");   // ← 红
 4. **mode-degraded 提示形态（S4 concern 3 延续）**：行内提示（mode-toolbar-degraded）非独立 toast/banner，REFLECT 可复核观感。
 5. **全量 E2E 首跑即绿 183/184（除跨 story 契约红）**：本 story 无新增实现 flake；既有 E2E 水位 184/184 复跑稳定（1.1min 全量）。
 6. **hydrationWindow.test.js 既有 flake（非本 story 引入，建议父代理裁决处置）**：复跑 5 次约 50% 红，两种失败形态：(a) 标准 1「超窗行不水合」断言失败——`agentService.stop()` 为 fire-and-forget（SIGTERM 后立即返回，agentService.js:1274 原样），旧 worker 进程退出前仍可能触碰 JSONL → utimesSync 设的旧 mtime 被改写回 now → 水合误判；(b) 标准 5/标准 1 afterEach `fs.rmSync` ENOTEMPTY——旧进程句柄未释放。根因 = 测试时序（stop 后未等子进程真正退出即 utimes）与 stop() 语义的既有竞态；S3/S4 均未触碰该路径（git log 实证）。处置选项：(a) agentService.stop() 改为等待子进程退出（[build]，影响面需评估——stop 同步语义被多处消费）；(b) 测试侧 stop 后轮询 childPid 退出再 utimes（[test]）；(c) 接受并标注已知 flake。本切片未动该文件（跨 story 业务测试，交父代理/人裁决）。
+
+### BUG-001 记录：无会话切模式落盘全局 lastMode（commit 见 [test]/[bugfix] 双提交）
+
+- **症状**：切严格模式 → 发送对话 → 模式自动跳回「自动」。
+- **根因（已复现）**：`src/renderer/pages/Assistant.jsx` `handleModeChange` 在 `selectedKey` 为 null（还没选/建会话）时 `if (!key) return` **静默丢弃切换**——服务端从未收到 PUT（lastMode 仍 auto）；随后发送首条消息 → `createSession` + `setSelectedKey` → 切会话 effect 复位默认 + GET 取位（= lastMode = auto）→ UI 回 auto。
+- **分类（人裁决）**：code-defect；**裁决 A**：无会话时切模式 = 落盘全局 lastMode（无会话时「模式」就是全局默认，切换即改全局）——切 strict 持久化，发送建会话后取位 = strict。
+- **修复**：
+  - `src/http/routes/agentSessions.js` 增 `handleAgentLastMode`：`PUT /api/agent/mode/last { mode } → { mode }`（无会话 lastMode 设置端点；模式服务单例落盘 settings agent.lastMode，非法值 → 400 E-MODE-INVALID，与既有 PUT /mode 同契约）。
+  - `src/http/server.js` 接线 `case "agent"`：`subPath[0]==="mode" && subPath[1]==="last"` → handleAgentLastMode（getModeService 上下文）。
+  - `src/renderer/api/agentSessions.js` 增 `setLastMode(mode)`（PUT /api/agent/mode/last 封装）。
+  - `src/renderer/pages/Assistant.jsx` `handleModeChange`：`!key` 不再 return——改走 `setLastMode(mode)`（无会话路径），保持乐观更新 + 失败回退（与有会话路径一致；有会话路径仍走 `setSessionMode`）。
+- **回归测试（先红后绿，Prove-It）**：`tests/.../2026-08-11-pi-agent-modes/api/modeService.test.js` 增「BUG-001 回归：无会话切模式落盘全局 lastMode（HTTP 集成面）」——无会话 PUT 全局 lastMode=strict → 新建会话 → GET mode = strict（REQ-AGENT-071/072 trace + BUG-TRACE: BUG-001）。修复前红（PUT 404 NOT_FOUND：端点不存在，切换无落盘路径）；修复后绿。
+- **回归结果**：story api **14/14**（13 既有 + 1 BUG-001 回归，无回归）+ 会话 REST 路由 33/33 绿；`npx vite build --config vite.renderer.config.js` ✓。
+- **E2E**：未加用例（API/集成回归已覆盖语义——`setLastMode` 端点为 renderer 无会话路径的唯一落盘通道，E2E 无会话用例恒为默认值断言，链路由 HTTP 集成面断言；如需 E2E 断言见 S4 concern 2 的建会话前置模式）。

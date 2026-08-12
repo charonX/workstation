@@ -72,6 +72,14 @@ export function setSessionMode(spaceKey, mode) {
   return put(`/api/agent/sessions/${encodeKey(spaceKey)}/mode`, { mode });
 }
 
+/** 全局 lastMode（BUG-001 裁决 A：无会话切模式 = 改全局默认）：PUT
+ *  /api/agent/mode/last { mode } → { mode }——无会话（selectedKey 为 null）时
+ *  切换落盘 settings lastMode，后续新建会话取位 = 新 lastMode
+ *  （REQ-AGENT-072 标准 2）；非法值 → 400 E-MODE-INVALID。 */
+export function setLastMode(mode) {
+  return put("/api/agent/mode/last", { mode });
+}
+
 /** 拒绝：不执行 + 回投「操作已取消」（confirmationService 既有注入）。 */
 export function rejectConfirmation(confirmId) {
   return post(`/api/agent/confirmations/${encodeKey(confirmId)}/reject`, {});

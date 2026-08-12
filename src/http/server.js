@@ -21,7 +21,7 @@ import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
-import { handleAgentSessions, buildSessionConfig, attachPendingSseSubs } from "./routes/agentSessions.js";
+import { handleAgentSessions, buildSessionConfig, attachPendingSseSubs, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
@@ -546,6 +546,14 @@ async function handleRequest(req, res, server) {
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
       // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
       // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
+      // 全局 lastMode（BUG-001 裁决 A：无会话切模式 = 改全局默认）：PUT
+      // /api/agent/mode/last——renderer 无会话切换经此落盘 settings lastMode，
+      // 后续新建会话取位 = 新 lastMode（REQ-AGENT-072 标准 2）。
+      if (subPath[0] === "mode" && subPath[1] === "last") {
+        return handleAgentLastMode(req, res, body, {
+          getModeService: () => server._opcModeServiceFactory?.(),
+        });
+      }
       if (subPath[0] === "files") {
         // 图片文件（REQ-AGENT-051 / I-3 访问机制）：GET /api/agent/files/image——
         // 主进程白名单判定（项目目录边界 + 扩展名）后读文件回传二进制，renderer 转

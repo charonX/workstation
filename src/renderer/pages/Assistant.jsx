@@ -27,6 +27,7 @@ import {
   subscribeSessionEvents,
   getSessionMode,
   setSessionMode,
+  setLastMode,
 } from "../api/agentSessions.js";
 import { getAgentConfig } from "../api/agent.js";
 import SessionList from "../components/assistant/SessionList.jsx";
@@ -639,17 +640,23 @@ export default function Assistant() {
   // —— 模式切换（REQ-AGENT-071，Slice 4）：乐观更新（切换即生效，标准 5——
   // auto 无额外提示）+ PUT 持久化；失败回退上一档。手动切换清除熔断降级提示
   // （REQ-AGENT-075 标准 4：用户手动切回恢复）。
+  // BUG-001（裁决 A）：无会话（selectedKey 为 null，还没选/建会话）时切换不再
+  // 静默丢弃——「模式」即全局默认，切换 = 改全局 lastMode（PUT /api/agent/mode/last
+  // 落盘）；后续新建会话经 GET 取位 = 新 lastMode（修复前：!key 直接 return →
+  // 服务端从未收到 PUT，发送首条消息建会话后取位 = 旧 lastMode → UI 回 auto）。
   const handleModeChange = useCallback(async (mode) => {
     const key = selectedKeyRef.current;
-    if (!key) return;
     const prev = sessionModeRef.current;
     setSessionModeState(mode);
     setModeNotice(null);
     try {
-      const res = await setSessionMode(key, mode);
-      // 响应落地前用户可能已切会话（模式为会话级状态）——仅当仍是原会话时应用。
-      if (selectedKeyRef.current === key && res && typeof res.mode === "string" && res.mode) {
-        setSessionModeState(res.mode);
+      const res = key
+        ? await setSessionMode(key, mode)
+        : await setLastMode(mode);
+      if (res && typeof res.mode === "string" && res.mode) {
+        // 有会话路径：响应落地前用户可能已切会话（模式为会话级状态）——仅当
+        // 仍是原会话时应用；无会话路径：无会话可切走，直接应用生效值。
+        if (!key || selectedKeyRef.current === key) setSessionModeState(res.mode);
       }
     } catch {
       // 切换失败（服务未就绪等）：回退显示原档（服务端状态未变）。
