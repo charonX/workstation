@@ -99,3 +99,4 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-019: PI agent 维持单进程（重估触发条件：真实崩溃/隔离需求）
 - ADR-020: 权限出厂策略单一真源（代码规则表 + 生成配平，修订 ADR-017「文件=契约」）
 - ADR-021: 对话渲染安全边界（LLM 输出 HTML 全转义 + 图片主进程白名单 + mermaid strict）
+- ADR-023: agent 权限模式化（authorizerChain 模型 link + 模式门控，三档 strict/standard/auto）

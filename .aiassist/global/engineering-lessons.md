@@ -368,3 +368,41 @@
 - gotgenes `authorizerChain` 就是「模型判断 link」的官方扩展点：link 审 `ask` → allow/deny/defer，bounded-delegation 内建（link 对 external_directory/path 的 allow 降级 defer——模型永不能超策略）；官方 `@gotgenes/pi-permission-model-judge` 是 deny-first 参考实现（只 deny 笔误、永不放行、fail-safe by construction）。
 - yoloMode = gotgenes 原生的「ask→allow 全局重写」（最粗粒度 auto）。
 - 结论：做 auto mode 不需要改 gotgenes——注册 authorizerChain link 即可；deny-first + 熔断（连续 3 拒暂停）+ 短路（不匹配不调模型）是可借鉴的安全设计。详见 research/pi-auto-mode-authorizer-chain.md。
+
+---
+
+来源：2026-08-11-pi-agent-modes /reflect（2026-08-12）
+
+## 模型判断权限（auto mode）的正确姿势：authorizerChain link + deny-first，不是改引擎
+
+- gotgenes authorizerChain 是「模型判断 link」的官方扩展点：link 审 ask → allow/deny/defer，**envelope 系统级强制**（delegation-envelope.ts：模型对 external_directory/path 的 allow 一律降级 defer——放行必人工，deny 有效）。「模型不自动放行项目外」不是自觉约定是系统强制。
+- 实现 auto mode 零 gotgenes 改动：注册 link + 链序 `["auto-judge", "opc-bridge"]`；deny 短路确认卡（authorizer-chain.ts 实证），defer 落回既有 opc-bridge 卡。
+- **动态链不可行 → 模式门控**：gotgenes authorizerChain 是配置数组整体替换且 configStore 私有闭包无运行时变更 API——改配置违反「模式不改 .pi」契约。正确做法：worker 侧模式门控（非 auto 档 auto-judge 立即 defer 零副作用——不调 decide/不写日志/不动计数），净效果 = 标准/严格档链现状、auto 档加 link。
+- **安全设计三件套（可复用）**：deny-first（模型只 deny 明确危险、永不主动放行 excluded 面）+ 熔断（连续 deny N 次降级回 standard，Claude Code 3/20 阈值参考）+ 判断不了 defer 弹卡（fail-safe by construction）+ review log 可观测（静默全 defer 可查）。
+
+## 测试注入缝：可编程 decide 替代真实模型调用
+
+- auto-judge link 的 `decide` 注入缝（构造函数注入）让测试用可编程判定（allow/deny/defer/throw）驱动全路径——真实模型调用在测试中不可行（网络/凭据/不确定性）。
+- 配套：envelope 强制语义用「jiti 加载 gotgenes 源码直接验证」（encloseInDelegationEnvelope 实证测试），不依赖我们的实现——验证系统级行为而非自觉。
+- FAUX 注入口（OPC_FAUX_JUDGE_RESULT）对齐既有 OPC_FAUX_TOOL_SEQUENCE 模式。
+
+## agentService.stop() 必须等待子进程退出（hydration flake 根治）
+
+- **现象**：hydrationWindow.test.js ~50% flake——旧 worker 退出前触碰 JSONL → 测试 utimesSync 设的旧 mtime 被改写回 now；或 afterEach ENOTEMPTY（句柄未释放）。
+- **根因**：agentService.stop() fire-and-forget——SIGTERM 后立即返回，不等待子进程退出。测试 stop 后马上 utimes/清理 → 与仍在退出的 worker 竞态。
+- **修复**：stop() 捕获 child 引用 + 'exit' 事件 + 超时兜底（5s 未退 → SIGKILL + 1s 宽限）；无存活子进程同步 resolve。实测 hydrationWindow 从 ~50% 红 → 4 连绿，全量 740/740。
+- **结论**：任何「监督方 stop 被监督子进程」的结构，stop 必须等待退出（超时兜底防挂起）；「stop 返回 = 进程已停」是测试稳定性的前提假设。
+
+## 无会话操作的 UI 语义：不能静默丢弃，要落盘全局默认（BUG-001）
+
+- **现象**：无会话时切严格模式 → 发送对话 → 模式跳回 auto。根因：handleModeChange 在 selectedKey=null 时 `if (!key) return` 静默丢弃（UI 乐观显示但服务端未收到 PUT）；发送首条消息 createSession → 切会话 effect 复位 + GET 取位（= 旧 lastMode）→ 回 auto。
+- **结论**：会话级 UI 状态在「无会话」时的操作必须显式定义语义——降级为全局默认（无会话时切模式 = 改 lastMode）比静默丢弃 + 禁用都自洽；「UI 显示 ≠ 服务端状态」的窗口（乐观更新未落盘）会以任何后续数据流（取位/切换）暴露。
+
+## 背景层级一致性：容器化底部输入区（BUG-002）
+
+- **现象**：composer 有 surface 白块背景、toolbar 无背景透页面底（#ffffff vs #f7f8f7）→ 视觉色带，用户感知「工具栏有背景色」。
+- **结论**：同一视觉区块（底部输入区）内元素必须共享同一背景容器——把 Composer + 附属工具栏包进统一容器（surface + 顶边框），视觉一体（Codex 式）。「无独立背景」的组件放在有背景的兄弟旁 = 色带。
+
+## 重复信息标识清理（BUG-003）
+
+- 同一信息（spaceName）在两处显示（header 徽标 + composer chip）——保留权威位置（header），删除冗余（chips 行 + 死数据 spaceName prop 链）。删 UI 元素必须同步清理 props/调用方/样式（checklists 既有教训再印证）。

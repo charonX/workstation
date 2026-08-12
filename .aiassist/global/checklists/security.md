@@ -78,6 +78,15 @@ Referrer-Policy: strict-origin-when-cross-origin
 - [ ] 图片访问机制走本地 HTTP API + blob URL（dev/prod origin 一致），不用 `file://` 直链
 - [ ] 高亮输出走 dangerouslySetInnerHTML 仅限喂库自身转义产物，异常 try/catch 回退 plaintext
 
+## 模型判断权限（auto mode）安全面（2026-08-12，ADR-023）
+
+- [ ] 模型 link 对外部边界（external_directory/path）的 allow 被引擎系统级降级（envelope 强制）——验证系统强制存在，不依赖自觉
+- [ ] deny-first：模型只 deny 明确危险，判断不了一律 defer（fail-safe by construction，不静默放行）
+- [ ] 模型调用失败/超时/回复不可解析 → defer 弹卡（不降级为放行）
+- [ ] 熔断：连续 deny N 次降级回标准模式（防模型把会话卡死或放水无感）
+- [ ] 每次判断写 review log（verdict/deferReason/latency）——「静默全 defer/全放行」可查
+- [ ] 模式不改持久配置（.pi 文件）；「模式=运行时档位」不污染契约层
+
 ## OWASP Top 10 速查
 
 | # | 风险 | 防护 |

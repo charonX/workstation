@@ -93,3 +93,13 @@
 
 - 主进程/worker bundle 引入**任何新的 CJS 依赖**（jiti、原生模块、内部 webpack 形态的包），必须同步检查对应 vite 配置的 `rollupOptions.external`——同一依赖各 bundle（main/worker/renderer）的 external 配置要逐项对齐（BUG-002：worker 有 jiti external 而 main 没有 → 打包形态启动崩）。
 - 涉及构建产物的任何变更（新依赖、配置改动、资源拷贝），跑一次「真实构建 + 产物加载」smoke（本 story 沉淀 `.agent-home/build-smoke/`：forge 等价构建 → grep 产物无 `__require(` → node 加载产物入口）——源码启动测试永远覆盖不到打包形态。
+
+## 模型判断权限的接入姿势（2026-08-12，2026-08-11-pi-agent-modes，ADR-023）
+
+- 需要「模型判断自动批准」类能力时，走既有引擎的官方扩展点（gotgenes authorizerChain link），**不改引擎**；安全边界由引擎系统级强制（envelope：external_directory/path 的模型 allow 降级 defer）承载，不靠自觉。
+- 运行时按状态切换扩展点行为（如链 link 参与与否）用**门控**实现（非目标状态立即 defer 零副作用），不动态改配置（改配置违反契约 + 跨状态共享）。
+- 模型判断 link 三件套：deny-first（只 deny 明确危险）+ 判断不了 defer 弹卡（fail-safe）+ 熔断（连续拒绝降级）+ review log 可观测。
+
+## 测试注入缝（2026-08-12，2026-08-11-pi-agent-modes）
+
+- 真实模型调用在测试中不可行——用**可编程判定注入缝**（构造函数注入 decide 函数）驱动全路径；验证引擎系统级行为（如 envelope 强制）用「jiti 加载第三方源码直接断言」，不依赖我们的实现。

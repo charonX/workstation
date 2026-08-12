@@ -104,7 +104,7 @@
 | confirmation (pi-agent-consolidation) | `tests/capabilities/agent-dialogue/confirmation/2026-08-07-pi-agent-consolidation/e2e/` | REQ-AGENT-043, 044（2026-08-08 验收） | E2E `confirmChainUi/confirmChainBash.test.cjs` |
 | conversation-space (ux-enrichment) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-08-pi-agent-ux-enrichment/e2e/`, `.../api/` | REQ-AGENT-047~058（v1 047-055 + v2 范围扩展 056-058，2026-08-10 验收） | E2E `richRender/toolCallBlock/streamingRender/statusBar.test.cjs` + api `workerToolEventExt/sessionStats/toolNameSanitize/fsToolRelativePath/toolErrorAttribution/workerServerDiscovery/hydrationCooling/confirmChronology/historyToolFilter.test.js`（含 BUG-002~010 回归） |
 | conversation-space (permission-config-ui) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-10-pi-permission-config-ui/e2e/`, `.../api/` | REQ-AGENT-059~069（2026-08-11 验收） | E2E `permissionConfig.test.cjs`（10 用例）+ api `permissionConfig/permissionMerge/permissionEvaluation.test.js`（30 用例；字段级覆盖语义 ADR-022 + 保存即生效 + merge 对照 gotgenes） |
-| conversation-space (pi-agent-modes) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-11-pi-agent-modes/e2e/`, `.../api/` | REQ-AGENT-070~077（2026-08-11 结晶 v1） | 计划：E2E `modeToolbar.test.cjs` + api `modeService/autoJudgeLink.test.js`（三档模式/工具栏/lastMode/auto link/envelope 从严/熔断/可观测/模式不改配置） |
+| conversation-space (pi-agent-modes) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-11-pi-agent-modes/e2e/`, `.../api/` | REQ-AGENT-070~077（2026-08-12 验收） | E2E `modeToolbar.test.cjs`（5 用例）+ api `modeService/autoJudgeLink.test.js`（14 用例；三档模式/工具栏/lastMode/auto link/envelope 从严/熔断/可观测/模式不改配置，ADR-023） |
 
 ## 能力依赖图
 
@@ -135,4 +135,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
-| agent-dialogue | 5 | 342 | 2026-08-11 |
+| agent-dialogue | 5 | 356 | 2026-08-12 |

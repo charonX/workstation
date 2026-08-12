@@ -136,3 +136,13 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 主进程 bundle 引入新 CJS 依赖不查 external | jiti 被内联进 ESM 主 bundle（`__require("node:os")`）→ 打包形态启动崩，E2E 全绿（源码启动不加载产物）（BUG-002） | 新 CJS 依赖必须同步检查 vite.main/worker external（与 worker 逐项对齐）；涉及 bundle 的变更跑「真实构建 + 产物加载」smoke（`.agent-home/build-smoke/`） |
 | 面板保存按规则表 known-gate 过滤新增键 | path 列表新增条目被 known-gate 丢弃 → 保存落盘空配置（BUG-001） | 列表/集合编辑器产生的键族（path/external_directory/shellTools 前缀）放行 known-gate；E2E 覆盖「面板新增 → 保存 → 落盘」端到端 |
 | 自由 JSON + 结构化面板双形态配置不补协议约束 | schema 宽松面（z.record）放行面板协议不支持的值（顶层未知键 → 运行时整集 fail-closed；含点 surface → 面板误解析损坏配置） | 协议约束在保存侧显式补拦（顶层未知键 400 / 含点 surface 400），不依赖 schema（schema 会放行协议不支持的值） |
+
+## 2026-08-12 追加（2026-08-11-pi-agent-modes）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 真实模型调用直接进测试 | 网络/凭据/不确定性，测试不可复现 | 可编程判定注入缝（decide 函数注入）驱动全路径；引擎系统级行为用「jiti 加载第三方源码直接断言」（envelope 实证） |
+| 运行时按状态切换扩展点靠改配置 | 配置数组整体替换 + 私有闭包无变更 API；改配置违反「模式不改 .pi」且跨状态共享 | 门控（非目标状态 link 立即 defer 零副作用），不动态改配置 |
+| 监督方 stop 不等待子进程退出 | stop 返回后 worker 仍运行 → 测试 utimes/清理竞态（hydration ~50% flake） | stop() 捕获 child + 'exit' 事件 + 超时兜底（SIGKILL + 宽限）；「stop 返回 = 进程已停」 |
+| 无会话操作被静默丢弃 | UI 乐观显示但服务端未收到（handleModeChange if(!key) return）→ 后续数据流取位暴露不一致 | 无会话操作显式定义语义（降级为全局默认并落盘）；「UI 显示 ≠ 服务端状态」窗口必以取位暴露 |
+| 同一视觉区块内背景层级不一致 | composer surface 白块 vs toolbar 透页面底 → 视觉色带（用户感知「有背景色」） | 容器化：同一区块元素共享统一背景容器（底部输入区 Composer+Toolbar 一个 surface 容器） |
