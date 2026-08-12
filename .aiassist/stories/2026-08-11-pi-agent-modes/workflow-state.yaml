@@ -5,9 +5,9 @@ story_id: 2026-08-11-pi-agent-modes
 intention: >-
   PI agent 的权限只有「全人工确认」和「全放行（yoloMode）」两极：编辑文件/跑命令逐个弹确认卡太频繁，全放行又不放心——需要中间态模式（edit mode 文件编辑自动批准 + auto mode 模型判断自动批准），对齐 Claude Code 的 acceptEdits/auto。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA             # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-11
 
 # 阶段流转历史。正常前进和回流都记一条。
