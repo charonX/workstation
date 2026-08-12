@@ -69,18 +69,24 @@ export default function ChatView({
           渲染顺序契约：MessageList → StatusBar → Composer（E2E 断言 DOM 纵向顺序）。 */}
       <StatusBar exec={execState} git={gitState} context={contextUsage} />
 
-      <Composer
-        readonly={composer.readonly}
-        readonlyReason={composer.readonlyReason}
-        disabled={composer.disabled}
-        busy={composer.busy}
-        spaceName={composer.spaceName}
-        onSend={onSend}
-      />
-
-      {/* 模式工具栏（REQ-AGENT-071）：composer 下方——既有渲染顺序契约
+      {/* 底部输入区容器（BUG-002，Codex 式一体输入区）：Composer + ModeToolbar 包进
+          .composer-area——容器统一 surface 背景 + border-top（原 .composer 的背景/
+          边框移到这里），composer/toolbar 均无独立背景，视觉一块。顺序契约保持：
           MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。 */}
-      <ModeToolbar mode={mode} onModeChange={onModeChange} degradedReason={modeNotice} />
+      <div className="composer-area">
+        <Composer
+          readonly={composer.readonly}
+          readonlyReason={composer.readonlyReason}
+          disabled={composer.disabled}
+          busy={composer.busy}
+          spaceName={composer.spaceName}
+          onSend={onSend}
+        />
+
+        {/* 模式工具栏（REQ-AGENT-071）：composer 下方——既有渲染顺序契约
+            MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。 */}
+        <ModeToolbar mode={mode} onModeChange={onModeChange} degradedReason={modeNotice} />
+      </div>
     </main>
   );
 }

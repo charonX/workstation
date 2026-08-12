@@ -202,3 +202,14 @@ assert.notEqual(fresh, "strict");   // ← 红
 - **回归测试（先红后绿，Prove-It）**：`tests/.../2026-08-11-pi-agent-modes/api/modeService.test.js` 增「BUG-001 回归：无会话切模式落盘全局 lastMode（HTTP 集成面）」——无会话 PUT 全局 lastMode=strict → 新建会话 → GET mode = strict（REQ-AGENT-071/072 trace + BUG-TRACE: BUG-001）。修复前红（PUT 404 NOT_FOUND：端点不存在，切换无落盘路径）；修复后绿。
 - **回归结果**：story api **14/14**（13 既有 + 1 BUG-001 回归，无回归）+ 会话 REST 路由 33/33 绿；`npx vite build --config vite.renderer.config.js` ✓。
 - **E2E**：未加用例（API/集成回归已覆盖语义——`setLastMode` 端点为 renderer 无会话路径的唯一落盘通道，E2E 无会话用例恒为默认值断言，链路由 HTTP 集成面断言；如需 E2E 断言见 S4 concern 2 的建会话前置模式）。
+
+### BUG-002 记录：底部输入区容器化——Composer+ModeToolbar 统一 surface 背景（工具栏色带）
+
+- **症状**：对话区底部模式工具栏（composer 下方）视觉上有一行「背景色/色带」——用户反馈「对话框下面的一行模型切换的背景色，我们不是说去掉吗？」（UX 原型 v1.1 明确：工具栏无独立背景/边框，直接贴 composer 下方）。
+- **根因（人已确认）**：`.composer` 有 `background: var(--ch-surface)`（浅色 #ffffff 白块）+ `border-top`；`.mode-toolbar` 无背景 → 透出页面底 `--ch-bg`（浅色 #f7f8f7 / 暗色 #0d1117）。两者色差在视觉上形成「工具栏那行有背景色」的错觉——不是 toolbar 有背景，是**背景层级不一致**（composer 白块 vs toolbar 透底）。
+- **分类（人裁决）**：code-defect；**方案**：Composer + ModeToolbar 包进统一底部容器 `.composer-area`（`background: var(--ch-surface)` + `border-top`）；composer 不再单独有背景/border-top（border-top 移到容器），toolbar 继承容器背景——视觉一体（Codex 式输入区）。
+- **修复**：
+  - `src/renderer/components/assistant/ChatView.jsx`：`<Composer>` + `<ModeToolbar>` 包进 `<div className="composer-area">`（渲染顺序契约不变：MessageList → StatusBar → ComposerArea(Composer → ModeToolbar)）。
+  - `src/renderer/components/assistant/assistant.css`：新增 `.composer-area { border-top: 1px solid var(--ch-border); background: var(--ch-surface); }`；`.composer` 移除 `background` + `border-top`（保留 padding）；`.mode-toolbar` 保持无独立背景（继承容器）。
+- **回归测试（先红后绿，Prove-It）**：自验 harness `.agent-home/bug2-harness/`（gitignored，不进入契约——浏览器 Playwright chromium 渲染真实 ChatView + 真实 tokens/assistant.css）。核心断言：composer 与 toolbar 的「有效背景」（自身上溯最近非透明背景）一致且 = surface 参照，浅色 + 暗色双跑；辅助：`.composer-area` 结构（border-top 1px + surface）、toolbar 自身无背景/边框、纵向顺序（composer.y+h ≤ toolbar.y+1 + DOM 顺序）。**修复前红**（浅色 composer=rgb(255,255,255) vs toolbar=rgb(247,248,247)；暗色 composer=rgb(22,27,34) vs toolbar=rgb(13,17,23)——正是色带根因）+ 像素级验证（PNG 解码采样左侧 padding 窄列众数色）修复前红 / 修复后绿（两主题同色）；修复后 harness **11/11 绿**。
+- **回归结果**：story E2E `modeToolbar.test.cjs` **5/5 绿**（含标准 1 纵向顺序契约容器化后仍成立）+ 相关回归 `assistantChat.test.cjs` 2/2 + `statusBar.test.cjs` 4/4 绿；`npx vite build --config vite.renderer.config.js` ✓（383ms）。截图（浅/暗各一）：`.agent-home/bug2-harness/shots/bug2-light.png`、`bug2-dark.png`（像素验证两主题 toolbar 与 composer 背景同色，无色带）。

@@ -575,9 +575,15 @@
 }
 
 /* —— 输入区 —— */
-.composer {
+/* 底部输入区容器（BUG-002，Codex 式一体输入区）：Composer + ModeToolbar 统一容器，
+   surface 背景 + border-top（原 .composer 的背景/边框移到这里）——composer 与
+   toolbar 同落容器背景，视觉一块无色带。 */
+.composer-area {
   border-top: 1px solid var(--ch-border);
   background: var(--ch-surface);
+}
+
+.composer {
   padding: var(--ch-space-3) var(--ch-space-5);
 }
 
@@ -637,8 +643,9 @@
 }
 
 /* —— 模式工具栏（REQ-AGENT-071 / UX mode-toolbar.html）：composer 下方，Codex 式
-   底部工具条；无独立背景/边框——直接贴对话输入区下方，视觉融入底部。色点语义：
-   严格红 / 标准蓝 / 自动绿（--ch-error / --ch-info / --ch-accent）。 —— */
+   底部工具条；无独立背景/边框——落在 .composer-area 容器 surface 背景上（BUG-002
+   容器化后继承容器背景，视觉一体无色带）。色点语义：严格红 / 标准蓝 / 自动绿
+   （--ch-error / --ch-info / --ch-accent）。 —— */
 .mode-toolbar {
   display: flex;
   align-items: center;
