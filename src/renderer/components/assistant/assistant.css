@@ -587,24 +587,6 @@
   padding: var(--ch-space-3) var(--ch-space-5);
 }
 
-.composer-chips {
-  display: flex;
-  gap: var(--ch-space-2);
-  margin-bottom: var(--ch-space-2);
-}
-
-.ctx-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ch-space-1);
-  font-size: var(--ch-text-xs);
-  color: var(--ch-text-secondary);
-  background: var(--ch-surface-high);
-  border: 1px solid var(--ch-border);
-  padding: 2px 10px;
-  border-radius: var(--ch-radius-full);
-}
-
 .composer-row {
   display: flex;
   gap: var(--ch-space-3);

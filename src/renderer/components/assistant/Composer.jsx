@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 
-export default function Composer({ readonly, readonlyReason, disabled, busy, spaceName, onSend }) {
+export default function Composer({ readonly, readonlyReason, disabled, busy, onSend }) {
   const [text, setText] = useState("");
 
   // 只读空间（飞书/孤儿）：无输入区（composer-input/send-button 不渲染——
@@ -35,9 +35,6 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, spa
 
   return (
     <div className="composer">
-      <div className="composer-chips">
-        <span className="ctx-chip">{spaceName}</span>
-      </div>
       <div className="composer-row">
         <textarea
           className="composer-input"

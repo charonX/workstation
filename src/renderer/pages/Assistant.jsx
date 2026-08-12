@@ -710,7 +710,6 @@ export default function Assistant() {
           readonlyReason: space.reason ?? "飞书会话 · 请到飞书继续对话",
           disabled: unconfigured,
           busy: streaming,
-          spaceName: space.name,
         }}
         onSend={handleSend}
         projectDir={selectedProjectDir}

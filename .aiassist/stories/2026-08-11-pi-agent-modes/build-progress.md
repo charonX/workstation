@@ -213,3 +213,16 @@ assert.notEqual(fresh, "strict");   // ← 红
   - `src/renderer/components/assistant/assistant.css`：新增 `.composer-area { border-top: 1px solid var(--ch-border); background: var(--ch-surface); }`；`.composer` 移除 `background` + `border-top`（保留 padding）；`.mode-toolbar` 保持无独立背景（继承容器）。
 - **回归测试（先红后绿，Prove-It）**：自验 harness `.agent-home/bug2-harness/`（gitignored，不进入契约——浏览器 Playwright chromium 渲染真实 ChatView + 真实 tokens/assistant.css）。核心断言：composer 与 toolbar 的「有效背景」（自身上溯最近非透明背景）一致且 = surface 参照，浅色 + 暗色双跑；辅助：`.composer-area` 结构（border-top 1px + surface）、toolbar 自身无背景/边框、纵向顺序（composer.y+h ≤ toolbar.y+1 + DOM 顺序）。**修复前红**（浅色 composer=rgb(255,255,255) vs toolbar=rgb(247,248,247)；暗色 composer=rgb(22,27,34) vs toolbar=rgb(13,17,23)——正是色带根因）+ 像素级验证（PNG 解码采样左侧 padding 窄列众数色）修复前红 / 修复后绿（两主题同色）；修复后 harness **11/11 绿**。
 - **回归结果**：story E2E `modeToolbar.test.cjs` **5/5 绿**（含标准 1 纵向顺序契约容器化后仍成立）+ 相关回归 `assistantChat.test.cjs` 2/2 + `statusBar.test.cjs` 4/4 绿；`npx vite build --config vite.renderer.config.js` ✓（383ms）。截图（浅/暗各一）：`.agent-home/bug2-harness/shots/bug2-light.png`、`bug2-dark.png`（像素验证两主题 toolbar 与 composer 背景同色，无色带）。
+
+### BUG-003 记录：删除 Composer ctx-chip——输入框上方重复的项目标识（保留右上角 chat-space-badge）
+
+- **症状**：对话页有两个「项目标识」——右上角 `chat-header` 的 `chat-space-badge`（保留）与输入框上方 `Composer.jsx` 的 `ctx-chip` 显示同一 spaceName，重复。
+- **根因（人已确认）**：`Composer.jsx` 的 `composer-chips` 行（`<span className="ctx-chip">{spaceName}</span>`）是早期实现遗留，与右上角徽标重复；已批准 UX 原型 composer 无 chips 行。用户拍板：保留右上角，删掉输入框上方那一行（composer-chips 整行）。
+- **分类（人裁决）**：code-defect；**方案**：删 `composer-chips` 行；`spaceName` prop 在组件内无其他用途 → 自组件 props / ChatView 传参 / Assistant.jsx composer 对象一并清理（`space.name` 仍供 `emptySpaceName` 与 `spaceBadge` 使用，不受影响）。
+- **修复**：
+  - `src/renderer/components/assistant/Composer.jsx`：删除 `composer-chips` 行（ctx-chip span）；`spaceName` 从组件 props 移除。
+  - `src/renderer/components/assistant/ChatView.jsx`：删除 `spaceName={composer.spaceName}` 传参。
+  - `src/renderer/pages/Assistant.jsx`：composer 对象删除 `spaceName: space.name`（死数据清理）。
+  - `src/renderer/components/assistant/assistant.css`：删除 `.composer-chips` / `.ctx-chip` 样式（全库无其他引用）。
+- **回归（无测试契约变动，纯呈现删除）**：`npx vite build --config vite.renderer.config.js` ✓（412ms）；E2E 回归 `modeToolbar.test.cjs` 5/5 + `assistantChat.test.cjs` 2/2 绿（首跑 assistantChat AC4 一次红为既有时序 flake——FAUX 流式在「回复中…」断言窗口内已完成、`data-streaming` 处于 settle 残留期，与本次改动无关，复跑 2/2 绿）；全量 E2E 复跑确认无回归。运行时自验 `.agent-home/bug3-verify/`（gitignored）：全页 `ctx-chip`=0 / `composer-chips`=0，`chat-space-badge` 可见非空（保留），`.composer` 直接子元素 = `composer-row`（无 chips 夹层），输入后发送按钮启用；截图 `shots/bug3-chat.png`。
+- **E2E**：未加用例（既有 E2E 断言的是 chat-space-badge——保留面；chip 行删除为纯删除，无新增行为可断言；运行时自验覆盖「无 chip 行 + 徽标仍在」）。

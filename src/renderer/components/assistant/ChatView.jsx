@@ -79,7 +79,6 @@ export default function ChatView({
           readonlyReason={composer.readonlyReason}
           disabled={composer.disabled}
           busy={composer.busy}
-          spaceName={composer.spaceName}
           onSend={onSend}
         />
 
