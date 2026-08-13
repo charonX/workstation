@@ -474,6 +474,16 @@ function buildShellToolRule(toolName, global, project) {
   };
 }
 
+// mcp 族默认不渲染为规则行（signoff D4，2026-08-13）：部署 JSON 含
+// `permission.mcp = { "*": "ask" }`，但权限配置页 mcp 分组出厂零规则行
+// （E2E perm-rule-row count=0）——`*` 是族默认（族头「未匹配默认 ask」），
+// 规则行只列用户规则（项目覆盖层写入的 server:tool glob，如 "local-db:*"）。
+// 仅 mcp 一族采用「族默认不渲染」语义；bash 的 `*` 兜底仍渲染为规则行（既有
+// 行为，勿并入——两族语义不同）。
+function isFamilyDefaultNotRendered(surface, pattern) {
+  return surface === "mcp" && pattern === "*";
+}
+
 function buildRules(global, project, merged) {
   const rules = [];
   const permission = merged?.permission;
@@ -481,11 +491,7 @@ function buildRules(global, project, merged) {
     for (const [surface, surfaceValue] of Object.entries(permission)) {
       if (surfaceValue && typeof surfaceValue === "object" && !Array.isArray(surfaceValue)) {
         for (const pattern of Object.keys(surfaceValue)) {
-          // mcp 族默认（`*: ask`，signoff D4）不是规则行：部署 JSON 含
-          // `permission.mcp = { "*": "ask" }`，但权限配置页 mcp 分组出厂零规则行
-          // （E2E perm-rule-row count=0）——`*` 是族默认（族头「未匹配默认 ask」），
-          // 规则行只列用户规则（项目覆盖层写入的 server:tool glob，如 "local-db:*"）。
-          if (surface === "mcp" && pattern === "*") continue;
+          if (isFamilyDefaultNotRendered(surface, pattern)) continue;
           rules.push(buildMapEntryRule(surface, pattern, global, project));
         }
       } else {
