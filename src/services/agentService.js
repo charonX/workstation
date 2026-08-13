@@ -45,6 +45,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
+import { DEFAULT_MODELS } from "./settingsService.js";
 import * as projectService from "./projectService.js";
 import * as skillService from "./skillService.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
@@ -55,16 +56,11 @@ import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFai
 import { createModeService, AGENT_MODES } from "./modeService.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
-// BUG-004（code-defect）：deepseek-chat / kimi-latest 在 pi 运行时模型目录里不存在
-// （deepseek provider 仅 deepseek-v4-flash/deepseek-v4-pro，moonshotai 仅 kimi-k2.x/
-// kimi-k3）→ worker resolveModel 抛 E-AGENT-MODEL → 会话建不起来 → 飞书无回复。
-// 修正为目录真实存在的模型 ID；模型配置化（供应商拉取列表选默认模型）为后续 feature。
-export const DEFAULT_MODELS = {
-  deepseek: "deepseek-v4-flash",
-  moonshotai: "kimi-k2.5",
-  "moonshotai-cn": "kimi-k2.5",
-  faux: "faux-1",
-};
+// 常量定义迁至 settingsService（REQ-AGENT-090 存量迁移与回退兜底同源，避免两处
+// 漂移），此处 re-export 保持既有测试 seam（agentDefaultModel.test.js 与
+// providerModelConfig.test.js 均从本模块读取 DEFAULT_MODELS）。
+// BUG-004（code-defect）教训保留：默认模型必须真实存在于 pi 运行时目录。
+export { DEFAULT_MODELS };
 
 // 单条 IPC 消息上限（签核决策 15：≤ 256KB）。
 const MAX_IPC_BYTES = 256 * 1024;
@@ -794,8 +790,10 @@ function createProcessAgentService(options = {}) {
         {
           const store = getStore();
           if (store) {
-            const settings = settingsService.loadSettings();
-            const agentCfg = settings.agent ?? {};
+            // REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel
+            // 指针——水合装配经 getAgentRuntimeConfig（读时迁移）取默认组合对应条目
+            // （旧平铺形态等价迁移，行为不变；Slice 2 升级为按 agent_sessions 行）。
+            const agentCfg = settingsService.getAgentRuntimeConfig();
             const provider = agentCfg.provider || "deepseek";
             // 水合会话必须携带解密 key（BUG-005 code-defect）：ready 水合路径
             // 只建句柄、不注入 keySecrets → 下发 session-config apiKey=undefined →
@@ -837,7 +835,9 @@ function createProcessAgentService(options = {}) {
               const session = createSessionHandle({
                 spaceKey: info.spaceKey,
                 provider,
-                model: DEFAULT_MODELS[provider] ?? provider,
+                // 水合模型 = 默认组合模型（B4「新会话初始 = 默认」；旧形态迁移产物
+                // model 即 DEFAULT_MODELS[provider]，行为不变）。
+                model: agentCfg.model || DEFAULT_MODELS[provider] || provider,
                 keyRef: keyRefFor(provider, gen),
                 identity: agentCfg.identity,
                 sessionRef: info.sessionRef,
@@ -1197,8 +1197,9 @@ function createProcessAgentService(options = {}) {
             reject(noSessionError());
             return;
           }
-          const settings = settingsService.loadSettings();
-          const agentCfg = settings.agent ?? {};
+          // REQ-AGENT-090 形态升级后：懒恢复装配经 getAgentRuntimeConfig（读时迁移）
+          // 取默认组合对应条目（旧平铺形态等价迁移；Slice 2 升级为按行读取）。
+          const agentCfg = settingsService.getAgentRuntimeConfig();
           const provider = agentCfg.provider || "deepseek";
           const gen = generationFromRef(info.sessionRef);
           generation.set(spaceKey, gen);
@@ -1206,7 +1207,7 @@ function createProcessAgentService(options = {}) {
           const lazyHandle = createSessionHandle({
             spaceKey,
             provider,
-            model: DEFAULT_MODELS[provider] ?? provider,
+            model: agentCfg.model || DEFAULT_MODELS[provider] || provider,
             keyRef,
             identity: agentCfg.identity,
             sessionRef: info.sessionRef,

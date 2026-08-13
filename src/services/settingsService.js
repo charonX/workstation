@@ -4,6 +4,7 @@ import os from "node:os";
 import * as agentRegistryService from "./agentRegistryService.js";
 import { encryptSecret } from "./secretStore.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
+import { modelInCatalog } from "./modelCatalogService.js";
 
 function resolveConfigDir() {
   if (process.env.OPC_WORKSTATION_CONFIG_DIR) {
@@ -135,8 +136,15 @@ function ensureLoaded() {
 }
 
 export function resetSettings() {
-  settings = { ...getDefaults() };
-  writeSettings(settings);
+  // 预置 settings.json 存在（测试迁移 fixture / 用户真实配置）→ 以磁盘为真相重载，
+  // 不覆盖（E13 语义：绝不破坏原文件；providerModelConfig.test.js 迁移用例依赖
+  // fixture 在 startServer 后存活）。无文件 → 初始化默认并落盘（既有隔离语义）。
+  if (fs.existsSync(settingsFile())) {
+    settings = readSettings();
+  } else {
+    settings = { ...getDefaults() };
+    writeSettings(settings);
+  }
   return loadSettings();
 }
 
@@ -185,80 +193,247 @@ export function saveChannelCredentials({ appId, appSecret } = {}) {
   return { appId, updatedAt: settings.channelCredentials.updatedAt };
 }
 
-// —— Agent 配置（REQ-AGENT-001~004）——
+// —— Agent 配置（REQ-AGENT-090：多 provider 条目 + 全局默认组合）——
+// settings.agent 磁盘形态升级：{identity, providers:[{provider, apiKeyEncrypted,
+// models[]}], defaultModel:{provider, model}|null}。存量旧形态（{provider,
+// apiKeyEncrypted, identity, configured}）读时迁移为第一条 + 默认组合（B1/B4 零操作
+// 升级）；迁移失败（settings 损坏）→ 空列表且原文件字节不动（E13）。
 // 供应商枚举（签核决策 2）：{deepseek, moonshotai, moonshotai-cn}。
 export const AGENT_PROVIDERS = ["deepseek", "moonshotai", "moonshotai-cn"];
 // 自定义身份长度上限（签核决策 4 / PRD §7：≤2000 字符，可空）。
 export const AGENT_IDENTITY_MAX_LEN = 2000;
 
+// provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
+// REQ-AGENT-099（B8）：moonshotai 默认 kimi-k2.5 → kimi-k3（k2.5 2026-08-31 日落；
+// k3 在售旗舰 视觉 + 1M）。DEFAULT_MODELS 是存量迁移与回退的兜底（REQ-099 技术事实）。
+// 本常量由 agentService re-export（测试 seam：agentService.DEFAULT_MODELS，
+// agentDefaultModel.test.js 同源断言 pi 运行时目录可解析——BUG-004 教训）。
+export const DEFAULT_MODELS = {
+  deepseek: "deepseek-v4-flash",
+  moonshotai: "kimi-k3",
+  "moonshotai-cn": "kimi-k3",
+  faux: "faux-1",
+};
+
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
-// Agent 配置只读视图：永不外泄 key（明文或密文均不返回，签核决策 5）。
-// GET /api/settings/agent 返回 { provider, configured, identity }。
-export function loadAgentConfig() {
-  ensureLoaded();
-  const agent = settings.agent ?? {};
+function configError(message) {
+  const err = new Error(message);
+  err.code = "E-CONFIG-INVALID";
+  err.status = 400;
+  return err;
+}
+
+// 默认组合指针规范化（REQ-090 标准 4：全局唯一，由结构保证）：显式值必须指向
+// providers 内真实组合；否则自动重定向——新增首个条目 → 首个组合；删光 → null。
+function normalizeDefaultModel(defaultModel, providers) {
+  if (
+    defaultModel &&
+    typeof defaultModel === "object" &&
+    typeof defaultModel.provider === "string" &&
+    typeof defaultModel.model === "string"
+  ) {
+    const entry = providers.find((p) => p.provider === defaultModel.provider);
+    if (entry && entry.models.includes(defaultModel.model)) {
+      return { provider: defaultModel.provider, model: defaultModel.model };
+    }
+  }
+  for (const p of providers) {
+    if (p.models.length > 0) return { provider: p.provider, model: p.models[0] };
+  }
+  return null;
+}
+
+// 读时迁移：settings.agent → 规范形态（providers 数组 + defaultModel 指针）。
+// 旧形态（单条 provider + apiKeyEncrypted）→ providers[0] + 默认组合。
+// 无法迁移（段缺失/损坏）→ null（GET 回落空列表，E13 不写盘）。
+function migrateAgentConfig(agent) {
+  if (!agent || typeof agent !== "object") return null;
+  const identity = typeof agent.identity === "string" ? agent.identity : "";
+  if (Array.isArray(agent.providers)) {
+    const providers = agent.providers
+      .filter((p) => p && typeof p === "object" && typeof p.provider === "string" && p.provider !== "")
+      .map((p) => ({
+        provider: p.provider,
+        apiKeyEncrypted:
+          typeof p.apiKeyEncrypted === "string" && p.apiKeyEncrypted !== "" ? p.apiKeyEncrypted : undefined,
+        models: Array.isArray(p.models) ? p.models.filter((m) => typeof m === "string") : [],
+      }));
+    return { identity, providers, defaultModel: normalizeDefaultModel(agent.defaultModel, providers) };
+  }
+  // 旧形态（REQ-AGENT-001~004）：单条 provider + apiKeyEncrypted → 第一条 + 默认。
+  if (typeof agent.provider !== "string" || agent.provider === "") return null;
+  const model = DEFAULT_MODELS[agent.provider];
   return {
-    provider: agent.provider ?? "",
-    configured: agent.configured === true,
-    identity: agent.identity ?? ""
+    identity,
+    providers: [
+      {
+        provider: agent.provider,
+        apiKeyEncrypted:
+          typeof agent.apiKeyEncrypted === "string" && agent.apiKeyEncrypted !== ""
+            ? agent.apiKeyEncrypted
+            : undefined,
+        models: model ? [model] : [],
+      },
+    ],
+    defaultModel: model ? { provider: agent.provider, model } : null,
   };
 }
 
-// 保存 Agent 配置（provider+apiKey 成对更新，或 identity 单独更新）：
-// - provider 与 apiKey 必须成对出现：只传其一会因缺失对应字段报错
-//   （「请选择供应商」/「API key 不能为空」，PRD §7 切换供应商校验对应 key）→
-//   key 经 secretStore 加密后落 settings.json（无明文，签核决策 5）；
-// - identity 单独更新 → 由调用方触发存量会话热更新（REQ-AGENT-004，见路由层）；
-// - key 仅非空校验（签核修订①：前缀不校验，准确性由用户负责，测试连接兜底）。
+// Agent 配置只读视图（REQ-AGENT-090 接口契约）：
+// GET /api/settings/agent → { identity, providers:[{provider, models[], configured}],
+// defaultModel }。永不含 key（明文或密文均不返回，签核决策 5）。
+// 每次直读磁盘最新状态：迁移/损坏判定以文件为真相（E13：损坏文件 → 空列表 +
+// 原文件字节不动；外部覆盖文件的场景下不依赖模块缓存）。
+export function loadAgentConfig() {
+  const agent = migrateAgentConfig(readSettings().agent);
+  if (!agent) {
+    return { identity: "", providers: [], defaultModel: null };
+  }
+  return {
+    identity: agent.identity,
+    providers: agent.providers.map((p) => ({
+      provider: p.provider,
+      models: p.models,
+      configured: typeof p.apiKeyEncrypted === "string" && p.apiKeyEncrypted !== "",
+    })),
+    defaultModel: agent.defaultModel,
+  };
+}
+
+// 保存 Agent 配置（REQ-AGENT-090 新形态 PUT /api/settings/agent）：
+// 校验（PRD §7 / REQ-090 标准 3）：
+// - provider 必选且 ∈ AGENT_PROVIDERS（「请选择 provider」）；
+// - apiKey 与条目成对：新增条目必填；编辑已有条目（同 provider 已有密文）可不重填；
+// - models 非空且 ≥1，每个模型 ∈ pi-ai 静态目录（「模型不存在」）；
+// - defaultModel 自动重定向（新增首个条目 → 首个组合；删光 → null；显式值不在
+//   列表 → 重定向）；identity ≤ AGENT_IDENTITY_MAX_LEN。
+// 兼容旧形态（REQ-AGENT-001~004；旧 renderer 直至 Slice 5 替换）：body 含
+// provider（平铺形态）→ 等价迁移为单条列表 + 默认组合。
 // 校验失败抛 { code: "E-CONFIG-INVALID", status: 400 }。
 export function saveAgentConfig(body = {}) {
-  ensureLoaded();
-  const current = settings.agent ?? {};
-  const next = { ...current };
-  let touched = false;
+  const base = readSettings(); // 磁盘为真相（外部改动/迁移后状态）
+  const current = migrateAgentConfig(base.agent);
+  const currentProviders = current?.providers ?? [];
+  let next;
 
-  const hasCredentials = hasOwn(body, "provider") || hasOwn(body, "apiKey");
-  if (hasCredentials) {
+  if (hasOwn(body, "provider") || hasOwn(body, "apiKey")) {
+    // —— 旧形态兼容：单条 provider + apiKey（整体替换，等价迁移语义）——
     if (!AGENT_PROVIDERS.includes(body.provider)) {
-      const err = new Error("请选择供应商");
-      err.code = "E-CONFIG-INVALID";
-      err.status = 400;
-      throw err;
+      throw configError("请选择供应商");
     }
     if (typeof body.apiKey !== "string" || body.apiKey.trim() === "") {
-      const err = new Error("API key 不能为空");
-      err.code = "E-CONFIG-INVALID";
-      err.status = 400;
-      throw err;
+      throw configError("API key 不能为空");
     }
-    next.provider = body.provider;
-    next.apiKeyEncrypted = encryptSecret(body.apiKey);
-    next.configured = true;
-    touched = true;
-  }
-
-  if (hasOwn(body, "identity")) {
-    if (typeof body.identity !== "string" || body.identity.length > AGENT_IDENTITY_MAX_LEN) {
-      const err = new Error("身份配置过长");
-      err.code = "E-CONFIG-INVALID";
-      err.status = 400;
-      throw err;
+    const model = DEFAULT_MODELS[body.provider];
+    next = {
+      identity: hasOwn(body, "identity") ? validateIdentity(body.identity) : (current?.identity ?? ""),
+      providers: [
+        {
+          provider: body.provider,
+          apiKeyEncrypted: encryptSecret(body.apiKey),
+          models: model ? [model] : [],
+        },
+      ],
+      defaultModel: model ? { provider: body.provider, model } : null,
+    };
+  } else if (hasOwn(body, "providers")) {
+    // —— 新形态：providers 列表 + 可选 defaultModel ——
+    if (!Array.isArray(body.providers)) {
+      throw configError("providers 必须是列表");
     }
-    next.identity = body.identity;
-    touched = true;
+    const providers = [];
+    const seen = new Set();
+    for (const entry of body.providers) {
+      if (!entry || typeof entry !== "object") {
+        throw configError("条目格式无效");
+      }
+      if (typeof entry.provider !== "string" || !AGENT_PROVIDERS.includes(entry.provider)) {
+        throw configError("请选择 provider");
+      }
+      if (seen.has(entry.provider)) {
+        throw configError("provider 重复");
+      }
+      seen.add(entry.provider);
+      if (!Array.isArray(entry.models) || entry.models.length === 0) {
+        throw configError("至少选择一个模型");
+      }
+      for (const model of entry.models) {
+        if (typeof model !== "string" || !modelInCatalog(entry.provider, model)) {
+          throw configError("模型不存在");
+        }
+      }
+      let encrypted;
+      if (typeof entry.apiKey === "string" && entry.apiKey.trim() !== "") {
+        encrypted = encryptSecret(entry.apiKey);
+      } else {
+        const existing = currentProviders.find((p) => p.provider === entry.provider);
+        encrypted = existing?.apiKeyEncrypted;
+        if (!encrypted) {
+          throw configError("请输入 API Key");
+        }
+      }
+      providers.push({ provider: entry.provider, apiKeyEncrypted: encrypted, models: entry.models });
+    }
+    next = {
+      identity: hasOwn(body, "identity") ? validateIdentity(body.identity) : (current?.identity ?? ""),
+      providers,
+      defaultModel: hasOwn(body, "defaultModel")
+        ? normalizeDefaultModel(body.defaultModel, providers)
+        : normalizeDefaultModel(null, providers),
+    };
+  } else if (hasOwn(body, "identity")) {
+    // —— identity 单独更新（REQ-AGENT-004 标准 2：存量会话热更新 systemPrompt，
+    //    不重建上下文）：providers/defaultModel 原样保留 ——
+    next = {
+      identity: validateIdentity(body.identity),
+      providers: currentProviders.map((p) => ({ ...p })),
+      defaultModel: current ? normalizeDefaultModel(current.defaultModel, currentProviders) : null,
+    };
+  } else {
+    throw configError("无有效配置字段");
   }
 
-  if (!touched) {
-    const err = new Error("无有效配置字段");
-    err.code = "E-CONFIG-INVALID";
-    err.status = 400;
-    throw err;
-  }
-
-  settings = { ...settings, agent: next };
+  settings = { ...base, agent: next };
   writeSettingsRestricted(settings);
   return loadAgentConfig();
+}
+
+// Agent 运行时装配默认（主进程消费者：agentService 水合/懒恢复、agentRouter、
+// agentSessions buildSessionConfig 共用）——从规范形态（迁移后）取默认组合对应条目，
+// 返回 {provider, apiKeyEncrypted, identity, configured, model}；无条目 →
+// provider/model 为空串（调用方各自保留 DEFAULT_PROVIDER 兜底）。
+// 形态升级过渡装配源（Slice 2 REQ-AGENT-093/095 将升级为按 agent_sessions 行读取，
+// 默认组合即 NULL 行语义）。agent 参数可注入（agentRouter 传入 getSettings() 的
+// 原始段并显式 `?? {}`——保留注入式单元测试 seam，不意外读盘）；缺省（无参）直读磁盘。
+export function getAgentRuntimeConfig(agent = readSettings().agent) {
+  const migrated = migrateAgentConfig(agent);
+  if (!migrated || migrated.providers.length === 0) {
+    return { provider: "", apiKeyEncrypted: undefined, identity: "", configured: false, model: "" };
+  }
+  const dm = migrated.defaultModel ?? null;
+  const entry =
+    migrated.providers.find((p) => dm && p.provider === dm.provider) ?? migrated.providers[0];
+  const model =
+    dm && entry.models.includes(dm.model)
+      ? dm.model
+      : entry.models.length > 0
+        ? entry.models[0]
+        : "";
+  return {
+    provider: entry.provider,
+    apiKeyEncrypted: entry.apiKeyEncrypted,
+    identity: migrated.identity,
+    configured: typeof entry.apiKeyEncrypted === "string" && entry.apiKeyEncrypted !== "",
+    model,
+  };
+}
+
+function validateIdentity(identity) {
+  if (typeof identity !== "string" || identity.length > AGENT_IDENTITY_MAX_LEN) {
+    throw configError("身份配置过长");
+  }
+  return identity;
 }

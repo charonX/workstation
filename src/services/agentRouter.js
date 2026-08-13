@@ -387,7 +387,11 @@ export function createAgentRouter({
   return {
     route({ message, chatId, senderId, channelType }) {
       const cfg = getSettings() ?? {};
-      const agentCfg = cfg.agent ?? {};
+      // REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel 指针
+      // —— 经 getAgentRuntimeConfig（读时迁移）取默认组合对应条目（旧平铺形态等价
+      // 迁移，注入式 settings 单元 seam 不变——显式 `?? {}` 不意外读盘；Slice 2 升级
+      // 为按 agent_sessions 行）。
+      const agentCfg = settingsService.getAgentRuntimeConfig(cfg.agent ?? {});
 
       const command = parseSlashCommand(message);
       const bound = bindingDecision({ message, chatId, senderId, channelType });

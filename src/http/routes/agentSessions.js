@@ -700,8 +700,11 @@ function createSseSubscription(res, spaceKey) {
 // —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
 // 导出供 server.js 接线复用（确认回调回投时会话句柄缺失需按空间建句柄——
 // 与 handlePostMessage 同源构建，避免双源漂移）。
+// REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel 指针
+// —— 经 getAgentRuntimeConfig（读时迁移）取默认组合对应条目（旧平铺形态等价迁移；
+// Slice 2 升级为按 agent_sessions 行读取）。
 export function buildSessionConfig() {
-  const agentCfg = settingsService.loadSettings()?.agent ?? {};
+  const agentCfg = settingsService.getAgentRuntimeConfig();
   const provider =
     typeof agentCfg.provider === "string" && agentCfg.provider !== "" ? agentCfg.provider : DEFAULT_PROVIDER;
   let apiKey;

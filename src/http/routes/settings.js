@@ -77,33 +77,45 @@ function runBindingAction(res, agentRouter, method) {
 // 通用 GET /api/settings：剥离 agent 密钥字段——明文或密文均不返回（签核决策 5）。
 // loadSettings 返回完整磁盘配置（agentRouter 等内部消费方需要 apiKeyEncrypted），
 // 非密钥视图仅经 GET /api/settings/agent（loadAgentConfig）暴露。
+// 新形态（REQ-AGENT-090）下 apiKeyEncrypted 下沉到 providers 条目级——逐条剥离。
 function loadPublicSettings() {
   const settings = settingsService.loadSettings();
-  if (settings.agent && hasOwn(settings.agent, "apiKeyEncrypted")) {
+  if (settings.agent && typeof settings.agent === "object") {
     // loadSettings 是浅拷贝，agent 子对象仍指向内部状态——先复制再剥离，避免污染。
     settings.agent = { ...settings.agent };
     delete settings.agent.apiKeyEncrypted;
+    if (Array.isArray(settings.agent.providers)) {
+      settings.agent.providers = settings.agent.providers.map((p) => {
+        if (!p || typeof p !== "object") return p;
+        const copy = { ...p };
+        delete copy.apiKeyEncrypted;
+        return copy;
+      });
+    }
   }
   return settings;
 }
 
-// PUT /api/settings/agent：保存供应商/key/身份（校验失败 → E-CONFIG-INVALID）。
-// 变更广播（tech-design 数据流 7）：
-// - identity 变更 → 存量会话热更新（REQ-AGENT-004 标准 2：config-ack，不重建上下文）；
-// - provider/key 变更 → 存量会话重建 + 新 key 一次性注入（GAP 补全，2026-08-03 登记）；
-//   值级变更检测在 agentService.broadcastConfigUpdate 内按会话当前值比较：值相同
-//   （客户端原样保存）→ 不重建（PRD 对齐缺口 3 / REQ-AGENT-004 AC2）。
+// PUT /api/settings/agent：保存 providers 条目列表 + 默认组合 + 身份
+// （REQ-AGENT-090 新形态；校验失败 → E-CONFIG-INVALID）。
+// 变更广播（ADR-026：条目是配置源，不是会话绑定）：
+// - identity 变更 → 存量会话热更新 systemPrompt（REQ-AGENT-004 标准 2：config-ack，
+//   不重建上下文）；
+// - providers 条目变更（新增/删除/改默认）→ 不触发会话重建——会话级切换与懒恢复
+//   按行重装由 REQ-AGENT-093/095（Slice 2）承接；
+// - 旧形态平铺 PUT（{provider, apiKey}，旧 renderer 直至 Slice 5 替换）→ 保留旧语义
+//   （provider/key 变更 → 存量会话重建 + 新 key 一次性注入，REQ-AGENT-004 旧行为）。
 // key 明文仅经内存传递（不落日志）。
 function handleAgentConfigSave(req, res, body) {
   try {
     const saved = settingsService.saveAgentConfig(body);
     const hasIdentity = hasOwn(body, "identity");
-    const hasCreds = hasOwn(body, "provider") && hasOwn(body, "apiKey");
-    if (hasIdentity || hasCreds) {
+    const hasFlatCreds = hasOwn(body, "provider") && hasOwn(body, "apiKey");
+    if (hasIdentity || hasFlatCreds) {
       broadcastAgentConfigChange({
         identity: hasIdentity ? saved.identity : undefined,
-        provider: hasCreds ? saved.provider : undefined,
-        apiKey: hasCreds ? body.apiKey : undefined
+        provider: hasFlatCreds ? body.provider : undefined,
+        apiKey: hasFlatCreds ? body.apiKey : undefined
       });
     }
     return ok(res, saved);
