@@ -14,6 +14,8 @@ import { handleFlows, handleFlowImport } from "./routes/flows.js";
 import { handleSchedules } from "./routes/schedules.js";
 import { handleExecutions } from "./routes/executions.js";
 import { handleSkills } from "./routes/skills.js";
+import { handlePlugins } from "./routes/plugins.js";
+import { handleMcp } from "./routes/mcp.js";
 import { handleAgents } from "./routes/agents.js";
 import { handleSettings } from "./routes/settings.js";
 import { handleDashboard } from "./routes/dashboard.js";
@@ -580,6 +582,10 @@ async function handleRequest(req, res, server) {
       return handleExecutions(req, res, body, subPath);
     case "skills":
       return handleSkills(req, res, body, subPath);
+    case "plugins":
+      return handlePlugins(req, res, body, subPath);
+    case "mcp":
+      return handleMcp(req, res, body, subPath);
     case "agents":
       return handleAgents(req, res);
     case "dashboard":

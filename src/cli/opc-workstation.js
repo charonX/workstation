@@ -11,6 +11,8 @@ import * as dashboard from "./commands/dashboard.js";
 import * as notify from "./commands/notify.js";
 import * as source from "./commands/source.js";
 import * as channel from "./commands/channel.js";
+import * as plugin from "./commands/plugin.js";
+import * as mcp from "./commands/mcp.js";
 import { release } from "./commands/release.js";
 
 const entities = {
@@ -23,7 +25,9 @@ const entities = {
   dashboard,
   notify,
   source,
-  channel
+  channel,
+  plugin,
+  mcp
 };
 
 function parseArgs(args) {

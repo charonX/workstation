@@ -53,6 +53,8 @@ import * as settings from "../cli/commands/settings.js";
 import * as skill from "../cli/commands/skill.js";
 import * as source from "../cli/commands/source.js";
 import * as task from "../cli/commands/task.js";
+import * as plugin from "../cli/commands/plugin.js";
+import * as mcp from "../cli/commands/mcp.js";
 
 // 命令模块表（release 按 REQ-AGENT-013 排除，不 import）。
 const COMMAND_MODULES = {
@@ -66,6 +68,8 @@ const COMMAND_MODULES = {
   notify,
   source,
   channel,
+  plugin,
+  mcp,
 };
 
 // —— argsSchema 工具 ——
@@ -237,6 +241,53 @@ const TOOL_DEFS = [
   { name: "channel reconnect", module: "channel", fn: "reconnect", riskLevel: "confirm",
     description: "重连消息通道（高危-确认）",
     argsSchema: obj({}) },
+
+  // plugin（REQ-AGENT-090，agent 自用：CLI 命令族即测试 seam + agent 工具面）
+  { name: "plugin list", module: "plugin", fn: "list", riskLevel: "query",
+    description: "列出已安装插件（可带 project 查看项目启用态）",
+    argsSchema: obj({ project: str("项目 ID（可选；带则按项目启用态呈现）") }) },
+  { name: "plugin add", module: "plugin", fn: "add", riskLevel: "confirm",
+    description: "添加插件（npm/git/本地路径，高危-确认）；source 为位置参数",
+    argsSchema: obj({ source: str("插件来源（npm:pkg 或 git URL 或本地路径，必填）") }, ["source"]),
+    positionalFrom: ["source"] },
+  { name: "plugin remove", module: "plugin", fn: "remove", riskLevel: "confirm",
+    description: "移除插件（高危-确认）；source 为位置参数",
+    argsSchema: obj({ source: str("插件来源（必填）") }, ["source"]),
+    positionalFrom: ["source"] },
+  { name: "plugin enable", module: "plugin", fn: "enable", riskLevel: "confirm",
+    description: "启用插件到项目（高危-确认）；name 为位置参数",
+    argsSchema: obj({ name: str("插件名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
+    positionalFrom: ["name"] },
+  { name: "plugin disable", module: "plugin", fn: "disable", riskLevel: "confirm",
+    description: "停用插件的项目启用（高危-确认）；name 为位置参数",
+    argsSchema: obj({ name: str("插件名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
+    positionalFrom: ["name"] },
+
+  // mcp（REQ-AGENT-090，agent 自用）
+  { name: "mcp list", module: "mcp", fn: "list", riskLevel: "query",
+    description: "列出已配置的 MCP server",
+    argsSchema: obj({}) },
+  { name: "mcp add", module: "mcp", fn: "add", riskLevel: "confirm",
+    description: "添加 MCP server（stdio/http，高危-确认）；name 为位置参数",
+    argsSchema: obj({
+      name: str("server 名称（必填）"),
+      type: enumOf(["stdio", "http"], "类型（必填）"),
+      command: str("stdio 启动命令（stdio 必填）"),
+      args: str("stdio 参数，逗号分隔"),
+      env: str("stdio 环境变量 KEY=VALUE，逗号分隔"),
+      url: str("http 地址（http 必填）"),
+      header: str("http 头 KEY=VALUE，逗号分隔"),
+      auth: enumOf(["none", "bearer", "oauth"], "http 认证方式"),
+    }, ["name", "type"]),
+    positionalFrom: ["name"] },
+  { name: "mcp enable", module: "mcp", fn: "enable", riskLevel: "confirm",
+    description: "启用 MCP server 到项目（高危-确认）；name 为位置参数",
+    argsSchema: obj({ name: str("server 名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
+    positionalFrom: ["name"] },
+  { name: "mcp disable", module: "mcp", fn: "disable", riskLevel: "confirm",
+    description: "停用 MCP server 的项目启用（高危-确认）；name 为位置参数",
+    argsSchema: obj({ name: str("server 名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
+    positionalFrom: ["name"] },
 ];
 
 // —— 命令层错误（统一 code：E-AGENT-CLI-ERROR，REQ-AGENT-012 错误契约）——
