@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import * as agentRegistryService from "./agentRegistryService.js";
-import { encryptSecret } from "./secretStore.js";
+import { encryptSecret, decryptSecret } from "./secretStore.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 import { modelInCatalog } from "./modelCatalogService.js";
 
@@ -263,6 +263,10 @@ function migrateAgentConfig(agent) {
       .map((p) => ({
         provider: p.provider,
         apiKeyEncrypted: hasEncryptedKey(p) ? p.apiKeyEncrypted : undefined,
+        // 明文 apiKey 保留（测试 fixture 直写未加密 key 的 seam；生产保存路径恒加密，
+        // 明文不会出现。仅主进程内存消费——GET 视图经 loadAgentConfig/loadPublicSettings
+        // 剥离，不回传）。会话级装配（provider-change / 水合按行重装）取 key 用。
+        apiKey: typeof p.apiKey === "string" && p.apiKey !== "" ? p.apiKey : undefined,
         models: Array.isArray(p.models) ? p.models.filter((m) => typeof m === "string") : [],
       }));
     return { identity, providers, defaultModel: normalizeDefaultModel(agent.defaultModel, providers) };
@@ -441,6 +445,70 @@ export function getAgentRuntimeConfig(agent = readSettings().agent) {
     configured: hasEncryptedKey(entry),
     model,
   };
+}
+
+// 会话级组合解析（ADR-026 / REQ-AGENT-095 标准 1-4，Slice 2）：按 agent_sessions
+// 行读取 provider/model 解析会话组合——行值优先（行带 provider/model → 命中条目用
+// 行值）；行 NULL → 默认组合；行值条目已删/模型不在条目 → 回落默认组合（E12，
+// fallback:true——不悬空）。providers 空 → { provider:"", model:"" }（调用方各自
+// 保留 DEFAULT_PROVIDER 兜底）。entry = 命中条目原始形态（含 apiKeyEncrypted /
+// 明文 apiKey fixture），供调用方取 key（entryApiKey）。
+// 单点解析：agentService 水合/懒恢复、HTTP 路由（GET/PUT provider、buildSessionConfig）
+// 共用本函数，避免组合语义三处漂移。每次直读磁盘最新状态（Settings 改默认 →
+// 后续解析立即生效，REQ-AGENT-095 标准 5）。
+export function resolveSessionModelConfig(rowProvider, rowModel) {
+  const migrated = migrateAgentConfig(readSettings().agent);
+  if (!migrated || migrated.providers.length === 0) {
+    return { provider: "", model: "", entry: undefined, identity: migrated?.identity ?? "", fallback: false };
+  }
+  const dm = migrated.defaultModel;
+  const defaultEntry =
+    migrated.providers.find((p) => dm && p.provider === dm.provider) ?? migrated.providers[0];
+  const defaultModel =
+    (dm && defaultEntry.models.includes(dm.model) ? dm.model : defaultEntry.models[0]) ||
+    DEFAULT_MODELS[defaultEntry.provider] ||
+    defaultEntry.provider;
+  if (
+    typeof rowProvider === "string" &&
+    rowProvider !== "" &&
+    typeof rowModel === "string" &&
+    rowModel !== ""
+  ) {
+    const entry = migrated.providers.find((p) => p.provider === rowProvider);
+    if (entry && entry.models.includes(rowModel)) {
+      return { provider: rowProvider, model: rowModel, entry, identity: migrated.identity, fallback: false };
+    }
+    // E12：行值条目已删/模型不在条目 → 回落默认组合（不悬空）。
+    return {
+      provider: defaultEntry.provider,
+      model: defaultModel,
+      entry: defaultEntry,
+      identity: migrated.identity,
+      fallback: true,
+    };
+  }
+  return {
+    provider: defaultEntry.provider,
+    model: defaultModel,
+    entry: defaultEntry,
+    identity: migrated.identity,
+    fallback: false,
+  };
+}
+
+// 条目明文 key（E-MODEL-KEY-FAIL 语义）：密文优先（解密失败 → undefined）；明文
+// apiKey fixture 兜底（测试直写 settings 的条目）；无 key → undefined。调用方自行
+// 决定语义（PUT provider → 400 E-MODEL-KEY-FAIL；水合/懒恢复 → 不注入保持未配置）。
+export function entryApiKey(entry) {
+  if (!entry) return undefined;
+  if (typeof entry.apiKeyEncrypted === "string" && entry.apiKeyEncrypted !== "") {
+    try {
+      return decryptSecret(entry.apiKeyEncrypted);
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof entry.apiKey === "string" && entry.apiKey !== "" ? entry.apiKey : undefined;
 }
 
 function validateIdentity(identity) {

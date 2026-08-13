@@ -284,13 +284,17 @@ function initSchema(database) {
     -- ui:project:<pid>:<sid>）；sessionRef = JSONL 路径。
     -- REQ-AGENT-027（ADR-016 空间=会话）：title 附加列——首条用户消息截断
     -- （slice(0,40) 无省略号，signoff 裁决 4）；旧行 NULL 兼容（迁移补列）。
+    -- REQ-AGENT-093/095（ADR-026）：provider/model 附加列——会话级模型配置持久化
+    -- （SQLite 为真相）；旧行 NULL → 默认组合（迁移补列）。
     CREATE TABLE IF NOT EXISTS agent_sessions (
       spaceKey TEXT PRIMARY KEY,
       sessionRef TEXT NOT NULL,
       createdAt TEXT NOT NULL,
       lastActiveAt TEXT NOT NULL,
       summaryRef TEXT,
-      title TEXT
+      title TEXT,
+      provider TEXT,
+      model TEXT
     );
 
     -- REQ-AGENT-016 接口契约：agent_confirmations（确认挂起队列，SQLite 为真相）。
@@ -385,6 +389,15 @@ function migrateSchema(database) {
   // （REQ-AGENT-027 标准 6：迁移后旧行 title NULL）。
   if (!hasColumn(database, "agent_sessions", "title")) {
     database.exec(`ALTER TABLE agent_sessions ADD COLUMN title TEXT`);
+  }
+  // REQ-AGENT-093/095（ADR-026）：agent_sessions 补 provider/model 列（会话级模型
+  // 配置持久化，SQLite 为真相）。旧库 ALTER TABLE 补列；既有行 NULL → 默认组合
+  //（对齐 title 列先例；provider-change 成功回写，水合/懒恢复按行重装读取）。
+  if (!hasColumn(database, "agent_sessions", "provider")) {
+    database.exec(`ALTER TABLE agent_sessions ADD COLUMN provider TEXT`);
+  }
+  if (!hasColumn(database, "agent_sessions", "model")) {
+    database.exec(`ALTER TABLE agent_sessions ADD COLUMN model TEXT`);
   }
   // REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta 侧表（旧库补建，
   // 与 initSchema 同 DDL，CREATE IF NOT EXISTS 幂等）。

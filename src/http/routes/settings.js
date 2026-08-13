@@ -77,18 +77,21 @@ function runBindingAction(res, agentRouter, method) {
 // 通用 GET /api/settings：剥离 agent 密钥字段——明文或密文均不返回（签核决策 5）。
 // loadSettings 返回完整磁盘配置（agentRouter 等内部消费方需要 apiKeyEncrypted），
 // 非密钥视图仅经 GET /api/settings/agent（loadAgentConfig）暴露。
-// 新形态（REQ-AGENT-090）下 apiKeyEncrypted 下沉到 providers 条目级——逐条剥离。
+// 新形态（REQ-AGENT-090）下 apiKeyEncrypted 下沉到 providers 条目级——逐条剥离；
+// 明文 apiKey 同剥（测试 fixture 直写未加密 key 的容错，键值不回传）。
 function loadPublicSettings() {
   const settings = settingsService.loadSettings();
   if (settings.agent && typeof settings.agent === "object") {
     // loadSettings 是浅拷贝，agent 子对象仍指向内部状态——先复制再剥离，避免污染。
     settings.agent = { ...settings.agent };
     delete settings.agent.apiKeyEncrypted;
+    delete settings.agent.apiKey;
     if (Array.isArray(settings.agent.providers)) {
       settings.agent.providers = settings.agent.providers.map((p) => {
         if (!p || typeof p !== "object") return p;
         const copy = { ...p };
         delete copy.apiKeyEncrypted;
+        delete copy.apiKey;
         return copy;
       });
     }

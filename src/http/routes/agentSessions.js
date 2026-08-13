@@ -40,6 +40,14 @@
 //                                                    （字段 = 裁决 11：confirmId/operation/
 //                                                    description；不依赖特定入队路径——直桥
 //                                                    submit 与 worker confirm-request 同构发布）。
+// Slice 2（REQ-AGENT-093/095，ADR-026）会话级 provider 端点：
+//   GET  /api/agent/sessions/:spaceKey/provider  → 200 { provider, model }（行值优先；
+//                                                    NULL → 默认组合；条目已删 → 回落默认 E12）
+//   PUT  /api/agent/sessions/:spaceKey/provider  → 200 { provider, model }（校验组合 ∈
+//                                                    已配置条目 → 400 E-MODEL-CONFIG-MISSING；
+//                                                    key 解密失败 → 400 E-MODEL-KEY-FAIL；
+//                                                    幂等；回写 agent_sessions 行 + 活跃会话
+//                                                    provider-change IPC 热更新，sessionRef 不换代）
 //
 // 空间 key 语法（ADR-016 / CONTEXT.md 对话空间）：ui:copilot:<sessionId>（通用空间）、
 // ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 世代制沿用（不套用
@@ -59,7 +67,6 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../db.js";
 import * as settingsService from "../../services/settingsService.js";
-import { decryptSecret } from "../../services/secretStore.js";
 import { subscribe } from "../../services/eventBus.js";
 import { readGitBranch } from "../../services/gitBranch.js";
 import { expandTilde, realpathBestEffort } from "../../services/pathUtils.js";
@@ -215,6 +222,14 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
   if (tail.length === 1 && tail[0] === "mode") {
     if (req.method === "GET") return handleGetMode(res, spaceKey, context);
     if (req.method === "PUT") return handlePutMode(res, spaceKey, body ?? {}, context);
+    return notFound(res);
+  }
+
+  // 会话级 provider（REQ-AGENT-093/095，Slice 2，ADR-026）：GET → { provider, model }
+  // 回读；PUT { provider, model } → 校验/回写/热更新（见文件头端点契约）。
+  if (tail.length === 1 && tail[0] === "provider") {
+    if (req.method === "PUT") return handlePutProvider(res, spaceKey, body ?? {}, store, context);
+    if (req.method === "GET") return handleGetProvider(res, spaceKey, store, context);
     return notFound(res);
   }
 
@@ -393,7 +408,7 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
     // 孤儿空间：项目已删除，历史可回看但禁止发送新消息（CONTEXT.md 孤儿会话）。
     return sendError(res, 409, "E-SESSION-ORPHAN", "项目已删除，该会话不可发送新消息");
   }
-  const config = buildSessionConfig();
+  const config = buildSessionConfig(spaceKey, store);
   if (!config.apiKey) {
     // agent 未配置 / 密钥失效（PRD §8 引导态）：409 E-AGENT-CONFIG，且不启动子进程
     // （ADR-009：配置校验前置）。
@@ -404,6 +419,7 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   svc.createSession({
     spaceKey,
     provider: config.provider,
+    model: config.model,
     apiKey: config.apiKey,
     identity: config.identity,
   });
@@ -490,6 +506,74 @@ function handlePutMode(res, spaceKey, body, context) {
   const svc = resolveModeService(context);
   if (!svc) return notFound(res);
   return ok(res, { mode: svc.setMode(spaceKey, mode) });
+}
+
+// —— 会话级 provider 端点（REQ-AGENT-093/095，Slice 2，ADR-026）——
+
+// 会话 provider 回读（GET /api/agent/sessions/:spaceKey/provider）：
+// 行值优先（行带 provider/model → 用行值）；NULL → 默认组合；条目已删/模型不在
+// 条目 → 回落默认（E12，不悬空）。无会话行 → 404 E-SESSION-NOT-FOUND。
+// 服务实例存在 → 经 getSessionProvider（与 worker 状态同源）；未启动（ADR-009
+// 惰性：GET 不触发子进程启动）→ 直连 settings + store 解析（同一单点
+// settingsService.resolveSessionModelConfig，无行为差异）。
+function handleGetProvider(res, spaceKey, store, context) {
+  const row = store.get(spaceKey);
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  if (svc && typeof svc.getSessionProvider === "function") {
+    try {
+      return ok(res, svc.getSessionProvider(spaceKey));
+    } catch (err) {
+      return mapProviderError(res, err);
+    }
+  }
+  const resolved = settingsService.resolveSessionModelConfig(row.provider, row.model);
+  return ok(res, { provider: resolved.provider, model: resolved.model });
+}
+
+// 会话 provider 切换（PUT /api/agent/sessions/:spaceKey/provider {provider, model}）：
+// 校验组合 ∈ 已配置条目（400 E-MODEL-CONFIG-MISSING）→ 条目 key 解密（400
+// E-MODEL-KEY-FAIL）→ 回写 agent_sessions 行（SQLite 为真相）→ 活跃会话
+// provider-change IPC（下一条 prompt 生效；sessionRef 不换代——ADR-026）。幂等：
+// 同组合重复 PUT 无副作用。服务实例存在 → 经 setSessionProvider（含 IPC）；未启动
+// → 直连 settings + store（校验/行回写，不触发子进程启动；懒恢复/水合按行装配）。
+function handlePutProvider(res, spaceKey, body, store, context) {
+  const row = store.get(spaceKey);
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  const { provider, model } = body ?? {};
+  if (typeof provider !== "string" || provider === "" || typeof model !== "string" || model === "") {
+    return sendError(res, 400, "E-MODEL-CONFIG-MISSING", "组合不在已配置条目");
+  }
+  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  if (svc && typeof svc.setSessionProvider === "function") {
+    try {
+      return ok(res, svc.setSessionProvider(spaceKey, { provider, model }));
+    } catch (err) {
+      return mapProviderError(res, err);
+    }
+  }
+  const resolved = settingsService.resolveSessionModelConfig(provider, model);
+  if (resolved.provider !== provider || resolved.model !== model || !resolved.entry) {
+    return sendError(res, 400, "E-MODEL-CONFIG-MISSING", "组合不在已配置条目");
+  }
+  if (settingsService.entryApiKey(resolved.entry) === undefined) {
+    return sendError(res, 400, "E-MODEL-KEY-FAIL", "条目 key 不可用（解密失败）");
+  }
+  if (row.provider !== provider || row.model !== model) {
+    store.updateProviderConfig(spaceKey, provider, model);
+  }
+  return ok(res, { provider, model });
+}
+
+// 会话级 provider 端点错误映射：契约错误码透传（400/404），其余抛给上层（500）。
+function mapProviderError(res, err) {
+  if (err?.code === "E-MODEL-CONFIG-MISSING" || err?.code === "E-MODEL-KEY-FAIL") {
+    return sendError(res, 400, err.code, err.message);
+  }
+  if (err?.code === "E-SESSION-NOT-FOUND") {
+    return sendError(res, 404, err.code, err.message);
+  }
+  throw err;
 }
 
 // —— 全局 lastMode（BUG-001 裁决 A：无会话切模式 = 改全局默认）——
@@ -700,24 +784,25 @@ function createSseSubscription(res, spaceKey) {
 // —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
 // 导出供 server.js 接线复用（确认回调回投时会话句柄缺失需按空间建句柄——
 // 与 handlePostMessage 同源构建，避免双源漂移）。
-// REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel 指针
-// —— 经 getAgentRuntimeConfig（读时迁移）取默认组合对应条目（旧平铺形态等价迁移；
-// Slice 2 升级为按 agent_sessions 行读取）。
-export function buildSessionConfig() {
-  const agentCfg = settingsService.getAgentRuntimeConfig();
-  const provider =
-    typeof agentCfg.provider === "string" && agentCfg.provider !== "" ? agentCfg.provider : DEFAULT_PROVIDER;
-  let apiKey;
-  if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
-    try {
-      apiKey = decryptSecret(agentCfg.apiKeyEncrypted);
-    } catch {
-      // 解密失败（后端不可用）→ 不注入，保持「未配置」语义（E-AGENT-CONFIG 引导随
-      // REQ-AGENT-028 错误映射接线）。
-      apiKey = undefined;
-    }
+// REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel 指针。
+// Slice 2（REQ-AGENT-093/095，ADR-026）：按 agent_sessions 行读取 provider/model
+// 装配（行值优先；NULL → 默认组合；条目已删 → 回落默认 E12）——与 agentService
+// 水合/懒恢复同源（settingsService.resolveSessionModelConfig 单点解析）。无参调用
+//（旧接线/无行）→ 默认组合（行为不变）。
+export function buildSessionConfig(spaceKey, store) {
+  let row;
+  if (typeof spaceKey === "string" && spaceKey !== "" && store?.get) {
+    row = store.get(spaceKey);
   }
-  return { provider, apiKey, identity: agentCfg.identity };
+  const resolved = settingsService.resolveSessionModelConfig(row?.provider, row?.model);
+  const provider =
+    typeof resolved.provider === "string" && resolved.provider !== "" ? resolved.provider : DEFAULT_PROVIDER;
+  return {
+    provider,
+    model: resolved.model,
+    apiKey: settingsService.entryApiKey(resolved.entry),
+    identity: resolved.identity,
+  };
 }
 
 function decodeParam(value) {

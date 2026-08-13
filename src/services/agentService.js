@@ -49,7 +49,6 @@ import { DEFAULT_MODELS } from "./settingsService.js";
 import * as projectService from "./projectService.js";
 import * as skillService from "./skillService.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
-import { decryptSecret } from "./secretStore.js";
 import { readGitBranch } from "./gitBranch.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
@@ -61,13 +60,6 @@ import { createModeService, AGENT_MODES } from "./modeService.js";
 // providerModelConfig.test.js 均从本模块读取 DEFAULT_MODELS）。
 // BUG-004（code-defect）教训保留：默认模型必须真实存在于 pi 运行时目录。
 export { DEFAULT_MODELS };
-
-// 水合/懒恢复会话模型 = 默认组合模型（B4「新会话初始 = 默认」；旧形态迁移产物
-// model 即 DEFAULT_MODELS[provider]，行为不变）。DEFAULT_MODELS 兜底：组合条目
-// 无模型时仍取 provider 默认，避免空模型进 createSessionHandle。
-function sessionModelFor(agentCfg, provider) {
-  return agentCfg.model || DEFAULT_MODELS[provider] || provider;
-}
 
 // 单条 IPC 消息上限（签核决策 15：≤ 256KB）。
 const MAX_IPC_BYTES = 256 * 1024;
@@ -773,6 +765,38 @@ function createProcessAgentService(options = {}) {
     return true;
   }
 
+  // 会话级装配（ADR-026 / REQ-AGENT-095 标准 1-4）：按 agent_sessions 行解析
+  // provider/model（行值优先；NULL → 默认组合）；行值条目已删/模型不在条目 →
+  // 回落默认组合（E12，不悬空）+ 日志留痕（可观测性：水合/重装回落路径可查）。
+  // 返回 { provider, model, apiKey, identity, fallback }。apiKey = 条目明文 key
+  //（密文解密失败/缺失 → undefined——保持「未配置」语义不注入；PUT provider 侧
+  // 的 key 校验在 setSessionProvider 走 400 E-MODEL-KEY-FAIL）。providers 空 →
+  // provider="deepseek" 既有兜底 + 默认模型目录。
+  function resolveRowModelConfig(row) {
+    const resolved = settingsService.resolveSessionModelConfig(row?.provider, row?.model);
+    if (resolved.provider === "") {
+      return {
+        provider: "deepseek",
+        model: DEFAULT_MODELS.deepseek,
+        apiKey: undefined,
+        identity: resolved.identity,
+        fallback: false,
+      };
+    }
+    if (resolved.fallback) {
+      log(
+        `会话级回落默认 session=${row?.spaceKey ?? "?"} 行值=${row?.provider ?? "NULL"}/${row?.model ?? "NULL"} → 默认 ${resolved.provider}/${resolved.model}（条目已删/模型不在条目，E12）`
+      );
+    }
+    return {
+      provider: resolved.provider,
+      model: resolved.model,
+      apiKey: settingsService.entryApiKey(resolved.entry),
+      identity: resolved.identity,
+      fallback: resolved.fallback,
+    };
+  }
+
   function handleChildMessage(msg) {
     // 有流量即存活（BUG-008 补强）：任何子进程消息（含流式 session-event）
     // 都证明进程健康，刷新心跳基线，避免长生成期间被看门狗误判崩溃。
@@ -798,23 +822,9 @@ function createProcessAgentService(options = {}) {
           const store = getStore();
           if (store) {
             // REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel
-            // 指针——水合装配经 getAgentRuntimeConfig（读时迁移）取默认组合对应条目
-            // （旧平铺形态等价迁移，行为不变；Slice 2 升级为按 agent_sessions 行）。
-            const agentCfg = settingsService.getAgentRuntimeConfig();
-            const provider = agentCfg.provider || "deepseek";
-            // 水合会话必须携带解密 key（BUG-005 code-defect）：ready 水合路径
-            // 只建句柄、不注入 keySecrets → 下发 session-config apiKey=undefined →
-            // worker resolveModel 不 setRuntimeApiKey → LLM 报 No API key found。
-            // 与 createSession 一致：key 明文仅持内存（一次性注入语义，不落盘/不落日志）。
-            let hydratedKey;
-            if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
-              try {
-                hydratedKey = decryptSecret(agentCfg.apiKeyEncrypted);
-              } catch {
-                // 解密失败（后端不可用）→ 不注入，保持「未配置」语义（后续引导配置）。
-                hydratedKey = undefined;
-              }
-            }
+            // 指针——水合装配按 agent_sessions 行读取（ADR-026 / REQ-AGENT-095：
+            // 行值优先，NULL → 默认组合；条目已删 → 回落默认 E12），经
+            // resolveRowModelConfig 单点解析（旧平铺形态等价迁移，行为不变）。
             const rows = store.list();
             let inWindow = 0;
             for (const row of rows) {
@@ -836,21 +846,29 @@ function createProcessAgentService(options = {}) {
                 sendToChild(buildConfigMessage(row.spaceKey, existing, "hydration"));
                 continue;
               }
+              // 会话级装配（ADR-026 / REQ-AGENT-095）：按行 provider/model 重装
+              //（行值优先；NULL → 默认组合；条目已删 → 回落默认 E12 + 行值覆盖为默认）。
+              const cfg = resolveRowModelConfig(row);
+              if (cfg.fallback && store.updateProviderConfig) {
+                store.updateProviderConfig(row.spaceKey, cfg.provider, cfg.model);
+              }
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
               const gen = generationFromRef(info.sessionRef);
               generation.set(info.spaceKey, gen);
               const session = createSessionHandle({
                 spaceKey: info.spaceKey,
-                provider,
-                // 水合模型 = 默认组合模型（B4「新会话初始 = 默认」；旧形态迁移产物
-                // model 即 DEFAULT_MODELS[provider]，行为不变）。
-                model: sessionModelFor(agentCfg, provider),
-                keyRef: keyRefFor(provider, gen),
-                identity: agentCfg.identity,
+                provider: cfg.provider,
+                model: cfg.model,
+                keyRef: keyRefFor(cfg.provider, gen),
+                identity: cfg.identity,
                 sessionRef: info.sessionRef,
               });
-              if (hydratedKey !== undefined) {
-                keySecrets.set(session.keyRef, hydratedKey);
+              // 水合会话必须携带解密 key（BUG-005 code-defect）：ready 水合路径
+              // 只建句柄、不注入 keySecrets → 下发 session-config apiKey=undefined →
+              // worker resolveModel 不 setRuntimeApiKey → LLM 报 No API key found。
+              // 与 createSession 一致：key 明文仅持内存（一次性注入语义，不落盘/不落日志）。
+              if (cfg.apiKey !== undefined) {
+                keySecrets.set(session.keyRef, cfg.apiKey);
               }
               applyRecoveryHint(session, info.recoveryHint);
               sessions.set(info.spaceKey, session);
@@ -1107,7 +1125,9 @@ function createProcessAgentService(options = {}) {
     // 创建/复用空间会话。已有空间返回同一会话句柄（不重复下发）。
     // SQLite 为真相：首次对话经 store.getOrCreate 建行 + JSONL 占位
     // （REQ-AGENT-008 标准 2）；sessionRef 以表行为准。
-    createSession({ spaceKey, provider, apiKey, identity, toolContext }) {
+    // Slice 2（REQ-AGENT-093/095）：model 可选——路由层按 agent_sessions 行装配
+    // 传入（ADR-026 行值）；缺省回落 DEFAULT_MODELS[provider]（既有行为）。
+    createSession({ spaceKey, provider, apiKey, identity, toolContext, model }) {
       const existing = sessions.get(spaceKey);
       if (existing) {
         // 工具上下文变更（Slice 8 G1：绑定默认目标候选）→ 更新句柄 + 重发
@@ -1127,7 +1147,7 @@ function createProcessAgentService(options = {}) {
       const session = createSessionHandle({
         spaceKey,
         provider,
-        model: DEFAULT_MODELS[provider] ?? provider,
+        model: model ?? DEFAULT_MODELS[provider] ?? provider,
         keyRef,
         identity: identity ?? settingsService.loadAgentConfig().identity,
         sessionRef: info?.sessionRef ?? sessionRefFor(sessionDir, spaceKey, gen),
@@ -1169,6 +1189,64 @@ function createProcessAgentService(options = {}) {
     getSessionMode(spaceKey) {
       return modeService.getMode(spaceKey);
     },
+    // —— Slice 2（REQ-AGENT-093/095，ADR-026）：会话级 provider 切换 ——
+    // PUT /api/agent/sessions/:spaceKey/provider 的服务侧处理：
+    // 校验组合 ∈ 已配置条目（E-MODEL-CONFIG-MISSING）+ 条目 key 可用（E-MODEL-KEY-
+    // FAIL）→ 回写 agent_sessions 行（SQLite 为真相）→ 活跃会话 provider-change IPC
+    // 热更新（下一条 prompt 生效；sessionRef 不换代——历史保留）。幂等：行值与
+    // 请求组合一致 → 无副作用 200。keyRef 轮换（generation +1），新 key 一次注入
+    // 仅内存（keySecrets 按 keyRef 索引，同 session-config 安全语义）。
+    setSessionProvider(spaceKey, { provider, model }) {
+      const store = getStore();
+      const row = store ? store.get(spaceKey) : null;
+      if (!row) {
+        throw Object.assign(new Error("会话不存在"), { code: "E-SESSION-NOT-FOUND", status: 404 });
+      }
+      if (row.provider === provider && row.model === model) {
+        return { provider, model }; // 幂等：同组合重复 PUT 无副作用
+      }
+      const resolved = settingsService.resolveSessionModelConfig(provider, model);
+      if (resolved.provider !== provider || resolved.model !== model || !resolved.entry) {
+        throw Object.assign(new Error("E-MODEL-CONFIG-MISSING: 组合不在已配置条目"), {
+          code: "E-MODEL-CONFIG-MISSING",
+          status: 400,
+        });
+      }
+      const apiKey = settingsService.entryApiKey(resolved.entry);
+      if (apiKey === undefined) {
+        throw Object.assign(new Error("E-MODEL-KEY-FAIL: 条目 key 解密失败"), {
+          code: "E-MODEL-KEY-FAIL",
+          status: 400,
+        });
+      }
+      if (store?.updateProviderConfig) store.updateProviderConfig(spaceKey, provider, model);
+      const session = sessions.get(spaceKey);
+      if (session) {
+        const gen = (generation.get(spaceKey) ?? 1) + 1;
+        generation.set(spaceKey, gen);
+        const keyRef = keyRefFor(provider, gen);
+        keySecrets.set(keyRef, apiKey);
+        session.provider = provider;
+        session.model = model;
+        session.keyRef = keyRef;
+        sendToChild({ type: "provider-change", sessionKey: spaceKey, provider, model, keyRef, apiKey });
+        log(`provider-change session=${spaceKey} provider=${provider} model=${model}（热更新，sessionRef 不换代）`);
+      } else {
+        log(`provider-change 行回写 session=${spaceKey} provider=${provider} model=${model}（会话未加载，懒恢复按行装配）`);
+      }
+      return { provider, model };
+    },
+    // 当前会话组合回读（REQ-AGENT-093 标准 1 / REQ-AGENT-095）：行值优先；NULL →
+    // 默认组合；条目已删 → 回落默认（E12，不悬空）。SQLite 为真相（ADR-026）。
+    getSessionProvider(spaceKey) {
+      const store = getStore();
+      const row = store ? store.get(spaceKey) : null;
+      if (!row) {
+        throw Object.assign(new Error("会话不存在"), { code: "E-SESSION-NOT-FOUND", status: 404 });
+      }
+      const resolved = settingsService.resolveSessionModelConfig(row.provider, row.model);
+      return { provider: resolved.provider, model: resolved.model };
+    },
     // notify-result（REQ-AGENT-016 标准 2 / W-2）：确认执行结果经 IPC 注入子进程，
     // worker 侧以会话 prompt 驱动 agent 生成自然语言回投（流式事件回传）。
     notifyResult(sessionKey, result) {
@@ -1204,26 +1282,28 @@ function createProcessAgentService(options = {}) {
             reject(noSessionError());
             return;
           }
-          // REQ-AGENT-090 形态升级后：懒恢复装配经 getAgentRuntimeConfig（读时迁移）
-          // 取默认组合对应条目（旧平铺形态等价迁移；Slice 2 升级为按行读取）。
-          const agentCfg = settingsService.getAgentRuntimeConfig();
-          const provider = agentCfg.provider || "deepseek";
+          // 会话级装配（ADR-026 / REQ-AGENT-095）：懒恢复按 agent_sessions 行读取
+          // provider/model 重装（行值优先；NULL → 默认组合；条目已删 → 回落默认
+          // E12 + 行值覆盖为默认——REQ-095 标准 4）。
+          const cfg = resolveRowModelConfig(info);
+          if (cfg.fallback && store?.updateProviderConfig) {
+            store.updateProviderConfig(spaceKey, cfg.provider, cfg.model);
+          }
           const gen = generationFromRef(info.sessionRef);
           generation.set(spaceKey, gen);
-          const keyRef = keyRefFor(provider, gen);
+          const keyRef = keyRefFor(cfg.provider, gen);
           const lazyHandle = createSessionHandle({
             spaceKey,
-            provider,
-            model: sessionModelFor(agentCfg, provider),
+            provider: cfg.provider,
+            model: cfg.model,
             keyRef,
-            identity: agentCfg.identity,
+            identity: cfg.identity,
             sessionRef: info.sessionRef,
           });
-          if (typeof agentCfg.apiKeyEncrypted === "string" && agentCfg.apiKeyEncrypted.length > 0) {
-            try {
-              const k = decryptSecret(agentCfg.apiKeyEncrypted);
-              if (k !== undefined) keySecrets.set(keyRef, k);
-            } catch { /* 未配置语义保持（不注入） */ }
+          // key 明文仅持内存（一次性注入语义，不落盘/不落日志）；解密失败/无 key →
+          // 不注入，保持「未配置」语义（后续引导配置）。
+          if (cfg.apiKey !== undefined) {
+            keySecrets.set(keyRef, cfg.apiKey);
           }
           sessions.set(spaceKey, lazyHandle);
           sendToChild(buildConfigMessage(spaceKey, lazyHandle));

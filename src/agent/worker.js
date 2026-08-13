@@ -1227,6 +1227,28 @@ async function resolveModel(runtime, provider, model, apiKey) {
   return modelObj;
 }
 
+// —— Slice 2（REQ-AGENT-093，ADR-026）：provider-change 热更新 ——
+// 会话级模型切换：resolveModel 替换该会话 modelObj（AgentSession.setModel——
+// 下一轮 prompt 生效），sessionRef 不换代（JSONL 历史保留）。key 一次注入仅内存
+//（keySecrets 按 keyRef 索引；resolveModel 内部 setRuntimeApiKey，不落日志/JSONL）。
+// 会话不存在（被淘汰/未水合）→ 跳过：主进程已回写 agent_sessions 行，下次
+// session-config 按行值装配（懒恢复路径）。
+async function handleProviderChange(msg) {
+  const { sessionKey, provider, model, keyRef, apiKey } = msg;
+  const entry = lifecycle.get(sessionKey);
+  if (!entry) {
+    log(`provider-change 跳过 session=${sessionKey}（会话不存在，懒恢复按行装配）`);
+    return;
+  }
+  if (apiKey) keySecrets.set(keyRef ?? entry.keyRef, apiKey);
+  const modelObj = await resolveModel(entry.modelRuntime, provider, model, apiKey);
+  await entry.agentSession.setModel(modelObj);
+  entry.provider = provider;
+  entry.model = model;
+  entry.keyRef = keyRef ?? entry.keyRef;
+  log(`provider-change session=${sessionKey} provider=${provider} model=${model}（下一条 prompt 生效，sessionRef 不换代）`);
+}
+
 // 无法投递 prompt 的统一失败回包（session-error + prompt-result 双发；tombstone
 // 判别 evicted 与既有 E-AGENT-NO-SESSION 共用同一发送形态）。
 function sendPromptError(id, sessionKey, error, userMessage) {
@@ -1473,6 +1495,27 @@ async function handleMessage(msg) {
         log(`mode-change session=${msg.sessionKey} mode=${msg.mode}`);
       } else {
         log(`mode-change 非法模式忽略 session=${msg.sessionKey} mode=${String(msg.mode ?? "")}`);
+      }
+      break;
+    }
+    case "provider-change": {
+      // Slice 2（REQ-AGENT-093，ADR-026）：会话级 provider 热更新（工具栏切换 →
+      // 主进程回写 agent_sessions 行 → IPC provider-change）。resolveModel 替换该
+      // 会话 modelObj（AgentSession.setModel），下一条 prompt 生效；进行中操作不受
+      // 影响；sessionRef 不换代（JSONL 历史保留）；key 一次注入仅内存（keySecrets）。
+      // 会话不存在（被淘汰/未水合）→ 跳过：行已回写，下次 session-config 按行值装配。
+      try {
+        await handleProviderChange(msg);
+      } catch (err) {
+        const reason = err?.message ?? String(err);
+        log(`provider-change 失败 session=${msg.sessionKey} reason=${reason}`);
+        send({
+          type: "session-error",
+          sessionKey: msg.sessionKey,
+          code: "E-AGENT-RUNTIME",
+          reason,
+          userMessage: "模型切换失败，请重试",
+        });
       }
       break;
     }

@@ -208,10 +208,13 @@ export function startServer(options = {}) {
               // 行——hydration 不挂接订阅），故 attachPendingSseSubs 无条件执行
               // （无挂起订阅时为 no-op）。
               if (!svc.getSession(sessionKey)) {
-                const cfg = buildSessionConfig();
+                // Slice 2（REQ-AGENT-093/095，ADR-026）：按 agent_sessions 行装配
+                //（行值优先；NULL → 默认组合）——与会话消息路径同源。
+                const cfg = buildSessionConfig(sessionKey, getSessionStore());
                 svc.createSession({
                   spaceKey: sessionKey,
                   provider: cfg.provider,
+                  model: cfg.model,
                   apiKey: cfg.apiKey,
                   identity: cfg.identity,
                 });

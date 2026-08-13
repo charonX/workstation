@@ -84,6 +84,10 @@ export function createSessionStore(options = {}) {
       lastActiveAt: row.lastActiveAt,
       summaryRef: row.summaryRef ?? null,
       title: row.title ?? null,
+      // REQ-AGENT-093/095（ADR-026）：会话级 provider/model（SQLite 为真相；
+      // 旧行 NULL → 默认组合语义由 settingsService.resolveSessionModelConfig 承接）。
+      provider: row.provider ?? null,
+      model: row.model ?? null,
     };
   }
 
@@ -193,6 +197,21 @@ export function createSessionStore(options = {}) {
     }
   }
 
+  // 会话级 provider/model 回写（REQ-AGENT-093 / ADR-026：SQLite 为真相——provider-
+  // change 成功回写；水合/懒恢复按行重装读取）。E12 回落默认同样经本方法把行值
+  // 覆盖为默认组合（REQ-AGENT-095 标准 4：行值被覆盖为默认）。lastActiveAt 顺带
+  // 刷新（写行 = 会话活动）。
+  function updateProviderConfig(spaceKey, provider, model) {
+    try {
+      db()
+        .prepare("UPDATE agent_sessions SET provider = ?, model = ?, lastActiveAt = ? WHERE spaceKey = ?")
+        .run(provider, model, nowIso(), spaceKey);
+    } catch (err) {
+      // E-SESSION-PERSIST：行回写失败 → 内存态继续（本次会话仍可用，仅重启后回落）。
+      degradePersistFailure("updateProviderConfig", err);
+    }
+  }
+
   // /reset（REQ-AGENT-010）：仅当前空间——JSONL 世代 +1（新文件）+ summaryRef
   // 清空 + 通知监听者（agentService 清会话上下文 / 下发 reset-session IPC）。
   // 其他空间行不受影响（按 spaceKey 定位更新）。
@@ -248,5 +267,5 @@ export function createSessionStore(options = {}) {
     }
   }
 
-  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, setTitleIfEmpty, onReset, listSpaceMeta, upsertSpaceMeta };
+  return { getOrCreate, get, list, reset, updateSummaryRef, updateSessionRef, updateProviderConfig, setTitleIfEmpty, onReset, listSpaceMeta, upsertSpaceMeta };
 }
