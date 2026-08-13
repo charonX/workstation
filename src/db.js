@@ -90,6 +90,8 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS agent_sessions;
     DROP TABLE IF EXISTS agent_space_meta;
     DROP TABLE IF EXISTS agent_confirmations;
+    DROP TABLE IF EXISTS mcp_servers;
+    DROP TABLE IF EXISTS mcp_project_enablement;
   `);
   initSchema(database);
 }
@@ -169,6 +171,33 @@ const SPACE_META_DDL = `
     spaceKey TEXT PRIMARY KEY,
     displayName TEXT
   );
+`;
+
+// REQ-AGENT-084 接口契约：mcp_servers（MCP server 一等配置实体，SQLite 为真相）。
+// name 库内唯一；type stdio|http；args/env/headers 为 JSON 文本；enabled 全局开关默认 1。
+// 项目启用映射表 mcp_project_enablement（serverId + projectId 复合主键，幂等重写）。
+// initSchema 与 migrateSchema（旧库补建）共用同一 DDL（CREATE IF NOT EXISTS 幂等，防漂移）。
+const MCP_DDL = `
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    command TEXT,
+    args TEXT NOT NULL DEFAULT '[]',
+    env TEXT NOT NULL DEFAULT '{}',
+    url TEXT,
+    headers TEXT NOT NULL DEFAULT '{}',
+    auth TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS mcp_project_enablement (
+    serverId TEXT NOT NULL,
+    projectId TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (serverId, projectId)
+  );
+  CREATE INDEX IF NOT EXISTS idx_mcp_project_enablement_project ON mcp_project_enablement(projectId);
 `;
 
 function initSchema(database) {
@@ -307,6 +336,8 @@ function initSchema(database) {
     ${SPACE_META_DDL}
 
     ${EXECUTION_NODES_DDL}
+
+    ${MCP_DDL}
   `);
 }
 
@@ -402,4 +433,6 @@ function migrateSchema(database) {
   // REQ-AGENT-029（signoff 裁决 10 候选 A）：agent_space_meta 侧表（旧库补建，
   // 与 initSchema 同 DDL，CREATE IF NOT EXISTS 幂等）。
   database.exec(SPACE_META_DDL);
+  // REQ-AGENT-084：mcp_servers + 项目启用映射（旧库补建，与 initSchema 同 DDL，幂等）。
+  database.exec(MCP_DDL);
 }
