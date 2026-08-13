@@ -39,6 +39,8 @@ import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./t
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
 import { createAutoJudgeLink } from "./autoJudgeLink.js";
+import { assembleSessionExtensions } from "./sessionAssembly.js";
+import { createMcpBrokerLink } from "./mcpBrokerLink.js";
 import { setServerBaseUrlOverride } from "../cli/server.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
@@ -232,7 +234,64 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}
   // opc-bridge/auto-judge 注册共用。
   let bridgeService = null;
 
+  // MCP 权限 broker 接线（REQ-AGENT-086，B6）：pi-mcp-adapter 每次未缓存 MCP 调用
+  // 发 `pi-mcp-adapter:tool-approval-request` → 本 link 恒以 ("mcp", "server:tool")
+  // 调 gotgenes checkPermission → allow_once/deny/确认卡（auto 先过模型 link）。
+  // 依赖注入（checkPermission/askConfirmation/mode/decide/reviewLog）——纯逻辑 seam。
+  // checkPermission 惰性读 bridgeService（permissions:ready 后才就绪——MCP 调用必然
+  // 发生在会话启动后，已就绪）。
+  const mcpBrokerLink = createMcpBrokerLink({
+    checkPermission: (surface, value) => {
+      const svc = bridgeService;
+      if (svc && typeof svc.checkPermission === "function") {
+        try {
+          return svc.checkPermission(surface, value)?.state ?? "ask";
+        } catch {
+          return "ask"; // gotgenes 对未知面/异常 → fail-safe ask（默认确认）
+        }
+      }
+      return "ask";
+    },
+    askConfirmation: async (payload) => {
+      const verdict = await requestPermissionDecision({
+        sessionKey,
+        tool: `${payload?.serverName}:${payload?.originalToolName}`,
+        input: payload?.args ?? {},
+        description: `MCP ${payload?.serverName}:${payload?.originalToolName}(${JSON.stringify(payload?.args ?? {}).slice(0, 120)})`,
+      });
+      return verdict.kind === "allow" ? "allow" : "deny";
+    },
+    // mode 实时求值（模式切换生效于下一个评估——与 gotgenes 链同一语义）。
+    mode: () => getSessionMode(sessionKey),
+    ...(autoJudge
+      ? {
+          // auto 档：模型 link（createAutoJudgeLink.authorize——deny-first + 熔断 +
+          // auto-judge review log 与 gotgenes 链共用同一实例）。details 按 gotgenes
+          // 原生形态（accessIntent.surface / toolName / input）。
+          decide: async (payload) =>
+            autoJudge.authorize(
+              {
+                accessIntent: { surface: "mcp" },
+                toolName: `${payload?.serverName}:${payload?.originalToolName}`,
+                input: payload?.args ?? {},
+              },
+              null,
+              null
+            ),
+        }
+      : {}),
+    reviewLog: (record) => {
+      log(`MCP 权限裁决 session=${sessionKey} server=${record.serverName} tool=${record.tool} verdict=${record.verdict}`);
+    },
+  });
+
   return async (pi) => {
+    pi.events?.on("pi-mcp-adapter:tool-approval-request", (payload) => {
+      // claim 契约 = 处理器函数（桥 broker：claim(handler) → await handler() 得裁决）。
+      // handleApproval 内部以 `claim(() => decision)` 形态收裁决——claim 函数必须
+      // 执行 thunk 并回传 decision 值（测试 harness 同语义）。
+      payload.claim(() => mcpBrokerLink.handleApproval(payload, (thunk) => thunk()));
+    });
     pi.events?.on("permissions:ready", () => {
       const svc = handle?.getPermissionsService?.();
       if (!svc || typeof svc.registerAuthorizer !== "function") {
@@ -1036,7 +1095,31 @@ async function createSessionEntry(msg) {
   const runtime = await getModelRuntime();
   const modelObj = await resolveModel(runtime, provider, model, apiKey);
 
-  const settingsManager = SettingsManager.inMemory();
+  // ---- 装配层（B1，REQ-AGENT-082/085/089）：本项目有效插件集 + 固定序 factories + 诊断 ----
+  // 缺包（settings 声明但磁盘缺失）→ 抛错 → session-config 失败（session-error，
+  // E1 变体：不发网络安装——onMissing="error" 语义）。
+  let asm;
+  try {
+    asm = await assembleSessionExtensions({
+      cwd: sessionCwd,
+      agentDir: agentHome,
+      ...(msg.mcpSnapshot !== undefined ? { mcpSnapshot: msg.mcpSnapshot } : {}),
+    });
+  } catch (err) {
+    throw new Error(`会话装配失败（插件缺失或异常）: ${err?.message ?? String(err)}`);
+  }
+  for (const d of asm.diagnostics ?? []) {
+    log(`装配诊断 session=${sessionKey} ${typeof d === "string" ? d : (d?.message ?? JSON.stringify(d))}`);
+  }
+  // B1 worker 实际加载：只种子本项目启用的插件（scope==="project"）到 SettingsManager
+  // inMemory——保证 worker 只加载本项目启用的插件；官方 loader 负责发现/加载/错误隔离。
+  // 用 inMemory 而非 create+setExtensionPaths：官方 loader 内部 reload 会 flush
+  // writeQueue，setExtensionPaths 会把过滤后的清单误写回全局 settings.json（side effect）。
+  const settingsManager = SettingsManager.inMemory({
+    extensions: (asm.resolved ?? [])
+      .filter((r) => r.scope === "project")
+      .map((r) => r.source ?? r.path),
+  });
   const finalRef = sessionRef ?? sessionRefFor(sessionDir, sessionKey);
   let effectiveRef = finalRef;
   let rebuilt = false;
@@ -1070,7 +1153,7 @@ async function createSessionEntry(msg) {
   let gotgenesAssembled = false;
   if (permissionProfile === "project") {
     try {
-      const handle = await loadGotgenesFactory();
+      const handle = asm.handle ?? (await loadGotgenesFactory());
       // Slice 3（REQ-AGENT-073/075）：auto-judge link 实例（每会话独立——熔断计数
       // 会话级，对齐 permissionBridge H4）。decide = 会话级模型判断（FAUX 注入口
       // OPC_FAUX_JUDGE_RESULT / 真实 runtime.complete）；onTripped → 熔断降级：
@@ -1106,12 +1189,15 @@ async function createSessionEntry(msg) {
       // extensionFactories 顺序分发 tool_call 处理器（emitToolCall 顺序遍历，
       // 首个 block 短路），pre-gate 自评估须先于 gotgenes gate 执行
       // （「worker 扩展层 gate 前自评估」，修复方向 A）。
+      // MCP 桥（REQ-AGENT-085/086，B5/B6）：排在 gotgenes 之后（装配缝 slot 2，
+      // 固定序 [授权桥, gotgenes, MCP桥]）；broker 事件由授权桥 factory 内接线。
       gotgenesExtensions = [
         createPermissionBridgeFactory(sessionKey, sessionCwd, handle, {
           getMode: () => getSessionMode(sessionKey),
           autoJudge,
         }),
         handle.factory,
+        ...asm.factories.filter((f) => f.name === "pi-mcp-adapter"),
       ];
       bindBridgeUi = true;
       gotgenesAssembled = true;
@@ -1123,13 +1209,14 @@ async function createSessionEntry(msg) {
   // 每会话独立 DefaultResourceLoader（H5 已证多 loader 共存隔离）：项目空间按
   // session-config 装配会话 cwd 与 additionalSkillPaths（渐进披露段互不污染）；
   // 通用/飞书维持现状装配（noSkills: true 隔离默认发现，不注入任何项目 skills）。
-  // noExtensions: true 保留——内联工厂不受其影响，文件系统扩展发现保持关闭
-  // （spike 装配要点 2）。
+  // noExtensions: false——装配缝已把本项目启用插件种子进 settingsManager，官方 loader
+  // 负责发现/加载/错误隔离（B1 worker 实际加载）；内联工厂（授权桥/gotgenes/MCP桥）
+  // 不受其影响。
   const resourceLoader = new DefaultResourceLoader({
     cwd: sessionCwd,
     agentDir: agentHome,
     settingsManager,
-    noExtensions: true,
+    noExtensions: false,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
@@ -1191,7 +1278,11 @@ async function createSessionEntry(msg) {
     // 工具名清单> 显式激活：语义与 noTools:"all" 意图一致（只暴露本 worker 自定义
     // 工具面，builtin read/bash/edit/write 中同名项被自定义定义覆盖、未列名的
     // builtin（如 edit）不激活）。
-    tools: toolSurface.toPiToolDefinitions().map((t) => t.name),
+    // "mcp"：pi-mcp-adapter 的代理网关工具（REQ-AGENT-085，B5）——allowedToolNames
+    // 是硬 allowlist，未列入的扩展工具会被 isAllowedTool 过滤（模型拿不到）。
+    // MCP 桥装配时 adapter 注册 `mcp` 工具；未装配时该名字无对应注册，allowlist 多
+    // 一条无副作用。
+    tools: [...toolSurface.toPiToolDefinitions().map((t) => t.name), "mcp"],
     customTools: toolSurface.toPiToolDefinitions(),
   });
 
