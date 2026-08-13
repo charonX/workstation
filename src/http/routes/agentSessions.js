@@ -102,25 +102,20 @@ const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 // 附件校验（signoff 新契约点 E-ATTACH-TYPE/COUNT/SIZE/PATH；校验顺序 = 类型白名单
-// → 数量 → 大小 → path 存在性）。合法 → undefined；非法 → { code, message }。
+// → 数量 → 大小 → path 存在性——四步按序短路，first-fail 语义）。合法 →
+// undefined；非法 → { code, message }。
 function attachmentsError(attachments) {
-  for (const att of attachments) {
-    if (typeof att?.mimeType !== "string" || !IMAGE_MIME_TYPES.has(att.mimeType)) {
-      return { code: "E-ATTACH-TYPE", message: "仅支持图片（jpeg/png/gif/webp/bmp/heic/heif）" };
-    }
+  if (attachments.some((att) => typeof att?.mimeType !== "string" || !IMAGE_MIME_TYPES.has(att.mimeType))) {
+    return { code: "E-ATTACH-TYPE", message: "仅支持图片（jpeg/png/gif/webp/bmp/heic/heif）" };
   }
   if (attachments.length > MAX_ATTACHMENTS) {
     return { code: "E-ATTACH-COUNT", message: `每条消息最多附加 ${MAX_ATTACHMENTS} 个文件` };
   }
-  for (const att of attachments) {
-    if (typeof att?.size !== "number" || att.size > MAX_ATTACHMENT_BYTES) {
-      return { code: "E-ATTACH-SIZE", message: "图片过大（单图 ≤10MB）" };
-    }
+  if (attachments.some((att) => typeof att?.size !== "number" || att.size > MAX_ATTACHMENT_BYTES)) {
+    return { code: "E-ATTACH-SIZE", message: "图片过大（单图 ≤10MB）" };
   }
-  for (const att of attachments) {
-    if (typeof att?.path !== "string" || !fs.existsSync(att.path)) {
-      return { code: "E-ATTACH-PATH", message: "文件不存在" };
-    }
+  if (attachments.some((att) => typeof att?.path !== "string" || !fs.existsSync(att.path))) {
+    return { code: "E-ATTACH-PATH", message: "文件不存在" };
   }
   return undefined;
 }
@@ -449,10 +444,8 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   // 附件（REQ-AGENT-097）：可选数组；存在时先于文本校验（纯图片消息允许空文本，
   // 附件错误码优先——imageAttachment.test.js 契约）。
   const attachments = Array.isArray(body?.attachments) && body.attachments.length > 0 ? body.attachments : undefined;
-  if (attachments) {
-    const attachError = attachmentsError(attachments);
-    if (attachError) return sendError(res, 400, attachError.code, attachError.message);
-  }
+  const attachError = attachments ? attachmentsError(attachments) : undefined;
+  if (attachError) return sendError(res, 400, attachError.code, attachError.message);
   const text = typeof body?.text === "string" ? body.text : "";
   const textError = messageTextError(text, !!attachments);
   if (textError) return validationError(res, textError);

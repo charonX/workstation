@@ -735,6 +735,19 @@ function createProcessAgentService(options = {}) {
     });
   }
 
+  // prompt IPC 载荷（REQ-AGENT-097，B6）：attachments 仅非空数组时携带（undefined →
+  // 不出现字段；字节不出主进程——worker 按 path 自读文件，§10.1）。常规 prompt 与
+  // evicted 重投共用同一构造（同载荷重发，附件随原消息）。
+  function promptPayload(id, sessionKey, text, attachments) {
+    return {
+      type: "prompt",
+      id,
+      sessionKey,
+      text,
+      ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+    };
+  }
+
   // evicted 重投（tech-design 接口 3 / REQ-AGENT-035 标准 6 主进程侧）：
   // worker 对 tombstoned key 的 prompt 回 session-error {code:"evicted"}——prompt
   // 从未入队（worker 没见过它），零副作用，重投安全（与 REQ-AGENT-005 标准 4
@@ -781,15 +794,8 @@ function createProcessAgentService(options = {}) {
     pendingPrompts.set(id, { ...pending, id, seq });
     // 防环：本重投轮计数（重投出的 id；prompt-result 到达即复位）。
     evictResubmitted.set(sessionKey, id);
-    sendToChild({
-      type: "prompt",
-      id,
-      sessionKey,
-      text: pending.text,
-      // REQ-AGENT-097：附件随原消息重投（worker 重读文件注入 image block；
-      // pending 条目经上方 spread 携带 attachments）。
-      ...(Array.isArray(pending.attachments) && pending.attachments.length > 0 ? { attachments: pending.attachments } : {}),
-    });
+    // REQ-AGENT-097：附件随原消息重投（promptPayload 同载荷重发，worker 重读文件）。
+    sendToChild(promptPayload(id, sessionKey, pending.text, pending.attachments));
     log(`evicted 重投 session=${sessionKey} id=${id}（接管 ${targetId}）`);
     return true;
   }
@@ -1345,13 +1351,7 @@ function createProcessAgentService(options = {}) {
         const id = `p${seq}`;
         nextPromptId += 1;
         pendingPrompts.set(id, { id, seq, resolve, reject, sessionKey: spaceKey, text, attachments });
-        sendToChild({
-          type: "prompt",
-          id,
-          sessionKey: spaceKey,
-          text,
-          ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
-        });
+        sendToChild(promptPayload(id, spaceKey, text, attachments));
       });
     },
     // 配置变更广播（GAP 补全，tech-design 数据流 7）：

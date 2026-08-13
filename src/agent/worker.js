@@ -1408,13 +1408,9 @@ async function handlePrompt(msg) {
           fauxHandle.appendResponses([fauxEchoFor]);
         }
       }
-      // 图片附件（REQ-AGENT-097，B6，§10.2 worker 职责）：按 path 读文件 →
-      // base64 → image content block（pi-ai 原生形态 {type:"image", data, mimeType}；
-      // 附带 name 供历史投影显示附件名——SDK 序列化只取 type/data/mimeType，
-      // name 零副作用）注入本条 user message。读取失败（存在但不可读：权限/TCC）
-      // → attachment-error 会话事件回 UI（E8「文件读取失败」）+ prompt-result 失败
-      // 回执（主进程 pending promise 必须结算，202 受理不受阻）→ 本轮消息不发送
-      // （不静默丢弃，E8 语义）。字节不出 worker：路由层只透传元数据。
+      // 图片附件（REQ-AGENT-097，B6）：读图语义见 readAttachmentImages 头注释；
+      // 本处要点 = 读取失败已发 attachment-error + prompt-result 失败回执 → 返回
+      // undefined → 本轮消息不发送（不静默丢弃，E8 语义）。
       const images = readAttachmentImages(msg.attachments, sessionKey, id);
       if (images === undefined) return; // 附件读取失败：事件已发，消息不发送
       // 回复文本经 message_update 事件回传（session.prompt 返回 void，spike H3）。
