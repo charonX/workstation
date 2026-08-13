@@ -51,6 +51,11 @@ function fallbackModels(provider) {
     .filter((m) => typeof m.model === "string" && m.model !== "");
 }
 
+// 回退结果封装（E2/E3 共用：无 key / 未知 provider / 拉取失败 / 列表为空）。
+function fallbackResult(provider) {
+  return { models: fallbackModels(provider), fallback: true };
+}
+
 // kimi 系：/v1/models 能力标志直存（supports_image_in / supports_reasoning）。
 // 目录不可解析的 id 剔除（REQ-092 AC5 防御）。
 function parseKimiModels(provider, data) {
@@ -71,12 +76,12 @@ function parseDeepseekModels(data) {
 export async function fetchModels(provider, apiKey) {
   // E2：无 key → 不拉取，直接回退内置目录（UI 提示「填 key 后自动刷新」）。
   if (typeof apiKey !== "string" || apiKey.trim() === "") {
-    return { models: fallbackModels(provider), fallback: true };
+    return fallbackResult(provider);
   }
   const endpoint = PROVIDER_ENDPOINTS[provider];
   if (!endpoint) {
     // 未知 provider（faux 等测试 seam）：无供应商端点 → 回退内置目录。
-    return { models: fallbackModels(provider), fallback: true };
+    return fallbackResult(provider);
   }
   try {
     const resp = await fetch(endpoint, {
@@ -88,12 +93,12 @@ export async function fetchModels(provider, apiKey) {
     const models = provider === "deepseek" ? parseDeepseekModels(data) : parseKimiModels(provider, data);
     // E3：模型列表为空（供应商无返回 / 全部被目录防御剔除）→ 回退内置目录。
     if (models.length === 0) {
-      return { models: fallbackModels(provider), fallback: true };
+      return fallbackResult(provider);
     }
     // 拉取成功 → 裸数组（REQ-092 接口契约：[{model, vision, reasoning}]）。
     return models;
   } catch {
     // E3：网络/401/超时/解析失败 → 回退内置目录 + 错误标记（不阻塞保存）。
-    return { models: fallbackModels(provider), fallback: true };
+    return fallbackResult(provider);
   }
 }

@@ -62,6 +62,13 @@ import { createModeService, AGENT_MODES } from "./modeService.js";
 // BUG-004（code-defect）教训保留：默认模型必须真实存在于 pi 运行时目录。
 export { DEFAULT_MODELS };
 
+// 水合/懒恢复会话模型 = 默认组合模型（B4「新会话初始 = 默认」；旧形态迁移产物
+// model 即 DEFAULT_MODELS[provider]，行为不变）。DEFAULT_MODELS 兜底：组合条目
+// 无模型时仍取 provider 默认，避免空模型进 createSessionHandle。
+function sessionModelFor(agentCfg, provider) {
+  return agentCfg.model || DEFAULT_MODELS[provider] || provider;
+}
+
 // 单条 IPC 消息上限（签核决策 15：≤ 256KB）。
 const MAX_IPC_BYTES = 256 * 1024;
 
@@ -837,7 +844,7 @@ function createProcessAgentService(options = {}) {
                 provider,
                 // 水合模型 = 默认组合模型（B4「新会话初始 = 默认」；旧形态迁移产物
                 // model 即 DEFAULT_MODELS[provider]，行为不变）。
-                model: agentCfg.model || DEFAULT_MODELS[provider] || provider,
+                model: sessionModelFor(agentCfg, provider),
                 keyRef: keyRefFor(provider, gen),
                 identity: agentCfg.identity,
                 sessionRef: info.sessionRef,
@@ -1207,7 +1214,7 @@ function createProcessAgentService(options = {}) {
           const lazyHandle = createSessionHandle({
             spaceKey,
             provider,
-            model: agentCfg.model || DEFAULT_MODELS[provider] || provider,
+            model: sessionModelFor(agentCfg, provider),
             keyRef,
             identity: agentCfg.identity,
             sessionRef: info.sessionRef,

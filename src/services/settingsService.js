@@ -219,6 +219,11 @@ function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+// 条目是否已持有密文（configured 判定与迁移归一化共用，避免表达式三处漂移）。
+function hasEncryptedKey(entry) {
+  return typeof entry?.apiKeyEncrypted === "string" && entry.apiKeyEncrypted !== "";
+}
+
 function configError(message) {
   const err = new Error(message);
   err.code = "E-CONFIG-INVALID";
@@ -257,8 +262,7 @@ function migrateAgentConfig(agent) {
       .filter((p) => p && typeof p === "object" && typeof p.provider === "string" && p.provider !== "")
       .map((p) => ({
         provider: p.provider,
-        apiKeyEncrypted:
-          typeof p.apiKeyEncrypted === "string" && p.apiKeyEncrypted !== "" ? p.apiKeyEncrypted : undefined,
+        apiKeyEncrypted: hasEncryptedKey(p) ? p.apiKeyEncrypted : undefined,
         models: Array.isArray(p.models) ? p.models.filter((m) => typeof m === "string") : [],
       }));
     return { identity, providers, defaultModel: normalizeDefaultModel(agent.defaultModel, providers) };
@@ -271,10 +275,7 @@ function migrateAgentConfig(agent) {
     providers: [
       {
         provider: agent.provider,
-        apiKeyEncrypted:
-          typeof agent.apiKeyEncrypted === "string" && agent.apiKeyEncrypted !== ""
-            ? agent.apiKeyEncrypted
-            : undefined,
+        apiKeyEncrypted: hasEncryptedKey(agent) ? agent.apiKeyEncrypted : undefined,
         models: model ? [model] : [],
       },
     ],
@@ -297,10 +298,55 @@ export function loadAgentConfig() {
     providers: agent.providers.map((p) => ({
       provider: p.provider,
       models: p.models,
-      configured: typeof p.apiKeyEncrypted === "string" && p.apiKeyEncrypted !== "",
+      configured: hasEncryptedKey(p),
     })),
     defaultModel: agent.defaultModel,
   };
+}
+
+// 新形态条目校验 + 装配（REQ-090 标准 3）：provider 必选且 ∈ AGENT_PROVIDERS、
+// 条目内 provider 不重复、models 非空且每个模型 ∈ pi-ai 静态目录；apiKey 与条目
+// 成对——新增条目必填，编辑已有条目（同 provider 已有密文）可不重填。
+function buildProvidersFromBody(entries, currentProviders) {
+  const providers = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      throw configError("条目格式无效");
+    }
+    if (typeof entry.provider !== "string" || !AGENT_PROVIDERS.includes(entry.provider)) {
+      throw configError("请选择 provider");
+    }
+    if (seen.has(entry.provider)) {
+      throw configError("provider 重复");
+    }
+    seen.add(entry.provider);
+    if (!Array.isArray(entry.models) || entry.models.length === 0) {
+      throw configError("至少选择一个模型");
+    }
+    for (const model of entry.models) {
+      if (typeof model !== "string" || !modelInCatalog(entry.provider, model)) {
+        throw configError("模型不存在");
+      }
+    }
+    let encrypted;
+    if (typeof entry.apiKey === "string" && entry.apiKey.trim() !== "") {
+      encrypted = encryptSecret(entry.apiKey);
+    } else {
+      const existing = currentProviders.find((p) => p.provider === entry.provider);
+      encrypted = existing?.apiKeyEncrypted;
+      if (!encrypted) {
+        throw configError("请输入 API Key");
+      }
+    }
+    providers.push({ provider: entry.provider, apiKeyEncrypted: encrypted, models: entry.models });
+  }
+  return providers;
+}
+
+// body 未携带 identity（旧 renderer 表单 / 新形态省略）→ 保留当前迁移后 identity。
+function identityOrCurrent(body, current) {
+  return hasOwn(body, "identity") ? validateIdentity(body.identity) : (current?.identity ?? "");
 }
 
 // 保存 Agent 配置（REQ-AGENT-090 新形态 PUT /api/settings/agent）：
@@ -329,7 +375,7 @@ export function saveAgentConfig(body = {}) {
     }
     const model = DEFAULT_MODELS[body.provider];
     next = {
-      identity: hasOwn(body, "identity") ? validateIdentity(body.identity) : (current?.identity ?? ""),
+      identity: identityOrCurrent(body, current),
       providers: [
         {
           provider: body.provider,
@@ -344,45 +390,11 @@ export function saveAgentConfig(body = {}) {
     if (!Array.isArray(body.providers)) {
       throw configError("providers 必须是列表");
     }
-    const providers = [];
-    const seen = new Set();
-    for (const entry of body.providers) {
-      if (!entry || typeof entry !== "object") {
-        throw configError("条目格式无效");
-      }
-      if (typeof entry.provider !== "string" || !AGENT_PROVIDERS.includes(entry.provider)) {
-        throw configError("请选择 provider");
-      }
-      if (seen.has(entry.provider)) {
-        throw configError("provider 重复");
-      }
-      seen.add(entry.provider);
-      if (!Array.isArray(entry.models) || entry.models.length === 0) {
-        throw configError("至少选择一个模型");
-      }
-      for (const model of entry.models) {
-        if (typeof model !== "string" || !modelInCatalog(entry.provider, model)) {
-          throw configError("模型不存在");
-        }
-      }
-      let encrypted;
-      if (typeof entry.apiKey === "string" && entry.apiKey.trim() !== "") {
-        encrypted = encryptSecret(entry.apiKey);
-      } else {
-        const existing = currentProviders.find((p) => p.provider === entry.provider);
-        encrypted = existing?.apiKeyEncrypted;
-        if (!encrypted) {
-          throw configError("请输入 API Key");
-        }
-      }
-      providers.push({ provider: entry.provider, apiKeyEncrypted: encrypted, models: entry.models });
-    }
+    const providers = buildProvidersFromBody(body.providers, currentProviders);
     next = {
-      identity: hasOwn(body, "identity") ? validateIdentity(body.identity) : (current?.identity ?? ""),
+      identity: identityOrCurrent(body, current),
       providers,
-      defaultModel: hasOwn(body, "defaultModel")
-        ? normalizeDefaultModel(body.defaultModel, providers)
-        : normalizeDefaultModel(null, providers),
+      defaultModel: normalizeDefaultModel(hasOwn(body, "defaultModel") ? body.defaultModel : null, providers),
     };
   } else if (hasOwn(body, "identity")) {
     // —— identity 单独更新（REQ-AGENT-004 标准 2：存量会话热更新 systemPrompt，
@@ -426,7 +438,7 @@ export function getAgentRuntimeConfig(agent = readSettings().agent) {
     provider: entry.provider,
     apiKeyEncrypted: entry.apiKeyEncrypted,
     identity: migrated.identity,
-    configured: typeof entry.apiKeyEncrypted === "string" && entry.apiKeyEncrypted !== "",
+    configured: hasEncryptedKey(entry),
     model,
   };
 }
