@@ -401,9 +401,12 @@ function createInMemoryAgentService(options = {}) {
     getSession(spaceKey) {
       return sessions.get(spaceKey);
     },
-    prompt(spaceKey, text) {
+    prompt(spaceKey, text, attachments) {
       const session = sessions.get(spaceKey);
       if (!session) return Promise.reject(noSessionError());
+      // REQ-AGENT-097（B6）：内存内核无图片数据面（附件读图注入归 worker 进程侧
+      // handlePrompt；本 seam 仅协议兼容签名，attachments 不消费——无 store 的
+      // 单元 seam 不涉及 JSONL 快照断言）。
       return enqueue(spaceKey, async () => {
         const reply = await runTurn(session, text);
         return withReply({ ok: true, sessionKey: spaceKey }, reply);
@@ -778,7 +781,15 @@ function createProcessAgentService(options = {}) {
     pendingPrompts.set(id, { ...pending, id, seq });
     // 防环：本重投轮计数（重投出的 id；prompt-result 到达即复位）。
     evictResubmitted.set(sessionKey, id);
-    sendToChild({ type: "prompt", id, sessionKey, text: pending.text });
+    sendToChild({
+      type: "prompt",
+      id,
+      sessionKey,
+      text: pending.text,
+      // REQ-AGENT-097：附件随原消息重投（worker 重读文件注入 image block；
+      // pending 条目经上方 spread 携带 attachments）。
+      ...(Array.isArray(pending.attachments) && pending.attachments.length > 0 ? { attachments: pending.attachments } : {}),
+    });
     log(`evicted 重投 session=${sessionKey} id=${id}（接管 ${targetId}）`);
     return true;
   }
@@ -1280,7 +1291,7 @@ function createProcessAgentService(options = {}) {
       sendToChild({ type: "notify-result", sessionKey, result });
       return Promise.resolve({ ok: true });
     },
-    prompt(spaceKey, text) {
+    prompt(spaceKey, text, attachments) {
       return new Promise((resolve, reject) => {
         if (state !== "ready") {
           // 重启期间到达的 prompt → session-error { code: "restarting" }
@@ -1326,12 +1337,21 @@ function createProcessAgentService(options = {}) {
           sendToChild(buildConfigMessage(spaceKey, lazyHandle));
         }
         // 条目携带 text/sessionKey/seq：evicted 重投（接口 3）需取该 key 最早
-        // 在途 prompt 并重投其文本；seq 单调递增供「最早在途」判定。
+        // 在途 prompt 并重投其文本；seq 单调递增供「最早在途」判定。attachments
+        // （REQ-AGENT-097，B6）：图片附件元数据透传 worker（字节不出主进程——
+        // 路由层已校验元数据，worker 侧按 path 自读文件，§10.1）；evicted 重投
+        // 同载荷重发（附件随原消息）。
         const seq = nextPromptId;
         const id = `p${seq}`;
         nextPromptId += 1;
-        pendingPrompts.set(id, { id, seq, resolve, reject, sessionKey: spaceKey, text });
-        sendToChild({ type: "prompt", id, sessionKey: spaceKey, text });
+        pendingPrompts.set(id, { id, seq, resolve, reject, sessionKey: spaceKey, text, attachments });
+        sendToChild({
+          type: "prompt",
+          id,
+          sessionKey: spaceKey,
+          text,
+          ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+        });
       });
     },
     // 配置变更广播（GAP 补全，tech-design 数据流 7）：

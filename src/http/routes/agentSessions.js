@@ -4,7 +4,8 @@
 // Slice 1（REQ-AGENT-027 空间=会话数据层）端点：
 //   POST /api/agent/sessions { spaceKind, projectId? } → 200 { spaceKey }；spaceKind 非法 /
 //                                                      projectId 无效 → 400 E-SESSION-CREATE
-//   POST /api/agent/sessions/:spaceKey/messages { text } → 202 { messageId }；空/超限 → 400；
+//   POST /api/agent/sessions/:spaceKey/messages { text, attachments? } → 202 { messageId }；
+//                                                      空（无附件时）/超限 → 400；
 //                                                      feishu:* → 403 E-SESSION-READONLY
 //   POST /api/agent/sessions/:spaceKey/reset           → 200 { spaceKey: 新 }（UI 空间 = 同分组
 //                                                      新建会话并切换，旧行保留可读可继续，F4 语义）；
@@ -82,6 +83,48 @@ const DEFAULT_PROVIDER = "deepseek";
 // 此处仅越界兜底。
 const MAX_MESSAGE_CHARS = 256 * 1024;
 
+// 图片附件（REQ-AGENT-097 / PRD B6、§10.4 接口 4）：POST messages 扩展
+// {text, attachments:[{name, size, mimeType, kind:"image", path}]}（≤10）。
+// 白名单 = PRD §7（jpeg/png/gif/webp/bmp/heic/heif，SVG 拒收）；单图 ≤10MB
+// （API 硬边界，§7 E10）；path 存在性路由层校验（§10.4 接口 4；worker 侧读取
+// 失败——存在但不可读（权限/TCC）——另有 E8 attachment-error 事件，见 worker）。
+// 字节零转发：路由层只校验元数据，不读文件内容（字节不出 worker，§10.1）。
+const IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/heic",
+  "image/heif",
+]);
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+// 附件校验（signoff 新契约点 E-ATTACH-TYPE/COUNT/SIZE/PATH；校验顺序 = 类型白名单
+// → 数量 → 大小 → path 存在性）。合法 → undefined；非法 → { code, message }。
+function attachmentsError(attachments) {
+  for (const att of attachments) {
+    if (typeof att?.mimeType !== "string" || !IMAGE_MIME_TYPES.has(att.mimeType)) {
+      return { code: "E-ATTACH-TYPE", message: "仅支持图片（jpeg/png/gif/webp/bmp/heic/heif）" };
+    }
+  }
+  if (attachments.length > MAX_ATTACHMENTS) {
+    return { code: "E-ATTACH-COUNT", message: `每条消息最多附加 ${MAX_ATTACHMENTS} 个文件` };
+  }
+  for (const att of attachments) {
+    if (typeof att?.size !== "number" || att.size > MAX_ATTACHMENT_BYTES) {
+      return { code: "E-ATTACH-SIZE", message: "图片过大（单图 ≤10MB）" };
+    }
+  }
+  for (const att of attachments) {
+    if (typeof att?.path !== "string" || !fs.existsSync(att.path)) {
+      return { code: "E-ATTACH-PATH", message: "文件不存在" };
+    }
+  }
+  return undefined;
+}
+
 // —— 空间 key 纯函数（ADR-016 语法；Slice 2 分组列表复用）——
 // ui:project:<pid>:<sid> 的前缀/pid 解析共用同一模式（ui:copilot 无 pid 段）。
 const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
@@ -154,10 +197,16 @@ export function projectMessagesFromJsonl(sessionRef) {
   return messages;
 }
 
-// 文本段归一化：纯字符串原样；{ type:"text", text } 取 text；其余 → ""。
+// 文本段归一化：纯字符串原样；{ type:"text", text } 取 text；image 块 → 附件名
+// 标记（REQ-AGENT-097：历史投影含附件名，如 [图片: tiny.png]——base64 数据不投影）；
+// 其余 → ""。
 function partText(part) {
   if (typeof part === "string") return part;
-  return typeof part?.text === "string" ? part.text : "";
+  if (typeof part?.text === "string") return part.text;
+  if (part?.type === "image") {
+    return typeof part?.name === "string" && part.name !== "" ? `[图片: ${part.name}]` : "[图片]";
+  }
+  return "";
 }
 
 // limit 归一化（signoff 裁决 5）：0/负数/NaN/非整数 → 默认 100。
@@ -391,12 +440,21 @@ function isOrphanSpace(spaceKey) {
 
 // 发送消息（F1 核心处理）：202 { messageId }（事件即结果，流式回传经 SSE，F2）；
 // title 首条写入（slice(0,40) 无省略号，signoff 裁决 4；WHERE title IS NULL 原子
-// 条件 → 后续消息不更新）。错误映射（REQ-AGENT-028 标准 3 / signoff 裁决 1/2/12）：
-// 校验顺序 = 400（输入）→ 404（会话不存在）→ 403（只读空间属性，先于 409，裁决 2）
-// → 409（孤儿空间，空间属性先于 agent 配置）→ 409（agent 未配置）。
+// 条件 → 后续消息不更新；纯图片消息（无文本）回落首附件名）。错误映射
+// （REQ-AGENT-028 标准 3 / signoff 裁决 1/2/12）：校验顺序 = 400（输入：附件
+// E-ATTACH-* 先于文本——signoff 新契约点；文本空/超限）→ 404（会话不存在）→
+// 403（只读空间属性，先于 409，裁决 2）→ 409（孤儿空间，空间属性先于 agent
+// 配置）→ 409（agent 未配置）。
 async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
+  // 附件（REQ-AGENT-097）：可选数组；存在时先于文本校验（纯图片消息允许空文本，
+  // 附件错误码优先——imageAttachment.test.js 契约）。
+  const attachments = Array.isArray(body?.attachments) && body.attachments.length > 0 ? body.attachments : undefined;
+  if (attachments) {
+    const attachError = attachmentsError(attachments);
+    if (attachError) return sendError(res, 400, attachError.code, attachError.message);
+  }
   const text = typeof body?.text === "string" ? body.text : "";
-  const textError = messageTextError(text);
+  const textError = messageTextError(text, !!attachments);
   if (textError) return validationError(res, textError);
   const row = store.get(spaceKey);
   if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
@@ -426,20 +484,20 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
   // SSE 挂起订阅挂接（会话句柄此刻已存在；此前打开的 events 连接从本轮回流事件起收流）。
   attachPendingSseSubs(spaceKey, svc);
   try {
-    await svc.prompt(spaceKey, text);
+    await svc.prompt(spaceKey, text, attachments);
   } catch {
     // 事件即结果：prompt 拒绝（子进程重启中等）不阻断 202 受理，错误经
     // session-error 事件回传（既有 restartingError 语义）。
   }
-  // title 首条写入（写入时机允许异步——测试轮询至出现）。
-  store.setTitleIfEmpty(spaceKey, text.slice(0, 40));
+  // title 首条写入（写入时机允许异步——测试轮询至出现）；纯图片消息回落首附件名。
+  store.setTitleIfEmpty(spaceKey, text.slice(0, 40) || attachments?.[0]?.name || "");
   return ok(res, { messageId: randomUUID() }, 202);
 }
 
 // 消息文本校验（signoff 裁决 12：空文本 400 不强制错误码）：空/超限 → 错误文案；
-// 合法 → undefined。
-function messageTextError(text) {
-  if (text.trim() === "") return "消息内容不能为空";
+// 合法 → undefined。allowEmpty（附件消息）：纯图片消息允许空文本（REQ-AGENT-097）。
+function messageTextError(text, allowEmpty = false) {
+  if (!allowEmpty && text.trim() === "") return "消息内容不能为空";
   if (text.length > MAX_MESSAGE_CHARS) return `消息长度超过上限（${MAX_MESSAGE_CHARS} 字符）`;
   return undefined;
 }

@@ -1320,6 +1320,47 @@ function sendPromptError(id, sessionKey, error, userMessage) {
   send({ type: "prompt-result", id, sessionKey, ok: false, error });
 }
 
+// 附件读图（REQ-AGENT-097，B6，§10.2 worker 职责）：按 path 读文件 → base64 →
+// image content block（pi-ai 原生形态 {type:"image", data, mimeType}；附带 name
+// 供历史投影显示附件名——SDK API 序列化只取 type/data/mimeType，name 零副作用）。
+// 无附件 → []。任一读取失败（存在但不可读：权限/TCC）→ attachment-error 会话
+// 事件回 UI（E8「文件读取失败」，消息不静默丢弃）+ prompt-result 失败回执
+// （主进程 pending promise 必须结算）→ 返回 undefined（调用方中止本轮，消息
+// 不发送——REQ-AGENT-097 标准 5）。路由层已校验 path 存在性，此处只管读。
+function readAttachmentImages(attachments, sessionKey, id) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
+  const images = [];
+  for (const att of attachments) {
+    const filePath = typeof att?.path === "string" ? att.path : "";
+    try {
+      const buf = fs.readFileSync(filePath);
+      images.push({
+        type: "image",
+        data: buf.toString("base64"),
+        mimeType: typeof att?.mimeType === "string" ? att.mimeType : "image/png",
+        ...(typeof att?.name === "string" && att.name !== "" ? { name: att.name } : {}),
+      });
+    } catch (err) {
+      const label = att?.name ?? filePath;
+      log(`附件读取失败 session=${sessionKey} name=${label} err=${err?.message ?? String(err)}`);
+      send({
+        type: "session-event",
+        sessionKey,
+        event: { type: "attachment-error", name: label, message: "文件读取失败" },
+      });
+      send({
+        type: "prompt-result",
+        id,
+        sessionKey,
+        ok: false,
+        error: { code: "E-ATTACH-READ", reason: err?.message ?? String(err) },
+      });
+      return undefined;
+    }
+  }
+  return images;
+}
+
 async function handlePrompt(msg) {
   const { id, sessionKey, text } = msg;
   const entry = lifecycle.get(sessionKey);
@@ -1367,6 +1408,15 @@ async function handlePrompt(msg) {
           fauxHandle.appendResponses([fauxEchoFor]);
         }
       }
+      // 图片附件（REQ-AGENT-097，B6，§10.2 worker 职责）：按 path 读文件 →
+      // base64 → image content block（pi-ai 原生形态 {type:"image", data, mimeType}；
+      // 附带 name 供历史投影显示附件名——SDK 序列化只取 type/data/mimeType，
+      // name 零副作用）注入本条 user message。读取失败（存在但不可读：权限/TCC）
+      // → attachment-error 会话事件回 UI（E8「文件读取失败」）+ prompt-result 失败
+      // 回执（主进程 pending promise 必须结算，202 受理不受阻）→ 本轮消息不发送
+      // （不静默丢弃，E8 语义）。字节不出 worker：路由层只透传元数据。
+      const images = readAttachmentImages(msg.attachments, sessionKey, id);
+      if (images === undefined) return; // 附件读取失败：事件已发，消息不发送
       // 回复文本经 message_update 事件回传（session.prompt 返回 void，spike H3）。
       // BUG-002 诊断（2026-08-09）：LLM 调用起止日志——区分「请求未发出 / 已发出
       // 无响应 / 流式进行中」；配合淘汰 reason 日志定位误淘汰链条。
@@ -1380,7 +1430,12 @@ async function handlePrompt(msg) {
       } catch (err) {
         log(`上下文诊断失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
       }
-      await entry.agentSession.prompt(text, { streamingBehavior: "followUp" });
+      await entry.agentSession.prompt(text, {
+        streamingBehavior: "followUp",
+        // pi-ai 原生图片注入（prompt options.images → user message content blocks；
+        // 持久化 = SessionManager 原生序列化，零自定义——JSONL 快照进历史，重放可见）。
+        ...(images.length > 0 ? { images } : {}),
+      });
       log(`LLM 调用结束 session=${sessionKey} id=${id}`);
       // BUG-002 修复（2026-08-09）：LLM error 感知——SDK 吞错（请求失败 →
       // stopReason=error，agent-loop 不抛、prompt resolve）→ worker 曾静默
