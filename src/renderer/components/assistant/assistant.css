@@ -740,17 +740,232 @@
   margin-top: 2px;
 }
 
-.toolbar-slot {
+/* —— 模型选择器（REQ-AGENT-094，Slice 5 / UX conversation-toolbar.html）——
+   替代灰显槽位 toolbar-slot-model：dropdown 形态对齐 mode-select 先例（触发按钮
+   + 上浮菜单 + 外部点击收起）；选项平铺所有已配置组合（provider · model）。 */
+.model-select {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+
+.model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: var(--ch-space-1) var(--ch-space-3);
-  border: 1px dashed var(--ch-border);
+  border: 1px solid var(--ch-border);
   border-radius: var(--ch-radius-sm);
-  color: var(--ch-text-tertiary);
+  background: var(--ch-surface);
+  color: var(--ch-text);
   font-size: var(--ch-text-xs);
-  cursor: not-allowed;
+  font-family: var(--ch-font-sans);
+  cursor: pointer;
+}
+
+.model-trigger:hover:not(:disabled) {
+  border-color: var(--ch-border-strong);
+}
+
+.model-trigger:disabled {
   opacity: 0.55;
+  cursor: not-allowed;
+  color: var(--ch-text-tertiary);
+}
+
+.model-trigger .chevron {
+  font-size: 9px;
+  color: var(--ch-text-tertiary);
+  transition: transform 0.15s;
+}
+
+.model-select.open .model-trigger .chevron {
+  transform: rotate(180deg);
+}
+
+.model-trigger .prov-sep {
+  color: var(--ch-text-tertiary);
+}
+
+.model-trigger .model-name {
+  font-weight: var(--ch-weight-medium);
+}
+
+.model-trigger-placeholder {
+  color: var(--ch-text-tertiary);
+}
+
+/* 空配置引导提示（E12：provider 列表为空 → 选择器禁用 + 提示去设置） */
+.model-empty-hint {
+  font-size: 10px;
+  color: var(--ch-text-tertiary);
+}
+
+.model-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 260px;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  box-shadow: var(--ch-shadow-lg);
+  padding: var(--ch-space-1);
+}
+
+.model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-3);
+  cursor: pointer;
+  border-radius: var(--ch-radius-sm);
+}
+
+.model-option:hover {
+  background: var(--ch-surface-high);
+}
+
+.model-option.active {
+  background: var(--ch-accent-soft);
+}
+
+.model-option .o-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ch-text-xs);
+  font-weight: var(--ch-weight-medium);
+  color: var(--ch-text);
+}
+
+.model-option .prov-sep {
+  color: var(--ch-text-tertiary);
+}
+
+.badge-default {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--ch-radius-full);
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent);
+  font-weight: var(--ch-weight-medium);
+}
+
+/* —— 附件按钮（REQ-AGENT-098，Slice 5 / UX conversation-toolbar.html）——
+   替代灰显槽位 toolbar-slot-attach：点击打开 Composer 文件选择器（选择器即授权）。 */
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface);
+  color: var(--ch-text-secondary);
+  font-size: var(--ch-text-xs);
+  font-family: var(--ch-font-sans);
+  cursor: pointer;
+}
+
+.attach-btn:hover {
+  border-color: var(--ch-border-strong);
+  color: var(--ch-text);
+}
+
+.attach-btn svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+/* —— 附件 chips 行（REQ-AGENT-098 / UX Q3-a：输入区上方独立行）—— */
+.attach-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ch-space-2);
+  margin-bottom: var(--ch-space-2);
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface-high);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text);
+}
+
+.attach-chip .chip-ico {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--ch-text-tertiary);
+  stroke-width: 1.5;
+  flex-shrink: 0;
+}
+
+.attach-chip .chip-size {
+  color: var(--ch-text-tertiary);
+}
+
+.attach-chip .chip-remove {
+  border: none;
+  background: none;
+  color: var(--ch-text-tertiary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.attach-chip .chip-remove:hover {
+  color: var(--ch-error);
+}
+
+/* —— 行内阻止/拒绝提示（E5/E6/E10/E11 共用，瞬态）—— */
+.toolbar-alert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ch-text-xs);
+  color: var(--ch-error);
+  margin-top: var(--ch-space-1);
+  margin-bottom: var(--ch-space-1);
+}
+
+/* —— 消息附件块（REQ-AGENT-098 / UX .msg-attach）—— */
+.msg-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--ch-space-2);
+  padding: var(--ch-space-1) var(--ch-space-2);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-sm);
+  background: var(--ch-surface);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+}
+
+.msg-attach .attach-ico {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  flex-shrink: 0;
+}
+
+.msg-attach .chip-size {
+  color: var(--ch-text-tertiary);
 }
 
 .toolbar-spacer {

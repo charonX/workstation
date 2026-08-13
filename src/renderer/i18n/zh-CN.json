@@ -101,7 +101,8 @@
       "saveFailed": "Agent 配置保存失败",
       "actionFailed": "操作失败，请重试",
       "loadFailed": "Agent 配置加载失败",
-      "apiKeyPlaceholder": "已加密存储，输入则更换"
+      "apiKeyPlaceholder": "已加密存储，输入则更换",
+      "saveIdentity": "保存身份"
     },
     "saving": "保存中...",
     "saved": "已保存",

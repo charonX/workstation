@@ -8,8 +8,18 @@ export function getAgentConfig() {
 
 // PUT body：{ provider, apiKey, identity }——provider+apiKey 成对更新（apiKey 缺省 =
 // 保留现有 key），identity 可单独更新；校验失败抛 E-CONFIG-INVALID（400）。
-export function saveAgentConfig({ provider, apiKey, identity }) {
-  return put("/api/settings/agent", { provider, apiKey, identity });
+// 新形态（REQ-AGENT-090，Slice 5）：{ identity, providers:[{provider, apiKey?,
+// models[]}], defaultModel? }——全量替换；apiKey 仅新增条目携带（既有条目缺省 =
+// 复用密文）。校验失败抛 E-CONFIG-INVALID（400）。
+export function saveAgentConfig(body) {
+  return put("/api/settings/agent", body);
+}
+
+// 动态模型列表（REQ-AGENT-092，Slice 5）：POST /api/settings/agent/models
+// { provider, apiKey } → { models: [{model, vision, reasoning}], fallback? }——
+// Settings 添加条目表单实时拉取（成功/回退双路径，apiKey 走请求体不落 URL）。
+export function fetchProviderModels(provider, apiKey) {
+  return post("/api/settings/agent/models", { provider, apiKey });
 }
 
 // POST test-connection：{ provider, apiKey } → { ok: true } 或

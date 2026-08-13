@@ -27,12 +27,14 @@
 
 - [ ] **test-gap ×4**（/bug → /test-author 补签核用例）：REQ-090 AC3 key 成对规则（新增缺 key 400 / 编辑不重填复用密文）；AC4 部分删除默认重定向；REQ-092 AC3 空列表回退；AC5 目录不可解析剔除（fake 目录单测）
 - [ ] **旧 GET 平铺回归 ×3**（agentConfig.test.js REQ-AGENT-001：data.provider/saved.configured 等 → 新形态断言，[test] commit）
-- [ ] **modeToolbar.test.cjs 灰显槽位断言替换**（test-plan 已记：toolbar-slot-model/attach → 新契约，随 S5 后处理）
+- [ ] **modeToolbar.test.cjs 灰显槽位断言替换**（test-plan 已记：toolbar-slot-model/attach → 新契约，随 S5 后处理）——S5 实测 1 红（标准 4），其余 4 绿
+- [ ] **settingsTabs.test.cjs agent 表单断言替换**（S5 新增登记，/bug → /test-author）：旧平铺表单（agent-provider-select/agent-api-key-input/save-agent-config-button）被 B1 列表管理替换——实测 5 红（AC1 zh-CN placeholder / AC2 可见性 / AC1 保存按钮 / AC3 keepExistingKey / AC5 错误区内），6 绿；identity/binding 区保留未受影响
 - [ ] **spec-gap 措辞**（可选）：REQ-092 契约行 fetchModels 形态不对称（成功=裸数组/回退={models,fallback}）；E9 文案与 PRD 微差（错误码已钉）
 - [ ] **resetSettings 语义**（REFLECT 复查：已存在文件不覆盖的隐式依赖）
 - [ ] **S2 边界观察 ×2**（低严重度，REFLECT 裁决）：① IM/feishu 通道 `imRouter.js:199` 句柄重建不读 agent_sessions 行（默认组合）——行值 deepseek 的 IM 会话淘汰重建后静默回默认；实际暴露低（工具栏 PUT 仅面向 ui:* 空间，IM 无切换入口），是否按行重装属人裁决；② `setSessionProvider` 幂等早退在条目已删后仍 200 不校验（GET 回落默认，PUT/GET 口径差，幂等 no-op 语义可辩护）
 - [ ] **E4 措辞宽窄**（PRD §8 含「401 在线探测」、§10.4 为条目+密文校验；实现=契约 §10.4，不构成缺口）
 - [ ] **S3 test-gap ×1**（/bug → /test-author）：REQ-096 AC2 集成断言（FAUX 无配置 → 确认卡）与 AC5（defaultJudge key 不落日志——现为 `assert.ok(true)` 占位）需接线真实断言；judge-config 广播全链路（主进程 → worker 热更新）已 smoke 实证但无持久化签核用例（mode-change 同型先例）
+- [ ] **S4 test-gap ×1**（/bug → /test-author）：REQ-097 AC5 worker 侧读失败（chmod-000）→ attachment-error 事件 + 消息不发送——无签核持久化用例（测试 L154 TODO 注记；「已入待处理清单」声明曾失真，本次补记；路由层 E-ATTACH-PATH 400 是独立锚点不触 worker）
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE ✅
 
@@ -52,6 +54,12 @@
 - PRD 对齐子代理：**ALIGNED**（F3 全流/接口契约 3 载荷+触发+范围+懒恢复/fail-safe 闭环/安全/S1 窗口期项 1 关闭；1 低严重度观察：默认条目 key 轮换不广播，fail-safe 覆盖）。
 - 父代理验证：5/5 绿（refactor 前后一致）；autoJudgeLink 回归 7/7。
 - 注：S3 test-gap 已入待处理清单（REQ-096 AC2/AC5 集成断言接线）。
+
+### Slice 4（2026-08-13，REQ-AGENT-097）：DONE ✅
+
+- 实现 commit `bacc63f`（3 文件，首次子代理提前返回后恢复完成）；refactor `0cfd08f`（REFACTORED，3 文件）。
+- PRD 对齐子代理：**MISALIGNMENT_FOUND ×3 → 已全部处置**：① E8 chmod-000 无签核用例 + 「已入清单」声明失真 → 补入待处理清单（S4 test-gap ×1）；② §10.2 worker 视觉复核未实现 → 人拍板 A：修订 PRD §10.2/§10.7 为 **renderer 主防线**（PRD v0.5）；③ §7/§8 陈旧文案（与 PDF/8000px）→ PRD v0.5 修订。
+- 父代理验证：6/6 绿（refactor 前后一致）；sessionMessage 回归 8/9（1 红环境性先存）。
 
 #### PRD → 代码 可追溯性表
 
@@ -281,3 +289,101 @@
 4. **title 回落**：纯图片消息（空文本）首条 title = 首附件名（slice(0,40) 无省略号契约不变）。
 5. **发送时复核（E11）归 S5**：本 slice 只做协议与注入；非视觉模型传图行为按 pi-ai 语义
    （静默忽略）+ S5 renderer 主防线（附加时判定 + 发送复核），worker 侧不下沉防线（任务简报默认）。
+
+### Slice 5（2026-08-13，REQ-AGENT-091/094/098）：DONE ✅
+
+- 实现 commit（本 slice）：`[build] slice-5-frontend-toolbar`（见 git log）。
+- 涉及文件：`src/renderer/pages/Settings.jsx`（agent 配置区 → provider 条目列表管理）、
+  `src/renderer/components/assistant/ModeToolbar.jsx`（模型选择器 + 附件按钮替代灰显槽位）、
+  `src/renderer/components/assistant/Composer.jsx`（附件 chips + 文件选择器 + 非视觉阻止 +
+  发送复核）、`src/renderer/pages/Assistant.jsx`（会话 provider 取位/切换 + 视觉判定 + 附件发送）、
+  `src/renderer/components/assistant/ChatView.jsx` + `MessageList.jsx`（msg-attachment 附件块）、
+  `src/renderer/api/agent.js` + `agentSessions.js`（fetchProviderModels / GET+PUT provider /
+  sendMessage attachments）、`src/renderer/modelCapabilities.js`（新增：视觉能力静态表）、
+  `src/preload/preload.js`（getPathForFile 桥接）、`src/http/routes/settings.js`（新增
+  POST /api/settings/agent/models seam）、i18n ×2（saveIdentity）、index.css + assistant.css。
+- 父代理验证：3 个 E2E 17/17 全绿（settingsProviders 5/5、modelSelector 5/5、
+  imageAttachmentUi 7/7）；API 回归 34/34（providerModelConfig 12/12、providerSwitch 11/11、
+  autoJudgeDefaultModel 5/5、imageAttachment 6/6）。
+- 旧测试影响（断言红，非环境红——随本 story 行为变更，由父代理 [test] 更新）：
+  - `2026-08-11-pi-agent-modes/e2e/modeToolbar.test.cjs`：**1 红**（标准 4 灰显槽位
+    toolbar-slot-model 存在性——已按 test-plan 登记替换）；其余 4 绿（含标准 2/3/5、lastMode）。
+  - `2026-08-02-builtin-agent/e2e/settingsTabs.test.cjs`：**5 红**（AC1 zh-CN placeholder
+    agent-api-key-input、AC2 agent-provider-select/agent-api-key-input 可见性、AC1 全局保存
+    save-agent-config-button、AC3 keepExistingKey 平铺保存、AC5 错误区内展示——旧平铺表单
+    被 B1 列表管理替换，属预期契约变更，**待补入待处理清单路由 [test]**）；6 绿（tab 显隐/
+    通用保存/通道/关于/跨 tab 保留 agent-identity-input + 绑定区可见性——identity/binding
+    区保留）。
+  - `2026-08-02-builtin-agent/api/agentConfig.test.js` 旧 GET 平铺形态断言 3 红（S1 已登记，
+    未变多）。
+
+#### PRD → 代码 可追溯性表（Slice 5）
+
+| PRD 意图项 | 实现文件 | 测试覆盖 | 状态 |
+|---|---|---|---|
+| §4 B1/B6 F1 Settings 多 provider 管理 UI（条目列表/增删/勾选子集/默认星标/迁移提示） | `pages/Settings.jsx`（provider-list + add-panel + migrate-note + 星标/删除处理） | settingsProviders E2E 标准 1-5 | COVERED |
+| §4 B3 F2 工具栏模型选择器（替代灰显槽位，平铺已配置组合 + 高亮 + 默认徽标 + 空配置禁用） | `ModeToolbar.jsx`（model-select/trigger/option/empty-hint） | modelSelector E2E 标准 1-5 | COVERED |
+| §10.4 接口 1 PUT /api/agent/sessions/:key/provider（renderer 接线：取位 + 切换乐观更新 + 失败回退） | `api/agentSessions.js` getSessionProvider/setSessionProvider + `pages/Assistant.jsx` | modelSelector 标准 3（回读断言）+ providerSwitch API | COVERED |
+| §7 空列表禁用 + E12「未配置模型，请到设置添加」 | `ModeToolbar.jsx`（disabled + model-empty-hint） | modelSelector 标准 4 | COVERED |
+| §4 B6 F4 附件 UI：attach-button 替代灰显槽位 / chips 行（名称+大小+移除）/ msg-attachment 消息附件块 | `ModeToolbar.jsx` attach-button + `Composer.jsx` chips/移除 + `MessageList.jsx` 附件块 | imageAttachmentUi 标准 1/2 | COVERED |
+| §7/§8 E11 非视觉阻止（附加时判定 + 发送时复核，不静默丢图——renderer 主防线 v0.5） | `Composer.jsx`（tryAddFiles vision 校验 + submit 复核）+ `modelCapabilities.js`（pi-ai 目录镜像静态表） | imageAttachmentUi 标准 3/4/5 | COVERED |
+| §7/§8 E5 数量上限（>10 第 11 个拒 + 提示） | `Composer.jsx`（attachmentsRef 同步真相计数） | imageAttachmentUi 标准 7 | COVERED |
+| §7/§8 E6 类型白名单（SVG 拒收）/ E10 单图 ≤10MB | `Composer.jsx`（mimeOf 白名单 + 大小预检） | 实现内嵌（E2E 未覆盖 SVG/大图——服务侧 E-ATTACH-* 已签核） | COVERED（实现） |
+| A7 反转：项目外文件直接附加（选择器即授权，无确认弹窗、无特殊标记） | `Composer.jsx`（无 dialog 代码）+ preload getPathForFile | imageAttachmentUi 标准 6（dialog 零触发断言） | COVERED |
+| §10.2 renderer（Settings）拉取动态模型列表（实时无缓存；失败回退内置目录 + 提示） | `api/agent.js` fetchProviderModels + `routes/settings.js` POST /api/settings/agent/models（fetchModels seam）+ Settings.jsx（乐观内置目录 + fetch 替换，勾选集保留） | settingsProviders 标准 2（拉取结果出现 + 保存）；E3 文案分支实现内嵌 | COVERED |
+| §7.1 settings 变更后选择器即时反映 | `pages/Assistant.jsx`（agentConfig 前台轮询 → providers 直通 ModeToolbar） | modelSelector 标准 2（seed 后 reload 反映） | COVERED |
+| §8 E13/迁移提示（存量迁移 → 第一条 + 默认徽标） | `Settings.jsx`（migratedShape 启发式 + migrate-note） | settingsProviders 标准 5 | COVERED（见偏差 2） |
+
+#### Slice 5 完成记录
+
+- 测试摘要（最终轮，better-sqlite3 Electron ABI 就绪状态下）：
+  - E2E 17/17：settingsProviders 5/5、modelSelector 5/5、imageAttachmentUi 7/7。
+  - API 回归 34/34：providerModelConfig 12/12、providerSwitch 11/11、autoJudgeDefaultModel 5/5、
+    imageAttachment 6/6（node ABI 轮次执行；ABI 交替见偏差 6）。
+  - 旧测试影响量化：modeToolbar 1 红（预期替换项）、settingsTabs 5 红（预期替换项）——均断言红
+    非环境红，父代理 [test] 更新路径。
+- 实现要点（RED→GREEN 关键跳变）：
+  - **File 路径解析**：Playwright setInputFiles 注入的 File 无 `.path` 属性（实测 File 无任何
+    path 相关自有属性）→ 首轮 E2E 5 红（全部「文件读取失败」）→ 经 preload 暴露
+    `webUtils.getPathForFile`（Electron 官方替代 API，FileData 内部路径解析，覆盖原生对话框与
+    CDP 注入两种来源）→ 全绿。E2E 注释「真实文件路径 + File.path 语义」以此实现。
+  - **添加条目默认 provider** = 首个未配置供应商（seed 已含 moonshotai+deepseek →
+    默认 moonshotai-cn，规避服务端「provider 重复」400——E2E 标准 2 契约推导）。
+  - **数量判定同步真相**：attachmentsRef 镜像 + 快速连续 setInputFiles（标准 7 循环）不依赖
+    已提交渲染状态，11th 拒绝无竞态。
+  - **migrate-note 启发式**：服务端 GET 无迁移标记（见偏差 2）。
+
+#### 偏差与 UX 对照（本 slice 记录）
+
+1. **POST /api/settings/agent/models 端点新增**（slice 边界外扩）：signoff/REQ-092 的
+   fetchModels 是主进程服务，renderer 无调用通道；E2E 标准 2「填 key → 拉取列表」必须有
+   HTTP seam——在 `routes/settings.js` 加 POST /api/settings/agent/models {provider, apiKey}
+   → {models, fallback?}（成功裸数组 wrap 归一；apiKey 走请求体不落 URL）。属 §10.2「HTTP
+   路由：改」范围内最小扩展，不影响既有端点契约（providerModelConfig 12/12 回归通过）。
+2. **migrate-note 由 renderer 启发式判定**：signoff 契约写「GET 返回迁移标记时显示」，但
+   S1 服务端（loadAgentConfig/saveAgentConfig）无迁移持久化标记——旧格式 PUT 即被归一化落盘，
+   GET 无法区分「迁移产物」与「单条新配置」。renderer 按迁移产物形态判定（单条目 + 单模型 +
+   默认组合 = 旧版单条迁移结果）——settingsProviders 标准 5 通过；副作用：单条配置在删除
+   条目缩减后也会显示迁移提示（无测试断言，观感入 REFLECT，建议后续 [test]+服务端补标记）。
+3. **视觉能力判定 = renderer 静态表**（modelCapabilities.js）：GET /api/settings/agent 不回传
+   能力数据（签核契约无该字段），signoff「pi-ai 目录 input.includes('image') 或服务端能力数据」
+   的 renderer 侧实现取 **pi-ai 目录镜像静态表**（2026-08-13 目录核对：deepseek 全系 text-only；
+   kimi k2 时代 preview 系 text-only、k2.5 起全视觉）；未知模型回退保守拒绝（宁阻不静默丢图）。
+   与 Settings 拉取路径（fetchModels 实时能力标志）双源并存——模型目录变更需同步本表（注释已
+   标注镜像来源）。
+4. **工具栏模型选项无能力标签**：UX conversation-toolbar.html 选项带「视觉✓/推理✓」cap-tag，
+   但已配置条目的能力数据 renderer 侧不可得（同偏差 3 根因）；选项仅 provider · model + 默认
+   徽标（E2E 契约未断言 cap-tag）。Settings 条目 chip 有视觉圆点（isVisionModel 静态表）。
+5. **Settings 旧平铺表单替换**（B1 预期）：agent-provider-select/agent-api-key-input/
+   save-agent-config-button 移除，改 provider 列表 + 添加表单 + save-provider/delete-provider/
+   星标；identity 区保留（独立保存 save-agent-identity-button，PUT {identity} 不重建会话）；
+   test-connection 移入添加表单（复用 agent-test-connection-button testid）；绑定区原样。
+   → settingsTabs 5 红为预期契约变更（待父代理 [test] 路由，见待处理清单）。
+6. **环境性：better-sqlite3 ABI 交替**（非本 slice 引入）：本机 node_modules 的
+   better-sqlite3 二进制在「node 单元测试」与「Electron E2E」交替执行时被反复重建
+   （test:unit 前置 rebuild:node、test:e2e 前置 rebuild:electron 即为此设计）；本次 E2E 期间
+   一度出现 session 创建 500（ERR_DLOPEN_FAILED / E-DB-UNWRITABLE）——均为 ABI 环境红，
+   重建后全绿（17/17 证据已取）。并行 story 跑 node 测试会翻转 ABI，E2E 前需确保
+   `npm run rebuild:electron` 刚执行。
+7. **历史消息附件以文本标记呈现**：重放（GET messages 投影）无附件结构（partText →
+   `[图片: name]`），msg-attachment 块仅发送时乐观气泡携带（E2E 契约如此；观感入 REFLECT）。

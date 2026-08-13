@@ -40,6 +40,35 @@ function MessageMeta({ meta }) {
   );
 }
 
+// 附件块大小展示（与 Composer chip-size 同口径）。
+function formatSize(bytes) {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes)) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+// 消息附件块（REQ-AGENT-098 / UX msg-attach）：用户消息携带 attachments →
+// 气泡内渲染附件块（testid msg-attachment，名称 + 大小）。数据源 = 发送时
+// 乐观气泡携带的附件元数据；历史重放（GET messages 投影）不含附件结构——
+// 以文本标记「[图片: name]」呈现（projectMessagesFromJsonl partText 契约）。
+function MessageAttachments({ attachments }) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  return (
+    <>
+      {attachments.map((att, i) => (
+        <div key={`${att?.path ?? att?.name ?? "att"}-${i}`} className="msg-attach" data-testid="msg-attachment">
+          <svg className="attach-ico" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 2.5h7l3 3v8H3z" />
+          </svg>
+          <span className="attach-name">{att?.name ?? ""}</span>
+          {typeof att?.size === "number" && <span className="chip-size">{formatSize(att.size)}</span>}
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function MessageList({ messages, confirmations, onApprove, onReject, projectDir }) {
   const listRef = useRef(null);
 
@@ -109,6 +138,8 @@ export default function MessageList({ messages, confirmations, onApprove, onReje
               {/* 消息元数据（REQ-AGENT-057 标准 1/2）：agent 消息完成态（streaming=false）
                   且 text_end 携带 meta → 显示；流式期间/历史消息（无 meta）不显示。 */}
               {role !== "user" && !m.streaming && m.meta ? <MessageMeta meta={m.meta} /> : null}
+              {/* 消息附件块（REQ-AGENT-098，Slice 5）：乐观气泡携带的附件元数据 */}
+              {role === "user" && !m.streaming && <MessageAttachments attachments={m.attachments} />}
             </div>
           </div>
         );

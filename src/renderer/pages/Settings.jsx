@@ -7,11 +7,13 @@ import { getChannelStatus, saveChannelCredentials, reconnectChannel } from "../a
 import {
   getAgentConfig,
   saveAgentConfig,
+  fetchProviderModels,
   testConnection,
   bindingBegin,
   bindingCancel,
   bindingDelete,
 } from "../api/agent.js";
+import { isVisionModel } from "../modelCapabilities.js";
 
 const DEFAULT_FORM = {
   workspaceRoot: "",
@@ -23,13 +25,56 @@ const DEFAULT_FORM = {
 
 const DEFAULT_CHANNEL_STATUS = { status: "offline", error: null };
 
-// Agent 配置区常量（REQ-AGENT-001/004）：身份长度上限（签核决策 4）+ 供应商枚举。
+// Agent 配置区常量（REQ-AGENT-001/004 + REQ-AGENT-090 多 provider 列表）：身份长度
+// 上限（签核决策 4）+ 供应商枚举（含中文展示名，UX settings-providers.html 形态）。
 const AGENT_IDENTITY_MAX_LEN = 2000;
 const AGENT_PROVIDER_OPTIONS = [
-  { value: "deepseek", labelKey: "settings.agent.providerDeepseek" },
-  { value: "moonshotai", labelKey: "settings.agent.providerMoonshotai" },
-  { value: "moonshotai-cn", labelKey: "settings.agent.providerMoonshotaiCn" },
+  { value: "deepseek", label: "DeepSeek（api.deepseek.com）" },
+  { value: "moonshotai", label: "Moonshot AI（api.moonshot.ai）" },
+  { value: "moonshotai-cn", label: "Moonshot AI 中国站（api.moonshot.cn）" },
 ];
+
+// 内置模型目录展示副本（REQ-AGENT-092 回退源 = pi-ai 静态目录；本表为 renderer
+// 侧同源镜像——添加条目表单「填 key 后自动刷新」前的即时展示 + 拉取失败回退
+//（2026-08-13 目录核对，modelCapabilities.js 同源）。保存校验以服务端为准）。
+const BUILTIN_MODEL_CATALOG = {
+  deepseek: [
+    { model: "deepseek-v4-flash", vision: false, reasoning: true },
+    { model: "deepseek-v4-pro", vision: false, reasoning: true },
+  ],
+  moonshotai: [
+    { model: "kimi-k3", vision: true, reasoning: true },
+    { model: "kimi-k2.7-code", vision: true, reasoning: true },
+    { model: "kimi-k2.7-code-highspeed", vision: true, reasoning: true },
+    { model: "kimi-k2.6", vision: true, reasoning: true },
+    { model: "kimi-k2.5", vision: true, reasoning: true },
+    { model: "kimi-k2-turbo-preview", vision: false, reasoning: false },
+    { model: "kimi-k2-thinking-turbo", vision: false, reasoning: true },
+    { model: "kimi-k2-thinking", vision: false, reasoning: true },
+    { model: "kimi-k2-0905-preview", vision: false, reasoning: false },
+    { model: "kimi-k2-0711-preview", vision: false, reasoning: false },
+  ],
+  "moonshotai-cn": [
+    { model: "kimi-k3", vision: true, reasoning: true },
+    { model: "kimi-k2.7-code", vision: true, reasoning: true },
+    { model: "kimi-k2.7-code-highspeed", vision: true, reasoning: true },
+    { model: "kimi-k2.6", vision: true, reasoning: true },
+    { model: "kimi-k2.5", vision: true, reasoning: true },
+    { model: "kimi-k2-turbo-preview", vision: false, reasoning: false },
+    { model: "kimi-k2-thinking-turbo", vision: false, reasoning: true },
+    { model: "kimi-k2-thinking", vision: false, reasoning: true },
+    { model: "kimi-k2-0905-preview", vision: false, reasoning: false },
+    { model: "kimi-k2-0711-preview", vision: false, reasoning: false },
+  ],
+};
+
+// 添加条目表单拉取状态文案（E2/E3 提示分支）。
+const FETCH_STATUS = {
+  noKey: { kind: "noKey", text: "填 key 后自动刷新（实时，无缓存）" },
+  fetching: { kind: "fetching", text: "拉取中…" },
+  fetched: { kind: "fetched", text: "已从供应商 API 拉取 · 勾选要使用的模型" },
+  fallback: { kind: "fallback", text: "模型列表拉取失败，已使用内置列表（不阻塞保存）" },
+};
 
 // 检查更新状态区：checking=检查中 / hasUpdate=发现新版 / upToDate=已是最新 / error=检查失败
 const STATUS_CHECKING = "checking";
@@ -117,19 +162,25 @@ export default function Settings() {
   const [channelSuccess, setChannelSuccess] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ appId: false, appSecret: false });
 
-  // Agent 配置区（独立 state 模式，与主表单/Feishu 通道区互不影响；REQ-AGENT-001/004/014）。
-  const [agentConfig, setAgentConfig] = useState(null); // { provider, configured, identity, binding }
-  const [agentProvider, setAgentProvider] = useState("");
-  const [agentApiKey, setAgentApiKey] = useState(""); // 永不回显（签核决策 5），保存后清空
-  const [agentShowSecret, setAgentShowSecret] = useState(false);
+  // Agent 配置区（独立 state 模式，与主表单/Feishu 通道区互不影响；REQ-AGENT-001/004/
+  // 014 + REQ-AGENT-090/091 多 provider 列表）。
+  const [agentConfig, setAgentConfig] = useState(null); // { identity, providers, defaultModel, binding }
   const [agentIdentity, setAgentIdentity] = useState("");
   const [agentSaving, setAgentSaving] = useState(false);
   const [agentError, setAgentError] = useState(null);
   const [agentSuccess, setAgentSuccess] = useState(null);
-  const [agentFieldErrors, setAgentFieldErrors] = useState({ provider: false, apiKey: false, identity: false });
+  const [agentBindingAction, setAgentBindingAction] = useState(false);
+
+  // 添加条目表单（REQ-AGENT-091：provider + key → 拉取列表 → 勾选子集 → 保存）。
+  const [addFormOpen, setAddFormOpen] = useState(false);
+  const [addProvider, setAddProvider] = useState("");
+  const [addApiKey, setAddApiKey] = useState(""); // 永不回显；新增条目必填
+  const [modelOptions, setModelOptions] = useState([]); // [{model, vision, reasoning}]
+  const [checkedModels, setCheckedModels] = useState(() => new Set());
+  const [fetchStatus, setFetchStatus] = useState(FETCH_STATUS.noKey);
+  const [addError, setAddError] = useState(null); // 表单行内错误（E1/E9）
   const [agentTesting, setAgentTesting] = useState(false);
   const [agentTestResult, setAgentTestResult] = useState(null); // { ok, message }
-  const [agentBindingAction, setAgentBindingAction] = useState(false);
 
   // 绑定状态派生（GET binding 形态：{ bound, openId?, pendingBind? }，未接线 agentRouter 时兜底未绑定）。
   const agentBinding = agentConfig?.binding;
@@ -196,7 +247,6 @@ export default function Settings() {
         const config = await getAgentConfig();
         if (cancelled) return;
         setAgentConfig(config);
-        setAgentProvider(config.provider || "");
         setAgentIdentity(config.identity || "");
       } catch {
         if (!cancelled) setAgentError(agentTRef.current("settings.agent.loadFailed"));
@@ -364,12 +414,12 @@ export default function Settings() {
     }
   }
 
-  // —— Agent 配置区（REQ-AGENT-001/004/014）——
+  // —— Agent 配置区（REQ-AGENT-090/091：多 provider 条目列表管理）——
 
-  // 供应商显示名（i18n 键，语言切换即时生效）。
+  // 供应商显示名（中文直写，UX settings-providers.html 形态）。
   function providerLabel(value) {
     const option = AGENT_PROVIDER_OPTIONS.find((o) => o.value === value);
-    return option ? t(option.labelKey) : "";
+    return option ? option.label : value;
   }
 
   // openId 脱敏显示（如 ou_***）：仅保留前 3 字符，避免完整 open_id 泄露。
@@ -378,77 +428,202 @@ export default function Settings() {
     return openId.length > 3 ? `${openId.slice(0, 3)}***` : openId;
   }
 
-  // 保存 Agent 配置：provider+apiKey 成对提交（PRD §7）；已配置且未输入新 key 时
-  // 省略 apiKey 字段以保留现有 key（key 永不回显——签核决策 5）；身份独立可存。
-  async function handleSaveAgent() {
+  // 派生：条目列表 / 默认组合 / 已配置（任一条目持有 key）/ 存量迁移产物形态
+  //（服务端无持久化迁移标记——renderer 按迁移产物启发式判定：单条目 + 单模型 +
+  // 默认组合 = 旧版单条配置迁移结果，signoff migrate-note 契约）。
+  const providers = agentConfig?.providers ?? [];
+  const defaultModel = agentConfig?.defaultModel ?? null;
+  const agentConfigured = providers.some((p) => p.configured === true);
+  const migratedShape =
+    providers.length === 1 &&
+    !!defaultModel &&
+    defaultModel.provider === providers[0].provider &&
+    defaultModel.model === providers[0].models[0];
+
+  // 添加表单默认 provider = 首个未配置的供应商（已配置的重复条目服务端拒收；
+  // 全部已配置 → 取枚举首个，保存时行内提示）。
+  function defaultAddProvider() {
+    const configuredProviders = new Set(providers.map((p) => p.provider));
+    return AGENT_PROVIDER_OPTIONS.find((o) => !configuredProviders.has(o.value))?.value ?? AGENT_PROVIDER_OPTIONS[0].value;
+  }
+
+  // 打开/关闭添加表单（打开时预置内置目录展示 + 默认 provider，E2「填 key 后
+  // 自动刷新」前的即时可用态）。
+  function openAddForm() {
+    setAddFormOpen(true);
+    setAddError(null);
+    setAddApiKey("");
+    setCheckedModels(new Set());
+    const provider = defaultAddProvider();
+    setAddProvider(provider);
+    setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+    setFetchStatus(FETCH_STATUS.noKey);
+    setAgentTestResult(null);
+  }
+
+  function closeAddForm() {
+    setAddFormOpen(false);
+    setAddError(null);
+  }
+
+  // 拉取模型列表（实时无缓存；成功后替换展示列表——勾选集保留，避免用户勾选
+  // 中途被替换丢失）。E2：无 key 不拉取（表单提示「填 key 后自动刷新」）。
+  async function fetchModelsFor(provider, apiKey) {
+    const key = (apiKey ?? "").trim();
+    if (key === "") {
+      setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+      setFetchStatus(FETCH_STATUS.noKey);
+      return;
+    }
+    setFetchStatus(FETCH_STATUS.fetching);
+    try {
+      const res = await fetchProviderModels(provider, key);
+      const list = Array.isArray(res?.models) ? res.models : [];
+      const options = list.length > 0 ? list : BUILTIN_MODEL_CATALOG[provider] ?? [];
+      setModelOptions(options);
+      setFetchStatus(res?.fallback === true ? FETCH_STATUS.fallback : FETCH_STATUS.fetched);
+    } catch {
+      // 拉取失败（网络/服务）：回退内置目录 + 提示（E3，不阻塞保存）。
+      setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+      setFetchStatus(FETCH_STATUS.fallback);
+    }
+  }
+
+  // 勾选子集（Set 状态驱动——列表替换/重渲染保留勾选）。
+  function toggleModel(model) {
+    setCheckedModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(model)) next.delete(model);
+      else next.add(model);
+      return next;
+    });
+  }
+
+  // 保存条目（REQ-AGENT-091 标准 2）：全量 PUT（既有条目不带 key → 服务端复用
+  // 密文；新条目带 key → 加密落盘）；成功后重载配置（列表即时更新）。
+  async function handleSaveProvider() {
+    setAddError(null);
+    setAgentSuccess(null);
+    const key = addApiKey.trim();
+    const models = Array.from(checkedModels);
+    if (key === "") {
+      setAddError("请输入 API Key");
+      return;
+    }
+    if (models.length === 0) {
+      setAddError("请至少勾选一个要使用的模型");
+      return;
+    }
+    if (providers.some((p) => p.provider === addProvider)) {
+      setAddError("该 provider 已配置，请选择其他供应商");
+      return;
+    }
+    setAgentSaving(true);
+    try {
+      await saveAgentConfig({
+        identity: agentIdentity,
+        providers: [
+          ...providers.map((p) => ({ provider: p.provider, models: p.models })),
+          { provider: addProvider, apiKey: key, models },
+        ],
+        defaultModel,
+      });
+      await reloadAgentConfig();
+      setAgentSuccess("条目已保存");
+      closeAddForm();
+    } catch (err) {
+      // E-CONFIG-INVALID（400）透传后端文案（如「模型不存在」「请输入 API Key」）。
+      setAddError(err.message || "保存失败");
+    } finally {
+      setAgentSaving(false);
+    }
+  }
+
+  // 星标切换默认组合（REQ-AGENT-091 标准 3）：PUT defaultModel 显式指向新组合
+  //（全局唯一由服务端结构保证——旧默认自动让位）。
+  async function handleSetDefault(provider, model) {
     setAgentSuccess(null);
     setAgentError(null);
-    setAgentTestResult(null);
-    const provider = agentProvider.trim();
-    const hasKey = agentApiKey.trim() !== "";
-    // 已配置 + 未更换供应商 + 未输入新 key → 保留现有 key（只存身份）。
-    const keepExistingKey = agentConfig?.configured === true && agentConfig?.provider === provider && !hasKey;
-    const errors = { provider: false, apiKey: false, identity: false };
-    if (hasKey && !provider) {
-      errors.provider = true;
-    } else if (provider && !hasKey && !keepExistingKey) {
-      errors.apiKey = true;
+    if (defaultModel?.provider === provider && defaultModel?.model === model) return;
+    setAgentSaving(true);
+    try {
+      await saveAgentConfig({
+        identity: agentIdentity,
+        providers: providers.map((p) => ({ provider: p.provider, models: p.models })),
+        defaultModel: { provider, model },
+      });
+      await reloadAgentConfig();
+    } catch (err) {
+      setAgentError(err.message || "保存失败");
+    } finally {
+      setAgentSaving(false);
     }
+  }
+
+  // 删除条目（REQ-AGENT-091 标准 4）：confirm 确认（E2E dialog 契约）→ 全量 PUT
+  // 不含该条目；不携带 defaultModel → 服务端自动重定向（默认条目被删 → 剩余
+  // 首个组合；删光 → null）。
+  async function handleDeleteProvider(provider) {
+    setAgentSuccess(null);
+    setAgentError(null);
+    if (!window.confirm(`删除 ${provider} 条目？\n使用它的会话将回落到默认模型。`)) return;
+    setAgentSaving(true);
+    try {
+      await saveAgentConfig({
+        identity: agentIdentity,
+        providers: providers.filter((p) => p.provider !== provider).map((p) => ({ provider: p.provider, models: p.models })),
+      });
+      await reloadAgentConfig();
+      setAgentSuccess("条目已删除");
+    } catch (err) {
+      setAgentError(err.message || "删除失败");
+    } finally {
+      setAgentSaving(false);
+    }
+  }
+
+  // 保存身份（REQ-AGENT-004 标准 2）：identity 单独 PUT（providers/defaultModel
+  // 原样保留；存量会话热更新 systemPrompt，不重建上下文）。
+  async function handleSaveIdentity() {
+    setAgentSuccess(null);
+    setAgentError(null);
     if (agentIdentity.length > AGENT_IDENTITY_MAX_LEN) {
-      errors.identity = true;
-    }
-    setAgentFieldErrors(errors);
-    if (errors.provider) {
-      setAgentError(t("settings.agent.providerRequired"));
-      return;
-    }
-    if (errors.apiKey) {
-      setAgentError(t("settings.agent.apiKeyRequired"));
-      return;
-    }
-    if (errors.identity) {
       setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
       return;
     }
-
-    const body = {
-      identity: agentIdentity,
-      ...(hasKey ? { provider, apiKey: agentApiKey.trim() } : {}),
-    };
     setAgentSaving(true);
     try {
-      const saved = await saveAgentConfig(body);
-      setAgentConfig((prev) => ({
-        ...prev,
-        provider: saved.provider,
-        configured: saved.configured,
-        identity: saved.identity,
-      }));
-      setAgentApiKey("");
+      await saveAgentConfig({ identity: agentIdentity });
+      await reloadAgentConfig();
       setAgentSuccess(t("settings.agent.saved"));
     } catch (err) {
-      // E-CONFIG-INVALID（400）透传后端文案（如「API key 不能为空」）。
       setAgentError(err.message || t("settings.agent.saveFailed"));
     } finally {
       setAgentSaving(false);
     }
   }
 
-  // 测试连接（REQ-AGENT-001 AC4）：失败透传供应商原因（E-AGENT-LLM-FAIL），不阻止保存。
+  // 保存/删除/星标后重载配置（GET 回读为真相；错误不覆盖配置展示）。
+  async function reloadAgentConfig() {
+    const config = await getAgentConfig();
+    setAgentConfig(config);
+    setAgentIdentity(config.identity || "");
+  }
+
+  // 测试连接（添加表单的 provider+key 上下文；REQ-AGENT-001 AC4）：失败透传
+  // 供应商原因（E-AGENT-LLM-FAIL），不阻止保存。
   async function handleTestConnection() {
     setAgentSuccess(null);
     setAgentError(null);
     setAgentTestResult(null);
-    const provider = agentProvider.trim();
-    const apiKey = agentApiKey.trim();
-    const errors = { provider: !provider, apiKey: !apiKey, identity: false };
-    setAgentFieldErrors(errors);
-    if (errors.provider) {
-      setAgentError(t("settings.agent.providerRequired"));
+    const provider = addProvider.trim();
+    const apiKey = addApiKey.trim();
+    if (!provider) {
+      setAddError(t("settings.agent.providerRequired"));
       return;
     }
-    if (errors.apiKey) {
-      setAgentError(t("settings.agent.apiKeyRequired"));
+    if (!apiKey) {
+      setAddError(t("settings.agent.apiKeyRequired"));
       return;
     }
     setAgentTesting(true);
@@ -460,7 +635,6 @@ export default function Settings() {
           : { ok: false, message: t("settings.agent.testFailed", { reason: result.message || "" }) }
       );
     } catch (err) {
-      // 400 E-CONFIG-INVALID（前端已拦截）或网络错误。
       setAgentTestResult({ ok: false, message: t("settings.agent.testFailed", { reason: err.message || "" }) });
     } finally {
       setAgentTesting(false);
@@ -540,13 +714,13 @@ export default function Settings() {
           <div className="card-body">
             <div className="agent-status-row" style={STATUS_ROW_STYLE}>
               <span
-                className={`status ${agentConfig?.configured ? "status-success" : "status-error"}`}
+                className={`status ${agentConfigured ? "status-success" : "status-error"}`}
                 data-testid="agent-config-status-badge"
-                data-status={agentConfig?.configured ? "configured" : "unconfigured"}
+                data-status={agentConfigured ? "configured" : "unconfigured"}
               >
                 <span className="status-dot"></span>
                 <span>
-                  {agentConfig?.configured ? t("settings.agent.configured") : t("settings.agent.unconfigured")}
+                  {agentConfigured ? t("settings.agent.configured") : t("settings.agent.unconfigured")}
                 </span>
               </span>
               <span
@@ -557,9 +731,20 @@ export default function Settings() {
                   minWidth: 0,
                 }}
               >
-                {providerLabel(agentConfig?.provider || "")}
+                {providers.length > 0
+                  ? `${providers.length} 个条目 · 默认 ${defaultModel ? `${defaultModel.provider} · ${defaultModel.model}` : "未设置"}`
+                  : t("settings.agent.unconfigured")}
               </span>
             </div>
+
+            {/* 存量迁移提示（REQ-AGENT-091 标准 5，migrate-note 契约）：单条目 +
+                默认组合 = 旧版单条配置迁移产物形态（renderer 启发式判定，服务端无
+                持久化迁移标记——偏差见 build-progress） */}
+            {migratedShape && (
+              <div className="migrate-note" data-testid="migrate-note">
+                已从旧版配置自动迁移：原单条 provider 配置成为列表第一条，并标记为「默认」。
+              </div>
+            )}
 
             {agentError && (
               <div
@@ -597,88 +782,232 @@ export default function Settings() {
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="agent-provider-select">
-                {t("settings.agent.provider")}
-              </label>
-              <select
-                id="agent-provider-select"
-                className={`form-select form-input ${agentFieldErrors.provider ? "invalid" : ""}`}
-                data-testid="agent-provider-select"
-                value={agentProvider}
-                onChange={(e) => {
-                  setAgentProvider(e.target.value);
-                  setAgentFieldErrors((prev) => ({ ...prev, provider: false }));
-                  setAgentError(null);
-                }}
-              >
-                <option value="">{t("settings.agent.selectProvider")}</option>
-                {AGENT_PROVIDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.labelKey)}
-                  </option>
-                ))}
-              </select>
+            {/* provider 条目列表（REQ-AGENT-091 标准 1：provider 名 + 模型 chips +
+                默认徽标唯一；星标移动默认） */}
+            <div className="provider-list">
+              {providers.length === 0 ? (
+                <div className="provider-empty">
+                  未配置模型 —— 点击「添加 Provider」配置第一个（对话与 auto 判断将不可用）。
+                </div>
+              ) : (
+                providers.map((entry) => {
+                  const entryHasDefault =
+                    !!defaultModel && entry.models.some((m) => defaultModel.provider === entry.provider && defaultModel.model === m);
+                  return (
+                    <div
+                      key={entry.provider}
+                      className={`provider-entry${entryHasDefault ? " default" : ""}`}
+                      data-testid="provider-entry"
+                    >
+                      <div className="entry-head">
+                        <div style={{ flex: 1 }}>
+                          <div className="entry-title">
+                            <span>{providerLabel(entry.provider)}</span>
+                            <span className="entry-key">
+                              {entry.configured ? "key 已配置" : "key 未配置"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="entry-actions">
+                          <button
+                            type="button"
+                            className="icon-btn danger"
+                            data-testid="delete-provider"
+                            title="删除条目"
+                            onClick={() => handleDeleteProvider(entry.provider)}
+                            disabled={agentSaving}
+                          >
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                              <path d="M3.5 5h9M6.5 5V3.5h3V5M5 5l.5 8h5L11 5" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="entry-models" data-testid="entry-models">
+                        {entry.models.map((m) => {
+                          const isDefault = defaultModel?.provider === entry.provider && defaultModel?.model === m;
+                          const vision = isVisionModel(entry.provider, m);
+                          return (
+                            <span
+                              key={m}
+                              className={`model-chip${isDefault ? " default" : ""}`}
+                              data-testid="model-chip"
+                              data-provider={entry.provider}
+                              title={isDefault ? "当前默认组合" : "点星标设为默认"}
+                            >
+                              <span className={`cap-dot${vision ? " vision" : ""}`}></span>
+                              <span className="model-chip-name">{m}</span>
+                              {vision && <span className="cap-tag on">视觉</span>}
+                              <span
+                                className="star"
+                                data-model={m}
+                                title="设为默认"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetDefault(entry.provider, m);
+                                }}
+                              >
+                                ★
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="agent-api-key-input">
-                {t("settings.agent.apiKey")}
-              </label>
-              <div
-                className="secret-row"
-                style={{ display: "flex", gap: "var(--ch-space-2)" }}
-              >
-                <input
-                  id="agent-api-key-input"
-                  className={`form-input ${agentFieldErrors.apiKey ? "invalid" : ""}`}
-                  data-testid="agent-api-key-input"
-                  type={agentShowSecret ? "text" : "password"}
-                  placeholder={t("settings.agent.apiKeyPlaceholder")}
-                  value={agentApiKey}
-                  onChange={(e) => {
-                    setAgentApiKey(e.target.value);
-                    setAgentFieldErrors((prev) => ({ ...prev, apiKey: false }));
-                    setAgentError(null);
-                  }}
-                  autoComplete="off"
-                  spellCheck={false}
-                  style={{ flex: 1 }}
-                />
+            {/* 添加条目（REQ-AGENT-091 标准 2：provider + key → 拉取列表 → 勾选子集
+                → 保存；E1/E9 表单行内校验；E2/E3 拉取状态提示） */}
+            <div className="add-panel">
+              {!addFormOpen ? (
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm secret-toggle"
-                  onClick={() => setAgentShowSecret((prev) => !prev)}
+                  className="add-toggle"
+                  data-testid="add-provider-button"
+                  onClick={openAddForm}
                 >
-                  {agentShowSecret ? t("settings.hide") : t("settings.show")}
+                  ＋ 添加 Provider
                 </button>
-              </div>
-              <p className="help-text">{t("settings.agent.apiKeyHelp")}</p>
-            </div>
+              ) : (
+                <div className="add-form show">
+                  <div className="form-row">
+                    <div className="form-field">
+                      <label htmlFor="add-provider-select">Provider</label>
+                      <select
+                        id="add-provider-select"
+                        className="form-input"
+                        data-testid="provider-select"
+                        value={addProvider}
+                        onChange={(e) => {
+                          const p = e.target.value;
+                          setAddProvider(p);
+                          setAddError(null);
+                          setCheckedModels(new Set());
+                          setModelOptions(BUILTIN_MODEL_CATALOG[p] ?? []);
+                          setFetchStatus(FETCH_STATUS.noKey);
+                          setAgentTestResult(null);
+                          if (addApiKey.trim() !== "") fetchModelsFor(p, addApiKey);
+                        }}
+                      >
+                        {AGENT_PROVIDER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="add-provider-key-input">API Key</label>
+                      <input
+                        id="add-provider-key-input"
+                        className="form-input"
+                        data-testid="provider-key-input"
+                        type="password"
+                        placeholder="sk-…"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={addApiKey}
+                        onChange={(e) => {
+                          const key = e.target.value;
+                          setAddApiKey(key);
+                          setAddError(null);
+                          setAgentTestResult(null);
+                          if (key.trim() !== "") fetchModelsFor(addProvider, key);
+                        }}
+                      />
+                    </div>
+                  </div>
 
-            <div className="form-group">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                data-testid="agent-test-connection-button"
-                onClick={handleTestConnection}
-                disabled={agentTesting}
-              >
-                {agentTesting ? t("settings.agent.testing") : t("settings.agent.testConnection")}
-              </button>
-              {agentTestResult && (
-                <p
-                  className="help-text"
-                  data-testid="agent-test-connection-result"
-                  data-ok={agentTestResult.ok}
-                  style={{
-                    marginTop: "var(--ch-space-2)",
-                    marginBottom: 0,
-                    color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
-                  }}
-                >
-                  {agentTestResult.message}
-                </p>
+                  <div className="form-field" style={{ marginTop: "var(--ch-space-3)" }}>
+                    <label>要使用的模型（勾选，不一定要全选）</label>
+                    <div className="model-picker">
+                      <div className="model-picker-row">
+                        <span className={`sync-status${fetchStatus.kind === "fallback" ? " err" : ""}`} data-testid="model-fetch-status">
+                          {fetchStatus.text}
+                        </span>
+                        <button
+                          type="button"
+                          className="sync-btn"
+                          data-testid="refetch-models-button"
+                          title="重新从供应商 API 拉取（实时，无缓存）"
+                          onClick={() => fetchModelsFor(addProvider, addApiKey)}
+                        >
+                          重新拉取
+                        </button>
+                      </div>
+                      <div className="model-options">
+                        {modelOptions.map((m) => (
+                          <label key={m.model} className="model-opt" data-testid="model-option">
+                            <input
+                              type="checkbox"
+                              value={m.model}
+                              checked={checkedModels.has(m.model)}
+                              onChange={() => toggleModel(m.model)}
+                            />
+                            <span className="model-opt-name">{m.model}</span>
+                            <span className="caps">
+                              <span className={`cap-tag${m.vision ? " on" : ""}`}>视觉{m.vision ? "✓" : ""}</span>
+                              <span className={`cap-tag${m.reasoning ? " on" : ""}`}>推理✓</span>
+                            </span>
+                          </label>
+                        ))}
+                        {modelOptions.length === 0 && (
+                          <span className="sync-status">暂无可用模型</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {addError && (
+                    <p className="form-hint" style={{ color: "var(--ch-error)" }} data-testid="add-provider-error">
+                      {addError}
+                    </p>
+                  )}
+
+                  <div className="form-group" style={{ marginTop: "var(--ch-space-3)" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      data-testid="agent-test-connection-button"
+                      onClick={handleTestConnection}
+                      disabled={agentTesting}
+                    >
+                      {agentTesting ? t("settings.agent.testing") : t("settings.agent.testConnection")}
+                    </button>
+                    {agentTestResult && (
+                      <p
+                        className="help-text"
+                        data-testid="agent-test-connection-result"
+                        data-ok={agentTestResult.ok}
+                        style={{
+                          marginTop: "var(--ch-space-2)",
+                          marginBottom: 0,
+                          color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
+                        }}
+                      >
+                        {agentTestResult.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="form-actions">
+                    <button type="button" className="btn" data-testid="cancel-add-provider" onClick={closeAddForm}>
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      data-testid="save-provider"
+                      onClick={handleSaveProvider}
+                      disabled={agentSaving}
+                    >
+                      {agentSaving ? t("settings.agent.saving") : "保存"}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -688,18 +1017,12 @@ export default function Settings() {
               </label>
               <textarea
                 id="agent-identity-input"
-                className={`form-input ${agentFieldErrors.identity ? "invalid" : ""}`}
+                className="form-input"
                 data-testid="agent-identity-input"
                 value={agentIdentity}
                 onChange={(e) => {
                   setAgentIdentity(e.target.value);
-                  if (e.target.value.length > AGENT_IDENTITY_MAX_LEN) {
-                    setAgentFieldErrors((prev) => ({ ...prev, identity: true }));
-                    setAgentError(t("settings.agent.identityTooLong", { max: AGENT_IDENTITY_MAX_LEN }));
-                  } else {
-                    setAgentFieldErrors((prev) => ({ ...prev, identity: false }));
-                    setAgentError(null);
-                  }
+                  setAgentError(null);
                 }}
                 rows={4}
                 spellCheck={false}
@@ -708,6 +1031,15 @@ export default function Settings() {
               <p className="help-text">
                 {t("settings.agent.identityHelp", { max: AGENT_IDENTITY_MAX_LEN })}
               </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                data-testid="save-agent-identity-button"
+                onClick={handleSaveIdentity}
+                disabled={agentSaving}
+              >
+                {agentSaving ? t("settings.agent.saving") : t("settings.agent.saveIdentity")}
+              </button>
             </div>
 
             <div className="form-group">
@@ -784,18 +1116,6 @@ export default function Settings() {
                   </>
                 )}
               </div>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                data-testid="save-agent-config-button"
-                onClick={handleSaveAgent}
-                disabled={agentSaving}
-              >
-                {agentSaving ? t("settings.agent.saving") : t("settings.agent.save")}
-              </button>
             </div>
           </div>
         </div>

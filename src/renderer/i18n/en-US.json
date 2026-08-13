@@ -101,7 +101,8 @@
       "saveFailed": "Failed to save agent config",
       "actionFailed": "Action failed, please retry",
       "loadFailed": "Failed to load agent config",
-      "apiKeyPlaceholder": "Encrypted and stored; enter a new key to replace it"
+      "apiKeyPlaceholder": "Encrypted and stored; enter a new key to replace it",
+      "saveIdentity": "Save identity"
     },
     "saving": "Saving...",
     "saved": "Saved",

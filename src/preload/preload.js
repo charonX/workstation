@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 /**
  * Discover the local HTTP API base URL.
@@ -35,8 +35,25 @@ const apiBaseUrl = discoverApiBaseUrl();
 let selectDirectoryImpl = (title, defaultPath) =>
   ipcRenderer.invoke("opc-select-directory", { title, defaultPath });
 
+// 附件文件路径解析（REQ-AGENT-098，Slice 5）：文件选择器 File 对象的真实磁盘路径。
+// Electron 经 webUtils.getPathForFile 解析（File.path 的现代替代——CDP/测试注入
+// 的 File 对象无 .path 属性；webUtils 按 FileData 内部路径解析，两者都覆盖）。
+// 失败（非本应用 File / 桥接异常）→ 空串（调用方拒绝附加并提示，E8 口径）。
 contextBridge.exposeInMainWorld("opc", {
   apiBaseUrl,
+
+  /**
+   * 解析 File 对象对应的磁盘路径（webUtils.getPathForFile 封装）。
+   * @param {File} file - 文件选择器/测试注入产生的 File 对象
+   * @returns {string} 磁盘绝对路径；无法解析 → ""
+   */
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
 
   /**
    * Open a native directory picker dialog.

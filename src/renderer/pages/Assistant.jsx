@@ -28,8 +28,11 @@ import {
   getSessionMode,
   setSessionMode,
   setLastMode,
+  getSessionProvider,
+  setSessionProvider,
 } from "../api/agentSessions.js";
 import { getAgentConfig } from "../api/agent.js";
+import { isVisionModel } from "../modelCapabilities.js";
 import SessionList from "../components/assistant/SessionList.jsx";
 import ChatView from "../components/assistant/ChatView.jsx";
 import "../components/assistant/assistant.css";
@@ -212,7 +215,13 @@ export default function Assistant() {
   const [selectedKey, setSelectedKey] = useState(null);
   const [messages, setMessages] = useState([]);
   const [confirmations, setConfirmations] = useState([]);
-  const [agentConfigured, setAgentConfigured] = useState(null);
+  // —— agent 配置（Slice 5 升级）：全量 { identity, providers, defaultModel }——
+  // 会话模型选择器（REQ-AGENT-094）与视觉判定（REQ-AGENT-098）的数据源；
+  // 前台轮询刷新（Settings 变更即时反映，§7.1「settings 变更后选择器即时反映」）。
+  const [agentConfig, setAgentConfig] = useState(null); // null = 未加载（不判定未配置）
+  // 会话级 provider/model（REQ-AGENT-093/094）：GET provider 取位（NULL → 默认组合）；
+  // 工具栏切换乐观更新 + PUT 持久化 + 失败回退。
+  const [sessionModel, setSessionModel] = useState(null); // { provider, model } | null
   const [streaming, setStreaming] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
 
@@ -296,7 +305,7 @@ export default function Assistant() {
     const loadConfig = async () => {
       try {
         const cfg = await getAgentConfig();
-        if (!disposed) setAgentConfigured(cfg.configured === true);
+        if (!disposed) setAgentConfig(cfg);
       } catch {
         // 同上。
       }
@@ -331,6 +340,9 @@ export default function Assistant() {
     // 经 GET mode 取该会话当前模式（未显式切过 = lastMode，REQ-AGENT-072 标准 2）。
     setSessionModeState("auto");
     setModeNotice(null);
+    // 切会话清理（Slice 5）：会话 provider 为会话级状态——复位，随后经 GET
+    // provider 取该会话当前组合（行 NULL → 默认组合，REQ-AGENT-093/095）。
+    setSessionModel(null);
     // BUG-004（2026-08-09）：切会话必须归零 streaming/execState——否则上个会话的
     // 流式/执行状态跨会话残留（composer 永远「回复中…」禁用、状态栏不跟随切换）。
     // execStateOf({streaming:false, toolActive:0}) → idle，新会话输入框立即可用。
@@ -484,6 +496,22 @@ export default function Assistant() {
         // 取位失败（服务未就绪等）：保持默认值，SSE 重连/下次切换兜底。
       });
 
+    // 会话 provider 取位（Slice 5，REQ-AGENT-093/094）：进入/切换会话取当前组合
+    //（行值优先；NULL → 默认组合）。空配置（providers 空）→ 服务端回落空串 →
+    // 归一为 null（选择器触发按钮禁用 + E12 引导提示）。
+    getSessionProvider(selectedKey)
+      .then((r) => {
+        if (disposed) return;
+        const sm =
+          r && typeof r.provider === "string" && r.provider !== "" && typeof r.model === "string" && r.model !== ""
+            ? { provider: r.provider, model: r.model }
+            : null;
+        setSessionModel(sm);
+      })
+      .catch(() => {
+        // 取位失败：保持 null（选择器显示占位，切换/下次取位兜底）。
+      });
+
     align();
     const unsubscribe = subscribeSessionEvents(selectedKey, {
       onOpen: () => {
@@ -566,9 +594,11 @@ export default function Assistant() {
   );
 
   const handleSend = useCallback(
-    async (raw) => {
+    async (raw, attachments) => {
       const text = String(raw ?? "").trim();
-      if (text === "" || streamingRef.current) return;
+      const atts = Array.isArray(attachments) && attachments.length > 0 ? attachments : undefined;
+      // 空文本 + 附件 = 纯图片消息（REQ-AGENT-098：POST 允许空文本 + 附件）。
+      if ((text === "" && !atts) || streamingRef.current) return;
       const key = selectedKeyRef.current;
       if (text === "/reset" || text === "/clear") {
         if (key) await handleReset(key);
@@ -584,7 +614,7 @@ export default function Assistant() {
         } catch {
           return;
         }
-        return handleSend(raw);
+        return handleSend(raw, attachments);
       }
       setStreamingBoth(true);
       // 发送前等 SSE 流就绪（F2：断线重连窗口内发送会丢流式事件；等待连接恢复后
@@ -593,14 +623,31 @@ export default function Assistant() {
       // 用户气泡即时出现（S3 操作流 1）：乐观追加，不等 POST 受理——首条消息的
       // POST 在 agent 子进程就绪后才受理（worker spawn 秒级），等到响应再追加会
       // 把用户气泡排在 agent 回复之后（顺序错乱 + 流式窗口错过）。
-      // dedupe 防 align 竞态重复渲染（align 已含该消息时不再追加）。
+      // dedupe 防 align 竞态重复渲染（align 已含该消息时不再追加）；附件消息按
+      // 文本 + 附件数量匹配（纯图片消息 text 为空，数量防误去重）。
       setMessages((prev) =>
-        prev.some((m) => m.role === "user" && m.text === text)
+        prev.some(
+          (m) =>
+            m.role === "user" &&
+            m.text === text &&
+            (m.attachments?.length ?? 0) === (atts?.length ?? 0)
+        )
           ? prev
-          : [...prev, { kind: "text", id: `user-${Date.now()}`, role: "user", text, streaming: false, createdAt: new Date().toISOString() }]
+          : [
+              ...prev,
+              {
+                kind: "text",
+                id: `user-${Date.now()}`,
+                role: "user",
+                text,
+                attachments: atts,
+                streaming: false,
+                createdAt: new Date().toISOString(),
+              },
+            ]
       );
       try {
-        await sendMessage(key, text);
+        await sendMessage(key, text, atts);
       } catch {
         // 发送失败（网络/服务）：失败气泡标注（§8），按钮恢复。
         setStreamingBoth(false);
@@ -664,12 +711,45 @@ export default function Assistant() {
     }
   }, []);
 
+  // —— 会话 provider 切换（REQ-AGENT-093/094，Slice 5）：工具栏模型选择器选择 →
+  // 乐观更新（trigger/高亮立即移动）+ PUT provider 持久化（下一条消息生效，历史
+  // 保留）；失败回退原组合（E4：切换失败保持原 provider）。无会话（selectedKey
+  // 为 null）→ 切换落默认组合（GET provider 回读 = 默认，选择器仅展示）。
+  const handleModelChange = useCallback(async (provider, model) => {
+    const key = selectedKeyRef.current;
+    const prev = sessionModel;
+    setSessionModel({ provider, model });
+    try {
+      const res = await (key
+        ? setSessionProvider(key, provider, model)
+        : Promise.resolve({ provider, model }));
+      if (res && typeof res.provider === "string" && typeof res.model === "string") {
+        // 响应落地前用户可能已切会话（组合为会话级状态）——仅当仍是原会话时应用。
+        if (!key || selectedKeyRef.current === key) {
+          setSessionModel({ provider: res.provider, model: res.model });
+        }
+      }
+    } catch {
+      // 切换失败（组合不在条目 E-MODEL-CONFIG-MISSING / key 失效 E-MODEL-KEY-FAIL /
+      // 服务未就绪）：回退原组合（服务端状态未变）。
+      if (selectedKeyRef.current === key) setSessionModel(prev);
+    }
+  }, [sessionModel]);
+
   // —— 右栏派生 ——
   const space = spaceOf(selectedKey, sessions);
   const selectedSession = findSession(selectedKey, sessions);
   const chatTitle = selectedSession?.title ?? "新对话";
   const showEmpty = messages.length === 0;
-  const unconfigured = agentConfigured === false;
+  // 未配置判定（Slice 5 升级）：配置未加载（null）→ 不算未配置（保持既有行为）；
+  // 已加载 → 任一条目持有 key（configured:true）即已配置。
+  const unconfigured = agentConfig !== null && !(agentConfig.providers ?? []).some((p) => p.configured === true);
+  // 会话当前组合视觉能力（REQ-AGENT-098 E11 判定）：会话模型优先（行值/切换），
+  // 未取位回落默认组合；能力数据 = renderer 静态表（modelCapabilities.js）。
+  const visionCapable = isVisionModel(
+    sessionModel?.provider ?? agentConfig?.defaultModel?.provider ?? "",
+    sessionModel?.model ?? agentConfig?.defaultModel?.model ?? ""
+  );
   // 图片解析根（REQ-AGENT-051 / I-5 口径）：项目空间会话（ui:project:<pid>:<sid>）→
   // projectId——主进程按 projects 表 registry 解析实际项目目录（renderer 不持有
   // 绝对路径，白名单判定在主进程）；通用/飞书/孤儿空间 → undefined（无解析根 →
@@ -719,6 +799,11 @@ export default function Assistant() {
         mode={sessionMode}
         onModeChange={handleModeChange}
         modeNotice={modeNotice}
+        providers={agentConfig?.providers ?? []}
+        defaultModel={agentConfig?.defaultModel ?? null}
+        sessionModel={sessionModel}
+        onModelChange={handleModelChange}
+        visionCapable={visionCapable}
       />
     </div>
   );

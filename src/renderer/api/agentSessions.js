@@ -43,15 +43,34 @@ export function getMessages(spaceKey) {
   return get(`/api/agent/sessions/${encodeKey(spaceKey)}/messages`);
 }
 
-/** 发送消息（F1）：202 { messageId }；流式回复经 SSE 回传。 */
-export function sendMessage(spaceKey, text) {
-  return post(`/api/agent/sessions/${encodeKey(spaceKey)}/messages`, { text });
+/** 发送消息（F1）：202 { messageId }；流式回复经 SSE 回传。
+ *  附件（REQ-AGENT-098，Slice 5）：attachments = [{name, size, mimeType, kind:"image",
+ *  path}]（≤10）——渲染层已做白名单/数量/大小/视觉复核，此处透传 POST。 */
+export function sendMessage(spaceKey, text, attachments) {
+  const body = { text };
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    body.attachments = attachments;
+  }
+  return post(`/api/agent/sessions/${encodeKey(spaceKey)}/messages`, body);
 }
 
 /** 确认项全量（U-1）：{ pending, confirmations }——confirmations 含 status
  *  （pending|approved|rejected），页面重载后已处理卡重建依赖它。 */
 export function listConfirmations() {
   return get("/api/agent/confirmations");
+}
+
+/** 会话 provider（REQ-AGENT-093/094，Slice 5）：GET → { provider, model }——行值
+ *  优先（NULL → 默认组合）；工具栏模型选择器取位/回读。 */
+export function getSessionProvider(spaceKey) {
+  return get(`/api/agent/sessions/${encodeKey(spaceKey)}/provider`);
+}
+
+/** 切换会话 provider（REQ-AGENT-093/094）：PUT { provider, model } → { provider,
+ *  model }——provider-change 热更新（历史保留，下一条生效）；组合不在已配置条目 →
+ *  400 E-MODEL-CONFIG-MISSING；key 解密失败 → 400 E-MODEL-KEY-FAIL。 */
+export function setSessionProvider(spaceKey, provider, model) {
+  return put(`/api/agent/sessions/${encodeKey(spaceKey)}/provider`, { provider, model });
 }
 
 /** 确认（REQ-AGENT-030）：既有端点复用 → 确认服务驱动同一命令模块执行，

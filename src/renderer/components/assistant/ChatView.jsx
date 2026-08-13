@@ -3,6 +3,7 @@
 // 输入区。testid 契约：chat-title / chat-space-badge / empty-state / empty-space-name /
 // unconfigured-state；空态 = 仅标题 + 当前空间提示（引导卡已砍，2026-08-06 拍板）。
 
+import { useRef } from "react";
 import MessageList from "./MessageList.jsx";
 import Composer from "./Composer.jsx";
 import StatusBar from "./StatusBar.jsx";
@@ -28,7 +29,15 @@ export default function ChatView({
   mode,
   onModeChange,
   modeNotice,
+  providers,
+  defaultModel,
+  sessionModel,
+  onModelChange,
+  visionCapable,
 }) {
+  // Composer 文件选择器句柄（React 19 ref-as-prop）：ModeToolbar 附件按钮 →
+  // onAttachClick → openFilePicker（文件选择器在 Composer 内，chips 行同处）。
+  const composerRef = useRef(null);
   return (
     <main className="assistant-chat">
       <header className="chat-header">
@@ -75,16 +84,29 @@ export default function ChatView({
           MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。 */}
       <div className="composer-area">
         <Composer
+          ref={composerRef}
           readonly={composer.readonly}
           readonlyReason={composer.readonlyReason}
           disabled={composer.disabled}
           busy={composer.busy}
+          visionCapable={visionCapable}
           onSend={onSend}
         />
 
         {/* 模式工具栏（REQ-AGENT-071）：composer 下方——既有渲染顺序契约
-            MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。 */}
-        <ModeToolbar mode={mode} onModeChange={onModeChange} degradedReason={modeNotice} />
+            MessageList → StatusBar → Composer → ModeToolbar（E2E 断言纵向顺序）。
+            模型选择器（REQ-AGENT-094）与附件按钮（REQ-AGENT-098）同栏
+            （Slice 5，替代灰显槽位）。 */}
+        <ModeToolbar
+          mode={mode}
+          onModeChange={onModeChange}
+          degradedReason={modeNotice}
+          providers={providers}
+          defaultModel={defaultModel}
+          sessionModel={sessionModel}
+          onModelChange={onModelChange}
+          onAttachClick={() => composerRef.current?.openFilePicker?.()}
+        />
       </div>
     </main>
   );

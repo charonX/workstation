@@ -1,4 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
+import { fetchModels } from "../../services/modelCatalogService.js";
 import {
   broadcastAgentConfigChange,
   broadcastJudgeConfig,
@@ -22,6 +23,13 @@ export async function handleSettings(req, res, body, subPath = [], context = {})
   if (subPath[0] === "agent") {
     if (subPath[1] === "test-connection" && req.method === "POST") {
       return handleAgentTestConnection(req, res, body);
+    }
+    // 动态模型列表（REQ-AGENT-092 / PRD §10.2，Slice 5 前端 seam）：POST
+    // /api/settings/agent/models { provider, apiKey } → { models: [...], fallback? }
+    // ——Settings 添加条目表单实时拉取（成功 → 裸数组 wrap 成 {models}；无 key/失败/
+    // 空列表 → {models, fallback:true}，E2/E3 提示分支）。apiKey 走请求体（不落 URL）。
+    if (subPath[1] === "models" && req.method === "POST") {
+      return handleProviderModels(req, res, body);
     }
     // 绑定（REQ-AGENT-014，E3 + W-1）：Settings Agent 区「开始绑定」入口 →
     // agentRouter.beginBinding（pendingBind arming，一次性 + 10 分钟有效期）——
@@ -182,6 +190,19 @@ async function handleAgentTestConnection(req, res, body) {
   } catch (err) {
     return ok(res, { ok: false, error: "E-AGENT-LLM-FAIL", message: err.message });
   }
+}
+
+// 动态模型列表拉取（REQ-AGENT-092，Slice 5）：POST /api/settings/agent/models。
+// 响应归一化：拉取成功（裸数组）→ { models }；无 key/失败/空列表 → { models,
+// fallback: true }（modelCatalogService 契约原样，仅数组 wrap 统一形态）。
+async function handleProviderModels(req, res, body) {
+  const provider = body?.provider;
+  if (typeof provider !== "string" || provider === "") {
+    return badRequest(res, "provider 必选");
+  }
+  const apiKey = typeof body?.apiKey === "string" ? body.apiKey : "";
+  const result = await fetchModels(provider, apiKey);
+  return ok(res, Array.isArray(result) ? { models: result } : result);
 }
 
 function ok(res, data) {
