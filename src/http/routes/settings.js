@@ -1,5 +1,9 @@
 import * as settingsService from "../../services/settingsService.js";
-import { broadcastAgentConfigChange, broadcastJudgeConfig } from "../../services/agentService.js";
+import {
+  broadcastAgentConfigChange,
+  broadcastJudgeConfig,
+  buildJudgeConfig,
+} from "../../services/agentService.js";
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -114,8 +118,9 @@ function loadPublicSettings() {
 // key 明文仅经内存传递（不落日志）。
 function handleAgentConfigSave(req, res, body) {
   try {
-    // 变更前默认组合（变更判定基准；saveAgentConfig 会规范化/重定向指针）。
-    const before = settingsService.loadAgentConfig().defaultModel ?? null;
+    // 变更前默认组合（变更判定基准；buildJudgeConfig = REQ-096 签核 seam——判定与
+    // worker defaultJudge 装配同源规范化，此处不再手拼 defaultModel 指针）。
+    const before = buildJudgeConfig(settingsService.loadAgentConfig());
     const saved = settingsService.saveAgentConfig(body);
     const hasIdentity = hasOwn(body, "identity");
     const hasFlatCreds = hasOwn(body, "provider") && hasOwn(body, "apiKey");
@@ -126,10 +131,14 @@ function handleAgentConfigSave(req, res, body) {
         apiKey: hasFlatCreds ? body.apiKey : undefined
       });
     }
-    const after = saved.defaultModel ?? null;
-    const beforeKey = before ? `${before.provider}/${before.model}` : null;
-    const afterKey = after ? `${after.provider}/${after.model}` : null;
-    if (beforeKey !== afterKey) {
+    // 默认组合变更（新形态 defaultModel / 旧形态平铺 provider 均经 saveAgentConfig
+    // 规范化 → buildJudgeConfig 输出）→ judge-config 广播（懒恢复会话不在此列，
+    // 随 session-config 自然带新 defaultJudge）。
+    const after = buildJudgeConfig(saved);
+    const comboChanged =
+      (before?.provider ?? "") !== (after?.provider ?? "") ||
+      (before?.model ?? "") !== (after?.model ?? "");
+    if (comboChanged) {
       broadcastJudgeConfig();
     }
     return ok(res, saved);
