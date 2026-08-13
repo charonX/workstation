@@ -25,7 +25,7 @@
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE
 
-commit：`[build] slice-1-settings-model-config` — `ebf0ec2`（仅本 story 文件，7 个：6 src + build-progress.md）。
+commit：`[build] slice-1-settings-model-config` — `1dfeff8`（仅本 story 文件，7 个：6 src + build-progress.md）。
 
 #### PRD → 代码 可追溯性表
 
@@ -49,7 +49,7 @@ commit：`[build] slice-1-settings-model-config` — `ebf0ec2`（仅本 story �
 
 #### Slice 1 完成记录
 
-- commit：`[build] slice-1-settings-model-config` — `ebf0ec2`（仅本 story 文件）。
+- commit：`[build] slice-1-settings-model-config` — `1dfeff8`（仅本 story 文件）。
 - 测试摘要：见下方「测试验证」。
 - 偏差与 concern：见下方「偏差」。
 
