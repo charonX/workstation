@@ -65,7 +65,8 @@ describe("REQ-AGENT-001 供应商与 API key 配置", () => {
     const res = await fetch(`${baseUrl}/api/settings/agent`);
     assert.equal(res.status, 200, "读取端点应可用");
     const data = await res.json();
-    assert.equal(data.provider, "moonshotai-cn", "读取应返回最后保存的供应商");
+    // 新形态（REQ-AGENT-090）：providers 列表（旧平铺 PUT 兼容路径迁移为单条列表）
+    assert.equal(data.providers[0].provider, "moonshotai-cn", "读取应返回最后保存的供应商");
     // 签核决策 5：key 不落 settings.json 明文。
     const settingsText = fs.readFileSync(path.join(workdir, "settings.json"), "utf8");
     for (const provider of providers) {
@@ -91,8 +92,8 @@ describe("REQ-AGENT-001 供应商与 API key 配置", () => {
     });
     assert.equal(oddRes.status, 200, `任意非空前缀应可保存，实际 ${oddRes.status}`);
     const saved = await (await fetch(`${baseUrl}/api/settings/agent`)).json();
-    assert.equal(saved.configured, true, "保存后应为已配置状态");
-    assert.equal(saved.provider, "deepseek", "读取应返回保存的供应商");
+    assert.equal(saved.providers[0].configured, true, "保存后应为已配置状态");
+    assert.equal(saved.providers[0].provider, "deepseek", "读取应返回保存的供应商");
   });
 
   it("测试连接（保存前校验 key 有效性）", async () => {
@@ -129,8 +130,8 @@ describe("REQ-AGENT-001 供应商与 API key 配置", () => {
 
   it("配置状态可查（已配置/未配置 + 供应商名）", async () => {
     const before = await (await fetch(`${baseUrl}/api/settings/agent`)).json();
-    assert.equal(before.configured, false, "初始应为未配置");
-    assert.ok(!before.provider, "未配置时供应商应为空");
+    assert.equal(before.providers.length, 0, "初始应为未配置（空列表）");
+    assert.equal(before.defaultModel, null, "未配置时默认组合应为 null");
 
     await fetch(`${baseUrl}/api/settings/agent`, {
       method: "PUT",
@@ -138,8 +139,8 @@ describe("REQ-AGENT-001 供应商与 API key 配置", () => {
       body: JSON.stringify({ provider: "moonshotai", apiKey: "sk-m-123" })
     });
     const after = await (await fetch(`${baseUrl}/api/settings/agent`)).json();
-    assert.equal(after.configured, true, "保存后应为已配置");
-    assert.equal(after.provider, "moonshotai", "应返回供应商名");
+    assert.equal(after.providers[0].configured, true, "保存后应为已配置");
+    assert.equal(after.providers[0].provider, "moonshotai", "应返回供应商名");
   });
 });
 

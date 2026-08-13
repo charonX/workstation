@@ -95,10 +95,9 @@ test.describe("Settings 页 tab 化与分区保存", () => {
     await expect(tab(firstWindow, "about")).toHaveText("关于与更新");
 
     await tab(firstWindow, "agent").click();
-    await expect(firstWindow.locator("[data-testid='agent-api-key-input']")).toHaveAttribute(
-      "placeholder",
-      "已加密存储，输入则更换"
-    );
+    // 新形态（2026-08-12-conversation-toolbar-ext REQ-AGENT-091）：provider 条目列表——
+    // key 永不回显；空配置态显示 zh-CN 引导文案
+    await expect(firstWindow.locator(".provider-empty")).toContainText("未配置模型");
   });
 
   test("REQ-AGENT-023 AC1: 点击 tab 切换面板显隐与 aria-selected 联动", async () => {
@@ -127,11 +126,14 @@ test.describe("Settings 页 tab 化与分区保存", () => {
 
     // Agent 配置：供应商/key/测试连接/身份/绑定（未绑定态为开始绑定入口）
     await tab(firstWindow, "agent").click();
-    await expect(firstWindow.locator("[data-testid='agent-provider-select']")).toBeVisible();
-    await expect(firstWindow.locator("[data-testid='agent-api-key-input']")).toBeVisible();
-    await expect(firstWindow.locator("[data-testid='agent-test-connection-button']")).toBeVisible();
+    // 新形态（2026-08-12-conversation-toolbar-ext REQ-AGENT-091）：provider 条目列表
+    // （空配置 = 空态引导 + 添加按钮）；test-connection 移入添加表单
+    await expect(firstWindow.locator(".provider-empty")).toBeVisible();
+    await expect(firstWindow.locator("[data-testid='add-provider-button']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='agent-identity-input']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='agent-begin-binding-button']")).toBeVisible();
+    await firstWindow.click("[data-testid='add-provider-button']");
+    await expect(firstWindow.locator("[data-testid='agent-test-connection-button']")).toBeVisible();
 
     // 飞书通道：App ID/App Secret/重连
     await tab(firstWindow, "channel").click();
@@ -154,7 +156,7 @@ test.describe("Settings 页 tab 化与分区保存", () => {
     await expect(firstWindow.locator(locators.SAVE_GENERAL_SETTINGS_BUTTON)).toBeVisible();
 
     await tab(firstWindow, "agent").click();
-    await expect(firstWindow.locator("[data-testid='save-agent-config-button']")).toBeVisible();
+    await expect(firstWindow.locator("[data-testid='add-provider-button']")).toBeVisible();
 
     await tab(firstWindow, "channel").click();
     await expect(firstWindow.locator("[data-testid='save-channel-credentials-button']")).toBeVisible();
@@ -188,8 +190,8 @@ test.describe("Settings 页 tab 化与分区保存", () => {
     expect(capturedBody).not.toHaveProperty("apiKey");
   });
 
-  test("REQ-AGENT-024 AC3: Agent 保存 keepExistingKey——未输新 key 请求体不含 apiKey", async () => {
-    // 预置已配置状态（E2E 假 key，仅用于接通已配置路径）。
+  test("REQ-AGENT-024 AC3: Agent 已配置状态——条目显示「key 已配置」，key 永不回显", async () => {
+    // 预置已配置状态（E2E 假 key，旧平铺 PUT 兼容路径）。
     const seed = await fetch(`${apiBaseUrl}/api/settings/agent`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -201,20 +203,11 @@ test.describe("Settings 页 tab 化与分区保存", () => {
     await tab(firstWindow, "agent").click();
     await expect(firstWindow.locator("[data-testid='agent-config-status-badge']")).toBeVisible();
 
-    let capturedBody = null;
-    await firstWindow.route("**/api/settings/agent", async (route) => {
-      if (route.request().method() === "PUT") {
-        capturedBody = route.request().postDataJSON();
-      }
-      await route.continue();
-    });
-
-    // 不输入新 key 直接保存（key 永不回显，输入框为空）。
-    await firstWindow.click("[data-testid='save-agent-config-button']");
-
-    await expect(firstWindow.locator("[data-testid='agent-settings-success']")).toBeVisible();
-    expect(capturedBody).not.toBeNull();
-    expect(capturedBody.apiKey).toBeUndefined();
+    // keepExistingKey 语义：key 永不回显——条目显示「key 已配置」而非明文
+    // （服务端 keepExistingKey 的请求体语义由 providerModelConfig.test.js key 成对规则覆盖，
+    // 见 build-progress 待处理清单 test-gap）。
+    await expect(firstWindow.locator("[data-testid='provider-entry']").first()).toContainText("key 已配置");
+    await expect(firstWindow.locator("[data-testid='provider-entry']").first()).not.toContainText("sk-e2e-placeholder-key");
   });
 
   test("REQ-AGENT-024 AC4: 飞书通道保存提交 appId/appSecret，区内显示成功反馈", async () => {
@@ -256,11 +249,13 @@ test.describe("Settings 页 tab 化与分区保存", () => {
       }
     });
 
-    // 输入 key 绕过客户端非空校验，让请求真实发出。
-    await firstWindow.fill("[data-testid='agent-api-key-input']", "sk-e2e-invalid-key");
-    await firstWindow.click("[data-testid='save-agent-config-button']");
+    // 打开添加表单：填 key + 勾选模型，让请求真实发出（mock 400 拦截）。
+    await firstWindow.click("[data-testid='add-provider-button']");
+    await firstWindow.fill("[data-testid='provider-key-input']", "sk-e2e-invalid-key");
+    await firstWindow.locator("[data-testid='model-option'] input[type='checkbox']").first().check();
+    await firstWindow.click("[data-testid='save-provider']");
 
-    await expect(panel(firstWindow, "agent").locator("[data-testid='agent-settings-error']")).toBeVisible();
+    await expect(panel(firstWindow, "agent").locator("[data-testid='add-provider-error']")).toBeVisible();
     // 错误文案透传（如「API key 不能为空」）由 API 层测试断言（签核裁决 1），
     // 本用例只签「错误显示在对应 tab 区内」这一结构行为。
   });

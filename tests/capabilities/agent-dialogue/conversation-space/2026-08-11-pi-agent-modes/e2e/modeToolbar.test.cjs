@@ -128,9 +128,13 @@ test.describe("对话区模式工具栏（E2E）", () => {
     await expect(firstWindow.locator(MODE_TRIGGER)).toContainText("自动");
   });
 
-  test("REQ-AGENT-071 标准 4：未来扩展槽位灰显占位存在", async () => {
-    await expect(firstWindow.locator(SLOT_MODEL)).toBeVisible();
-    await expect(firstWindow.locator(SLOT_ATTACH)).toBeVisible();
+  test("REQ-AGENT-071 标准 4：扩展槽位已实现为可用控件（2026-08-12-conversation-toolbar-ext 契约演化）", async () => {
+    // 灰显占位槽位（toolbar-slot-model/attach）已由 REQ-AGENT-094/098 实现为功能控件：
+    // 模型选择器（model-select）与附件按钮（attach-button）；旧槽位不再渲染。
+    await expect(firstWindow.locator(SLOT_MODEL)).toHaveCount(0);
+    await expect(firstWindow.locator(SLOT_ATTACH)).toHaveCount(0);
+    await expect(firstWindow.locator("[data-testid='model-select']")).toBeVisible();
+    await expect(firstWindow.locator("[data-testid='attach-button']")).toBeVisible();
   });
 
   test("REQ-AGENT-071 标准 5：auto 切换无额外提示", async () => {
