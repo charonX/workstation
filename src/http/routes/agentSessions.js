@@ -474,7 +474,7 @@ function handleReset(res, spaceKey, store) {
 // 会话尚未创建时模式由 session-config 自然携带（buildConfigMessage 读
 // modeService.getMode），等效。两者共用同一 modeService 单例，状态一致。
 function resolveModeService(context) {
-  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const svc = peekAgentService(context);
   if (svc && typeof svc.getSessionMode === "function" && typeof svc.setSessionMode === "function") {
     return {
       getMode: (key) => svc.getSessionMode(key),
@@ -510,6 +510,23 @@ function handlePutMode(res, spaceKey, body, context) {
 
 // —— 会话级 provider 端点（REQ-AGENT-093/095，Slice 2，ADR-026）——
 
+// 同步窥探既有 agentService 实例（未创建 → null，不触发子进程启动——ADR-009 惰性
+// 纪律；events/mode/provider 端点同型，四处共用同一取法）。
+function peekAgentService(context) {
+  return typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+}
+
+// 会话行取位（SQLite 为真相）：行不存在 → 404 E-SESSION-NOT-FOUND 并返回 null 短路
+//（调用方 `if (!row) return;`）。
+function getSessionRowOrError(res, store, spaceKey) {
+  const row = store.get(spaceKey);
+  if (!row) {
+    sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+    return null;
+  }
+  return row;
+}
+
 // 会话 provider 回读（GET /api/agent/sessions/:spaceKey/provider）：
 // 行值优先（行带 provider/model → 用行值）；NULL → 默认组合；条目已删/模型不在
 // 条目 → 回落默认（E12，不悬空）。无会话行 → 404 E-SESSION-NOT-FOUND。
@@ -517,9 +534,9 @@ function handlePutMode(res, spaceKey, body, context) {
 // 惰性：GET 不触发子进程启动）→ 直连 settings + store 解析（同一单点
 // settingsService.resolveSessionModelConfig，无行为差异）。
 function handleGetProvider(res, spaceKey, store, context) {
-  const row = store.get(spaceKey);
-  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
-  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const row = getSessionRowOrError(res, store, spaceKey);
+  if (!row) return;
+  const svc = peekAgentService(context);
   if (svc && typeof svc.getSessionProvider === "function") {
     try {
       return ok(res, svc.getSessionProvider(spaceKey));
@@ -538,13 +555,13 @@ function handleGetProvider(res, spaceKey, store, context) {
 // 同组合重复 PUT 无副作用。服务实例存在 → 经 setSessionProvider（含 IPC）；未启动
 // → 直连 settings + store（校验/行回写，不触发子进程启动；懒恢复/水合按行装配）。
 function handlePutProvider(res, spaceKey, body, store, context) {
-  const row = store.get(spaceKey);
-  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  const row = getSessionRowOrError(res, store, spaceKey);
+  if (!row) return;
   const { provider, model } = body ?? {};
   if (typeof provider !== "string" || provider === "" || typeof model !== "string" || model === "") {
     return sendError(res, 400, "E-MODEL-CONFIG-MISSING", "组合不在已配置条目");
   }
-  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const svc = peekAgentService(context);
   if (svc && typeof svc.setSessionProvider === "function") {
     try {
       return ok(res, svc.setSessionProvider(spaceKey, { provider, model }));
@@ -679,7 +696,7 @@ function handleGetEvents(res, spaceKey, store, context) {
   // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
   // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
   // 启动（ADR-009：打开 events 连接不启动 agent 子进程）。
-  const svc = typeof context?.peekAgentService === "function" ? context.peekAgentService() : null;
+  const svc = peekAgentService(context);
   const existing = peekSession(svc, spaceKey);
   if (existing) {
     sub.attach(existing);

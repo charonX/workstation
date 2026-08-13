@@ -468,6 +468,13 @@ export function resolveSessionModelConfig(rowProvider, rowModel) {
     (dm && defaultEntry.models.includes(dm.model) ? dm.model : defaultEntry.models[0]) ||
     DEFAULT_MODELS[defaultEntry.provider] ||
     defaultEntry.provider;
+  // 默认组合落点（行值不适用 / 行 NULL / 回落 E12 三种情形共用）。
+  const defaultResult = {
+    provider: defaultEntry.provider,
+    model: defaultModel,
+    entry: defaultEntry,
+    identity: migrated.identity,
+  };
   if (
     typeof rowProvider === "string" &&
     rowProvider !== "" &&
@@ -479,21 +486,9 @@ export function resolveSessionModelConfig(rowProvider, rowModel) {
       return { provider: rowProvider, model: rowModel, entry, identity: migrated.identity, fallback: false };
     }
     // E12：行值条目已删/模型不在条目 → 回落默认组合（不悬空）。
-    return {
-      provider: defaultEntry.provider,
-      model: defaultModel,
-      entry: defaultEntry,
-      identity: migrated.identity,
-      fallback: true,
-    };
+    return { ...defaultResult, fallback: true };
   }
-  return {
-    provider: defaultEntry.provider,
-    model: defaultModel,
-    entry: defaultEntry,
-    identity: migrated.identity,
-    fallback: false,
-  };
+  return { ...defaultResult, fallback: false };
 }
 
 // 条目明文 key（E-MODEL-KEY-FAIL 语义）：密文优先（解密失败 → undefined）；明文

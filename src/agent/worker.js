@@ -968,7 +968,7 @@ async function handleSessionConfig(msg) {
   const existing = lifecycle.get(sessionKey);
 
   if (existing) {
-    if (apiKey) keySecrets.set(keyRef ?? existing.keyRef, apiKey);
+    setSessionSecret(keyRef, apiKey, existing.keyRef);
     const credsChanged =
       existing.provider !== provider ||
       existing.model !== model ||
@@ -1227,6 +1227,12 @@ async function resolveModel(runtime, provider, model, apiKey) {
   return modelObj;
 }
 
+// key 一次注入仅内存（keySecrets 按 keyRef 索引共享缓存，REQ-AGENT-035 标准 2）；
+// keyRef 缺省 → 兜底既有引用。session-config 与 provider-change 共用同一注入语义。
+function setSessionSecret(keyRef, apiKey, fallbackKeyRef) {
+  if (apiKey) keySecrets.set(keyRef ?? fallbackKeyRef, apiKey);
+}
+
 // —— Slice 2（REQ-AGENT-093，ADR-026）：provider-change 热更新 ——
 // 会话级模型切换：resolveModel 替换该会话 modelObj（AgentSession.setModel——
 // 下一轮 prompt 生效），sessionRef 不换代（JSONL 历史保留）。key 一次注入仅内存
@@ -1240,7 +1246,7 @@ async function handleProviderChange(msg) {
     log(`provider-change 跳过 session=${sessionKey}（会话不存在，懒恢复按行装配）`);
     return;
   }
-  if (apiKey) keySecrets.set(keyRef ?? entry.keyRef, apiKey);
+  setSessionSecret(keyRef, apiKey, entry.keyRef);
   const modelObj = await resolveModel(entry.modelRuntime, provider, model, apiKey);
   await entry.agentSession.setModel(modelObj);
   entry.provider = provider;

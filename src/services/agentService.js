@@ -208,6 +208,21 @@ function noSessionError() {
   return Object.assign(new Error("会话不存在"), { code: "E-AGENT-NO-SESSION" });
 }
 
+// 会话行缺失（E-SESSION-NOT-FOUND，404）：setSessionProvider/getSessionProvider 共用
+//（HTTP 层经 mapProviderError 映射为 404，契约见 REQ-AGENT-093 接口 1）。
+function sessionNotFoundError() {
+  return Object.assign(new Error("会话不存在"), { code: "E-SESSION-NOT-FOUND", status: 404 });
+}
+
+// E12 回落覆盖（REQ-AGENT-095 标准 4）：行值条目已删/模型不在条目 → 水合/懒恢复将
+// 行值覆盖为默认组合（SQLite 为真相——避免每次重装反复回落；行写入失败由
+// sessionStore.degradePersistFailure 兜底，内存态继续）。
+function persistFallbackRow(store, spaceKey, cfg) {
+  if (cfg.fallback && store?.updateProviderConfig) {
+    store.updateProviderConfig(spaceKey, cfg.provider, cfg.model);
+  }
+}
+
 // 单条 session-event ≤ 256KB：超限截断文本载体 + truncated 标记（REQ-AGENT-006 标准 5）。
 function enforceSizeLimit(event) {
   const size = JSON.stringify(event).length;
@@ -849,9 +864,7 @@ function createProcessAgentService(options = {}) {
               // 会话级装配（ADR-026 / REQ-AGENT-095）：按行 provider/model 重装
               //（行值优先；NULL → 默认组合；条目已删 → 回落默认 E12 + 行值覆盖为默认）。
               const cfg = resolveRowModelConfig(row);
-              if (cfg.fallback && store.updateProviderConfig) {
-                store.updateProviderConfig(row.spaceKey, cfg.provider, cfg.model);
-              }
+              persistFallbackRow(store, row.spaceKey, cfg);
               const info = store.getOrCreate(row.spaceKey, { sessionDir });
               const gen = generationFromRef(info.sessionRef);
               generation.set(info.spaceKey, gen);
@@ -1199,9 +1212,7 @@ function createProcessAgentService(options = {}) {
     setSessionProvider(spaceKey, { provider, model }) {
       const store = getStore();
       const row = store ? store.get(spaceKey) : null;
-      if (!row) {
-        throw Object.assign(new Error("会话不存在"), { code: "E-SESSION-NOT-FOUND", status: 404 });
-      }
+      if (!row) throw sessionNotFoundError();
       if (row.provider === provider && row.model === model) {
         return { provider, model }; // 幂等：同组合重复 PUT 无副作用
       }
@@ -1241,9 +1252,7 @@ function createProcessAgentService(options = {}) {
     getSessionProvider(spaceKey) {
       const store = getStore();
       const row = store ? store.get(spaceKey) : null;
-      if (!row) {
-        throw Object.assign(new Error("会话不存在"), { code: "E-SESSION-NOT-FOUND", status: 404 });
-      }
+      if (!row) throw sessionNotFoundError();
       const resolved = settingsService.resolveSessionModelConfig(row.provider, row.model);
       return { provider: resolved.provider, model: resolved.model };
     },
@@ -1286,9 +1295,7 @@ function createProcessAgentService(options = {}) {
           // provider/model 重装（行值优先；NULL → 默认组合；条目已删 → 回落默认
           // E12 + 行值覆盖为默认——REQ-095 标准 4）。
           const cfg = resolveRowModelConfig(info);
-          if (cfg.fallback && store?.updateProviderConfig) {
-            store.updateProviderConfig(spaceKey, cfg.provider, cfg.model);
-          }
+          persistFallbackRow(store, spaceKey, cfg);
           const gen = generationFromRef(info.sessionRef);
           generation.set(spaceKey, gen);
           const keyRef = keyRefFor(cfg.provider, gen);
