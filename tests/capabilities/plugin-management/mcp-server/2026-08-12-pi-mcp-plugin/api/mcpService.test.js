@@ -23,6 +23,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createJiti } from "jiti";
+
+// pi-mcp-adapter 为 TS-source 包（exports → index.ts，无 dist），Node 24 硬禁止
+// node_modules 内 type-stripping（ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING）——
+// 标准 5 须经 jiti 加载（对齐 worker/extensionService 加载 TS 源包先例）。
+const jiti = createJiti(import.meta.url, { moduleCache: false, fsCache: false });
 
 async function loadMcpService() {
   const mod = await import("../../../../../../src/services/mcpService.js").catch(() => null);
@@ -102,7 +108,8 @@ describe("REQ-AGENT-084 MCP server 配置 CRUD + 项目启用（B4）", () => {
   });
 
   it("标准 5：快照直接传入桥 createMcpAdapter({config}) 不报错", async () => {
-    const adapter = await import("pi-mcp-adapter").catch(() => null);
+    // jiti 加载（TS-source 包，Node 24 禁 node_modules type-stripping——BUG-001 test-gap 修正）。
+    const adapter = await jiti.import("pi-mcp-adapter").catch(() => null);
     assert.ok(adapter, "依赖未就绪：pi-mcp-adapter 尚未安装（BUILD 切片引入）");
     await svc.create({ name: "compat", type: "stdio", command: "node", args: ["s.mjs"] });
     const pid = "proj-1";
