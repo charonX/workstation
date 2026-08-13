@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getProjectPermission, putProjectPermission } from "../../api/projects.js";
+import McpPermissionGroup from "./McpPermissionGroup.jsx";
 import "./PermissionConfigTab.css";
 
 // ================= 视图转换纯函数（tech-design §4.3，导出供自验 harness 断言） =================
@@ -78,9 +79,11 @@ function setAt(obj, segments, value) {
 
 // GET rules → 面板覆盖态初始化：projectOverridden 的规则值全部进入 overrides
 //（面板未改动的行保存时原样写回 → permission 面内自定义字段自动保留）。
+// mcp 族由 McpPermissionGroup 自管理（即改即存），不并入父面板 overrides。
 export function overridesFromRules(rules) {
   const overrides = {};
   for (const rule of rules ?? []) {
+    if (rule.family === "mcp") continue;
     if (rule.projectOverridden && rule.value !== null && rule.value !== undefined) {
       overrides[rule.key] = rule.value;
     }
@@ -99,18 +102,29 @@ export function buildProjectJson(rules, originalProject, overrides) {
       ? JSON.parse(JSON.stringify(originalProject))
       : {};
   const known = new Set((rules ?? []).map((r) => r.key));
-  for (const rule of rules ?? []) deleteAt(payload, segmentsOf(rule.key));
+  for (const rule of rules ?? []) {
+    // mcp 族由 McpPermissionGroup 专属编辑（三态裁决，独立组件）——面板保存
+    // 不删除 mcp 键（避免父面板保存时冲掉 McpPermissionGroup 已改/新增的规则）。
+    if (rule.key.startsWith("permission.mcp.")) continue;
+    deleteAt(payload, segmentsOf(rule.key));
+  }
   for (const [key, value] of Object.entries(overrides ?? {})) {
+    // mcp 族由 McpPermissionGroup 专属管理（即改即存），父面板 overrides 不含
+    // mcp 键（overridesFromRules 已跳过）——此处再防御性跳过，防父面板保存
+    // 重写 McpPermissionGroup 已保存的规则。
+    if (key.startsWith("permission.mcp.")) continue;
     // known-gate（BUG-001 修复）：列表编辑器新增键放行——PathEditor 交互产生的
     // permission.path.<pattern> / permission.external_directory.<pattern>、以及
-    // ShellToolsEditor 新增工具产生的 shellTools.<toolName> 不在 GET rules 的
+    // ShellToolsEditor 新增工具产生的 shellTools.<toolName>、McpPermissionGroup
+    // 新增规则产生的 permission.mcp.<server:tool> 不在 GET rules 的
     // known 集（服务端 buildRules 只产出 merged 中已存在的键），原先被 gate 丢弃
-    // → 保存 payload 落盘空配置。这三个前缀是面板交互唯一的新键来源
+    // → 保存 payload 落盘空配置。这四个前缀是面板交互唯一的新键来源
     // （无任意键注入面），放行；其余未知键仍走 known-gate（保守）。
     if (
       !known.has(key) &&
       !key.startsWith("permission.path.") &&
       !key.startsWith("permission.external_directory.") &&
+      !key.startsWith("permission.mcp.") &&
       !key.startsWith("shellTools.")
     ) {
       continue;
@@ -195,6 +209,9 @@ export function groupRules(rules) {
   const groups = new Map();
   for (const rule of rules ?? []) {
     const family = rule.family || "未分组";
+    // mcp 族由 McpPermissionGroup 专属渲染（三态 allow/ask/deny），不并入通用
+    // 双态 RuleGroup——避免重复渲染。
+    if (family === "mcp") continue;
     if (!groups.has(family)) groups.set(family, []);
     groups.get(family).push(rule);
   }
@@ -884,6 +901,14 @@ export default function PermissionConfigTab({ projectId }) {
               onReset={resetRule}
             />
           ))}
+
+          {/* mcp 族专属分组（REQ-AGENT-087 UI：三态 allow/ask/deny + 出厂零规则）。
+              即改即存（不依赖面板 Save）；保存后经 onSaved 回填 originalProject，
+              防父面板保存冲掉本组已落盘的规则。 */}
+          <McpPermissionGroup
+            projectId={projectId}
+            onSaved={(projectConfig) => setOriginalProject(projectConfig)}
+          />
 
           <div className="footnote">
             项目只覆盖你改的条目，未改的继承全局——保存时只写入改动字段，取消覆盖（跟随全局）即从项目文件删除该字段。

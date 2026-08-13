@@ -5,6 +5,7 @@ import { useProjects } from "../hooks/useProjects.js";
 import ProjectCard from "../components/project/ProjectCard.jsx";
 import ProjectFormModal from "../components/project/ProjectFormModal.jsx";
 import ProjectDetailModal from "../components/project/ProjectDetailModal.jsx";
+import McpPermissionGroup from "../components/project/McpPermissionGroup.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
 import { deleteProject } from "../api/projects.js";
 import "./Workspace.css";
@@ -196,6 +197,21 @@ export default function Workspace() {
           ))}
         </div>
       )}
+
+      {/* 权限配置 · MCP 工具族（REQ-AGENT-087 UI：#/workspace 权限区呈现，与
+          项目详情「权限配置」页签同构）。有项目时绑定首个项目（可编辑持久）；
+          无项目时本地呈现（编辑在项目详情权限页签完成）。 */}
+      <div className="workspace-permission-section">
+        <div className="workspace-permission-head">
+          <h2 className="workspace-permission-title">权限配置 · MCP 工具</h2>
+          <span className="workspace-permission-desc">
+            {projects.length > 0
+              ? `绑定项目：${projects[0].name}`
+              : "未绑定项目——完整编辑请在项目详情的「权限配置」页签进行"}
+          </span>
+        </div>
+        <McpPermissionGroup projectId={projects.length > 0 ? projects[0].id : null} />
+      </div>
 
       <ProjectFormModal
         isOpen={formOpen}

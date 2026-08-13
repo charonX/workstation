@@ -1,0 +1,309 @@
+/* ============ 插件页（REQ-AGENT-083/084 UI） ============ */
+
+.plugins-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ch-space-5);
+}
+
+.plugins-page .page-header {
+  margin-bottom: 0;
+}
+
+.page-sub {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  margin-top: 2px;
+}
+
+/* —— 区块卡（对齐 Skills 页形态） —— */
+.plugin-section.section {
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-xl);
+  background: var(--ch-surface);
+  overflow: hidden;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-3);
+  padding: var(--ch-space-3) var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+  background: var(--ch-surface-high);
+}
+
+.section-title {
+  font-size: var(--ch-text-md);
+  font-weight: var(--ch-weight-semibold);
+  flex: 1;
+}
+
+.section-desc,
+.desc {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+}
+
+/* —— 清单表格 —— */
+.plugin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ch-text-sm);
+}
+
+.plugin-table th {
+  text-align: left;
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  font-weight: var(--ch-weight-medium);
+  padding: var(--ch-space-2) var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.plugin-table td {
+  padding: var(--ch-space-3) var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+  vertical-align: middle;
+}
+
+.plugin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.mono {
+  font-family: var(--ch-font-mono);
+  font-size: var(--ch-text-xs);
+}
+
+.name-cell {
+  font-weight: var(--ch-weight-medium);
+}
+
+.name-cell .sub {
+  display: block;
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  font-weight: var(--ch-weight-normal);
+  margin-top: 2px;
+}
+
+/* —— 徽标 —— */
+.badge-npm {
+  color: var(--ch-accent-text);
+  background: var(--ch-accent-soft);
+  border-color: transparent;
+}
+
+.badge-git {
+  color: var(--ch-info);
+  background: var(--ch-info-soft);
+  border-color: transparent;
+}
+
+.badge-local {
+  color: var(--ch-text-secondary);
+  background: var(--ch-surface-high);
+}
+
+.badge-error {
+  color: var(--ch-error);
+  background: var(--ch-error-soft);
+  border-color: transparent;
+}
+
+.badge-ok {
+  color: var(--ch-success);
+  background: var(--ch-success-soft);
+  border-color: transparent;
+}
+
+/* —— 错误态行 —— */
+.plugin-table tr.row-error td {
+  background: var(--ch-error-soft);
+}
+
+.error-detail {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-error);
+  margin-top: 4px;
+}
+
+/* —— 项目启用 popover —— */
+.toggle-cell {
+  position: relative;
+}
+
+.toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--ch-radius-full);
+  border: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  cursor: pointer;
+}
+
+.toggle-pill.on {
+  border-color: var(--ch-accent);
+  color: var(--ch-accent-text);
+  background: var(--ch-accent-soft);
+}
+
+.toggle-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-lg);
+  box-shadow: var(--ch-shadow-md);
+  padding: var(--ch-space-2);
+  display: none;
+}
+
+.toggle-pop.open {
+  display: block;
+}
+
+.toggle-pop .pop-title {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+  padding: var(--ch-space-1) var(--ch-space-2) var(--ch-space-2);
+}
+
+.pop-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-2);
+  border-radius: var(--ch-radius-md);
+  font-size: var(--ch-text-sm);
+  cursor: pointer;
+}
+
+.pop-row:hover {
+  background: var(--ch-surface-high);
+}
+
+.pop-row .proj {
+  flex: 1;
+}
+
+/* —— 表单弹窗字段 —— */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--ch-space-4);
+}
+
+.field label {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  font-weight: var(--ch-weight-medium);
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: var(--ch-space-2) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  font-size: var(--ch-text-sm);
+  background: var(--ch-surface);
+  color: var(--ch-text);
+  font-family: inherit;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--ch-accent);
+}
+
+.field .hint {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-tertiary);
+}
+
+.field .err {
+  font-size: var(--ch-text-xs);
+  color: var(--ch-error);
+  display: none;
+}
+
+.field.invalid input,
+.field.invalid textarea {
+  border-color: var(--ch-error);
+}
+
+.field.invalid .err {
+  display: block;
+}
+
+/* —— 分段控件（seg） —— */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.seg button {
+  padding: var(--ch-space-2) var(--ch-space-4);
+  font-size: var(--ch-text-xs);
+  background: var(--ch-surface);
+  color: var(--ch-text-secondary);
+  border: none;
+  cursor: pointer;
+}
+
+.seg button.active {
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent-text);
+  font-weight: var(--ch-weight-medium);
+}
+
+/* —— M2 安全告知（常驻告知条） —— */
+.safety-note {
+  display: flex;
+  gap: var(--ch-space-2);
+  padding: var(--ch-space-3);
+  border-radius: var(--ch-radius-md);
+  background: var(--ch-warning-soft);
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+  line-height: var(--ch-leading-relaxed);
+  margin-top: var(--ch-space-2);
+}
+
+.safety-note .icon {
+  color: var(--ch-warning);
+  flex-shrink: 0;
+}
+
+/* —— 行内三级按钮 —— */
+.btn-tertiary {
+  border: none;
+  background: none;
+  color: var(--ch-text-secondary);
+  padding: var(--ch-space-1) var(--ch-space-2);
+  font-size: var(--ch-text-xs);
+  cursor: pointer;
+}
+
+.btn-tertiary:hover {
+  color: var(--ch-accent-text);
+}
+
+.btn-tertiary.danger:hover {
+  color: var(--ch-error);
+}

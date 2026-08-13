@@ -50,6 +50,8 @@ export default function Sidebar() {
         <div className="nav-group">
           <div className="nav-label">{t("nav.system")}</div>
           <SidebarNavLink to="/skills" testid="nav-skills">{t("nav.skills")}</SidebarNavLink>
+          {/* 管理区「插件」导航项（REQ-AGENT-083 E2E 路由 #/plugins，signoff D5） */}
+          <SidebarNavLink to="/plugins" testid="nav-plugins">插件</SidebarNavLink>
           {/* 管理区左导八条目（REQ-AGENT-026 AC2）：既有七条目 + 补「通知」
               （signoff 实现契约：nav-notifications，路由 /notifications 已存在） */}
           <SidebarNavLink to="/notifications" testid="nav-notifications">{t("nav.notifications")}</SidebarNavLink>
