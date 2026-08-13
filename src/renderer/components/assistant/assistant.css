@@ -802,6 +802,17 @@
   color: var(--ch-text-tertiary);
 }
 
+/* 会话回落提示（GAP-1 / PRD F2 步骤 4）：当前会话 provider 条目已删 → 服务端已
+   回落默认组合 → 提示。形态对齐 .toolbar-alert（行内 flex + 字号）；信息性提示用
+   次级色（--ch-text-secondary）而非错误色（--ch-error，仅供阻止/拒绝类瞬态）。 */
+.model-fallback-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ch-text-xs);
+  color: var(--ch-text-secondary);
+}
+
 .model-menu {
   position: absolute;
   bottom: calc(100% + 4px);

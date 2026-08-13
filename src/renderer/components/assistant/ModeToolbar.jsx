@@ -15,6 +15,9 @@
 //     [data-testid='model-trigger']    触发按钮（provider · model；空配置 → disabled）
 //     [data-testid='model-option'][data-provider][data-model]  组合选项（.active 高亮 + 默认徽标）
 //     [data-testid='model-empty-hint'] 空配置引导提示（E12「未配置模型，请到设置添加」）
+//   provider 回落（本 story GAP-1，PRD §6.1 F2 步骤 4）：
+//     [data-testid='model-fallback-hint'] 会话 provider 已删 → 回落默认提示
+//       （「原 provider 已移除，已回到默认」；与 model-empty-hint 互斥）
 //   attachment（本 story，REQ-AGENT-098 签核）：
 //     [data-testid='attach-button']   附件按钮（替代灰显槽位 toolbar-slot-attach；
 //                                    点击经 onAttachClick 打开 Composer 文件选择器）
@@ -58,8 +61,23 @@ export default function ModeToolbar({
   const options = (Array.isArray(providers) ? providers : [])
     .flatMap((p) => (Array.isArray(p?.models) ? p.models : []).map((m) => ({ provider: p.provider, model: m })));
   const hasProviders = options.length > 0;
-  // 当前会话组合（行值优先；NULL → 默认组合由 GET provider 回读兜底）。
-  const current = sessionModel ?? defaultModel ?? null;
+  // 会话回落判定（GAP-1 / PRD §6.1 F2 步骤 4）：当前会话组合的 provider 不在已配置
+  // 条目列表 → 服务端已回落默认（resolveSessionModelConfig E12 返回默认组合）。纯
+  // 派生：providers（agentConfig 轮询刷新）或 sessionModel（GET provider 取位）任一
+  // 变化即重判——「provider 被删」在删除瞬间被 agentConfig 轮询捕获（内存值仍为旧
+  // provider），「取位/刷新」路径随 GET 结果自然一致。hasProviders 前置 → 与空配置
+  // 禁用态（model-empty-hint）互斥。
+  const fallbackActive =
+    !!sessionModel &&
+    hasProviders &&
+    !(Array.isArray(providers) ? providers : []).some((p) => p.provider === sessionModel.provider);
+  // 回落呈现（PRD 步骤 4「显示默认 provider + 提示」）：fallbackActive 时触发按钮
+  // 展示默认组合（行值未落盘前内存旧 provider 不展示）；点击已展示的默认组合幂等
+  // 跳过（handleModelSelect 幂等检查），服务端本已按默认解析。
+  const current =
+    fallbackActive && defaultModel
+      ? defaultModel
+      : sessionModel ?? defaultModel ?? null;
   const isDefault = (provider, model) =>
     !!defaultModel && defaultModel.provider === provider && defaultModel.model === model;
 
@@ -177,6 +195,13 @@ export default function ModeToolbar({
           )}
           <span className="chevron">▼</span>
         </button>
+        {/* 会话回落提示（GAP-1 / PRD F2 步骤 4）：当前会话 provider 已不在已配置
+            条目 → 服务端已回落默认（E12）→ 提示（与空配置 model-empty-hint 互斥）。 */}
+        {fallbackActive && (
+          <span className="model-fallback-hint" data-testid="model-fallback-hint">
+            原 provider 已移除，已回到默认
+          </span>
+        )}
         {!hasProviders && (
           <span className="model-empty-hint" data-testid="model-empty-hint">
             未配置模型，请到设置添加
