@@ -121,4 +121,21 @@ test.describe("工具栏模型选择器（E2E）", () => {
     await firstWindow.click(COMPOSER);
     await expect(firstWindow.locator(MODEL_OPTION("deepseek", "deepseek-v4-flash"))).toBeHidden();
   });
+
+  test("标准 6：会话 provider 条目被删 → 回落默认 + 提示（F2 步骤 4 / E12）", async () => {
+    const spaceKey = await createSession(apiBaseUrl);
+    await openSession(firstWindow, spaceKey);
+    // 切到 deepseek（会话 provider = deepseek）
+    await firstWindow.click(MODEL_TRIGGER);
+    await firstWindow.click(MODEL_OPTION("deepseek", "deepseek-v4-flash"));
+    await expect(firstWindow.locator(MODEL_TRIGGER)).toContainText("deepseek-v4-flash");
+    // 删除 deepseek 条目（settings 仅剩 moonshotai）——前台轮询捕获 providers 变化
+    await seedAgentConfig(apiBaseUrl, [
+      { provider: "moonshotai", apiKey: "sk-e2e-m", models: ["kimi-k3", "kimi-k2.6"] },
+    ], { provider: "moonshotai", model: "kimi-k3" });
+    // F2 步骤 4：提示「原 provider 已移除，已回到默认」+ 触发按钮显示默认组合（kimi-k3）
+    await expect(firstWindow.locator("[data-testid='model-fallback-hint']")).toBeVisible({ timeout: 15000 });
+    await expect(firstWindow.locator("[data-testid='model-fallback-hint']")).toContainText("原 provider 已移除");
+    await expect(firstWindow.locator(MODEL_TRIGGER)).toContainText("kimi-k3");
+  });
 });
