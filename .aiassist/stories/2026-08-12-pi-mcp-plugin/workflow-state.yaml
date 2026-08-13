@@ -6,7 +6,7 @@ intention: >-
   PI agent 能力受限：无法通过 MCP 调用外部工具（如 Linear/Notion/数据库/内部服务），
   也缺少应用内的 PI 插件安装/配置管理。一句话痛点：agent 能力受限，没有「安装 -> 配置 -> 使用」的扩展链路。
 
-phase: TEST     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: ASSERTION-SIGNOFF     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
@@ -20,6 +20,7 @@ history:
   - {at: 2026-08-12, from: TECH-DESIGN, to: CRYSTALLIZE, note: "结晶 REQ-AGENT-078~090（13 条，新能力 plugin-management，实体 extension/mcp-server）；requirements-v1.hash 落盘；能力地图更新"}
   - {at: 2026-08-12, from: CRYSTALLIZE, to: DESIGN, note: "人指出需补 DESIGN：管理区插件页/MCP 表单/权限 mcp 分组出 ux 原型；REQ-083/087 的 UX 参照待回填"}
   - {at: 2026-08-13, from: DESIGN, to: TEST, note: "ux 三原型定稿（plugins-page/permission-mcp-group/oauth-present，人确认）；M2 消解为弹窗常驻告知条；REQ-083/087 回填 UX 参照并重算 hash；进 TEST（/test-author）"}
+  - {at: 2026-08-13, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架 9 文件 + 3 fixture 落盘（全 RED：seam 未就绪/CLI 缺命令/golden 缺 mcp 族）；test-plan.md 列出 6 个待签核断言点；待门 1"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
