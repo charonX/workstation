@@ -30,12 +30,20 @@
 - [ ] **modeToolbar.test.cjs 灰显槽位断言替换**（test-plan 已记：toolbar-slot-model/attach → 新契约，随 S5 后处理）
 - [ ] **spec-gap 措辞**（可选）：REQ-092 契约行 fetchModels 形态不对称（成功=裸数组/回退={models,fallback}）；E9 文案与 PRD 微差（错误码已钉）
 - [ ] **resetSettings 语义**（REFLECT 复查：已存在文件不覆盖的隐式依赖）
+- [ ] **S2 边界观察 ×2**（低严重度，REFLECT 裁决）：① IM/feishu 通道 `imRouter.js:199` 句柄重建不读 agent_sessions 行（默认组合）——行值 deepseek 的 IM 会话淘汰重建后静默回默认；实际暴露低（工具栏 PUT 仅面向 ui:* 空间，IM 无切换入口），是否按行重装属人裁决；② `setSessionProvider` 幂等早退在条目已删后仍 200 不校验（GET 回落默认，PUT/GET 口径差，幂等 no-op 语义可辩护）
+- [ ] **E4 措辞宽窄**（PRD §8 含「401 在线探测」、§10.4 为条目+密文校验；实现=契约 §10.4，不构成缺口）
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE ✅
 
 - 实现 commit `1dfeff8`；脚手架 test-gap 修正 `7b6b9ba`（[test]，父代理处理）；refactor `c7fe475`（REFACTORED，3 文件，契约零改动）。
 - PRD 对齐子代理：**ALIGNED**（14 项 COVERED；4 test-gap + 1 现存回归 + 3 窗口期项 → 待处理清单，人已确认窗口期接受）。
 - 父代理验证：12/12 绿（refactor 前后一致）。
+
+### Slice 2（2026-08-13，REQ-AGENT-093/095）：DONE ✅
+
+- 实现 commit `563d572`（8 文件）；脚手架 test-gap 修正（历史保留断言 content→text，[test] 父代理处理）；refactor `28eacee`（REFACTORED，4 文件）。
+- PRD 对齐子代理：**ALIGNED**（F2 全流/接口 1/2/5/ADR-026 边界/安全剥离全部 COVERED；新增 2 低严重度边界观察 + E4 措辞宽窄 → 待处理清单）。
+- 父代理验证：11/11 绿（refactor 前后一致）；providerModelConfig 12/12；sessionStore 7/7。
 
 #### PRD → 代码 可追溯性表
 
@@ -176,3 +184,47 @@
    解析不落盘（无消息的会话删条目后行仍保留旧值，但任何回读/重装均回落默认，不悬空）。
 
 
+
+### Slice 3（2026-08-13，REQ-AGENT-096）：DONE ✅
+
+- 实现 commit `[build] slice-3-auto-judge-default-model`（5 文件，仅本 story：agentService /
+  worker / settingsService / routes/settings / autoJudgeLink）。
+- 并行 story：pi-mcp-plugin 本窗口新增 `6133e97`（slice 1，含 src/db.js）已先落地——与本 slice
+  改动零重叠（本 slice 不碰 db.js）；commit 前已核对工作树仅本 slice 5 文件。
+
+#### PRD → 代码 可追溯性表
+
+| PRD 意图项 | 实现文件 | 测试覆盖 | 状态 |
+|---|---|---|---|
+| B5 / §10.3 数据流 5：auto 判断用默认模型——session-config 携带 defaultJudge {provider, model, keyRef, apiKey}，worker 独立 resolve judgeModelObj | `agentService.buildJudgePayload`（resolveSessionModelConfig(null,null) 默认组合 + entryApiKey 解密）+ `buildConfigMessage`（defaultJudge 字段）+ `worker.refreshJudgeModel`（judgeModels 数据面，与会话 modelObj 分离） | REQ-096 标准 1（buildJudgeConfig 锚定默认，不随会话漂移）+ 标准 4（懒恢复随 session-config 带新值）；smoke 验证 session-config 装配 | COVERED |
+| signoff 新契约点：`agentService.buildJudgeConfig(settings)` 导出（REQ-096 seam，输入仅依赖 settings defaultModel，与会话模型无关；无配置 → null） | `agentService.buildJudgeConfig`（共用 settingsService.migrateAgentConfig 规范化——defaultModel 重定向/null 语义单点不漂移；migrateAgentConfig 新增导出） | autoJudgeDefaultModel.test.js 5/5（含无配置 → null、默认变更 → 输出更新） | COVERED |
+| §10.4 接口契约 3：judge-config IPC `{type:"judge-config", defaultJudge}` 广播全部活跃会话（Settings 默认组合变更触发，无滞后窗口） | `routes/settings.js handleAgentConfigSave`（变更前/后 defaultModel 比较 → 变更才广播）+ `agentService.broadcastJudgeConfig`（逐活跃会话 sendToChild）+ `worker` judge-config case（lifecycle.entries() 全部刷新） | 业务测试「judge-config 广播：默认组合变更 → 活跃会话 judge 热更新」（buildJudgeConfig 双态）；smoke 验证：广播后 worker 落新默认（moonshotai→deepseek） | COVERED（集成 smoke 实证，无签核单测——测试文件为单元 seam + TODO 集成注记） |
+| §10.4 接口契约 3 语义：懒恢复会话随 session-config 自然带新 defaultJudge（无滞后窗口的兜底路径） | `buildConfigMessage` 每次装配磁盘最新默认（REQ-095 标准 5 语义同源） | REQ-096 标准 4（懒恢复断言 buildJudgeConfig 输出） | COVERED |
+| 缺 defaultJudge（未配置）→ auto 档 fail-safe defer（REQ-AGENT-073 标准 4 延续，不静默放行） | `worker.createSessionDecide`（getter 取 judgeModels；缺失 → throw E-AUTO-JUDGE-NO-PROVIDER → link 映射 call-failed defer） | 业务测试「缺 defaultJudge → auto 判断 fail-safe defer」；autoJudgeLink 回归 7/7（decide throw → defer） | COVERED |
+| §10.7 安全：defaultJudge 的 key 一次注入仅内存、不落日志/JSONL | 载荷自携 apiKey（sendToChild/logSend 只记消息类型）；worker 日志只记 provider/model；keyRef 稳定派生 `key:default:<provider>`（不随会话世代轮换） | 业务测试「key 不落日志/JSONL」（注记）；smoke 验证日志面无明文 key | COVERED（smoke 实证） |
+| S1 窗口期项 1：autoJudgeLink.defaultDecide 平铺 provider 读取 → 改接 defaultJudge 数据面 | `autoJudgeLink.defaultDecide` 读 `agent.defaultModel`（新形态；平铺 `agent.provider` 不再读取；未配置 → E-AUTO-JUDGE-NO-PROVIDER throw，fail-safe 语义不变） | autoJudgeLink.test.js 回归 7/7（注入缝路径不受影响） | COVERED |
+| §10.2 worker 职责：judge 独立 modelObj（createSessionDecide 改注入 defaultJudge 解析） | `worker.js`：judgeModels Map + refreshJudgeModel + createSessionDecide 第二参改 getter；judge 数据面随淘汰/reset 清理（懒恢复重新注入） | 集成回归（agentDialogue/agentProcess/sessionRestore/sessionStore 35/35 批） | COVERED |
+
+#### Slice 3 完成记录
+
+- 测试验证（任务命令原样运行）：
+  - 业务测试 `autoJudgeDefaultModel.test.js`：**5/5 全绿**（RED→GREEN：实现前 `buildJudgeConfig is not a function` 5 红）。
+  - 回归：autoJudgeLink + modeService 14/14；providerSwitch 11/11 + providerModelConfig 12/12（共 23/23）；
+    agentConfig 3 红 = 既有旧 GET 平铺形态断言（S1/S2 已登记，未变多）；agent 集成批（agentDialogue/
+    agentProcess/sessionRestore/sessionStore/systemPrompt/agentDefaultModel/historyToolFilter）35/35；
+    agentRoute/toolSurface/agentHeartbeatBusy/agentRestartKey/agentWorkerBundle/workerToolEventExt 16/16。
+  - 端到端 smoke（临时脚本，验证后删除）：session-config 携带 defaultJudge → worker 解析；
+    `broadcastJudgeConfig` → judge-config IPC → worker 全部活跃会话刷新（日志证：moonshotai/kimi-k3 →
+    deepseek/deepseek-v4-flash）；日志面零明文 key。
+
+#### 偏差（本 slice 记录）
+
+1. **judge-config 广播无签核单测**：业务测试对广播的断言为 buildJudgeConfig 双态单元 +
+   TODO 集成注记（测试文件注「集成断言见 worker 侧（实现时接线）」）——本 slice 以临时 smoke
+   实证 IPC 全链路（主进程广播 → worker 热更新落点变化 + 日志无 key），未落仓库测试。
+   如需持久化可补 worker fixture 测试（mode-change 同型先例）。
+2. **defaultJudge 载荷含 apiKey 的 IPC 语义**：judge-config 载荷与 session-config 同形态携带
+   apiKey（内存一次注入），主进程 logSend 只记类型、worker 日志只记 provider/model——与
+   既有安全语义对齐；keyRef `key:default:<provider>` 为稳定派生，不占用会话 keyRef 命名空间。
+3. **buildJudgeConfig 入参形态**：接受规范化 settings.agent（providers + defaultModel）；旧平铺
+   形态经 migrateAgentConfig 等价迁移（行为与 loadAgentConfig 同源）。
