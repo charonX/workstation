@@ -1,5 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
-import { broadcastAgentConfigChange } from "../../services/agentService.js";
+import { broadcastAgentConfigChange, broadcastJudgeConfig } from "../../services/agentService.js";
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -108,9 +108,14 @@ function loadPublicSettings() {
 //   按行重装由 REQ-AGENT-093/095（Slice 2）承接；
 // - 旧形态平铺 PUT（{provider, apiKey}，旧 renderer 直至 Slice 5 替换）→ 保留旧语义
 //   （provider/key 变更 → 存量会话重建 + 新 key 一次性注入，REQ-AGENT-004 旧行为）。
+// - 默认组合变更（新形态 defaultModel / 旧形态平铺 provider）→ judge-config 广播
+//   （REQ-AGENT-096，B5：全部活跃会话 auto 判断热更新，无滞后窗口；懒恢复会话随
+//   session-config 自然带新 defaultJudge）。
 // key 明文仅经内存传递（不落日志）。
 function handleAgentConfigSave(req, res, body) {
   try {
+    // 变更前默认组合（变更判定基准；saveAgentConfig 会规范化/重定向指针）。
+    const before = settingsService.loadAgentConfig().defaultModel ?? null;
     const saved = settingsService.saveAgentConfig(body);
     const hasIdentity = hasOwn(body, "identity");
     const hasFlatCreds = hasOwn(body, "provider") && hasOwn(body, "apiKey");
@@ -120,6 +125,12 @@ function handleAgentConfigSave(req, res, body) {
         provider: hasFlatCreds ? body.provider : undefined,
         apiKey: hasFlatCreds ? body.apiKey : undefined
       });
+    }
+    const after = saved.defaultModel ?? null;
+    const beforeKey = before ? `${before.provider}/${before.model}` : null;
+    const afterKey = after ? `${after.provider}/${after.model}` : null;
+    if (beforeKey !== afterKey) {
+      broadcastJudgeConfig();
     }
     return ok(res, saved);
   } catch (err) {

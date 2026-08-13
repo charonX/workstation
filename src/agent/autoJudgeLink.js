@@ -64,25 +64,26 @@ function defaultReviewLogPath() {
   return path.join(agentHome, "extensions", "pi-permission-system", "logs", "pi-permission-system-permission-review.jsonl");
 }
 
-// 默认 decide（S2 骨架）：读 settings agent provider 配置 → 组装判断 prompt → 调模型
-// → 解析 verdict。真实调用链路由 S3 接线（worker 内 provider 复用）；本切片只交付
-// 骨架 + settings 读取。provider 未配置 → throw（link 映射 call-failed defer——
-// REQ-AGENT-073 标准 4「provider 未配置 → auto 不可用」）；已配置 → S3 接线前
-// fail-safe 显式 defer（decide-deferred，不静默放行）。
-// _details：判断上下文（surface/toolName/input/agentName/cwd），S3 组装 prompt 时使用。
+// 默认 decide（S2 骨架；S3 REQ-AGENT-096 改接 defaultJudge 数据面）：读 settings
+// agent 配置的默认组合（defaultModel——REQ-AGENT-090 新形态 {identity, providers[],
+// defaultModel}；旧平铺 agent.provider 不再读取——B5 锚定默认组合，与 buildJudgeConfig
+// 同语义）。defaultModel 未配置 → throw（link 映射 call-failed defer——REQ-AGENT-073
+// 标准 4「auto 不可用不静默放行」）；已配置 → 骨架保持 fail-safe 显式 defer
+//（decide-deferred；真实调用链路由 worker 注入的 createSessionDecide 承接——本骨架
+// 仅兜底）。
+// _details：判断上下文（surface/toolName/input/agentName/cwd），worker 注入缝组装 prompt 时使用。
 async function defaultDecide(_details) {
-  let provider;
+  let defaultModel;
   try {
     const parsed = JSON.parse(fs.readFileSync(settingsFilePath(), "utf8"));
-    provider = parsed?.agent?.provider;
+    defaultModel = parsed?.agent?.defaultModel;
   } catch {
-    provider = undefined;
+    defaultModel = undefined;
   }
-  if (!provider) {
-    throw new Error("E-AUTO-JUDGE-NO-PROVIDER: auto 判断不可用——settings agent provider 未配置");
+  if (!defaultModel || typeof defaultModel.provider !== "string" || defaultModel.provider === "") {
+    throw new Error("E-AUTO-JUDGE-NO-PROVIDER: auto 判断不可用——settings 默认组合未配置");
   }
-  // S3 接线点：组装判断 prompt（details.surface/toolName/input）→ 调 provider 模型 →
-  // 解析 verdict（allow/deny/reason；回复不可解析 → { kind:"defer", reason:"model-unresolved" }）。
+  // worker 注入缝（createSessionDecide）为真实调用路径；骨架保持 fail-safe 显式 defer。
   return { kind: "defer" };
 }
 

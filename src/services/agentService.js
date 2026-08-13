@@ -422,6 +422,9 @@ function createInMemoryAgentService(options = {}) {
         session.identity = identity;
       }
     },
+    // Slice 3（REQ-AGENT-096，B5）：内存内核无 auto-judge 数据面（decide 注入缝归
+    // worker）——广播 no-op，保持服务接口一致。
+    broadcastJudgeConfig() {},
     start() {},
     stop() {},
     kill() {},
@@ -1083,6 +1086,12 @@ function createProcessAgentService(options = {}) {
     // + 关联 skills 技能库绝对路径 + "project"；通用/飞书 = 现状默认 cwd + 空
     // skillPaths + "default"。
     const { cwd: spaceCwd, skillPaths, permissionProfile } = resolveSpaceAssembly(spaceKey);
+    // Slice 3（REQ-AGENT-096，B5）：defaultJudge 随 session-config 注入（数据流 5）——
+    // auto 判断锚定默认组合（buildJudgePayload：defaultModel + 条目 key 解密，一次
+    // 注入仅内存——key 不落日志/JSONL，sendToChild 只记消息类型）。懒恢复/水合/
+    // 重建共用本装配：每次读磁盘最新默认，Settings 改默认 → 新会话/懒恢复自然带新值
+    // （REQ-096 标准 4）。
+    const defaultJudge = buildJudgePayload();
     return {
       type: "session-config",
       sessionKey: spaceKey,
@@ -1104,6 +1113,7 @@ function createProcessAgentService(options = {}) {
       ...(session.toolContext ? { toolContext: session.toolContext } : {}),
       // BUG-003：来源标记（"hydration" = 系统恢复，不触发同组冷却）。
       ...(source ? { source } : {}),
+      ...(defaultJudge ? { defaultJudge } : {}),
     };
   }
 
@@ -1345,6 +1355,20 @@ function createProcessAgentService(options = {}) {
         sendToChild(buildConfigMessage(spaceKey, session));
       }
     },
+    // Slice 3（REQ-AGENT-096，B5）：judge-config IPC 广播（§10.4 接口契约 3）——
+    // Settings 默认组合变更 → 全部活跃会话 judge 数据面热更新（无滞后窗口；
+    // worker 侧 decide 每次调用经 getter 取当前 judge modelObj）。defaultJudge
+    // 载荷 = buildJudgePayload（key 一次注入仅内存，不落日志——logSend 只记类型）。
+    // 子进程未就绪 → 跳过（懒恢复会话随 session-config 自然带新值）。
+    broadcastJudgeConfig() {
+      const defaultJudge = buildJudgePayload();
+      for (const [spaceKey] of sessions) {
+        sendToChild({ type: "judge-config", sessionKey: spaceKey, defaultJudge });
+      }
+      log(
+        `judge-config 广播 ${sessions.size} 会话 defaultJudge=${defaultJudge ? `${defaultJudge.provider}/${defaultJudge.model}` : "null"}`
+      );
+    },
     start() {
       if (fakeIpc) {
         // Slice 1 内存版 IPC：无真实子进程，直接就绪。
@@ -1456,5 +1480,48 @@ export function broadcastAgentConfigChange({ identity, provider, apiKey }) {
 export function broadcastIdentityChange({ identity }) {
   if (activeService) {
     activeService.broadcastConfigUpdate({ identity });
+  }
+}
+
+// —— Slice 3（REQ-AGENT-096，B5）：auto 判断用默认模型 ——
+// buildJudgeConfig(settings) → {provider, model}|null（REQ-096 seam，signoff 已签核）：
+// 输入仅依赖 settings 的 defaultModel 指针（迁移规范化后），与会话模型解耦（B5
+// 锚定：decide 不随会话切换漂移）。defaultModel 缺失/无效 → null（worker 侧 auto
+// 档 fail-safe defer，REQ-AGENT-073 标准 4 延续，不静默放行）。
+// 判定与迁移共用 settingsService.migrateAgentConfig（导出）——defaultModel 重定向/
+// null 语义单点不漂移。
+export function buildJudgeConfig(settings) {
+  const migrated = settingsService.migrateAgentConfig(settings);
+  const dm = migrated?.defaultModel;
+  if (!dm) return null;
+  return { provider: dm.provider, model: dm.model };
+}
+
+// defaultJudge 装配（session-config 载荷 / judge-config 广播共用）：
+// 默认组合 = resolveSessionModelConfig(null, null) 的回落语义（行值不适用 → 默认组合）；
+// 条目 key 解密一次注入仅内存（载荷自携，不落日志——logSend 只记消息类型，不进
+// JSONL）。keyRef 稳定派生（key:default:<provider>），不随 JSONL 世代轮换——judge
+// 是全局数据面，不绑定会话世代。无默认组合 / 条目无 key → null（auto 不可用 →
+// fail-safe defer）。每次直读磁盘最新状态（Settings 改默认 → 立即生效，REQ-095 标准 5）。
+function buildJudgePayload() {
+  const resolved = settingsService.resolveSessionModelConfig(null, null);
+  if (!resolved || resolved.provider === "" || !resolved.entry) return null;
+  const apiKey = settingsService.entryApiKey(resolved.entry);
+  if (apiKey === undefined) return null;
+  return {
+    provider: resolved.provider,
+    model: resolved.model,
+    keyRef: `key:default:${resolved.provider}`,
+    apiKey,
+  };
+}
+
+// judge-config IPC 广播（§10.4 接口契约 3）：Settings 默认组合变更 → 全部活跃会话
+// judge 数据面热更新（无滞后窗口——worker 侧 decide 每次调用经 getter 取当前值）。
+// 懒恢复会话不在此列：随 session-config 自然带新 defaultJudge（buildConfigMessage
+// 每次装配最新值）。子进程未就绪 → 跳过下发（懒恢复兜底）。
+export function broadcastJudgeConfig() {
+  if (activeService) {
+    activeService.broadcastJudgeConfig();
   }
 }

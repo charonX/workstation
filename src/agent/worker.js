@@ -87,6 +87,15 @@ function getSessionMode(sessionKey) {
 }
 const AGENT_MODES_SET = new Set(["strict", "standard", "auto"]);
 
+// —— Slice 3（REQ-AGENT-096，B5）：auto judge 独立 modelObj 数据面 ——
+// defaultJudge（session-config 携带 / judge-config IPC 广播热更新）→ 每会话独立的
+// judge modelObj（judgeModels 表：sessionKey → { provider, model, modelObj }）。
+// 与会话 modelObj 分离——B5 解耦：auto 判断不随会话模型漂移。decide 每次调用经
+// getter 取当前值（judge-config 广播即时生效，无滞后窗口）。缺 defaultJudge /
+// 解析失败 → 条目置空（auto 档 fail-safe defer，REQ-AGENT-073 标准 4 延续，不静默
+// 放行）。随淘汰/reset 清理（judge 是会话级装配——懒恢复经 session-config 重新注入）。
+const judgeModels = new Map(); // sessionKey → { provider, model, modelObj }
+
 // confirm-request 回执等待（Slice 8 确认接线）：confirmId → resolve(ack)。
 // 主进程确认服务入队（agent_confirmations pending + 确认卡片）后回 confirm-request-ack，
 // 工具侧据此返回待确认（E-CONFIRM-PENDING）——执行由确认回调驱动（b 解耦）。
@@ -624,6 +633,9 @@ function handleSessionEvicted(key, entry, reason) {
   // Slice 3（REQ-AGENT-070 标准 4）：会话模式随淘汰清理（模式是会话级状态——
   // 懒恢复经 session-config 重新注入主进程当前模式）。
   sessionModes.delete(key);
+  // Slice 3（REQ-AGENT-096，B5）：judge 数据面随淘汰清理（judge 是会话级装配——
+  // 懒恢复经 session-config 重新注入最新 defaultJudge）。
+  judgeModels.delete(key);
   // Slice 8（REQ-AGENT-057）：消息元数据状态随淘汰清理（pending text_end 不悬挂——
   // 定时器已 clear，不再对已淘汰会话补发 text_end）。
   turnStartedAt.delete(key);
@@ -840,15 +852,24 @@ function buildJudgePrompt(details, sessionCwd) {
 // FAUX 注入口（可编程判定）→ 真实模型调用（runtime.complete 复用会话 provider/
 // key 运行时——resolveModel 已注入）→ 解析 verdict。模型失败/超时 → throw（link
 // 映射 call-failed/timeout defer，S2 已保证）；回复不可解析 → defer（model-unresolved）。
-function createSessionDecide(runtime, modelObj, sessionKey, sessionCwd) {
+// Slice 3（REQ-AGENT-096，B5）：judge modelObj 来源 = defaultJudge 解析的独立数据面
+//（getJudgeModel 每次调用取当前值——judge-config 广播热更新即时生效，无滞后窗口；
+// 与会话 modelObj 分离，decide 不随会话模型漂移）。缺 defaultJudge（未配置）→
+// throw E-AUTO-JUDGE-NO-PROVIDER（link 映射 call-failed defer——REQ-AGENT-073
+// 标准 4 延续：auto 不可用不静默放行）。
+function createSessionDecide(runtime, getJudgeModel, sessionKey, sessionCwd) {
   return async function decide(details) {
     if (FAUX_MODE) {
       const programmed = takeFauxJudgeResult();
       if (programmed) return programmed;
       return { kind: "defer", reason: "decide-deferred" };
     }
+    const judgeModel = getJudgeModel();
+    if (!judgeModel) {
+      throw new Error("E-AUTO-JUDGE-NO-PROVIDER: auto 判断不可用——defaultJudge 未配置");
+    }
     const message = await runtime.complete(
-      modelObj,
+      judgeModel.modelObj,
       {
         systemPrompt: AUTO_JUDGE_SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildJudgePrompt(details, sessionCwd) }],
@@ -965,6 +986,10 @@ async function handleSessionConfig(msg) {
   if (typeof msg.mode === "string" && AGENT_MODES_SET.has(msg.mode)) {
     sessionModes.set(sessionKey, msg.mode);
   }
+  // Slice 3（REQ-AGENT-096，B5）：defaultJudge 随 session-config 刷新（新建/热更新/
+  // 懒恢复/evicted 重投共用——judge 数据面与会话模型解耦；主进程每次装配磁盘最新
+  // 默认，懒恢复会话自然带新值）。judge-config 广播另有独立更新通道（handleMessage）。
+  await refreshJudgeModel(sessionKey, msg);
   const existing = lifecycle.get(sessionKey);
 
   if (existing) {
@@ -1060,7 +1085,16 @@ async function createSessionEntry(msg) {
         if (Number.isInteger(v) && v > 0) judgeDenyThreshold = v;
       }
       const autoJudge = createAutoJudgeLink({
-        decide: createSessionDecide(runtime, modelObj, sessionKey, sessionCwd),
+        // Slice 3（REQ-AGENT-096，B5）：judge modelObj 独立数据面——createSessionDecide
+        // 经 getter 取 judgeModels 当前值（defaultJudge 解析，与会话 modelObj 分离；
+        // judge-config 广播热更新即时生效）。缺失 → decide 抛 E-AUTO-JUDGE-NO-PROVIDER
+        // → link 映射 call-failed defer（REQ-AGENT-073 标准 4 延续，不静默放行）。
+        decide: createSessionDecide(
+          runtime,
+          () => judgeModels.get(sessionKey) ?? null,
+          sessionKey,
+          sessionCwd
+        ),
         ...(judgeDenyThreshold !== null ? { denyThreshold: judgeDenyThreshold } : {}),
         onTripped: () => {
           sessionModes.set(sessionKey, "standard");
@@ -1231,6 +1265,30 @@ async function resolveModel(runtime, provider, model, apiKey) {
 // keyRef 缺省 → 兜底既有引用。session-config 与 provider-change 共用同一注入语义。
 function setSessionSecret(keyRef, apiKey, fallbackKeyRef) {
   if (apiKey) keySecrets.set(keyRef ?? fallbackKeyRef, apiKey);
+}
+
+// —— Slice 3（REQ-AGENT-096，B5）：defaultJudge → judge 独立 modelObj 数据面 ——
+// msg.defaultJudge = {provider, model, keyRef, apiKey}（session-config 携带 / judge-config
+// 广播载荷）。key 一次注入仅内存（keySecrets 按 keyRef 索引，同 session-config 安全
+// 语义——不落日志/JSONL；日志只记 provider/model）。解析失败（模型不可用）→ 置空
+//（auto 档 fail-safe defer，不静默放行）。FAUX 下 resolveModel 直取 faux 模型
+//（decide 另有 FAUX 注入口短路，本解析仅保证数据面形态一致）。
+async function refreshJudgeModel(sessionKey, msg) {
+  const dj = msg?.defaultJudge;
+  if (!dj || typeof dj.provider !== "string" || typeof dj.model !== "string") {
+    judgeModels.delete(sessionKey);
+    return;
+  }
+  setSessionSecret(dj.keyRef, dj.apiKey);
+  const runtime = await getModelRuntime();
+  try {
+    const modelObj = await resolveModel(runtime, dj.provider, dj.model, dj.apiKey);
+    judgeModels.set(sessionKey, { provider: dj.provider, model: dj.model, modelObj });
+    log(`defaultJudge 解析 session=${sessionKey} provider=${dj.provider} model=${dj.model}`);
+  } catch (err) {
+    judgeModels.delete(sessionKey);
+    log(`defaultJudge 解析失败 session=${sessionKey} provider=${dj.provider} model=${dj.model}（auto 档 fail-safe defer）err=${err?.message ?? String(err)}`);
+  }
 }
 
 // —— Slice 2（REQ-AGENT-093，ADR-026）：provider-change 热更新 ——
@@ -1469,6 +1527,9 @@ async function handleResetSession(msg) {
     // Slice 3（REQ-AGENT-070）：会话模式随 reset 清理（重开会话 → 主进程新
     // session-config 注入当前模式）。
     sessionModes.delete(msg.sessionKey);
+    // Slice 3（REQ-AGENT-096，B5）：judge 数据面随 reset 清理（重开会话 →
+    // session-config 重新注入最新 defaultJudge）。
+    judgeModels.delete(msg.sessionKey);
     log(`reset-session session=${msg.sessionKey}`);
   }
 }
@@ -1522,6 +1583,19 @@ async function handleMessage(msg) {
           reason,
           userMessage: "模型切换失败，请重试",
         });
+      }
+      break;
+    }
+    case "judge-config": {
+      // Slice 3（REQ-AGENT-096，B5，§10.4 接口契约 3）：默认组合变更广播 →
+      // 全部活跃会话 judge 数据面热更新（decide 每次调用经 getter 取当前值——
+      // 无滞后窗口）。defaultJudge null（默认被清）→ 置空（auto 档 fail-safe
+      // defer）。日志只记 provider/model，key 绝不落日志（对齐 session-config 语义）。
+      log(
+        `judge-config 广播到达 defaultJudge=${msg.defaultJudge ? `${msg.defaultJudge.provider}/${msg.defaultJudge.model}` : "null"}`
+      );
+      for (const [sessionKey] of lifecycle.entries()) {
+        await refreshJudgeModel(sessionKey, msg);
       }
       break;
     }

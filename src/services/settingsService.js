@@ -254,7 +254,9 @@ function normalizeDefaultModel(defaultModel, providers) {
 // 读时迁移：settings.agent → 规范形态（providers 数组 + defaultModel 指针）。
 // 旧形态（单条 provider + apiKeyEncrypted）→ providers[0] + 默认组合。
 // 无法迁移（段缺失/损坏）→ null（GET 回落空列表，E13 不写盘）。
-function migrateAgentConfig(agent) {
+// 导出（REQ-AGENT-096 S3）：agentService.buildJudgeConfig 复用同一规范化——defaultModel
+// 判定语义（显式值优先 / 重定向 / null）单点不漂移。
+export function migrateAgentConfig(agent) {
   if (!agent || typeof agent !== "object") return null;
   const identity = typeof agent.identity === "string" ? agent.identity : "";
   if (Array.isArray(agent.providers)) {
