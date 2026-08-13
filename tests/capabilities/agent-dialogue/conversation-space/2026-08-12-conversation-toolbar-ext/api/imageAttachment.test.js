@@ -49,6 +49,76 @@ async function sendMessage(baseUrl, spaceKey, body) {
   });
 }
 
+// SSE 流消费者（对齐 sessionEvents.test.js 先例）：取帧带超时 + waitForType 扫描。
+function createSseStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const frames = [];
+  const waiters = [];
+  let buffer = "";
+  let failure = null;
+  const deliver = (frame) => {
+    const w = waiters.shift();
+    if (w) w.resolve(frame);
+    else frames.push(frame);
+  };
+  const pump = (async () => {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf("\n\n")) >= 0) {
+          const rawFrame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const data = rawFrame
+            .split("\n")
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice(5).replace(/^ /, ""))
+            .join("\n");
+          if (data === "") continue;
+          let event;
+          try { event = JSON.parse(data); } catch { event = { type: "__unparsed__", raw: data }; }
+          deliver({ event });
+        }
+      }
+    } catch (err) {
+      failure = err;
+    } finally {
+      while (waiters.length > 0) waiters.shift().reject(failure ?? new Error("SSE 流已结束"));
+    }
+  })();
+  return {
+    next(timeoutMs, label) {
+      if (frames.length > 0) return Promise.resolve(frames.shift());
+      return new Promise((resolve, reject) => {
+        const waiter = {
+          resolve: (f) => { clearTimeout(timer); resolve(f); },
+          reject: (e) => { clearTimeout(timer); reject(e); },
+        };
+        const timer = setTimeout(() => {
+          const i = waiters.indexOf(waiter);
+          if (i >= 0) waiters.splice(i, 1);
+          reject(new Error(`等待 SSE 事件超时（${timeoutMs}ms）：${label}`));
+        }, timeoutMs);
+        waiters.push(waiter);
+      });
+    },
+    async waitForType(type, timeoutMs = 30000, label = type) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const frame = await this.next(Math.max(1, deadline - Date.now()), label);
+        if (frame.event?.type === type) return frame;
+      }
+    },
+    async close() {
+      try { await reader.cancel(); } catch { /* 忽略断开异常 */ }
+      try { await pump; } catch { /* 忽略断开异常 */ }
+    },
+  };
+}
+
 describe("REQ-AGENT-097 图片附件注入协议（B6 服务侧）", () => {
   let workdir;
   let server;
@@ -141,7 +211,7 @@ describe("REQ-AGENT-097 图片附件注入协议（B6 服务侧）", () => {
     assert.equal(b2.error, "E-ATTACH-SIZE");
   });
 
-  it("文件读取失败 → attachment-error 事件回 UI，消息不发送", async () => {
+  it("路径不存在 → 400 E-ATTACH-PATH（路由层校验；worker 读失败事件见 chmod-000 用例）", async () => {
     // 路由层校验（§10.4 接口 4：path 存在性）→ 不存在的路径 400 E-ATTACH-PATH
     const res = await sendMessage(baseUrl, spaceKey, {
       text: "",
@@ -150,8 +220,37 @@ describe("REQ-AGENT-097 图片附件注入协议（B6 服务侧）", () => {
     const body = await res.json();
     assert.equal(res.status, 400);
     assert.equal(body.error, "E-ATTACH-PATH");
-    // worker 侧读取失败（存在但不可读，chmod 000）→ 202 + attachment-error 事件
-    // TODO(实现时接线)：chmod-000 fixture → 事件流断言 attachment-error + 「文件读取失败」（E8）
+  });
+
+  it("worker 侧读取失败（存在但不可读）→ attachment-error 事件，消息不发送（E8）", async () => {
+    // fixture：存在但 chmod 000 的图片（路由层 existsSync 通过 → worker 读失败路径）
+    const lockedPath = path.join(FIXTURE_DIR, "locked.png");
+    fs.copyFileSync(FIXTURE_PNG, lockedPath);
+    fs.chmodSync(lockedPath, 0o000);
+    try {
+      // SSE 打开（对齐 sessionEvents.test.js 先例）
+      const evRes = await fetch(`${baseUrl}/api/agent/sessions/${spaceKey}/events`);
+      assert.equal(evRes.status, 200);
+      const sse = createSseStream(evRes);
+      try {
+        const sendRes = await sendMessage(baseUrl, spaceKey, {
+          text: "",
+          attachments: [{ name: "locked.png", size: fs.statSync(lockedPath).size, mimeType: "image/png", kind: "image", path: lockedPath }],
+        });
+        assert.equal(sendRes.status, 202, "路由层校验通过（文件存在）");
+        // attachment-error 事件到达 + 消息未发送（JSONL 无 image 行）
+        const frame = await sse.waitForType("attachment-error", 15000, "attachment-error");
+        assert.equal(frame.event.message, "文件读取失败");
+        const list = await (await fetch(`${baseUrl}/api/agent/sessions`)).json();
+        const row = [...(list.general ?? [])].find((r) => r.spaceKey === spaceKey);
+        const raw = fs.readFileSync(row.sessionRef, "utf8");
+        assert.ok(!raw.includes('"image"'), "读取失败时消息不发送（JSONL 无 image block）");
+      } finally {
+        await sse.close();
+      }
+    } finally {
+      fs.chmodSync(lockedPath, 0o644); // 恢复权限便于清理
+    }
   });
 
   it("无附件文本消息行为不变（回归）", async () => {

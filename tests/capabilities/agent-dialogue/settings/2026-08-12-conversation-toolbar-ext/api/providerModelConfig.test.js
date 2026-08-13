@@ -138,6 +138,78 @@ describe("REQ-AGENT-090 多 provider 配置列表 + 存量迁移（B1）", () =>
     const body = await (await fetch(`${baseUrl}/api/settings/agent`)).json();
     assert.ok(!JSON.stringify(body).includes("sk-plain-secret-090"), "GET 不回传明文");
   });
+
+  it("key 成对规则：新增条目缺 key → 400；已有条目不重填 → 复用密文", async () => {
+    // 先 PUT 一个条目（含 key）
+    const r1 = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: "",
+        providers: [{ provider: "deepseek", apiKey: "sk-pair-1", models: ["deepseek-v4-flash"] }],
+        defaultModel: { provider: "deepseek", model: "deepseek-v4-flash" },
+      }),
+    });
+    assert.equal(r1.status, 200);
+    const enc1 = JSON.parse(fs.readFileSync(path.join(workdir, "settings.json"), "utf8")).agent.providers[0].apiKeyEncrypted;
+    assert.ok(typeof enc1 === "string" && enc1.length > 0, "key 应加密落盘");
+
+    // 编辑已有条目（同 provider，不重填 key）→ 200 + 密文不变（keepExistingKey）
+    const r2 = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: "",
+        providers: [{ provider: "deepseek", models: ["deepseek-v4-pro"] }],
+        defaultModel: { provider: "deepseek", model: "deepseek-v4-pro" },
+      }),
+    });
+    assert.equal(r2.status, 200);
+    const enc2 = JSON.parse(fs.readFileSync(path.join(workdir, "settings.json"), "utf8")).agent.providers[0].apiKeyEncrypted;
+    assert.equal(enc2, enc1, "未重填 key 时应复用密文");
+
+    // 新增条目（provider 不在现有列表）缺 key → 400
+    const r3 = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: "",
+        providers: [
+          { provider: "deepseek", models: ["deepseek-v4-pro"] },
+          { provider: "moonshotai", models: ["kimi-k3"] }, // 新增无 key
+        ],
+        defaultModel: { provider: "deepseek", model: "deepseek-v4-pro" },
+      }),
+    });
+    assert.equal(r3.status, 400);
+  });
+
+  it("删除默认条目 → 默认重定向剩余条目首个组合", async () => {
+    await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: "",
+        providers: [
+          { provider: "deepseek", apiKey: "sk-d", models: ["deepseek-v4-flash"] },
+          { provider: "moonshotai", apiKey: "sk-m", models: ["kimi-k3", "kimi-k2.6"] },
+        ],
+        defaultModel: { provider: "deepseek", model: "deepseek-v4-flash" },
+      }),
+    });
+    // 删除默认条目（deepseek）→ defaultModel 重定向到剩余条目（moonshotai）首个模型
+    const r2 = await fetch(`${baseUrl}/api/settings/agent`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: "",
+        providers: [{ provider: "moonshotai", apiKey: "sk-m", models: ["kimi-k3", "kimi-k2.6"] }],
+      }),
+    });
+    assert.equal(r2.status, 200);
+    const b = await (await fetch(`${baseUrl}/api/settings/agent`)).json();
+    assert.deepEqual(b.defaultModel, { provider: "moonshotai", model: "kimi-k3" });
+  });
 });
 
 describe("REQ-AGENT-092 动态模型列表（B2）", () => {
@@ -220,6 +292,42 @@ describe("REQ-AGENT-092 动态模型列表（B2）", () => {
       // E2：无 key 不发网络请求
       assert.equal(called, false);
       assert.equal(out.fallback, true);
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  it("拉取返回空列表 → 回退内置目录 + fallback 标记", async () => {
+    const { fetchModels } = await loadCatalog();
+    const globalFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({ object: "list", data: [] }) });
+    try {
+      const out = await fetchModels("deepseek", "sk-x");
+      // E3 变体：供应商返回空列表（非网络失败）同样回退，不返回空数组
+      assert.equal(out.fallback, true);
+      assert.ok(out.models.length >= 1, "回退内置目录非空");
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  it("拉取结果含目录不可解析 id → 剔除（BUG-004 防御）", async () => {
+    const { fetchModels } = await loadCatalog();
+    const globalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        object: "list",
+        data: [
+          { id: "kimi-k3", object: "model", supports_image_in: true, supports_reasoning: true },
+          { id: "not-a-real-kimi-model", object: "model", supports_image_in: false, supports_reasoning: false },
+        ],
+      }),
+    });
+    try {
+      const out = await fetchModels("moonshotai", "sk-x");
+      // AC5：目录不可解析 id 剔除，输出只含真实模型（BUG-004 教训）
+      assert.deepEqual(out, [{ model: "kimi-k3", vision: true, reasoning: true }]);
     } finally {
       global.fetch = globalFetch;
     }

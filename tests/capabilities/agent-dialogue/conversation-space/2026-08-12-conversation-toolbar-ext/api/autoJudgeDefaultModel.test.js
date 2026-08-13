@@ -61,8 +61,18 @@ describe("REQ-AGENT-096 auto 判断用默认模型（B5）", () => {
     const cfg = buildJudgeConfig({ providers: [], defaultModel: null });
     // 无配置 → null → worker 侧 auto 档 fail-safe defer（REQ-AGENT-073 标准 4 延续）
     assert.equal(cfg, null);
-    // 集成（FAUX）：无配置下 ask 操作 → 确认卡出现，不静默放行
-    // TODO(实现时接线)：OPC_AGENT_FAUX + OPC_FAUX_JUDGE_RESULT 触发判断 → 确认卡断言
+    // decide 层：createAutoJudgeLink 未注入 decide → defaultDecide 读空配置目录 →
+    // throw E-AUTO-JUDGE-NO-PROVIDER → link 映射 call-failed defer（不静默放行）
+    const { createAutoJudgeLink } = await import("../../../../../../src/agent/autoJudgeLink.js");
+    const reviewLogPath = path.join(workdir, "judge-review.jsonl");
+    const link = createAutoJudgeLink({ reviewLogPath });
+    const verdict = await link.authorize({ requestId: "gap-ac2", surface: "bash", command: "ls" });
+    assert.equal(verdict.kind, "defer");
+    // review log（REQ-AGENT-076）：defer 记录 deferReason=call-failed
+    const logLine = fs.readFileSync(reviewLogPath, "utf8").trim().split("\n").pop();
+    const parsed = JSON.parse(logLine);
+    assert.equal(parsed.verdict, "defer");
+    assert.equal(parsed.deferReason, "call-failed");
   });
 
   it("judge-config 广播：默认组合变更 → 活跃会话 judge 热更新", async () => {
@@ -100,9 +110,44 @@ describe("REQ-AGENT-096 auto 判断用默认模型（B5）", () => {
   });
 
   it("defaultJudge 的 key 一次注入仅内存、不落日志/JSONL", async () => {
-    // 集成断言：FAUX 会话活动期间检查 worker 日志输出与 JSONL 会话文件——
-    // 无 apiKey 明文（对齐 session-config 既有安全语义：sendToChild 只记消息类型）
-    // TODO(实现时接线)：日志/JSONL 扫描断言
-    assert.ok(true, "见实现时接线的日志扫描断言（不落日志/JSONL 是既有安全契约延续）");
+    // 集成：配置 defaultJudge（含 key）→ 建会话 → 发消息 → 读会话 JSONL 无明文 key
+    fs.writeFileSync(
+      path.join(workdir, "settings.json"),
+      JSON.stringify({
+        agent: {
+          identity: "",
+          providers: [{ provider: "moonshotai", apiKey: "sk-judge-secret-096", models: ["kimi-k3"] }],
+          defaultModel: { provider: "moonshotai", model: "kimi-k3" },
+        },
+      }),
+      "utf8"
+    );
+    process.env.DB_PATH = path.join(workdir, "data.db");
+    const { startServer, stopServer } = await import("../../../../../../src/http/server.js");
+    const { server, baseUrl } = await startServer({ port: 0 });
+    try {
+      const res = await fetch(`${baseUrl}/api/agent/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spaceKind: "general" }),
+      });
+      assert.equal(res.status, 200);
+      const spaceKey = (await res.json()).spaceKey;
+      // 走完整消息链路（session-config 携带 defaultJudge 装配）
+      const sendRes = await fetch(`${baseUrl}/api/agent/sessions/${spaceKey}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "hi" }),
+      });
+      assert.equal(sendRes.status, 202);
+      const list = await (await fetch(`${baseUrl}/api/agent/sessions`)).json();
+      const row = [...(list.general ?? [])].find((r) => r.spaceKey === spaceKey);
+      assert.ok(row?.sessionRef, "会话行存在");
+      const raw = fs.readFileSync(row.sessionRef, "utf8");
+      assert.ok(!raw.includes("sk-judge-secret-096"), "JSONL 不得含 defaultJudge key 明文");
+    } finally {
+      await stopServer({ server });
+      delete process.env.DB_PATH;
+    }
   });
 });
