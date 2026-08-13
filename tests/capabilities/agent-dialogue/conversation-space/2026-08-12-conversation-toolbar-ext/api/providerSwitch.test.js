@@ -100,7 +100,7 @@ describe("REQ-AGENT-093 会话级 provider 切换（B3）", () => {
     await putProvider(baseUrl, spaceKey, { provider: "deepseek", model: "deepseek-v4-flash" });
     const before = await (await fetch(`${baseUrl}/api/agent/sessions/${spaceKey}/messages`)).json();
     // FAUX 回复后，历史含 user 消息；切换不换代 → 内容完整
-    const texts = before.messages.filter((m) => m.role === "user").map((m) => m.content ?? "");
+    const texts = before.messages.filter((m) => m.role === "user").map((m) => m.text ?? m.content ?? "");
     assert.ok(texts.some((t) => t.includes("切换前的消息")), "切换后历史仍含切换前消息");
   });
 
