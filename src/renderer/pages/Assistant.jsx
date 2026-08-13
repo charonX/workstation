@@ -741,14 +741,17 @@ export default function Assistant() {
   const selectedSession = findSession(selectedKey, sessions);
   const chatTitle = selectedSession?.title ?? "新对话";
   const showEmpty = messages.length === 0;
+  // Slice 5 派生：provider 条目/默认组合归一（agentConfig 未加载 → 空列表/null）。
+  const providers = agentConfig?.providers ?? [];
+  const defaultModel = agentConfig?.defaultModel ?? null;
   // 未配置判定（Slice 5 升级）：配置未加载（null）→ 不算未配置（保持既有行为）；
   // 已加载 → 任一条目持有 key（configured:true）即已配置。
-  const unconfigured = agentConfig !== null && !(agentConfig.providers ?? []).some((p) => p.configured === true);
+  const unconfigured = agentConfig !== null && !providers.some((p) => p.configured === true);
   // 会话当前组合视觉能力（REQ-AGENT-098 E11 判定）：会话模型优先（行值/切换），
   // 未取位回落默认组合；能力数据 = renderer 静态表（modelCapabilities.js）。
   const visionCapable = isVisionModel(
-    sessionModel?.provider ?? agentConfig?.defaultModel?.provider ?? "",
-    sessionModel?.model ?? agentConfig?.defaultModel?.model ?? ""
+    sessionModel?.provider ?? defaultModel?.provider ?? "",
+    sessionModel?.model ?? defaultModel?.model ?? ""
   );
   // 图片解析根（REQ-AGENT-051 / I-5 口径）：项目空间会话（ui:project:<pid>:<sid>）→
   // projectId——主进程按 projects 表 registry 解析实际项目目录（renderer 不持有
@@ -799,8 +802,8 @@ export default function Assistant() {
         mode={sessionMode}
         onModeChange={handleModeChange}
         modeNotice={modeNotice}
-        providers={agentConfig?.providers ?? []}
-        defaultModel={agentConfig?.defaultModel ?? null}
+        providers={providers}
+        defaultModel={defaultModel}
         sessionModel={sessionModel}
         onModelChange={handleModelChange}
         visionCapable={visionCapable}

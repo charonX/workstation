@@ -57,8 +57,10 @@ export default function ModeToolbar({
   const modelSelectRef = useRef(null);
   const meta = MODE_META[mode] ?? MODE_META.standard;
 
+  // providers 守卫归一（父级在配置未加载期传 null/undefined——统一空数组语义）。
+  const list = Array.isArray(providers) ? providers : [];
   // 已配置组合平铺（REQ-AGENT-094 标准 2：选择器列出全部已配置条目——每条目 × 各模型）。
-  const options = (Array.isArray(providers) ? providers : [])
+  const options = list
     .flatMap((p) => (Array.isArray(p?.models) ? p.models : []).map((m) => ({ provider: p.provider, model: m })));
   const hasProviders = options.length > 0;
   // 会话回落判定（GAP-1 / PRD §6.1 F2 步骤 4）：当前会话组合的 provider 不在已配置
@@ -67,10 +69,7 @@ export default function ModeToolbar({
   // 变化即重判——「provider 被删」在删除瞬间被 agentConfig 轮询捕获（内存值仍为旧
   // provider），「取位/刷新」路径随 GET 结果自然一致。hasProviders 前置 → 与空配置
   // 禁用态（model-empty-hint）互斥。
-  const fallbackActive =
-    !!sessionModel &&
-    hasProviders &&
-    !(Array.isArray(providers) ? providers : []).some((p) => p.provider === sessionModel.provider);
+  const fallbackActive = !!sessionModel && hasProviders && !list.some((p) => p.provider === sessionModel.provider);
   // 回落呈现（PRD 步骤 4「显示默认 provider + 提示」）：fallbackActive 时触发按钮
   // 展示默认组合（行值未落盘前内存旧 provider 不展示）；点击已展示的默认组合幂等
   // 跳过（handleModelSelect 幂等检查），服务端本已按默认解析。

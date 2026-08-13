@@ -136,8 +136,11 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
       next.push({ name: file.name, size: file.size, mimeType, kind: "image", path });
     }
     if (next.length > 0) {
-      attachmentsRef.current = [...current, ...next];
-      setAttachments(attachmentsRef.current);
+      const nextAll = [...current, ...next];
+      // ref 与 state 同源同步（ref = 同步真相，state = 渲染镜像）——state 接收
+      // 局部新建数组，不直接引用 ref 数组（避免两者意外共享同一实例）。
+      attachmentsRef.current = nextAll;
+      setAttachments(nextAll);
       setBlockedMsg(null); // 成功附加清除瞬态错误
     }
     // 清空 input.value：允许重复选择同一文件重新触发 change。
@@ -164,8 +167,9 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
   }
 
   function removeAttachment(index) {
-    attachmentsRef.current = attachmentsRef.current.filter((_, i) => i !== index);
-    setAttachments(attachmentsRef.current);
+    const next = attachmentsRef.current.filter((_, i) => i !== index);
+    attachmentsRef.current = next;
+    setAttachments(next);
   }
 
   return (

@@ -447,18 +447,24 @@ export default function Settings() {
     return AGENT_PROVIDER_OPTIONS.find((o) => !configuredProviders.has(o.value))?.value ?? AGENT_PROVIDER_OPTIONS[0].value;
   }
 
-  // 打开/关闭添加表单（打开时预置内置目录展示 + 默认 provider，E2「填 key 后
-  // 自动刷新」前的即时可用态）。
-  function openAddForm() {
-    setAddFormOpen(true);
-    setAddError(null);
-    setAddApiKey("");
-    setCheckedModels(new Set());
-    const provider = defaultAddProvider();
+  // 添加表单状态复位（openAddForm 与 provider 切换共用）：列表/勾选/状态提示/错误
+  // 归位到该 provider 的内置目录展示。key 保留与否由调用方决定（openAddForm 清空，
+  // provider 切换保留——切换后自动用现有 key 重拉）。
+  function resetAddFormFor(provider) {
     setAddProvider(provider);
+    setAddError(null);
+    setCheckedModels(new Set());
     setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
     setFetchStatus(FETCH_STATUS.noKey);
     setAgentTestResult(null);
+  }
+
+  // 打开添加表单（预置内置目录展示 + 默认 provider，E2「填 key 后自动刷新」前的
+  // 即时可用态；key 清空——新增条目必填，不留上次输入）。
+  function openAddForm() {
+    setAddFormOpen(true);
+    setAddApiKey("");
+    resetAddFormFor(defaultAddProvider());
   }
 
   function closeAddForm() {
@@ -499,6 +505,9 @@ export default function Settings() {
     });
   }
 
+  // 全量 PUT 载荷的条目段（既有条目不带 key → 服务端复用密文；增/删/星标共用）。
+  const providersPayload = () => providers.map((p) => ({ provider: p.provider, models: p.models }));
+
   // 保存条目（REQ-AGENT-091 标准 2）：全量 PUT（既有条目不带 key → 服务端复用
   // 密文；新条目带 key → 加密落盘）；成功后重载配置（列表即时更新）。
   async function handleSaveProvider() {
@@ -522,10 +531,7 @@ export default function Settings() {
     try {
       await saveAgentConfig({
         identity: agentIdentity,
-        providers: [
-          ...providers.map((p) => ({ provider: p.provider, models: p.models })),
-          { provider: addProvider, apiKey: key, models },
-        ],
+        providers: [...providersPayload(), { provider: addProvider, apiKey: key, models }],
         defaultModel,
       });
       await reloadAgentConfig();
@@ -549,7 +555,7 @@ export default function Settings() {
     try {
       await saveAgentConfig({
         identity: agentIdentity,
-        providers: providers.map((p) => ({ provider: p.provider, models: p.models })),
+        providers: providersPayload(),
         defaultModel: { provider, model },
       });
       await reloadAgentConfig();
@@ -571,7 +577,7 @@ export default function Settings() {
     try {
       await saveAgentConfig({
         identity: agentIdentity,
-        providers: providers.filter((p) => p.provider !== provider).map((p) => ({ provider: p.provider, models: p.models })),
+        providers: providersPayload().filter((p) => p.provider !== provider),
       });
       await reloadAgentConfig();
       setAgentSuccess("条目已删除");
@@ -791,8 +797,10 @@ export default function Settings() {
                 </div>
               ) : (
                 providers.map((entry) => {
-                  const entryHasDefault =
-                    !!defaultModel && entry.models.some((m) => defaultModel.provider === entry.provider && defaultModel.model === m);
+                  // 组合是否默认（条目容器 class 与 chip 星标共用同一判定）。
+                  const isDefaultModel = (m) =>
+                    !!defaultModel && defaultModel.provider === entry.provider && defaultModel.model === m;
+                  const entryHasDefault = entry.models.some(isDefaultModel);
                   return (
                     <div
                       key={entry.provider}
@@ -825,7 +833,7 @@ export default function Settings() {
                       </div>
                       <div className="entry-models" data-testid="entry-models">
                         {entry.models.map((m) => {
-                          const isDefault = defaultModel?.provider === entry.provider && defaultModel?.model === m;
+                          const isDefault = isDefaultModel(m);
                           const vision = isVisionModel(entry.provider, m);
                           return (
                             <span
@@ -883,12 +891,7 @@ export default function Settings() {
                         value={addProvider}
                         onChange={(e) => {
                           const p = e.target.value;
-                          setAddProvider(p);
-                          setAddError(null);
-                          setCheckedModels(new Set());
-                          setModelOptions(BUILTIN_MODEL_CATALOG[p] ?? []);
-                          setFetchStatus(FETCH_STATUS.noKey);
-                          setAgentTestResult(null);
+                          resetAddFormFor(p);
                           if (addApiKey.trim() !== "") fetchModelsFor(p, addApiKey);
                         }}
                       >
