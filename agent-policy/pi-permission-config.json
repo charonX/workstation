@@ -19,6 +19,9 @@
     "external_directory": {
       "*": "ask"
     },
+    "mcp": {
+      "*": "ask"
+    },
     "read": "allow",
     "ls": "allow",
     "grep": "allow",

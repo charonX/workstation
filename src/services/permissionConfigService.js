@@ -329,6 +329,7 @@ const MAP_SURFACE_LABELS = {
   bash: "bash 命令",
   path: "path 白名单",
   external_directory: "外部目录",
+  mcp: "MCP 工具",
 };
 
 // 顶层字段（授权链与开关组）可读文案。
@@ -480,6 +481,11 @@ function buildRules(global, project, merged) {
     for (const [surface, surfaceValue] of Object.entries(permission)) {
       if (surfaceValue && typeof surfaceValue === "object" && !Array.isArray(surfaceValue)) {
         for (const pattern of Object.keys(surfaceValue)) {
+          // mcp 族默认（`*: ask`，signoff D4）不是规则行：部署 JSON 含
+          // `permission.mcp = { "*": "ask" }`，但权限配置页 mcp 分组出厂零规则行
+          // （E2E perm-rule-row count=0）——`*` 是族默认（族头「未匹配默认 ask」），
+          // 规则行只列用户规则（项目覆盖层写入的 server:tool glob，如 "local-db:*"）。
+          if (surface === "mcp" && pattern === "*") continue;
           rules.push(buildMapEntryRule(surface, pattern, global, project));
         }
       } else {

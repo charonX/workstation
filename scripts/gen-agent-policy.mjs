@@ -55,6 +55,10 @@ const PERMISSION_TOP_SURFACES = {
   "*": "ask",
   path: { "*": "allow" },
   external_directory: { "*": "ask" },
+  // mcp 面（REQ-AGENT-087，signoff D4）：未匹配任何 server:tool 规则的调用默认 ask。
+  // `*` 是族默认（权限配置页 mcp 分组出厂零规则行——族头「未匹配默认 ask」不是规则行），
+  // 用户规则（项目覆盖层写入的 server:tool glob）在运行时覆盖此默认。
+  mcp: { "*": "ask" },
 };
 const READ_WRITE_SURFACES = {
   read: "allow",

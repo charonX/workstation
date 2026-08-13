@@ -239,3 +239,28 @@ export const BASH_RULES = [
 // 照常 ask，pre-gate 不可见族三逻辑不变），编译为 RegExp 清单（无 flags，与既有
 // 字面量语义逐字一致）。
 export const BASH_DESTRUCTIVE_PATTERNS = BASH_RULES.map((rule) => new RegExp(rule.pattern));
+
+// ── mcp 权限规则族（REQ-AGENT-087，B6 配置面；signoff D4 2026-08-13 签核）──
+// 出厂零预置规则（D4：`MCP_RULES` 导出存在但为空数组）。用户规则经权限配置页/
+// 项目覆盖层写入（`permission.mcp."<server>:<tool>"` glob 条目，默认 ask）；部署
+// JSON 含 mcp 面默认 ask（`"mcp": { "*": "ask" }`，由 gen-agent-policy 静态模板段
+// 产出，见 scripts/gen-agent-policy.mjs）。规则形态与 BASH_RULES 同构：
+// `{ pattern, decision, family, globs }`——当前为空，未来按需扩围。
+export const MCP_RULES = [];
+
+// 已注册权限面（族）清单：mcp 族（server:tool glob，默认 ask）与既有面/族一并
+// 列出（测试/权限配置页按此确认族注册；REQ-087 标准 1a 断言含 "mcp"）。
+export const SURFACES = [
+  "mcp",
+  "bash",
+  "path",
+  "external_directory",
+  "read",
+  "write",
+  "edit",
+  "create",
+  "delete",
+  "ls",
+  "grep",
+  "find",
+];
