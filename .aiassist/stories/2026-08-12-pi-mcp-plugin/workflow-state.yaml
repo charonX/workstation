@@ -1,0 +1,45 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-12-pi-mcp-plugin
+intention: >-
+  PI agent 能力受限：无法通过 MCP 调用外部工具（如 Linear/Notion/数据库/内部服务），
+  也缺少应用内的 PI 插件安装/配置管理。一句话痛点：agent 能力受限，没有「安装 -> 配置 -> 使用」的扩展链路。
+
+phase: TEST     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-12
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-12, from: -, to: THINK, note: "创建 story；范围：MCP 支持 + PI 插件配置/安装管理，同一 story 一起做"}
+  - {at: 2026-08-12, from: THINK, to: THINK, note: "需求洞察完成（interview-notes.md，方向 A：插件机制+MCP 桥随舰）；人拍板先 /research 再 /to-prd；根因伏笔：技术可行性层"}
+  - {at: 2026-08-12, from: THINK, to: PRD, note: "双调研完成（社区桥 pi-mcp-adapter 可用；官方包机制程序化可达）；PRD v0.1 初稿待审查，complex"}
+  - {at: 2026-08-12, from: PRD, to: TECH-DESIGN, note: "6 轮对抗式深潜定稿：A 全量转官方 / B1 桥内置内联 / C1 .pi 文件启用 / D1 gotgenes mcp 面 / 缺包报错 / 项目默认信任 / E1 pi 0.84.1 前置（B9）/ MCP 全量 transport；PRD 反向同步 v0.2；ADR-024/025 落盘"}
+  - {at: 2026-08-12, from: TECH-DESIGN, to: CRYSTALLIZE, note: "结晶 REQ-AGENT-078~090（13 条，新能力 plugin-management，实体 extension/mcp-server）；requirements-v1.hash 落盘；能力地图更新"}
+  - {at: 2026-08-12, from: CRYSTALLIZE, to: DESIGN, note: "人指出需补 DESIGN：管理区插件页/MCP 表单/权限 mcp 分组出 ux 原型；REQ-083/087 的 UX 参照待回填"}
+  - {at: 2026-08-13, from: DESIGN, to: TEST, note: "ux 三原型定稿（plugins-page/permission-mcp-group/oauth-present，人确认）；M2 消解为弹窗常驻告知条；REQ-083/087 回填 UX 参照并重算 hash；进 TEST（/test-author）"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"
+  compiled: true
+  preview: .aiassist/stories/2026-08-12-pi-mcp-plugin/ux/preview.html
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded:
+    - {path: ux/plugins-page.html, name: "插件管理页（插件清单 + MCP 服务）", status: needs-review}
+    - {path: ux/permission-mcp-group.html, name: "权限配置 · MCP 规则族", status: needs-review}
+    - {path: ux/oauth-present.html, name: "OAuth 授权呈现", status: needs-review}
+
+# 已生成的变体(按需)。
+variants:
+  active: []
