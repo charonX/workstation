@@ -1,0 +1,44 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": ".aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "createdAt": "2026-08-12T10:53:21.391Z",
+  "updatedAt": "2026-08-12T11:02:21.565Z",
+  "assets": {
+    "插件管理页（插件清单 + MCP 服务）": {
+      "versions": [
+        {
+          "path": "plugins-page.html",
+          "createdAt": "2026-08-12T11:02:21.513Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "权限配置 · MCP 规则族": {
+      "versions": [
+        {
+          "path": "permission-mcp-group.html",
+          "createdAt": "2026-08-12T11:02:21.541Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "OAuth 授权呈现": {
+      "versions": [
+        {
+          "path": "oauth-present.html",
+          "createdAt": "2026-08-12T11:02:21.565Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  }
+}
