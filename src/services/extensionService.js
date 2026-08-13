@@ -275,6 +275,16 @@ export function createExtensionService({ agentDir, packageManager } = {}) {
     return pkgs.map((p) => (typeof p === "string" ? p : p?.source)).filter((s) => typeof s === "string" && s.length > 0);
   }
 
+  /** 合并全局声明来源（extensions 在前，packages 在后），list / setProjectEnabled 共用。 */
+  function readGlobalSources(settings) {
+    return [...readGlobalExtensions(settings), ...readGlobalPackages(settings)];
+  }
+
+  /** 按官方身份规则在全局清单中查找匹配的原始来源串（extensions 优先，packages 兜底）。 */
+  function findGlobalSource(settings, identity) {
+    return readGlobalSources(settings).find((s) => sourceIdentity(s) === identity);
+  }
+
   /** 幂等登记：按官方身份规则去重后写入全局 extensions 数组。 */
   async function registerGlobal(source) {
     const settings = createGlobalSettings();
@@ -325,11 +335,9 @@ export function createExtensionService({ agentDir, packageManager } = {}) {
   /** REQ-080：从全局 settings 读配置插件 → PluginRow[]；本地插件做错误态探测（spike ①）。 */
   async function list() {
     const settings = createGlobalSettings();
-    const extensionSources = readGlobalExtensions(settings);
-    const packageSources = readGlobalPackages(settings);
     const seen = new Set();
     const rows = [];
-    const candidates = [...extensionSources, ...packageSources];
+    const candidates = readGlobalSources(settings);
     for (const raw of candidates) {
       if (raw.startsWith("+") || raw.startsWith("-") || raw.startsWith("!")) continue; // 覆盖模式行不是声明
       const identity = sourceIdentity(raw);
@@ -363,12 +371,8 @@ export function createExtensionService({ agentDir, packageManager } = {}) {
   /** REQ-081：项目级启用/停用。启用写 `+<resolved-source>`（幂等先剔后写）；停用剔除行（不写 `-`）。 */
   async function setProjectEnabled(projectDir, source, enabled) {
     const settings = createGlobalSettings();
-    const installed = readGlobalExtensions(settings);
-    const installedPackages = readGlobalPackages(settings);
     const identity = sourceIdentity(source);
-    const globalSource =
-      installed.find((s) => sourceIdentity(s) === identity) ||
-      installedPackages.find((s) => sourceIdentity(s) === identity);
+    const globalSource = findGlobalSource(settings, identity);
     if (!globalSource) {
       const err = new Error(`插件未安装，无法启用: ${String(source)}（not installed）`);
       err.code = "E-EXTENSION-NOT-INSTALLED";

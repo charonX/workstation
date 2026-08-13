@@ -69,6 +69,20 @@ function getByName(db, name) {
   return row ? rowToServerRow(row) : undefined;
 }
 
+/** 落库字段序列化：与 mcp_servers 列序 (type, command, args, env, url, headers, auth, enabled) 一致，create/update 共用。 */
+function toDbColumns(row) {
+  return [
+    row.type,
+    row.command ?? null,
+    JSON.stringify(row.args ?? []),
+    JSON.stringify(row.env ?? {}),
+    row.url ?? null,
+    JSON.stringify(row.headers ?? {}),
+    row.auth,
+    row.enabled ? 1 : 0,
+  ];
+}
+
 /** env/headers 必须是 { KEY: string }，KEY 为合法环境变量名（错误文案含 KEY=VALUE）。 */
 function validateKeyValue(obj, fieldLabel) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
@@ -183,19 +197,7 @@ export function createMcpService() {
         `INSERT INTO mcp_servers
            (id, name, type, command, args, env, url, headers, auth, enabled, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        id,
-        normalized.name,
-        normalized.type,
-        normalized.command ?? null,
-        JSON.stringify(normalized.args ?? []),
-        JSON.stringify(normalized.env ?? {}),
-        normalized.url ?? null,
-        JSON.stringify(normalized.headers ?? {}),
-        normalized.auth,
-        normalized.enabled ? 1 : 0,
-        createdAt
-      );
+      ).run(id, normalized.name, ...toDbColumns(normalized), createdAt);
       return getById(d, id);
     },
 
@@ -207,7 +209,7 @@ export function createMcpService() {
 
     remove(name) {
       const d = db();
-      const existing = d.prepare("SELECT id FROM mcp_servers WHERE name = ?").get(name);
+      const existing = getByName(d, name);
       if (!existing) return false;
       const tx = d.transaction(() => {
         d.prepare("DELETE FROM mcp_project_enablement WHERE serverId = ?").run(existing.id);
@@ -219,11 +221,11 @@ export function createMcpService() {
 
     update(name, patch) {
       const d = db();
-      const existing = d.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(name);
+      const existing = getByName(d, name);
       if (!existing) {
         throw new Error(`MCP server 不存在: ${name}`);
       }
-      const base = rowToServerRow(existing);
+      const base = existing;
       const p = patch ?? {};
       const merged = {
         ...base,
@@ -242,23 +244,13 @@ export function createMcpService() {
       d.prepare(
         `UPDATE mcp_servers SET type = ?, command = ?, args = ?, env = ?, url = ?, headers = ?, auth = ?, enabled = ?
          WHERE id = ?`
-      ).run(
-        merged.type,
-        merged.command ?? null,
-        JSON.stringify(merged.args ?? []),
-        JSON.stringify(merged.env ?? {}),
-        merged.url ?? null,
-        JSON.stringify(merged.headers ?? {}),
-        merged.auth,
-        merged.enabled ? 1 : 0,
-        existing.id
-      );
+      ).run(...toDbColumns(merged), existing.id);
       return getById(d, existing.id);
     },
 
     setGlobalEnabled(name, enabled) {
       const d = db();
-      const existing = d.prepare("SELECT id FROM mcp_servers WHERE name = ?").get(name);
+      const existing = getByName(d, name);
       if (!existing) {
         throw new Error(`MCP server 不存在: ${name}`);
       }
@@ -268,7 +260,7 @@ export function createMcpService() {
 
     setProjectEnabled(projectId, name, enabled) {
       const d = db();
-      const existing = d.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(name);
+      const existing = getByName(d, name);
       if (!existing) {
         throw new Error(`MCP server 不存在: ${name}`);
       }
@@ -280,7 +272,7 @@ export function createMcpService() {
          VALUES (?, ?, ?)
          ON CONFLICT(serverId, projectId) DO UPDATE SET enabled = excluded.enabled`
       ).run(existing.id, projectId, enabled ? 1 : 0);
-      return rowToServerRow(existing);
+      return existing;
     },
 
     /** 只含「全局开关开 ∧ 项目已启用」的 server；形态直接被 createMcpAdapter({config}) 消费。 */
