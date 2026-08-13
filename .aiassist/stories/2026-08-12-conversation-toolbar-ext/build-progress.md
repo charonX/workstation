@@ -32,6 +32,7 @@
 - [ ] **resetSettings 语义**（REFLECT 复查：已存在文件不覆盖的隐式依赖）
 - [ ] **S2 边界观察 ×2**（低严重度，REFLECT 裁决）：① IM/feishu 通道 `imRouter.js:199` 句柄重建不读 agent_sessions 行（默认组合）——行值 deepseek 的 IM 会话淘汰重建后静默回默认；实际暴露低（工具栏 PUT 仅面向 ui:* 空间，IM 无切换入口），是否按行重装属人裁决；② `setSessionProvider` 幂等早退在条目已删后仍 200 不校验（GET 回落默认，PUT/GET 口径差，幂等 no-op 语义可辩护）
 - [ ] **E4 措辞宽窄**（PRD §8 含「401 在线探测」、§10.4 为条目+密文校验；实现=契约 §10.4，不构成缺口）
+- [ ] **S3 test-gap ×1**（/bug → /test-author）：REQ-096 AC2 集成断言（FAUX 无配置 → 确认卡）与 AC5（defaultJudge key 不落日志——现为 `assert.ok(true)` 占位）需接线真实断言；judge-config 广播全链路（主进程 → worker 热更新）已 smoke 实证但无持久化签核用例（mode-change 同型先例）
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE ✅
 
@@ -44,6 +45,13 @@
 - 实现 commit `563d572`（8 文件）；脚手架 test-gap 修正（历史保留断言 content→text，[test] 父代理处理）；refactor `28eacee`（REFACTORED，4 文件）。
 - PRD 对齐子代理：**ALIGNED**（F2 全流/接口 1/2/5/ADR-026 边界/安全剥离全部 COVERED；新增 2 低严重度边界观察 + E4 措辞宽窄 → 待处理清单）。
 - 父代理验证：11/11 绿（refactor 前后一致）；providerModelConfig 12/12；sessionStore 7/7。
+
+### Slice 3（2026-08-13，REQ-AGENT-096）：DONE ✅
+
+- 实现 commit `9ce6ab7`（5 文件）；refactor `256aeee`（REFACTORED，1 文件：settings.js 广播判定改用 buildJudgeConfig 同源规范化）。
+- PRD 对齐子代理：**ALIGNED**（F3 全流/接口契约 3 载荷+触发+范围+懒恢复/fail-safe 闭环/安全/S1 窗口期项 1 关闭；1 低严重度观察：默认条目 key 轮换不广播，fail-safe 覆盖）。
+- 父代理验证：5/5 绿（refactor 前后一致）；autoJudgeLink 回归 7/7。
+- 注：S3 test-gap 已入待处理清单（REQ-096 AC2/AC5 集成断言接线）。
 
 #### PRD → 代码 可追溯性表
 
@@ -228,3 +236,48 @@
    既有安全语义对齐；keyRef `key:default:<provider>` 为稳定派生，不占用会话 keyRef 命名空间。
 3. **buildJudgeConfig 入参形态**：接受规范化 settings.agent（providers + defaultModel）；旧平铺
    形态经 migrateAgentConfig 等价迁移（行为与 loadAgentConfig 同源）。
+### Slice 4（2026-08-13，REQ-AGENT-097）：DONE ✅
+
+- 实现 commit `bacc63f`（3 文件：`src/http/routes/agentSessions.js` / `src/services/agentService.js` / `src/agent/worker.js`）。
+- PRD 对齐：F4 附件流（数据流 4）+ §10.4 接口 4 全量；E5/E6/E8/E10 错误码闭环；§10.7（字节不出
+  worker、附加即授权）；非视觉阻止归 S5（本 slice 只做协议与注入，发送复核 = S5 renderer 主防线）。
+
+#### PRD → 代码 可追溯性表
+
+| PRD 意图项 | 实现文件 | 测试覆盖 | 状态 |
+|---|---|---|---|
+| §10.4 接口 4：`POST messages` 扩展 `{text, attachments:[{name, size, mimeType, kind:"image", path}]}`（≤10）；错误码 E-ATTACH-TYPE/COUNT/SIZE/PATH（signoff 新契约点） | `routes/agentSessions.js`：attachmentsError（校验顺序 = 类型白名单 jpeg/png/gif/webp/bmp/heic/heif（SVG 拒收）→ 数量 ≤10 → size ≤10MB → path 存在性，400 各码）+ handlePostMessage 接线（附件校验先于文本校验；附件消息允许空文本——纯图片消息） | imageAttachment.test.js：E-ATTACH-TYPE（SVG）/ COUNT（11 个）/ SIZE（11MB）/ PATH（不存在）4 类 400 全绿 | COVERED |
+| §10.3 数据流 4：attachments 元数据透传 worker（字节不出 worker，§10.1——路由只校验不读内容） | `agentService.js`：prompt(spaceKey, text, attachments) 三参（pendingPrompts 条目携带 + prompt IPC 载荷；evicted 重投同载荷重发）；内存内核仅协议兼容签名不消费（图片数据面归 worker） | 业务测试经 202 + JSONL 断言（worker 侧读到文件内容）；smoke 验证 IPC 载荷 | COVERED |
+| §10.2 worker 职责：prompt 时按 path 读文件 → base64 → image content block 注入本条 user message（pi-ai 原生形态） | `worker.js`：readAttachmentImages（fs.readFileSync → `{type:"image", data, mimeType, name}`；name 附带仅供历史投影——SDK API 序列化只取 type/data/mimeType，零副作用）+ prompt 调用改传 options.images（pi-ai PromptOptions.images → user message content blocks，持久化 = SessionManager 原生 JSONL 序列化，零自定义） | 业务测试：worker prompt 收到 image block（base64 = 文件内容）+ JSONL 快照（消息行含 `"type":"image"` + base64 片段；重放后 GET messages 投影含附件名 `tiny.png`） | COVERED |
+| §8 E8：图片读取失败（IO/权限/TCC）→ attachment-error 会话事件回 UI（「文件读取失败」），消息不静默丢弃（REQ-097 标准 5） | `worker.js` readAttachmentImages 失败分支：session-event `{type:"attachment-error", name, message:"文件读取失败"}`（SSE 通道转发 renderer）+ prompt-result ok:false（主进程 pending promise 结算，202 受理不受阻）→ 本轮消息不发送 | 业务测试：路由层 E-ATTACH-PATH（不存在 → 400，不触 worker）；worker 侧 chmod-000 分支测试文件留 TODO 注记——本 slice 以临时 smoke 实证（202 + SSE 收到 attachment-error + JSONL 无 image 行） | COVERED（路由层签核断言 + worker 层 smoke 实证，测试 TODO 待 /test-author 补签核） |
+| 无附件纯文本消息路径不变（回归，REQ-097 标准 6） | 路由/agentService/worker 三处均为「无 attachments → 原路径」（prompt IPC 不带 attachments 字段；prompt 调用不带 images 选项） | 业务测试「无附件文本消息行为不变」202 + 投影 user 消息；sessionMessage 回归 8/9（1 红为环境性先存失败，见下） | COVERED |
+| 历史投影含附件名（F4 验收锚点「JSONL 落路径引用 + 内容快照」） | `routes/agentSessions.js` partText：image 块 → `[图片: name]`（base64 数据不投影——历史 = 对话文本，BUG-009 语义延续） | 业务测试「消息投影含附件名 tiny.png」 | COVERED |
+
+#### Slice 4 完成记录
+
+- 测试验证（任务命令原样运行）：
+  - 业务测试 `imageAttachment.test.js`：**6/6 全绿**（RED→GREEN：实现前附件校验缺失 → VALIDATION_ERROR，
+    E-ATTACH-* 4 红 + image block/投影 2 红）。
+  - 回归：providerSwitch 11/11、providerModelConfig 12/12、autoJudgeDefaultModel 5/5（共 28/28）；
+    agentConfig 3 红 = 既有旧 GET 平铺形态断言（S1 已登记，未变多）；sessionMessage 8/9（1 红 =
+    「agent 未配置应 409」读真实 ~/.opc-workstation/settings.json（本机含已配置 agent）→ 202——
+    **环境性先存失败**，stash 基线复现一致，与本 slice 无关）。
+  - 端到端 smoke（临时脚本，验证后删除）：chmod-000 附件 → POST 202 + SSE 收到
+    `attachment-error {name, message:"文件读取失败"}` + JSONL 无 image 行（消息未发送）；
+    JSONL image block 实样：`{type:"image", data:<base64>, mimeType:"image/png", name:"tiny.png"}`。
+
+#### 偏差（本 slice 记录）
+
+1. **worker 侧读失败（E8）无签核持久化测试**：业务测试对 worker 侧读取失败的断言为 TODO 注记
+   （chmod-000 fixture → 事件流断言）；本 slice 以临时 smoke 实证全链路（202 + attachment-error
+   事件 + 消息不落 JSONL），未落仓库测试——已入待处理清单（/bug → /test-author 补签核用例）。
+2. **image block 附带 name 字段**：pi-ai ImageContent 原生三字段（type/data/mimeType）之外附带
+   name（附件名）——SessionManager JSONL 原样持久化（快照含附件名），API 序列化（anthropic-messages
+   等）只取三原生字段，name 零副作用；历史投影经 partText 读 name 显示 `[图片: name]`。
+   备选（投影侧 map 附件名 → JSONL 外映射表）更重且引入双源，未采用。
+3. **附件消息允许空文本**：PRD §10.4 接口 4「既有 {text} + 可选 {attachments}」——附件存在时
+   空文本放行（纯图片消息；错误码优先级：附件校验先于文本校验，imageAttachment 契约如此钉死）；
+   无附件时空文本 400 不变（sessionMessage 回归通过）。
+4. **title 回落**：纯图片消息（空文本）首条 title = 首附件名（slice(0,40) 无省略号契约不变）。
+5. **发送时复核（E11）归 S5**：本 slice 只做协议与注入；非视觉模型传图行为按 pi-ai 语义
+   （静默忽略）+ S5 renderer 主防线（附加时判定 + 发送复核），worker 侧不下沉防线（任务简报默认）。
