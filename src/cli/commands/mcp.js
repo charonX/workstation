@@ -50,19 +50,21 @@ export async function list() {
 }
 
 export async function enable(flags, positional = []) {
-  return setProjectEnabled(flags, positional, true);
+  return setProjectEnabled("/api/mcp", "mcp", flags, positional, true);
 }
 
 export async function disable(flags, positional = []) {
-  return setProjectEnabled(flags, positional, false);
+  return setProjectEnabled("/api/mcp", "mcp", flags, positional, false);
 }
 
-async function setProjectEnabled(flags, positional, enabled) {
+// 共享 project-enable 调用（plugin/mcp 命令族共用）：resource 为 API 基路径
+//（/api/plugins 与 /api/mcp 单复数不一致，故不能从 entity 名推导），label 用于 usage 文案。
+export async function setProjectEnabled(resource, label, flags, positional, enabled) {
   const name = positional[0];
-  if (!name) throw usageError("Usage: mcp enable|disable <name> --project <id>");
-  if (!flags.project) throw usageError("Usage: mcp enable|disable <name> --project <id>");
+  if (!name) throw usageError(`Usage: ${label} enable|disable <name> --project <id>`);
+  if (!flags.project) throw usageError(`Usage: ${label} enable|disable <name> --project <id>`);
   const server = await ensureServer();
-  const res = await fetch(`${server.baseUrl}/api/mcp/${encodeURIComponent(name)}/project-enable`, {
+  const res = await fetch(`${server.baseUrl}${resource}/${encodeURIComponent(name)}/project-enable`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ projectId: String(flags.project), enabled })
@@ -90,14 +92,14 @@ function parseKeyValues(value) {
   return out;
 }
 
-function usageError(message) {
+export function usageError(message) {
   const err = new Error(message);
   err.status = 400;
   err.data = { error: "USAGE_ERROR", message };
   return err;
 }
 
-async function handleResponse(res) {
+export async function handleResponse(res) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.message || `Request failed with status ${res.status}`);

@@ -10,6 +10,9 @@
 //（HTTP 错误体 { error, message } → stderr + process.exit(1)）。
 
 import { ensureServer } from "../server.js";
+// 共享 CLI HTTP client 助手（usageError/handleResponse/setProjectEnabled）
+// 由 mcp.js 拥有并导出（约定：目录内 mcp 模块为共享 helper 归属，plugin 依赖 mcp）。
+import { usageError, handleResponse, setProjectEnabled } from "./mcp.js";
 
 export async function add(flags, positional = []) {
   const source = positional[0];
@@ -39,40 +42,10 @@ export async function list(flags = {}) {
 }
 
 export async function enable(flags, positional = []) {
-  return setProjectEnabled(flags, positional, true);
+  return setProjectEnabled("/api/plugins", "plugin", flags, positional, true);
 }
 
 export async function disable(flags, positional = []) {
-  return setProjectEnabled(flags, positional, false);
+  return setProjectEnabled("/api/plugins", "plugin", flags, positional, false);
 }
 
-async function setProjectEnabled(flags, positional, enabled) {
-  const name = positional[0];
-  if (!name) throw usageError("Usage: plugin enable|disable <name> --project <id>");
-  if (!flags.project) throw usageError("Usage: plugin enable|disable <name> --project <id>");
-  const server = await ensureServer();
-  const res = await fetch(`${server.baseUrl}/api/plugins/${encodeURIComponent(name)}/project-enable`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId: String(flags.project), enabled })
-  });
-  return handleResponse(res);
-}
-
-function usageError(message) {
-  const err = new Error(message);
-  err.status = 400;
-  err.data = { error: "USAGE_ERROR", message };
-  return err;
-}
-
-async function handleResponse(res) {
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.message || `Request failed with status ${res.status}`);
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
-  return data;
-}

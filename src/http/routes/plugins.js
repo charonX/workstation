@@ -25,6 +25,10 @@ import path from "node:path";
 import { createExtensionService } from "../../services/extensionService.js";
 import * as projectService from "../../services/projectService.js";
 import * as settingsService from "../../services/settingsService.js";
+// 共享 HTTP 响应助手（ok/badRequest/mapError/notFound/decodeParam/normalizeBool）
+// 由 mcp.js 拥有并导出（约定：目录内 mcp 模块为共享 helper 归属，plugins 依赖 mcp，
+// 依赖方向为“重模块 → 轻模块”）。长期应上移到独立 src/http/routes/_respond.js。
+import { ok, badRequest, mapError, notFound, decodeParam, normalizeBool } from "./mcp.js";
 
 let cachedBuiltinVersion;
 function builtinVersion() {
@@ -104,27 +108,15 @@ function readProjectEnabledSources(projectDir) {
 async function listRows(projectId) {
   const svc = getService();
   const rows = await svc.list();
-  let enabledSources = null;
+  let result = rows;
   if (projectId) {
-    enabledSources = readProjectEnabledSources(resolveProjectDir(projectId));
-  }
-  const result = [];
-  for (const row of rows) {
-    if (projectId) {
-      // 项目感知：`+` 命中 → enabled=true scope="project"；否则 enabled=false scope="project"。
-      const matched = enabledSources.has(row.source);
-      result.push({ ...row, enabled: matched, scope: "project" });
-    } else {
-      result.push(row);
-    }
+    // 项目感知：`+` 命中 → enabled=true scope="project"；否则 enabled=false scope="project"。
+    const enabledSources = readProjectEnabledSources(resolveProjectDir(projectId));
+    result = rows.map((row) => ({ ...row, enabled: enabledSources.has(row.source), scope: "project" }));
   }
   // 内置行恒在（全局/项目感知均不可停用）。
   result.push(BUILTIN_ROW());
   return result;
-}
-
-function normalizeBool(value) {
-  return value === true || value === "true";
 }
 
 export async function handlePlugins(req, res, body, pathParts) {
@@ -179,35 +171,4 @@ export async function handlePlugins(req, res, body, pathParts) {
   }
 
   return notFound(res);
-}
-
-function decodeParam(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function badRequest(res, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
-}
-
-// 业务错误 → 4xx + JSON { error, message }（CLI 侧 stderr 展示，退出码非零）。
-function mapError(res, err) {
-  const status = err.status || 400;
-  const body = { error: err.code || (status === 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR"), message: err.message };
-  res.writeHead(status, { "Content-Type": "application/json" });
-  return res.end(JSON.stringify(body));
-}
-
-function notFound(res, message = "Not found") {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message }));
 }
