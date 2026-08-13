@@ -48,7 +48,7 @@ export function createMcpBrokerLink({ checkPermission, askConfirmation, mode = "
         // ask（未匹配规则默认 ask）；strict 下 allow 也走本路径弹卡。
         decision = await askForDecision(payload, currentMode);
       }
-    } catch (err) {
+    } catch {
       // 任何异常/无人确认 → fail-closed deny，不抛出（桥 headless 边界）。
       decision = "deny";
     }

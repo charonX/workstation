@@ -101,6 +101,20 @@ function isPattern(entry) {
   return typeof entry === "string" && (entry.startsWith("+") || entry.startsWith("-") || entry.startsWith("!"));
 }
 
+/** 项目 `+<source>` 启用条目 → 去前缀来源数组（缺包检查与候选装配共用同一解析）。 */
+function projectPlusSources(entries) {
+  return entries
+    .filter((e) => typeof e === "string" && e.startsWith("+") && e.length > 1)
+    .map((e) => e.slice(1));
+}
+
+/** 项目 `-<source>` 剔除条目 → 去前缀来源数组（全局继承剔除集）。 */
+function projectMinusSources(entries) {
+  return entries
+    .filter((e) => typeof e === "string" && e.startsWith("-"))
+    .map((e) => stripPattern(e));
+}
+
 /** 是否本地路径形态（绝对路径 / 相对路径 / 文件或目录）。npm:/git: 非本地。 */
 function isLocalPathLike(source) {
   if (typeof source !== "string" || source === "") return false;
@@ -219,9 +233,7 @@ export async function assembleSessionExtensions({
     const s = typeof p === "string" ? p : p?.source;
     if (typeof s === "string" && s.length > 0) declared.push(s);
   }
-  for (const e of projectExtensions) {
-    if (typeof e === "string" && e.startsWith("+") && e.length > 1) declared.push(e.slice(1));
-  }
+  for (const source of projectPlusSources(projectExtensions)) declared.push(source);
   const seenMissing = new Set();
   for (const source of declared) {
     if (seenMissing.has(source)) continue;
@@ -249,17 +261,11 @@ export async function assembleSessionExtensions({
   // worker 只加载本项目启用的插件；scope==="global" 条目仅供清单/测试契约可见。
   const projectSettingsPath = path.join(resolvedCwd, ".pi", "settings.json");
   const hasProjectSettings = fs.existsSync(projectSettingsPath);
-  const removedSet = new Set(
-    projectExtensions
-      .filter((e) => typeof e === "string" && e.startsWith("-"))
-      .map((e) => stripPattern(e))
-  );
+  const removedSet = new Set(projectMinusSources(projectExtensions));
   const candidates = [];
   // 项目 `+` 优先（scope "project"；B1 过滤后的项目启用来源）。
-  for (const entry of projectExtensions) {
-    if (typeof entry === "string" && entry.startsWith("+") && entry.length > 1) {
-      candidates.push({ source: entry.slice(1), scope: "project" });
-    }
+  for (const source of projectPlusSources(projectExtensions)) {
+    candidates.push({ source, scope: "project" });
   }
   // 全局继承（仅项目空间有 .pi；未被项目 `+` 启用且未被 `-` 剔除的全局声明）。
   if (hasProjectSettings) {
