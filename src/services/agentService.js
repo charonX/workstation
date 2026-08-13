@@ -53,6 +53,7 @@ import { readGitBranch } from "./gitBranch.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
+import { createMcpService } from "./mcpService.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 // 常量定义迁至 settingsService（REQ-AGENT-090 存量迁移与回退兜底同源，避免两处
@@ -564,6 +565,16 @@ function createProcessAgentService(options = {}) {
       registerResetListener(defaultStore);
     }
     return defaultStore;
+  }
+
+  // MCP 配置快照服务（REQ-AGENT-084/085）：惰性单例——首次项目空间装配需要时创建。
+  // mcpService 只依赖 db.js（无循环依赖）；DB 路径 = DB_PATH ?? <configDir>/data.db，
+  // 与主进程一致（Electron main 经 bootstrap-env 设 DB_PATH=userData；headless 经
+  // server.js 设 DB_PATH）。ADR-009：不在模块顶层建实例，避免提前读 env/路径。
+  let mcpServiceInstance = null;
+  function getMcpService() {
+    if (!mcpServiceInstance) mcpServiceInstance = createMcpService();
+    return mcpServiceInstance;
   }
 
   // 水合窗口判定（REQ-AGENT-038 标准 1/2、签核裁决 10：边界含——mtime === 截止
@@ -1109,6 +1120,24 @@ function createProcessAgentService(options = {}) {
     // 重建共用本装配：每次读磁盘最新默认，Settings 改默认 → 新会话/懒恢复自然带新值
     // （REQ-096 标准 4）。
     const defaultJudge = buildJudgePayload();
+    // Slice 2 补全（REQ-AGENT-085 标准 1 生产接线，G1）：项目空间会话装配时经
+    // session-config 携带 mcpService.effectiveConfig 快照 → worker 装配 MCP 桥 →
+    // agent 可用已启用 server 的工具。注入点 = 唯一的 session-config 构造处
+    // （新建/懒恢复/水合/重建/toolContext 热更共用本函数）；每次读库最新配置——
+    // 改库后新会话自然生效（REQ-085 标准 3）。项目空间（permissionProfile==="project"）
+    // → 计算快照；通用/飞书 → 不携带（worker 侧缺省空配置，桥 factory 仍在但无 server）。
+    // DB 不可用/表缺失 → 跳过注入不阻断会话（fail-safe，worker 回落空配置）。
+    let mcpSnapshot;
+    if (permissionProfile === "project") {
+      const pid = projectIdOf(spaceKey);
+      if (pid) {
+        try {
+          mcpSnapshot = getMcpService().effectiveConfig(pid);
+        } catch (err) {
+          log(`mcpSnapshot 计算失败（跳过注入） session=${spaceKey} err=${err?.message ?? String(err)}`);
+        }
+      }
+    }
     return {
       type: "session-config",
       sessionKey: spaceKey,
@@ -1131,6 +1160,8 @@ function createProcessAgentService(options = {}) {
       // BUG-003：来源标记（"hydration" = 系统恢复，不触发同组冷却）。
       ...(source ? { source } : {}),
       ...(defaultJudge ? { defaultJudge } : {}),
+      // MCP 生效配置快照（项目空间；REQ-AGENT-085 生产接线，G1）。
+      ...(mcpSnapshot !== undefined ? { mcpSnapshot } : {}),
     };
   }
 
