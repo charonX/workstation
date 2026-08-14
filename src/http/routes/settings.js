@@ -1,5 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
-import { fetchModels } from "../../services/modelCatalogService.js";
+import { fetchModels, listCatalog } from "../../services/modelCatalogService.js";
 import {
   broadcastAgentConfigChange,
   broadcastJudgeConfig,
@@ -30,6 +30,14 @@ export async function handleSettings(req, res, body, subPath = [], context = {})
     // 空列表 → {models, fallback:true}，E2/E3 提示分支）。apiKey 走请求体（不落 URL）。
     if (subPath[1] === "models" && req.method === "POST") {
       return handleProviderModels(req, res, body);
+    }
+    // catalog 端点（REQ-AGENT-100 / PRD §10.4 接口 6，v0.6）：GET
+    // /api/settings/agent/catalog → {providers: [{provider, displayName,
+    // defaultModel, models: [{model, vision, reasoning}]}]}——37 个 apiKey 型
+    // 静态 provider 全量（pi-ai 目录单一真源；排除 OAuth 型 openai-codex /
+    // github-copilot 与 faux）；renderer 下拉 + 视觉判定数据源。只读幂等。
+    if (subPath[1] === "catalog" && req.method === "GET") {
+      return handleCatalog(res);
     }
     // 绑定（REQ-AGENT-014，E3 + W-1）：Settings Agent 区「开始绑定」入口 →
     // agentRouter.beginBinding（pendingBind arming，一次性 + 10 分钟有效期）——
@@ -203,6 +211,17 @@ async function handleProviderModels(req, res, body) {
   const apiKey = typeof body?.apiKey === "string" ? body.apiKey : "";
   const result = await fetchModels(provider, apiKey);
   return ok(res, Array.isArray(result) ? { models: result } : result);
+}
+
+// catalog 端点处理（REQ-AGENT-100）：静态目录派生（纯内存，无 IO）——异常走
+// 500 E-CATALOG（§10.4 接口 6 系统错误；目录数据源正常情况下不触发）。
+function handleCatalog(res) {
+  try {
+    return ok(res, listCatalog());
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: "E-CATALOG", message: err.message }));
+  }
 }
 
 function ok(res, data) {

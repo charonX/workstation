@@ -12,10 +12,14 @@
 //   （jpeg/png/gif/webp/bmp/heic/heif）」）→ 大小 ≤10MB（E10「图片过大（单图 ≤10MB）」）
 //   → 视觉能力（E11「当前模型不支持图片，请切换到 kimi 或移除图片」）。
 // 发送时复核（E11）：chips 已存在时切换到非视觉模型 → 发送被拦 + 提示（不静默发送）。
+// 视觉能力判定数据源 = catalog 端点（REQ-AGENT-102，v0.6）：ensureCatalog 内存
+// 缓存 + 判定时 await（避免与加载竞态）；catalog 加载失败 → 保守拒绝（宁阻不
+// 静默丢图，imageAttachmentUi 标准 9）。
 // 项目外文件直接附加（选择器即显式授权，A7 反转——不弹确认、无特殊标记）。
 // 文件路径：Electron File.path（E2E setInputFiles 注入的 File 同带 path 语义）。
 
 import { useState, useRef, useImperativeHandle } from "react";
+import { ensureCatalog, isVisionModel } from "../../modelCatalog.js";
 
 // 图片白名单（PRD §7 / 服务端 IMAGE_MIME_TYPES 同源，SVG 拒收）+ 扩展名回退映射
 //（部分平台 File.type 为空——heic/heif 等）。
@@ -57,7 +61,7 @@ function formatSize(bytes) {
 
 // React 19：ref 为普通 prop（forwardRef 已并入），useImperativeHandle 暴露
 // openFilePicker 供 ModeToolbar 附件按钮触发（ChatView 持有 ref 接线）。
-export default function Composer({ readonly, readonlyReason, disabled, busy, onSend, visionCapable = true, ref }) {
+export default function Composer({ readonly, readonlyReason, disabled, busy, onSend, provider = "", model = "", ref }) {
   const [text, setText] = useState("");
   // 附件 chips（{name, size, mimeType, kind:"image", path}）——发送载荷与消息
   // 附件块同形（REQ-098 接口契约）。attachmentsRef = 同步真相（快速连续附加
@@ -69,6 +73,8 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
   const [blockedMsg, setBlockedMsg] = useState(null);
   const fileInputRef = useRef(null);
   const blockedTimerRef = useRef(null);
+  // 发送中判定为异步（发送复核 await catalog）——submittingRef 防双击双发。
+  const submittingRef = useRef(false);
 
   // 暴露给 ModeToolbar 附件按钮：打开文件选择器（选择器即显式授权，无确认弹窗）。
   useImperativeHandle(ref, () => ({
@@ -91,14 +97,29 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
     blockedTimerRef.current = setTimeout(() => setBlockedMsg(null), 5000);
   }
 
+  // 视觉能力判定（REQ-AGENT-098 E11 / REQ-AGENT-102 v0.6，附加时 + 发送复核共用）：
+  // 数据源 = catalog（ensureCatalog 内存缓存；判定时 await——首次附加与 catalog
+  // 加载并发时等待其落定，避免与加载竞态）。catalog 加载失败 → 保守拒绝
+  //（false——附加被拒，不静默放行，imageAttachmentUi 标准 9）。
+  async function visionAllowed() {
+    try {
+      await ensureCatalog();
+    } catch {
+      return false;
+    }
+    return isVisionModel(provider, model);
+  }
+
   // 附加判定（E5/E6/E10/E11 顺序校验，任一失败拒绝本次附加 + 提示）。
   // 数量判定用 attachmentsRef（同步真相）——快速连续附加（E2E 循环 setInputFiles）
   // 事件间不依赖已提交的渲染状态。
-  function tryAddFiles(files) {
+  async function tryAddFiles(files) {
     const list = Array.from(files ?? []);
     if (list.length === 0) return;
     const current = attachmentsRef.current;
     const next = [];
+    // E11 前置取一次视觉判定（本次附加批次共用；await catalog 加载落定）。
+    const vision = await visionAllowed();
     for (const file of list) {
       // E5：数量上限（第 11 个被拒）。
       if (current.length + next.length >= MAX_ATTACHMENTS) {
@@ -116,8 +137,9 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
         showBlocked("图片过大（单图 ≤10MB）");
         continue;
       }
-      // E11：视觉能力——附加时判定（非视觉模型阻止附加 + 引导）。
-      if (visionCapable !== true) {
+      // E11：视觉能力——附加时判定（非视觉模型阻止附加 + 引导；catalog 未加载/
+      // 加载失败 → 保守拒绝）。
+      if (!vision) {
         showBlocked("当前模型不支持图片，请切换到 kimi 或移除图片");
         continue;
       }
@@ -153,12 +175,25 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
   const canSend = !disabled && !busy && (text.trim() !== "" || attachments.length > 0);
 
   function submit() {
-    if (!canSend) return;
+    if (!canSend || submittingRef.current) return;
     // 发送时复核（E11）：chips 已存在时切到非视觉模型 → 拦截 + 提示（不静默发送）。
-    if (attachmentsRef.current.length > 0 && visionCapable !== true) {
-      showBlocked("当前模型不支持图片，请切换到 kimi 或移除图片");
+    // 视觉判定 await catalog（数据源 = catalog，REQ-102）；加载失败 → 保守拦截。
+    if (attachmentsRef.current.length > 0) {
+      submittingRef.current = true;
+      visionAllowed().then((vision) => {
+        submittingRef.current = false;
+        if (!vision) {
+          showBlocked("当前模型不支持图片，请切换到 kimi 或移除图片");
+          return;
+        }
+        doSend();
+      });
       return;
     }
+    doSend();
+  }
+
+  function doSend() {
     onSend(text, attachmentsRef.current);
     attachmentsRef.current = [];
     setAttachments([]);

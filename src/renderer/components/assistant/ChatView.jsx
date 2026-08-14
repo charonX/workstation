@@ -33,11 +33,14 @@ export default function ChatView({
   defaultModel,
   sessionModel,
   onModelChange,
-  visionCapable,
 }) {
   // Composer 文件选择器句柄（React 19 ref-as-prop）：ModeToolbar 附件按钮 →
   // onAttachClick → openFilePicker（文件选择器在 Composer 内，chips 行同处）。
   const composerRef = useRef(null);
+  // 会话当前组合（E11 视觉判定输入，REQ-AGENT-102）：会话模型优先（行值/切换），
+  // 未取位回落默认组合——Composer 侧经 catalog 判定视觉能力（附加时 + 发送复核）。
+  const sessionProvider = sessionModel?.provider ?? defaultModel?.provider ?? "";
+  const sessionModelId = sessionModel?.model ?? defaultModel?.model ?? "";
   return (
     <main className="assistant-chat">
       <header className="chat-header">
@@ -89,7 +92,8 @@ export default function ChatView({
           readonlyReason={composer.readonlyReason}
           disabled={composer.disabled}
           busy={composer.busy}
-          visionCapable={visionCapable}
+          provider={sessionProvider}
+          model={sessionModelId}
           onSend={onSend}
         />
 

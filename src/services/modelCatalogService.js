@@ -17,7 +17,7 @@
 //
 // ADR-009：本模块无顶层 env/磁盘/electron 读取——builtinModels() 是纯内存静态目录。
 
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { builtinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 
 const PROVIDER_ENDPOINTS = {
   deepseek: "https://api.deepseek.com/models",
@@ -30,6 +30,57 @@ const FETCH_TIMEOUT_MS = 10000;
 // 纯内存静态目录单例（pi-ai 内置模型常量，非网络；加载即全部 provider 目录就绪）。
 const catalog = builtinModels();
 
+// v0.6 catalog 端点排除集（REQ-AGENT-100 / PRD §10.4 接口 6）：
+// - OAuth 型 provider（openai-codex / github-copilot）须排除——apiKey 型之外；
+// - faux 测试 seam 不出现在 getBuiltinProviders()（本地实证 0.84），排除集保留防御。
+const OAUTH_EXCLUDED = new Set(["openai-codex", "github-copilot"]);
+const FAUX_EXCLUDED = new Set(["faux"]);
+
+// 静态目录单 provider 能力映射（provider 目录不可解析 → 空列表，调用方兜底）。
+function catalogProviderModels(provider) {
+  return catalog
+    .getModels(provider)
+    .map((m) => ({
+      model: m.id,
+      vision: Array.isArray(m.input) && m.input.includes("image"),
+      reasoning: m.reasoning === true,
+    }))
+    .filter((m) => typeof m.model === "string" && m.model !== "");
+}
+
+// provider 是否 apiKey 型可配置（v0.6 单一真源判定，listCatalog / settings 保存
+// 校验共用）：pi-ai 静态目录（getBuiltinProviders，不含动态 radius）+ 排除 OAuth
+// 型（openai-codex/github-copilot）与 faux 测试 seam。
+export function isApiKeyProvider(provider) {
+  return (
+    typeof provider === "string" &&
+    !OAUTH_EXCLUDED.has(provider) &&
+    !FAUX_EXCLUDED.has(provider) &&
+    getBuiltinProviders().includes(provider)
+  );
+}
+
+// catalog 端点（REQ-AGENT-100 / PRD §10.4 接口 6，v0.6）：全量 apiKey 型静态
+// provider 的 provider/模型/能力/defaultModel/displayName——数据源 = pi-ai 静态
+// 目录（getBuiltinProviders 单一真源，本地实证 39 项——不含动态 radius；排除
+// OAuth 型与 faux 后 = 37 项）。defaultModel = 目录首项；displayName = pi-ai
+// Provider.name（缺失防御回落 id）。只读派生，无副作用（幂等）。
+export function listCatalog() {
+  const providers = getBuiltinProviders()
+    .filter((id) => !OAUTH_EXCLUDED.has(id) && !FAUX_EXCLUDED.has(id))
+    .map((id) => {
+      const models = catalogProviderModels(id);
+      return {
+        provider: id,
+        displayName: catalog.getProvider(id)?.name || id,
+        defaultModel: models.length > 0 ? models[0].model : null,
+        models,
+      };
+    })
+    .filter((p) => p.models.length > 0);
+  return { providers };
+}
+
 // 模型是否存在于 pi-ai 静态目录（PUT /api/settings/agent 校验 seam，REQ-AGENT-090
 // 标准 3「模型必须来自拉取结果/内置目录」——服务端离线校验以内置目录为准）。
 export function modelInCatalog(provider, model) {
@@ -41,14 +92,7 @@ export function modelInCatalog(provider, model) {
 // 内置目录回退列表（无 key / 拉取失败 / 列表为空）：
 // 映射 {model: id, vision: input.includes("image"), reasoning}（pi-ai 目录为事实）。
 function fallbackModels(provider) {
-  return catalog
-    .getModels(provider)
-    .map((m) => ({
-      model: m.id,
-      vision: Array.isArray(m.input) && m.input.includes("image"),
-      reasoning: m.reasoning === true,
-    }))
-    .filter((m) => typeof m.model === "string" && m.model !== "");
+  return catalogProviderModels(provider);
 }
 
 // 回退结果封装（E2/E3 共用：无 key / 未知 provider / 拉取失败 / 列表为空）。

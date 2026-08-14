@@ -13,7 +13,7 @@ import {
   bindingCancel,
   bindingDelete,
 } from "../api/agent.js";
-import { isVisionModel } from "../modelCapabilities.js";
+import { isVisionModel, ensureCatalog, catalogModels, getCatalog } from "../modelCatalog.js";
 
 const DEFAULT_FORM = {
   workspaceRoot: "",
@@ -26,17 +26,20 @@ const DEFAULT_FORM = {
 const DEFAULT_CHANNEL_STATUS = { status: "offline", error: null };
 
 // Agent 配置区常量（REQ-AGENT-001/004 + REQ-AGENT-090 多 provider 列表）：身份长度
-// 上限（签核决策 4）+ 供应商枚举（含中文展示名，UX settings-providers.html 形态）。
+// 上限（签核决策 4）。供应商枚举 v0.6 起 = catalog 端点数据（REQ-AGENT-101，37 个
+// apiKey 型 provider，pi-ai 目录单一真源）；本表仅为 catalog 加载失败时的本地回退
+//（原硬编码 3 项，UX settings-providers.html 形态）。
 const AGENT_IDENTITY_MAX_LEN = 2000;
-const AGENT_PROVIDER_OPTIONS = [
+const FALLBACK_PROVIDER_OPTIONS = [
   { value: "deepseek", label: "DeepSeek（api.deepseek.com）" },
   { value: "moonshotai", label: "Moonshot AI（api.moonshot.ai）" },
   { value: "moonshotai-cn", label: "Moonshot AI 中国站（api.moonshot.cn）" },
 ];
 
 // 内置模型目录展示副本（REQ-AGENT-092 回退源 = pi-ai 静态目录；本表为 renderer
-// 侧同源镜像——添加条目表单「填 key 后自动刷新」前的即时展示 + 拉取失败回退
-//（2026-08-13 目录核对，modelCapabilities.js 同源）。保存校验以服务端为准）。
+// 侧同源镜像——catalog 端点加载失败时添加条目表单的本地兜底（2026-08-13 目录核对，
+// 与 modelCatalogService 回退同源）。catalog 加载成功后优先用 catalog 数据。
+// 保存校验以服务端为准）。
 const BUILTIN_MODEL_CATALOG = {
   deepseek: [
     { model: "deepseek-v4-flash", vision: false, reasoning: true },
@@ -186,6 +189,37 @@ export default function Settings() {
   const agentBinding = agentConfig?.binding;
   const agentIsBound = agentBinding?.bound === true;
   const agentBindingPending = !agentIsBound && !!agentBinding?.pendingBind;
+
+  // —— catalog（REQ-AGENT-101，v0.6）—— 添加表单 provider 下拉 = catalog 端点数据
+  //（37 个 apiKey 型 provider；加载失败 → 本地回退 3 项）。模型多选区兜底同源。
+  const [catalog, setCatalog] = useState(null); // {providers} | null（null = 未加载/失败）
+
+  // 加载 catalog（页面挂载；ensureCatalog 模块级 in-flight 去重——App 其他页
+  // 并发加载共享同一 GET；失败 → 保持 null，下拉回退本地 3 项，不阻塞页面）。
+  useEffect(() => {
+    let cancelled = false;
+    ensureCatalog()
+      .then((body) => {
+        if (!cancelled) setCatalog(body);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // provider 下拉选项（catalog 数据源；未加载/失败 → 本地回退 3 项）。
+  const providerOptions = Array.isArray(catalog?.providers) && catalog.providers.length > 0
+    ? catalog.providers.map((p) => ({ value: p.provider, label: p.displayName }))
+    : FALLBACK_PROVIDER_OPTIONS;
+
+  // 该 provider 的模型选项（catalog 优先；catalog 未加载/无该 provider → 本地
+  // BUILTIN_MODEL_CATALOG 回退；两者皆无 → 空列表「暂无可用模型」）。
+  function modelOptionsFor(provider) {
+    return catalogModels(provider) ?? BUILTIN_MODEL_CATALOG[provider] ?? [];
+  }
 
   // 关于/更新区：当前版本（经 IPC 获取，禁止硬编码——REQ-DIST-003）+ 检查更新状态
   const [appVersion, setAppVersion] = useState(null);
@@ -416,10 +450,17 @@ export default function Settings() {
 
   // —— Agent 配置区（REQ-AGENT-090/091：多 provider 条目列表管理）——
 
-  // 供应商显示名（中文直写，UX settings-providers.html 形态）。
+  // 供应商显示名（catalog displayName 优先；catalog 未加载 → 本地回退表，中文直写，
+  // UX settings-providers.html 形态）。
   function providerLabel(value) {
-    const option = AGENT_PROVIDER_OPTIONS.find((o) => o.value === value);
-    return option ? option.label : value;
+    const entry = catalogEntryLabel(value);
+    return entry ?? value;
+  }
+
+  function catalogEntryLabel(value) {
+    const fromCatalog = getCatalog()?.providers?.find((p) => p.provider === value);
+    if (fromCatalog?.displayName) return fromCatalog.displayName;
+    return FALLBACK_PROVIDER_OPTIONS.find((o) => o.value === value)?.label ?? null;
   }
 
   // openId 脱敏显示（如 ou_***）：仅保留前 3 字符，避免完整 open_id 泄露。
@@ -441,20 +482,20 @@ export default function Settings() {
     defaultModel.model === providers[0].models[0];
 
   // 添加表单默认 provider = 首个未配置的供应商（已配置的重复条目服务端拒收；
-  // 全部已配置 → 取枚举首个，保存时行内提示）。
+  // 全部已配置 → 取枚举首个，保存时行内提示）。选项源 = catalog（v0.6）。
   function defaultAddProvider() {
     const configuredProviders = new Set(providers.map((p) => p.provider));
-    return AGENT_PROVIDER_OPTIONS.find((o) => !configuredProviders.has(o.value))?.value ?? AGENT_PROVIDER_OPTIONS[0].value;
+    return providerOptions.find((o) => !configuredProviders.has(o.value))?.value ?? providerOptions[0].value;
   }
 
   // 添加表单状态复位（openAddForm 与 provider 切换共用）：列表/勾选/状态提示/错误
-  // 归位到该 provider 的内置目录展示。key 保留与否由调用方决定（openAddForm 清空，
-  // provider 切换保留——切换后自动用现有 key 重拉）。
+  // 归位到该 provider 的目录展示（catalog 优先，本地表兜底）。key 保留与否由调用方
+  // 决定（openAddForm 清空，provider 切换保留——切换后自动用现有 key 重拉）。
   function resetAddFormFor(provider) {
     setAddProvider(provider);
     setAddError(null);
     setCheckedModels(new Set());
-    setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+    setModelOptions(modelOptionsFor(provider));
     setFetchStatus(FETCH_STATUS.noKey);
     setAgentTestResult(null);
   }
@@ -473,11 +514,12 @@ export default function Settings() {
   }
 
   // 拉取模型列表（实时无缓存；成功后替换展示列表——勾选集保留，避免用户勾选
-  // 中途被替换丢失）。E2：无 key 不拉取（表单提示「填 key 后自动刷新」）。
+  // 中途被替换丢失）。E2：无 key 不拉取（表单提示「填 key 后自动刷新」）。回退源 =
+  // catalog 该 provider 内置目录（v0.6；catalog 未加载 → 本地 BUILTIN_MODEL_CATALOG）。
   async function fetchModelsFor(provider, apiKey) {
     const key = (apiKey ?? "").trim();
     if (key === "") {
-      setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+      setModelOptions(modelOptionsFor(provider));
       setFetchStatus(FETCH_STATUS.noKey);
       return;
     }
@@ -485,12 +527,12 @@ export default function Settings() {
     try {
       const res = await fetchProviderModels(provider, key);
       const list = Array.isArray(res?.models) ? res.models : [];
-      const options = list.length > 0 ? list : BUILTIN_MODEL_CATALOG[provider] ?? [];
+      const options = list.length > 0 ? list : modelOptionsFor(provider);
       setModelOptions(options);
       setFetchStatus(res?.fallback === true ? FETCH_STATUS.fallback : FETCH_STATUS.fetched);
     } catch {
-      // 拉取失败（网络/服务）：回退内置目录 + 提示（E3，不阻塞保存）。
-      setModelOptions(BUILTIN_MODEL_CATALOG[provider] ?? []);
+      // 拉取失败（网络/服务）：回退目录 + 提示（E3，不阻塞保存）。
+      setModelOptions(modelOptionsFor(provider));
       setFetchStatus(FETCH_STATUS.fallback);
     }
   }
@@ -884,6 +926,8 @@ export default function Settings() {
                   <div className="form-row">
                     <div className="form-field">
                       <label htmlFor="add-provider-select">Provider</label>
+                      {/* provider 下拉 = catalog 端点数据（REQ-AGENT-101，v0.6）：
+                          37 个 apiKey 型 provider；catalog 加载失败 → 本地回退 3 项 */}
                       <select
                         id="add-provider-select"
                         className="form-input"
@@ -895,7 +939,7 @@ export default function Settings() {
                           if (addApiKey.trim() !== "") fetchModelsFor(p, addApiKey);
                         }}
                       >
-                        {AGENT_PROVIDER_OPTIONS.map((option) => (
+                        {providerOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>

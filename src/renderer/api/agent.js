@@ -22,6 +22,14 @@ export function fetchProviderModels(provider, apiKey) {
   return post("/api/settings/agent/models", { provider, apiKey });
 }
 
+// catalog 端点（REQ-AGENT-100/101/102，v0.6）：GET /api/settings/agent/catalog →
+// {providers: [{provider, displayName, defaultModel, models: [{model, vision,
+// reasoning}]}]}——37 个 apiKey 型 provider 全量（pi-ai 静态目录单一真源）；
+// Settings 添加表单 provider 下拉 + renderer 视觉判定（modelCatalog.js）数据源。
+export function fetchCatalog() {
+  return get("/api/settings/agent/catalog");
+}
+
 // POST test-connection：{ provider, apiKey } → { ok: true } 或
 // { ok: false, error: "E-AGENT-LLM-FAIL", message }（失败不阻止保存）。
 export function testConnection({ provider, apiKey }) {

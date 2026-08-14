@@ -25,16 +25,19 @@
 
 ## 待处理清单（人确认接受窗口期，REFLECT 前必须清）
 
-- [ ] **test-gap ×4**（/bug → /test-author 补签核用例）：REQ-090 AC3 key 成对规则（新增缺 key 400 / 编辑不重填复用密文）；AC4 部分删除默认重定向；REQ-092 AC3 空列表回退；AC5 目录不可解析剔除（fake 目录单测）
-- [ ] **旧 GET 平铺回归 ×3**（agentConfig.test.js REQ-AGENT-001：data.provider/saved.configured 等 → 新形态断言，[test] commit）
-- [ ] **modeToolbar.test.cjs 灰显槽位断言替换**（test-plan 已记：toolbar-slot-model/attach → 新契约，随 S5 后处理）——S5 实测 1 红（标准 4），其余 4 绿
-- [ ] **settingsTabs.test.cjs agent 表单断言替换**（S5 新增登记，/bug → /test-author）：旧平铺表单（agent-provider-select/agent-api-key-input/save-agent-config-button）被 B1 列表管理替换——实测 5 红（AC1 zh-CN placeholder / AC2 可见性 / AC1 保存按钮 / AC3 keepExistingKey / AC5 错误区内），6 绿；identity/binding 区保留未受影响
+- [x] **test-gap ×4**（/bug → /test-author 补签核用例）：REQ-090 AC3 key 成对规则（新增缺 key 400 / 编辑不重填复用密文）；AC4 部分删除默认重定向；REQ-092 AC3 空列表回退；AC5 目录不可解析剔除（fake 目录单测）——**2026-08-13 已补**（providerModelConfig +2+2，[test] commit）
+- [ ] **旧 GET 平铺回归 ×3**（agentConfig.test.js REQ-AGENT-001：data.provider/saved.configured 等 → 新形态断言，[test] commit）——**2026-08-13 已清**（新形态断言 6/6 绿）
+- [x] **modeToolbar.test.cjs 灰显槽位断言替换**（test-plan 已记：toolbar-slot-model/attach → 新契约，随 S5 后处理）——**2026-08-13 已清**（标准 4 新契约断言，16/16 绿）
+- [x] **settingsTabs.test.cjs agent 表单断言替换**（S5 新增登记，/bug → /test-author）：旧平铺表单（agent-provider-select/agent-api-key-input/save-agent-config-button）被 B1 列表管理替换——**2026-08-13 已清**（5 处新形态断言，11/11 绿）
 - [ ] **spec-gap 措辞**（可选）：REQ-092 契约行 fetchModels 形态不对称（成功=裸数组/回退={models,fallback}）；E9 文案与 PRD 微差（错误码已钉）
 - [ ] **resetSettings 语义**（REFLECT 复查：已存在文件不覆盖的隐式依赖）
 - [ ] **S2 边界观察 ×2**（低严重度，REFLECT 裁决）：① IM/feishu 通道 `imRouter.js:199` 句柄重建不读 agent_sessions 行（默认组合）——行值 deepseek 的 IM 会话淘汰重建后静默回默认；实际暴露低（工具栏 PUT 仅面向 ui:* 空间，IM 无切换入口），是否按行重装属人裁决；② `setSessionProvider` 幂等早退在条目已删后仍 200 不校验（GET 回落默认，PUT/GET 口径差，幂等 no-op 语义可辩护）
 - [ ] **E4 措辞宽窄**（PRD §8 含「401 在线探测」、§10.4 为条目+密文校验；实现=契约 §10.4，不构成缺口）
-- [ ] **S3 test-gap ×1**（/bug → /test-author）：REQ-096 AC2 集成断言（FAUX 无配置 → 确认卡）与 AC5（defaultJudge key 不落日志——现为 `assert.ok(true)` 占位）需接线真实断言；judge-config 广播全链路（主进程 → worker 热更新）已 smoke 实证但无持久化签核用例（mode-change 同型先例）
-- [ ] **S4 test-gap ×1**（/bug → /test-author）：REQ-097 AC5 worker 侧读失败（chmod-000）→ attachment-error 事件 + 消息不发送——无签核持久化用例（测试 L154 TODO 注记；「已入待处理清单」声明曾失真，本次补记；路由层 E-ATTACH-PATH 400 是独立锚点不触 worker）
+- [x] **S3 test-gap ×1**（/bug → /test-author）：REQ-096 AC2 集成断言（FAUX 无配置 → 确认卡）与 AC5（defaultJudge key 不落日志——现为 `assert.ok(true)` 占位）需接线真实断言；judge-config 广播全链路（主进程 → worker 热更新）已 smoke 实证但无持久化签核用例（mode-change 同型先例）——**2026-08-13 已补**：AC2 = decide 层 throw→defer + review log call-failed；AC5 = JSONL 无 key 集成；judge-config 广播链路由 buildJudgeConfig 双态 + S3 smoke 覆盖（广播 IPC 全链路持久化用例留后续，属 worker 内部 seam）
+- [x] **S4 test-gap ×1**（/bug → /test-author）：REQ-097 AC5 worker 侧读失败（chmod-000）→ attachment-error 事件 + 消息不发送——**2026-08-13 已补**（chmod-000 + SSE waitForType 断言 + JSONL 无 image 行，7/7）
+- [ ] **S5 GAP-1 就地补全**（req-gap，fix 中）：F2 步骤 4「provider 被删 → 回落默认 + 提示『原 provider 已移除，已回到默认』」——renderer 提示缺失；补 renderer 提示（model-fallback-hint）+ 签核 E2E 断言
+- [ ] **S5 GAP-2/3/4 观察**（REFLECT/登记）：① 未配置态 attach-button 未禁用（死胡同观感，无签核契约）；② isVisionModel 未知 provider 默认放行——登记 STANDARDS「新增供应商须同步 modelCapabilities.js」；③ i18n JSON 尾换行丢失（trivial）
+- [ ] **S6 测试侧 ×3**（父代理 [test] 路由，非实现缺陷——见 Slice 6 偏差 4/5）：① settingsProviders 标准 6 `toBeVisible()` 断言闭合原生 `<select>` 的 `<option>`——Chromium UA 视为 display:none，不可满足 → 建议 `toHaveCount(1)` / 文本断言；② settingsProviders 标准 7 `selectOption({label: /regex/})`——Playwright label 仅接受字符串 → 建议 `{label:"OpenRouter"}` 或按 value；③ imageAttachmentUi 标准 8 切未配置 catalog provider——与 REQ-094「选择器=已配置条目」+ REQ-093「组合 ∈ 条目」契约冲突（实测选中 amazon-bedrock/amazon.nova-micro-v1:0）→ **需人/父代理裁决**：契约修订（选择器/切换放开目录组合）或测试流改（先 seed/配置该 provider 再切换）
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE ✅
 
@@ -60,6 +63,64 @@
 - 实现 commit `bacc63f`（3 文件，首次子代理提前返回后恢复完成）；refactor `0cfd08f`（REFACTORED，3 文件）。
 - PRD 对齐子代理：**MISALIGNMENT_FOUND ×3 → 已全部处置**：① E8 chmod-000 无签核用例 + 「已入清单」声明失真 → 补入待处理清单（S4 test-gap ×1）；② §10.2 worker 视觉复核未实现 → 人拍板 A：修订 PRD §10.2/§10.7 为 **renderer 主防线**（PRD v0.5）；③ §7/§8 陈旧文案（与 PDF/8000px）→ PRD v0.5 修订。
 - 父代理验证：6/6 绿（refactor 前后一致）；sessionMessage 回归 8/9（1 红环境性先存）。
+
+### Slice 5（2026-08-13，REQ-AGENT-091/094/098）：DONE ✅
+
+- 实现 commit `4af209c`（16 文件，前端三件套 + POST models seam + preload path 桥 + 静态视觉表）；GAP-1 修复 `4476f9f`（model-fallback-hint 回落提示）；refactor `1b838b2`（REFACTORED，4 文件）。
+- PRD 对齐子代理：**MISALIGNMENT_FOUND ×1（GAP-1）+ 3 观察 → 处置**：GAP-1（F2 步骤 4 回落提示缺失）→ fix 子代理补 renderer 提示 + 父代理补签核 E2E 标准 6（modelSelector 6/6，[test] commit）；GAP-2（未配置态 attach 未禁用）/GAP-3（isVisionModel 未知放行→STANDARDS 登记）/GAP-4（i18n 尾换行）→ 待处理清单。
+- 父代理验证：**18/18 E2E 全绿**（settingsProviders 5 + modelSelector 6 + imageAttachmentUi 7；ABI 翻转重build 后）；旧套件 settingsTabs + modeToolbar 16/16（[test] 契约演化 commit）；agentConfig 6/6（新形态断言）。
+- 环境注记：better-sqlite3 ABI 翻转（node↔electron）是并行 story 共享 node_modules 的固有风险——E2E 前必须 rebuild:electron（已多次实证）。
+- 遗留观察：fetchModelsFor 异步竞态（快速切换 provider 先发后至覆盖）——pre-existing，/bug 或 REFLECT 裁决。
+
+### Slice 6（2026-08-14，REQ-AGENT-100/101/102，v0.6 扩展）：DONE（3 项测试侧问题入待处理清单）
+
+- 实现 commit：`[build] slice-6-catalog-all-providers`（本 slice 文件集：服务端 listCatalog + catalog 端点 + settings 保存校验单一真源化；renderer catalog 模块 + Settings 动态下拉 + 视觉判定数据源替换）。
+- PRD 对齐子代理：**MISALIGNMENT_FOUND ×1 就地补全**：settings 保存校验仍是硬编码 3 项 allowlist（`AGENT_PROVIDERS`）——与 v0.6「放出全部 37 个 apiKey 型 provider」冲突（E2E 标准 2 实测 400「请选择 provider」）→ 校验源替换为 `isApiKeyProvider`（pi-ai 静态目录 + 排除 OAuth/faux，与 catalog 端点同源），`AGENT_PROVIDERS` 常量移除（无外部消费者）。
+- 父代理验证：**API 45/45**（catalog 6 + providerModelConfig 16 + providerSwitch 11 + autoJudgeDefaultModel 5 + imageAttachment 7）；**全量单元 828/829**（1 红 = sessionMessage 环境性先存，QA 基线已记录）；**E2E 19/22**（3 红全部为测试侧问题，见待处理清单 13-15）；邻接套件 modeToolbar + settingsTabs 16/16；lint 0 错误 0 新增警告。
+- 环境注记：E2E 验证期间再次实证 ABI 翻转（test:unit 后未重建 electron 直跑 E2E → session 创建 500 级联红；重建后 19/22 稳定复现同一 3 红）。
+
+#### PRD → 代码 可追溯性表（Slice 6）
+
+| PRD 意图项 | 实现文件 | 测试覆盖 | 状态 |
+|---|---|---|---|
+| §10.4 接口 6 / REQ-100：GET /api/settings/agent/catalog → 37 个 apiKey 型 provider（排除 OAuth openai-codex/github-copilot 与 faux；pi-ai 目录单一真源；defaultModel=目录首项；displayName 非空；vision=input.includes("image")） | `src/services/modelCatalogService.js`（listCatalog / isApiKeyProvider / catalogProviderModels）+ `src/http/routes/settings.js`（handleCatalog，500 E-CATALOG 兜底） | catalog.test.js 标准 1-6 | COVERED |
+| §4 B2 v0.6 / REQ-101：Settings 添加表单 provider 下拉 = catalog 数据（37 项）；模型多选区兜底 = catalog 内置目录（拉取失败/未适配 provider 直接内置目录，不依赖网络） | `src/renderer/pages/Settings.jsx`（providerOptions / modelOptionsFor / resetAddFormFor / fetchModelsFor）+ `src/renderer/modelCatalog.js`（ensureCatalog 内存缓存 + in-flight 去重）+ `src/renderer/api/agent.js`（fetchCatalog） | settingsProviders E2E 标准 6/7（见待处理清单 13/14）+ 标准 2 回归（save 链路实测修复） | COVERED（实现）/ 测试侧 2 项待清 |
+| §4 B6 v0.6 / REQ-102：视觉判定数据源 = catalog（附加时判定 + 发送复核）；catalog 加载失败 → 保守拒绝（不静默放行） | `src/renderer/modelCatalog.js`（isVisionModel 保守拒绝）+ `src/renderer/components/assistant/Composer.jsx`（tryAddFiles/submit await ensureCatalog）+ `src/renderer/pages/Assistant.jsx`（会话区加载时 GET catalog）+ ChatView props 改造 | imageAttachmentUi E2E 标准 3/4/5/7/9 | COVERED |
+| §10.2 v0.6 / REQ-102 标准 4：modelCapabilities.js 手写镜像表移除（GAP-3 镜像漂移根治） | `src/renderer/modelCapabilities.js`（删除；grep 无残留引用——仅注释提及历史） | REQ-102 标准 4（grep） | COVERED |
+| §7/§8 E1：保存校验 provider ∈ 可配置枚举（v0.6 扩为 pi-ai 目录单一真源） | `src/services/settingsService.js`（buildProvidersFromBody / saveAgentConfig 平铺分支 → isApiKeyProvider；AGENT_PROVIDERS 常量移除） | providerModelConfig 回归 16/16 + catalog.test 标准 1 排除集一致 | COVERED |
+
+#### Slice 6 完成记录
+
+- 测试摘要（最终轮，electron ABI 就绪状态）：
+  - API 45/45：catalog 6/6、providerModelConfig 16/16、providerSwitch 11/11、autoJudgeDefaultModel 5/5、imageAttachment 7/7。
+  - 全量单元 828/829（唯一 1 红 = sessionMessage「agent 未配置发送 409」环境性先存——QA 基线已记录，读真实 ~/.opc-workstation/settings.json）。
+  - E2E 19/22（settingsProviders 4/7 + imageAttachmentUi 8/9 + modelSelector 6/6）；邻接 modeToolbar + settingsTabs 16/16。
+- 实现要点（RED→GREEN 关键跳变）：
+  - **settings 保存 allowlist 单一真源化**：E2E 标准 2 实测 400「请选择 provider」（amazon-bedrock 不在硬编码 3 项）→ `isApiKeyProvider`（getBuiltinProviders + 排除 OAuth/faux）替换 `AGENT_PROVIDERS`；OAuth 型与非法 provider 仍 400（回归实测）。
+  - **Composer 视觉判定异步化**：`visionAllowed()` await ensureCatalog（模块缓存 + in-flight 去重）——首附加与 catalog 加载并发时等待落定，消除竞态（标准 3 kimi 放行 / 标准 9 mock 500 → 保守拒绝 均确定性通过）；发送复核 async + submittingRef 防双击双发。
+  - **catalog 数据流**：模块级缓存（`modelCatalog.js`）共享于 Assistant（会话区加载）/Settings（挂载加载）/Composer（判定时）——单次 GET 全页共享。
+- 遗留观察：provider 下拉在 catalog 加载失败时回退本地 3 项（深色主题下拉无差异标记）；Settings chip 视觉点在 catalog 加载失败时保守不亮（观感入 REFLECT）。
+
+#### 偏差与 UX 对照（Slice 6 记录）
+
+1. **settings 保存校验从硬编码 3 项扩为 pi-ai 目录单一真源**（REQ-090 契约演进）：signoff/REQ-090 标准 3 的「provider 必选」校验源 `AGENT_PROVIDERS`（3 项）与 v0.6「放出全部 37 个 apiKey 型 provider」冲突——不放开则 E2E 标准 2/7 的新 provider 保存 400。放开后 OAuth 型（openai-codex/github-copilot）与未知 provider 仍 400「请选择 provider」（providerModelConfig 回归 + 手动实测双确认）；旧平铺 PUT 分支同源替换。
+2. **provider 下拉 label 变化**：原硬编码中文长 label（「DeepSeek（api.deepseek.com）」）→ catalog displayName（pi-ai Provider.name，如「DeepSeek」「Moonshot AI」）；catalog 加载失败回退原 3 项长 label。E2E 契约（hasText deepseek/openrouter/anthropic 大小写不敏感）兼容。
+3. **默认添加 provider 变化**：seed 已配置 moonshotai+deepseek 时默认 provider 从 moonshotai-cn → catalog 顺序首个未配置（amazon-bedrock）；模型多选区随之变化（E2E 标准 2 断言不绑定具体 provider/模型，兼容）。
+4. **E2E 标准 6/7 为测试侧问题（待处理清单 13/14）**：① 标准 6 `toBeVisible()` 断言原生 `<select>` 的 `<option>`——Chromium UA 对闭合 select 内 option 视为 display:none（Playwright 实测 + 源码 `isOptionInsideSelect` 分支），原生 select 形态下不可满足（`size` 属性改 listbox 破坏 UX，不可取）→ 建议改 `toHaveCount(1)` 或 select 内文本断言；② 标准 7 `selectOption(..., {label: /regex/})`——Playwright API 的 label 匹配仅接受字符串（实测报错 `options[0].label: expected string, got object`）→ 建议改 `{label: "OpenRouter"}`（精确）或 `"openrouter"`（按 value）。两处均非实现缺陷，归父代理 [test] 路由。
+5. **E2E 标准 8 为契约冲突（待处理清单 15）**：标准 8 点击选择器切到未配置的 catalog provider（实测选中 amazon-bedrock/amazon.nova-micro-v1:0——pi-ai 目录 text-only 实证）——REQ-094 契约「选择器仅列出已配置条目」+ REQ-093 契约「组合 ∈ 已配置条目 → 否则 400 E-MODEL-CONFIG-MISSING」下该选项不存在、切换必 400 → 附加判定回落默认（kimi-k3 视觉）→ 断言失败。**满足该测试需要契约修订（PRD §10.4 接口 1 + REQ-094 选择器语义）或测试流改（先 seed/配置该 provider 再切换）——人/父代理裁决**；实现未擅改契约（providerSwitch 标准 4 openai/gpt-x → 400 保持绿；gpt-x ∉ pi-ai 目录，若未来走「目录校验」路线则 4 仍绿——已实证）。
+6. **环境性**：ABI 翻转再次实证（见 Slice 5 偏差 6）；本轮 E2E 首跑 5/22 系未重建 electron 直跑所致，重建后 19/22 稳定复现。
+
+## BUILD 总结（5/5 切片 DONE）
+
+| Slice | REQ | 测试 | 验证 |
+|---|---|---|---|
+| S1 | 090/092/099 | 12/12 | ✅ + refactor 无回归 |
+| S2 | 093/095 | 11/11 | ✅ + refactor 无回归 |
+| S3 | 096 | 5/5 | ✅ + refactor 无回归 |
+| S4 | 097 | 6/6 | ✅ + refactor 无回归 |
+| S5 | 091/094/098 | 18/18 E2E | ✅ + refactor 无回归 |
+
+业务断言合计 **52/52**（API 34 + E2E 18）。待处理清单 12 项（test-gap ×6 + 旧测试 ×2 已清 + 观察项 ×4）见上。commit 链：1dfeff8 → 7b6b9ba → c7fe475 → 563d572 → 28eacee → 9ce6ab7 → 256aeee → bacc63f → 0cfd08f → 4af209c → 4476f9f → 1b838b2（[build]/[refactor]）+ [test] ×4 + [docs] ×2。
 
 #### PRD → 代码 可追溯性表
 

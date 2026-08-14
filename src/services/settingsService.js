@@ -4,7 +4,7 @@ import os from "node:os";
 import * as agentRegistryService from "./agentRegistryService.js";
 import { encryptSecret, decryptSecret } from "./secretStore.js";
 import { expandTilde, realpathBestEffort } from "./pathUtils.js";
-import { modelInCatalog } from "./modelCatalogService.js";
+import { modelInCatalog, isApiKeyProvider } from "./modelCatalogService.js";
 
 function resolveConfigDir() {
   if (process.env.OPC_WORKSTATION_CONFIG_DIR) {
@@ -198,8 +198,10 @@ export function saveChannelCredentials({ appId, appSecret } = {}) {
 // models[]}], defaultModel:{provider, model}|null}。存量旧形态（{provider,
 // apiKeyEncrypted, identity, configured}）读时迁移为第一条 + 默认组合（B1/B4 零操作
 // 升级）；迁移失败（settings 损坏）→ 空列表且原文件字节不动（E13）。
-// 供应商枚举（签核决策 2）：{deepseek, moonshotai, moonshotai-cn}。
-export const AGENT_PROVIDERS = ["deepseek", "moonshotai", "moonshotai-cn"];
+// 供应商集合（v0.6 单一真源）：apiKey 型 provider = pi-ai 静态目录（37 项，排除
+// OAuth 型 openai-codex/github-copilot 与 faux 测试 seam）——`isApiKeyProvider`
+//（modelCatalogService，与 catalog 端点同源）；保存校验、test-connection 枚举外的
+// provider 均合法（动态拉取未适配 → 内置目录回退，E3）。
 // 自定义身份长度上限（签核决策 4 / PRD §7：≤2000 字符，可空）。
 export const AGENT_IDENTITY_MAX_LEN = 2000;
 
@@ -310,8 +312,9 @@ export function loadAgentConfig() {
   };
 }
 
-// 新形态条目校验 + 装配（REQ-090 标准 3）：provider 必选且 ∈ AGENT_PROVIDERS、
-// 条目内 provider 不重复、models 非空且每个模型 ∈ pi-ai 静态目录；apiKey 与条目
+// 新形态条目校验 + 装配（REQ-090 标准 3）：provider 必选且为 apiKey 型
+//（isApiKeyProvider——pi-ai 静态目录单一真源，v0.6 放出全部 37 项）、条目内
+// provider 不重复、models 非空且每个模型 ∈ pi-ai 静态目录；apiKey 与条目
 // 成对——新增条目必填，编辑已有条目（同 provider 已有密文）可不重填。
 function buildProvidersFromBody(entries, currentProviders) {
   const providers = [];
@@ -320,7 +323,7 @@ function buildProvidersFromBody(entries, currentProviders) {
     if (!entry || typeof entry !== "object") {
       throw configError("条目格式无效");
     }
-    if (typeof entry.provider !== "string" || !AGENT_PROVIDERS.includes(entry.provider)) {
+    if (!isApiKeyProvider(entry.provider)) {
       throw configError("请选择 provider");
     }
     if (seen.has(entry.provider)) {
@@ -357,7 +360,8 @@ function identityOrCurrent(body, current) {
 
 // 保存 Agent 配置（REQ-AGENT-090 新形态 PUT /api/settings/agent）：
 // 校验（PRD §7 / REQ-090 标准 3）：
-// - provider 必选且 ∈ AGENT_PROVIDERS（「请选择 provider」）；
+// - provider 必选且为 apiKey 型（isApiKeyProvider——pi-ai 静态目录单一真源，
+//   v0.6 放出全部 37 项，排除 OAuth 型 openai-codex/github-copilot 与 faux）；
 // - apiKey 与条目成对：新增条目必填；编辑已有条目（同 provider 已有密文）可不重填；
 // - models 非空且 ≥1，每个模型 ∈ pi-ai 静态目录（「模型不存在」）；
 // - defaultModel 自动重定向（新增首个条目 → 首个组合；删光 → null；显式值不在
@@ -373,7 +377,7 @@ export function saveAgentConfig(body = {}) {
 
   if (hasOwn(body, "provider") || hasOwn(body, "apiKey")) {
     // —— 旧形态兼容：单条 provider + apiKey（整体替换，等价迁移语义）——
-    if (!AGENT_PROVIDERS.includes(body.provider)) {
+    if (!isApiKeyProvider(body.provider)) {
       throw configError("请选择供应商");
     }
     if (typeof body.apiKey !== "string" || body.apiKey.trim() === "") {

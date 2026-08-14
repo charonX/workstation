@@ -32,7 +32,7 @@ import {
   setSessionProvider,
 } from "../api/agentSessions.js";
 import { getAgentConfig } from "../api/agent.js";
-import { isVisionModel } from "../modelCapabilities.js";
+import { ensureCatalog } from "../modelCatalog.js";
 import SessionList from "../components/assistant/SessionList.jsx";
 import ChatView from "../components/assistant/ChatView.jsx";
 import "../components/assistant/assistant.css";
@@ -310,6 +310,12 @@ export default function Assistant() {
         // 同上。
       }
     };
+    // 会话区加载时 GET catalog（REQ-AGENT-102，v0.6）：视觉判定数据源 = catalog
+    // 端点（模块级内存缓存 + in-flight 去重——Settings/Composer 共享同一次 GET）；
+    // 加载失败 → 模块缓存保持 null → Composer 附加/发送复核按「保守拒绝」处理
+    //（imageAttachmentUi 标准 9：不静默放行）。失败不阻塞会话区（静默，Composer
+    // 判定时兜底重试）。
+    ensureCatalog().catch(() => {});
     refreshSessions();
     loadConfig();
     const timer = setInterval(() => {
@@ -747,12 +753,10 @@ export default function Assistant() {
   // 未配置判定（Slice 5 升级）：配置未加载（null）→ 不算未配置（保持既有行为）；
   // 已加载 → 任一条目持有 key（configured:true）即已配置。
   const unconfigured = agentConfig !== null && !providers.some((p) => p.configured === true);
-  // 会话当前组合视觉能力（REQ-AGENT-098 E11 判定）：会话模型优先（行值/切换），
-  // 未取位回落默认组合；能力数据 = renderer 静态表（modelCapabilities.js）。
-  const visionCapable = isVisionModel(
-    sessionModel?.provider ?? defaultModel?.provider ?? "",
-    sessionModel?.model ?? defaultModel?.model ?? ""
-  );
+  // 会话当前组合（REQ-AGENT-098 E11 判定输入）：会话模型优先（行值/切换），
+  // 未取位回落默认组合；视觉能力判定在 Composer 侧完成——数据源 = catalog 端点
+  //（REQ-AGENT-102，v0.6：附加时判定 + 发送复核经 ensureCatalog/isVisionModel，
+  // modelCapabilities.js 手写镜像表已移除）。
   // 图片解析根（REQ-AGENT-051 / I-5 口径）：项目空间会话（ui:project:<pid>:<sid>）→
   // projectId——主进程按 projects 表 registry 解析实际项目目录（renderer 不持有
   // 绝对路径，白名单判定在主进程）；通用/飞书/孤儿空间 → undefined（无解析根 →
@@ -806,7 +810,6 @@ export default function Assistant() {
         defaultModel={defaultModel}
         sessionModel={sessionModel}
         onModelChange={handleModelChange}
-        visionCapable={visionCapable}
       />
     </div>
   );
