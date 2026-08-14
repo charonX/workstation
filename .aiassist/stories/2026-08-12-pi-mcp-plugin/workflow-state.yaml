@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 6    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -27,6 +27,7 @@ history:
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-003（test-gap）：pluginsPage E2E 标准 3/4 缺 seed → 补 API seed（已装插件+demo 项目+坏插件），E2E 6/8→8/8（真实 Electron 启动验证），commit 7d7a6ee [test]"}
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-004（test-gap）：mcpBridge 4 空断言 → 接真实全链路（stdio/http/快照隔离/新会话生效，FAUX 驱动 + fixture 调用日志断言），4/4 真实断言绿，commit a84c107 [test]。全量回归 784/783/1（唯一 fail=sessionMessage 并行 story churn）"}
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-005（code-defect）：agentDir 真源统一为 <cwd>/.agent-home（HTTP 层与 worker OPC_AGENT_HOME 同源；保留测试隔离/显式注入），commit eb6101a [bugfix]。三处 REFLECT 裁决完成：飞书走通用空间✓；B1 装配层过滤 ADR-024 姿态补充✓；agentDir 真源 A✓"}
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-006（req-gap，人确认+拍板「表单输入+secretStore 加密」）：bearer token 无录入点——REQ-084 契约/已批准 HTML/实现三层一致地漏 token 字段。就地补全（不退 phase）：REQ 契约+AC6（d7dab13 [docs]）、UX 加 token 输入框+重生成 preview（dd50033 [ux]）、回归测试 6a/6b/6c+E2E 先红（3bd6022 [test]）、mcpBridge 标准4 契约适配（9ba0b99 [test]）、实现 4943dfd [bugfix]：secretStore 加密落 token_enc 列→快照解密映射桥 bearerToken。单测全绿+E2E 9/9；唯一预存 fail=sessionMessage 409（干净 HEAD 复现，非本 bug，疑 <cwd>/.agent-home 残留致'未配置'前提失效）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
