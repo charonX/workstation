@@ -7,7 +7,7 @@
 // 数据缺失（stats 未就绪 E7 / git 不可用 E8）→ 占位「—」，对话不受阻。
 // UX 参照：ux/assistant-rich.html（status-bar 三区 + 状态点三态 + ctx-meter 仪表）。
 
-import { formatTokens } from "./format.js";
+import { contextText, meterWidth } from "./format.js";
 
 // 执行状态三态（原型语义，assistant-rich.html states 数组）：空闲 = 灰点；
 // 回复中 = accent 闪烁；工具执行中 = warning 闪烁。
@@ -30,24 +30,8 @@ export function gitText(git) {
   return "无 git";
 }
 
-// 上下文用量文本：`tokens / contextWindow · percent%`；tokens null（压缩后）→
-// percent 或占位；全缺 → 占位。
-export function contextText(ctx) {
-  if (!ctx) return PLACEHOLDER;
-  const { tokens, contextWindow, percent } = ctx;
-  const parts = [];
-  if (typeof tokens === "number" && typeof contextWindow === "number") {
-    parts.push(`${formatTokens(tokens)} / ${formatTokens(contextWindow)} tokens`);
-  }
-  if (typeof percent === "number" && !Number.isNaN(percent)) parts.push(`${percent}%`);
-  return parts.length > 0 ? parts.join(" · ") : PLACEHOLDER;
-}
-
-// 仪表宽度（percent → 0-100 clamp）；percent 缺失 → 0。
-export function meterWidth(ctx) {
-  const p = ctx && typeof ctx.percent === "number" && !Number.isNaN(ctx.percent) ? ctx.percent : 0;
-  return `${Math.max(0, Math.min(100, p))}%`;
-}
+// 上下文用量文本与仪表（REQ-AGENT-056/105）：contextText/meterWidth 抽至 format.js
+// 纯函数 seam（REQ-105 单元测试直接断言；percent 两位小数契约在 format.js）。
 
 export default function StatusBar({ exec = "idle", git = null, context = null }) {
   const state = EXEC_STATES[exec] ?? EXEC_STATES.idle;

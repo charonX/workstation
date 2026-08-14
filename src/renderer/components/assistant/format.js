@@ -16,3 +16,27 @@ export function formatDuration(ms) {
   if (typeof ms !== "number" || Number.isNaN(ms)) return "-";
   return `${(ms / 1000).toFixed(2)}s`;
 }
+
+const PLACEHOLDER = "—";
+
+// 上下文用量文本（REQ-AGENT-056；REQ-AGENT-105 / BUG-003）：`tokens / contextWindow
+// · percent%`——percent 恒定两位小数（人签 expected：SDK 全精度浮点 1.9222259521484375
+// 直拼可读性差；assistant-rich.html 整数格式被推翻）；tokens null（压缩后）→
+// percent 或占位；全缺 → 占位「—」。
+// 从 StatusBar.jsx 抽取（REQ-105 补纯函数 seam：JSX 文件 node 不可直接 import）。
+export function contextText(ctx) {
+  if (!ctx) return PLACEHOLDER;
+  const { tokens, contextWindow, percent } = ctx;
+  const parts = [];
+  if (typeof tokens === "number" && typeof contextWindow === "number") {
+    parts.push(`${formatTokens(tokens)} / ${formatTokens(contextWindow)} tokens`);
+  }
+  if (typeof percent === "number" && !Number.isNaN(percent)) parts.push(`${percent.toFixed(2)}%`);
+  return parts.length > 0 ? parts.join(" · ") : PLACEHOLDER;
+}
+
+// 仪表宽度（percent → 0-100 clamp，全精度驱动不做两位格式化）；percent 缺失 → 0。
+export function meterWidth(ctx) {
+  const p = ctx && typeof ctx.percent === "number" && !Number.isNaN(ctx.percent) ? ctx.percent : 0;
+  return `${Math.max(0, Math.min(100, p))}%`;
+}
