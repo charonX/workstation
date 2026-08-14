@@ -1,0 +1,35 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": ".aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "createdAt": "2026-08-12T09:39:08.621Z",
+  "updatedAt": "2026-08-12T11:08:13.056Z",
+  "assets": {
+    "对话区工具栏扩展（模型选择+附件）": {
+      "versions": [
+        {
+          "path": "conversation-toolbar.html",
+          "createdAt": "2026-08-12T09:41:21.126Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "Settings 多 Provider 管理": {
+      "versions": [
+        {
+          "path": "settings-providers.html",
+          "createdAt": "2026-08-12T09:41:21.150Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  }
+}

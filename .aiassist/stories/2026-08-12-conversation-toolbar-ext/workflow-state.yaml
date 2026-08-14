@@ -5,7 +5,7 @@ story_id: 2026-08-12-conversation-toolbar-ext
 intention: >-
   对话区底部工具栏目前只有权限模式切换，未来需要扩展模型选择与附件添加——工具栏容器已预留槽位（toolbar-slot-model/attach），但尚无实际功能。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
@@ -13,6 +13,16 @@ created: 2026-08-12
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-12, from: -, to: THINK, note: "创建 story"}
+  - {at: 2026-08-12, from: THINK, to: PRD, note: "需求洞察完成（5 轮 frontier 访谈 + 2 次外部调研——Claude Code 附件机制官方实证 + DeepSeek/Kimi 供应商 API 实证 + pi-ai 目录本地实证，收敛方向 A）：多 provider 列表管理（provider+apiKey+可选模型覆盖+默认标记，Settings UI 进本 story）/ 会话级切换保留历史只影响后续 / auto 永远用默认（decide 解耦）/ 动态模型列表（kimi /v1/models 能力标志 + deepseek /models 能力硬编码）/ 存量迁移列表第一条+默认 / 删除回落默认+提示 / 附件 v1=图片+PDF（非视觉模型阻止附加，项目外弹确认，PDF 本地抽取）/ 默认模型 moonshotai→kimi-k3（k2.5 8/31 日落）。interview-notes.md 定稿"}
+  - {at: 2026-08-12, from: PRD, to: DESIGN, note: "PRD v0.1 合成（8 稳定块 + 13 错误态 + 5 移动块；复杂度 complex——模块 9+ / 外部依赖 2；§10 仅设计目标+已知约束，待 /tech-design 深潜补全），路由到 DESIGN"}
+  - {at: 2026-08-12, from: DESIGN, to: DOMAIN-MODEL, note: "UX 原型 2 个 approved（conversation-toolbar.html：模型选择器（替代灰显槽位，下拉列已配置条目+默认徽标+能力标签）/ 附件按钮 + chips 行（Q3-a 输入区上方）/ 非视觉阻止提示（E11）/ 项目外直接附加；settings-providers.html：provider 列表管理（迁移提示/默认星标唯一/动态模型拉取含失败回退演示））。DESIGN 复核两次：A7 反转——移除项目外确认弹窗（选择器即显式授权）；移除「外部」来源标签。PRD v0.3。人确认后进 DOMAIN-MODEL"}
+  - {at: 2026-08-12, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "术语沉淀：新增「模型配置」实体 + 默认模型/动态模型列表/会话级切换/视觉模型/附件 5 概念（附件≠产物）；无冲突。complex story → /tech-design 深潜补全 prd.md §10"}
+  - {at: 2026-08-13, from: TECH-DESIGN, to: CRYSTALLIZE, note: "tech-design 深潜定案（8 轮单题对抗，人确认）：① agent_sessions 加 provider/model 列（SQLite 为真相，懒恢复按行重装）；② provider-change 最小集热更新 IPC（四字段，sessionRef 不换代，ADR-026）；③ defaultJudge 随 session-config 注入 + judge-config 广播；④ 附件路径引用 + worker 侧自读，持久化 = pi-ai 原生序列化（实证）；⑤ 条目多模型 + 全局 defaultModel 指针，动态列表实时拉取无缓存；⑥ PDF 本期放弃（§12），降采样 v1 跳过。PRD §10.2-10.7 完整，§11.1 seams 更新，M1-M4 定案移出，v0.4，ADR-026 落档（ADR-024/025 已被并行 story pi-mcp-plugin 占用，编号顺延）"}
+  - {at: 2026-08-13, from: CRYSTALLIZE, to: TEST, note: "结晶完成：10 REQ（REQ-AGENT-090~099，078-089 被并行 story 占用顺延）；settings 实体 4（090-092/099）+ conversation-space 实体 6（093-098）；全部自动化验收标准、5 个跨模块 REQ 带接口契约；requirements-v1.hash 落档；能力地图登记。人确认后进 TEST"}
+  - {at: 2026-08-13, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架 7 文件（4 api + 3 e2e）生成，全部 TODO: HUMAN ASSERTION 批量填充并签核（expected 值：迁移产物/错误码 E-MODEL-*/E-ATTACH-*/默认唯一/视觉阻止/发送复核等）；新契约点：GET provider 回读端点、E-ATTACH-PATH、buildJudgeConfig 导出、model-empty-hint/attach-blocked testid。ASSERTIONS-SIGNED: true。test-plan.md 记录既有 modeToolbar E2E 灰显槽位断言替换"}
+  - {at: 2026-08-13, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md + [test] assertion-signoff commit 41e5d0b）：人确认初衷/跨模块契约/expected 值/安全边界/GAP 去处；AI 自检全绿。解锁 BUILD。commit 修正：首版误含并行 story 暂存文件，软回退后仅 signoff.md"}
+  - {at: 2026-08-13, from: BUILD, to: QA, note: "BUILD 完成（5/5 切片，业务断言 52/52：API 34 + E2E 18；各切片经 PRD 对齐 + refactor 双验证）：S1 settings 模型/迁移/目录服务 12/12；S2 会话级切换/默认语义 11/11；S3 auto 判断解耦 5/5；S4 图片附件协议 6/6；S5 前端三件套 18/18 E2E。GAP-1（回落提示）就地补全 + 签核断言。旧测试契约演化 [test] ×4（modeToolbar 槽位/settingsTabs 表单/agentConfig 形态 + story 测试补齐）。待处理清单 12 项（test-gap ×6、观察 ×4 等）见 build-progress。PRD v0.5（renderer 主防线/E6/E10 文案）。环境：ABI 翻转需 rebuild 先例已记录"}
+  - {at: 2026-08-13, from: QA, to: REFLECT, note: "QA 通过（qa-report.md）：test-gap ×6 清零后业务断言 57/57（API 39 + E2E 18）全绿。全量回归 unit 821/823 + E2E 211/213——4 红全部归因外部：1 环境性先存（sessionMessage 409 读真实配置）+ 3 并行 story in-progress RED（mcpService seam 未就绪、pluginsPage 标准 3/4）。首轮 E2E 108 红系 better-sqlite3 ABI 环境竞态（E-DB-UNWRITABLE 实证），重建后全绿。进入门 2 REFLECT"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -27,13 +37,13 @@ blocks: {}
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
-  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
-  compiled: false           # 是否已跑过 compile-design-system
-  preview: ""               # 当前有效的 preview.html 路径
+  slug: "Global_8001c2"    # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true           # 是否已跑过 compile-design-system
+  preview: "ux/preview.html"  # 当前有效的 preview.html 路径
 
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
-  recorded: []              # [flow-a.html, flow-b.html, ...]
+  recorded: [conversation-toolbar.html, settings-providers.html]   # [flow-a.html, flow-b.html, ...]
 
 # 已生成的变体(按需)。
 variants:
