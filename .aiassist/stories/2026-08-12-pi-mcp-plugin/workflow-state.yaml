@@ -6,9 +6,9 @@ intention: >-
   PI agent 能力受限：无法通过 MCP 调用外部工具（如 Linear/Notion/数据库/内部服务），
   也缺少应用内的 PI 插件安装/配置管理。一句话痛点：agent 能力受限，没有「安装 -> 配置 -> 使用」的扩展链路。
 
-phase: BUILD     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 5    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -22,6 +22,11 @@ history:
   - {at: 2026-08-13, from: DESIGN, to: TEST, note: "ux 三原型定稿（plugins-page/permission-mcp-group/oauth-present，人确认）；M2 消解为弹窗常驻告知条；REQ-083/087 回填 UX 参照并重算 hash；进 TEST（/test-author）"}
   - {at: 2026-08-13, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架 9 文件 + 3 fixture 落盘（全 RED：seam 未就绪/CLI 缺命令/golden 缺 mcp 族）；test-plan.md 列出 6 个待签核断言点；待门 1"}
   - {at: 2026-08-13, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：D1-D7 人批量签核（signoff.md）；48 处 TODO 落签；43 用例全 RED 无误绿；解锁 BUILD（第 0 切片 = REQ-078 pi 0.84.1 升级）"}
+  - {at: 2026-08-13, from: BUILD, to: BUG, note: "BUILD 6/6 切片完成（782 pass / 2 fail）；进入 bug 处理。BUG-001（test-gap）：mcpService 标准 5 import(pi-mcp-adapter) 与 TS-source 包在 Node 24 不兼容 → 改 jiti，5/5 绿，commit c44d04d [test]"}
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-002（code-defect，人确认）：npm start 主进程 bundle 崩（App threw an error during load）——Slice 4 plugins/mcp 路由使主 bundle 首次引入 extensionService→pi-coding-agent，且 modelCatalogService→pi-ai/providers/all subpath、flowEngine→claude-agent-sdk；这些 CJS require(child_process/async_hooks) 内联进 ESM bundle 崩。修 vite.main.config.js external（regex 覆盖 pi 系列 + claude-agent-sdk，对齐 worker），冒烟验证应用加载正常，commit 14673a7 [bugfix]"}
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-003（test-gap）：pluginsPage E2E 标准 3/4 缺 seed → 补 API seed（已装插件+demo 项目+坏插件），E2E 6/8→8/8（真实 Electron 启动验证），commit 7d7a6ee [test]"}
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-004（test-gap）：mcpBridge 4 空断言 → 接真实全链路（stdio/http/快照隔离/新会话生效，FAUX 驱动 + fixture 调用日志断言），4/4 真实断言绿，commit a84c107 [test]。全量回归 784/783/1（唯一 fail=sessionMessage 并行 story churn）"}
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-005（code-defect）：agentDir 真源统一为 <cwd>/.agent-home（HTTP 层与 worker OPC_AGENT_HOME 同源；保留测试隔离/显式注入），commit eb6101a [bugfix]。三处 REFLECT 裁决完成：飞书走通用空间✓；B1 装配层过滤 ADR-024 姿态补充✓；agentDir 真源 A✓"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
