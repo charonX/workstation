@@ -49,6 +49,21 @@ export default defineConfig({
         // bundle 是 ESM（formats:["es"]）无 require → 加载即崩。对齐
         // vite.worker.config.js 同规则（regex 覆盖子路径）。
         /^jiti(\/|$)/,
+        // BUG-002（2026-08-14）：主进程 HTTP 路由（plugins/mcp，REQ-AGENT-090）→
+        // extensionService → 静态 import @earendil-works/pi-coding-agent；modelCatalogService
+        // → @earendil-works/pi-ai/providers/all（subpath）。这些包 CJS dist 内部
+        // `require("child_process")` / `require("async_hooks")`（dist/utils/child-process.js
+        // 等），主 bundle 为 ESM 无 require → 加载即崩（App threw an error during load）。
+        // 与 vite.worker.config.js 对齐：pi 系列包 external（regex 覆盖 subpath），运行期
+        // 从 node_modules / asar 加载。pi-ai exports `./providers/*` 已实证运行时解析有效。
+        /^@earendil-works\/pi-coding-agent(\/|$)/,
+        /^@earendil-works\/pi-ai(\/|$)/,
+        /^@earendil-works\/pi-agent-core(\/|$)/,
+        /^@earendil-works\/pi-tui(\/|$)/,
+        // BUG-002 同因：@anthropic-ai/claude-agent-sdk（flowEngine/claudeAgentAdapter）
+        // CJS dist 内部 require("async_hooks")，__toESM 包装后 AsyncLocalStorage 非构造器
+        // （O.AsyncLocalStorage is not a constructor）。worker 配置已 external，主进程对齐。
+        /^@anthropic-ai\/claude-agent-sdk(\/|$)/,
         /^node:/
       ]
     }
