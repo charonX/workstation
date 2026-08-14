@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-091
-// REQ-VERSION: v1-hash:ff3ce6c28851eddb44986c153881ae32c5547116942bab700427cfca94e46514
+// REQ-VERSION: v2-hash:22c8de75d005da3d563a527cdbad04c00451768daf2d8bc36b0052757bfa1621
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
@@ -120,5 +120,34 @@ test.describe("Settings 多 provider 管理（E2E）", () => {
     await openSettings(firstWindow);
     await expect(firstWindow.locator("[data-testid='migrate-note']")).toBeVisible();
     await expect(firstWindow.locator(MODEL_CHIP + ".default")).toContainText("kimi-k3");
+  });
+
+  test("标准 6：provider 下拉含新放出项（catalog 驱动，v0.6/REQ-101）", async () => {
+    await firstWindow.reload();
+    await openSettings(firstWindow);
+    await firstWindow.click("[data-testid='add-provider-button']");
+    const options = firstWindow.locator("[data-testid='provider-select'] option");
+    // 下拉选项来自 catalog 端点（非硬编码 3 项）——闭合原生 select 内 option 不可见
+    // （Chromium display:none），断言存在性 toHaveCount 而非可见性
+    await expect(options.filter({ hasText: /openrouter/i })).toHaveCount(1);
+    await expect(options.filter({ hasText: /anthropic/i })).toHaveCount(1);
+    // 原 3 项仍在
+    await expect(options.filter({ hasText: /deepseek/i })).toHaveCount(1);
+  });
+
+  test("标准 7：新 provider 添加流程（openrouter：填 key → 模型选项出现 → 保存 → 条目含勾选模型）", async () => {
+    await firstWindow.reload();
+    await openSettings(firstWindow);
+    await firstWindow.click("[data-testid='add-provider-button']");
+    // Playwright selectOption 的 label 仅接受字符串（非 regex）——按 value 选择
+    await firstWindow.selectOption("[data-testid='provider-select']", "openrouter");
+    await firstWindow.fill("[data-testid='provider-key-input']", "sk-e2e-or");
+    // 模型多选区出现该 provider 模型（catalog 内置目录兜底，无需网络）
+    await expect(firstWindow.locator("[data-testid='model-option']").first()).toBeVisible();
+    const opts = firstWindow.locator("[data-testid='model-option'] input[type='checkbox']");
+    await opts.nth(0).check();
+    await firstWindow.click("[data-testid='save-provider']");
+    await expect(firstWindow.locator(PROVIDER_ENTRY)).toHaveCount(3); // 2 seed + openrouter
+    await expect(firstWindow.locator(PROVIDER_ENTRY).filter({ hasText: /openrouter/i })).toBeVisible();
   });
 });

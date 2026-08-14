@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-090, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-092, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-099
-// REQ-VERSION: v1-hash:ff3ce6c28851eddb44986c153881ae32c5547116942bab700427cfca94e46514
+// REQ-VERSION: v2-hash:22c8de75d005da3d563a527cdbad04c00451768daf2d8bc36b0052757bfa1621
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent

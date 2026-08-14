@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-098
-// REQ-VERSION: v1-hash:ff3ce6c28851eddb44986c153881ae32c5547116942bab700427cfca94e46514
+// REQ-VERSION: v2-hash:22c8de75d005da3d563a527cdbad04c00451768daf2d8bc36b0052757bfa1621
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -163,6 +163,43 @@ test.describe("图片附件 UI + 非视觉阻止（E2E）", () => {
     await firstWindow.setInputFiles("input[type='file']", FIXTURE_PNG);
     await expect(firstWindow.locator(ATTACH_CHIP)).toHaveCount(10);
     await expect(firstWindow.locator("[data-testid='attach-blocked']")).toContainText("最多附加 10 个文件");
+  });
+
+  test("标准 8：新 provider 非视觉模型附加图片被阻止（catalog 数据生效，v0.6/REQ-102）", async () => {
+    // 从 catalog 找一个非 deepseek 的 text-only 模型（数据驱动，不依赖具体 id）
+    const catalog = await (await fetch(`${apiBaseUrl}/api/settings/agent/catalog`)).json();
+    const entry = catalog.providers
+      .filter((p) => !["deepseek", "moonshotai", "moonshotai-cn", "faux"].includes(p.provider))
+      .map((p) => ({ provider: p.provider, model: p.models.find((m) => !m.vision) }))
+      .find((x) => x.model);
+    expect(entry, "目录中应存在非视觉模型（数据驱动前提）").toBeTruthy();
+    // 先配置该 provider 条目（REQ-094「选择器仅列已配置条目」+ REQ-093「组合 ∈ 条目」契约），
+    // 再建会话切换——切到已配置组合后附加图片被阻止（catalog 视觉数据生效）
+    await seedAgentConfig(apiBaseUrl, [
+      { provider: "moonshotai", apiKey: "sk-e2e-m", models: ["kimi-k3"] },
+      { provider: entry.provider, apiKey: "sk-e2e-t", models: [entry.model.model] },
+    ], { provider: "moonshotai", model: "kimi-k3" });
+    const spaceKey = await createSession(apiBaseUrl);
+    await openSession(firstWindow, spaceKey);
+    await firstWindow.click(MODEL_TRIGGER);
+    await firstWindow.click(MODEL_OPTION(entry.provider, entry.model.model));
+    ensureFixture();
+    await firstWindow.setInputFiles("input[type='file']", FIXTURE_PNG);
+    await expect(firstWindow.locator(ATTACH_CHIP)).toHaveCount(0);
+    await expect(firstWindow.locator("[data-testid='attach-blocked']")).toContainText("当前模型不支持图片");
+  });
+
+  test("标准 9：catalog 加载失败 → 附加图片保守拒绝（不静默放行，v0.6/REQ-102）", async () => {
+    // mock catalog 失败（route 拦截 500）→ 视觉判定不可用 → 附加被拒
+    await firstWindow.route("**/api/settings/agent/catalog", (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "E-CATALOG" }) })
+    );
+    const spaceKey = await createSession(apiBaseUrl);
+    await openSession(firstWindow, spaceKey);
+    ensureFixture();
+    await firstWindow.setInputFiles("input[type='file']", FIXTURE_PNG);
+    await expect(firstWindow.locator(ATTACH_CHIP)).toHaveCount(0);
+    await expect(firstWindow.locator("[data-testid='attach-blocked']")).toContainText("不支持图片");
   });
 });
 
