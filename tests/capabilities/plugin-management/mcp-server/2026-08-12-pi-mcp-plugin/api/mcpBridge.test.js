@@ -318,17 +318,18 @@ describe("REQ-AGENT-085 MCP 桥装配与工具链路（B5）", () => {
     );
 
     try {
-      // 带 token（经 headers 注入 bearer；桥 schema：http entry = url/headers/auth）。
+      // 带 token（BUG-006 后走一等 token 字段：加密落库 → 快照 bearerToken → 桥注入 Authorization 头）。
       await mcpSvc.create({
         name: "remote",
         type: "http",
         url: `http://127.0.0.1:${port}`,
         auth: "bearer",
-        headers: { Authorization: "Bearer t1" },
+        token: "t1",
       });
       await mcpSvc.setProjectEnabled(project.id, "remote", true);
-      // 无 token 配置 → 401（连接失败态）。
-      await mcpSvc.create({ name: "remote-401", type: "http", url: `http://127.0.0.1:${port}`, auth: "bearer" });
+      // 错 token → 401（连接失败态）。BUG-006 后 bearer 缺 token 在建库期即拒绝，
+      // 「无 token」失败态由「错 token」等价覆盖。
+      await mcpSvc.create({ name: "remote-401", type: "http", url: `http://127.0.0.1:${port}`, auth: "bearer", token: "wrong" });
       await mcpSvc.setProjectEnabled(project.id, "remote-401", true);
 
       const spaceKey = await createSession(serverCtx.baseUrl, project.id);
