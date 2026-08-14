@@ -1,9 +1,9 @@
 # Requirements — 对话区工具栏扩展（模型选择 + 附件）
 
 > 故事 ID：`2026-08-12-conversation-toolbar-ext`
-> 版本：v4（v0.7 补丁：REQ-103 协议族感知修正 + REQ-104 动态拉取全族化——BUG-002 req-gap 就地补全）
+> 版本：v5（v0.7 补丁：REQ-103/104 协议族化 + REQ-105 上下文百分比两位小数——BUG-001~003 req-gap 就地补全）
 > 最后更新：2026-08-14
-> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）+ BUG-001/BUG-002 req-gap 增量（v0.6 放出 37 provider 时未定 test-connection / 动态拉取的全族语义）
+> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）+ BUG-001/BUG-002 req-gap 增量（v0.6 放出 37 provider 时未定 test-connection / 动态拉取的全族语义）+ BUG-003 增量（上下文用量百分比两位小数；症状①分母不随模型变 = not-a-bug，SDK model.contextWindow + provider-change setModel 热更新实证已随模型变化）
 > UX 参照：`ux/settings-providers.html`、`ux/conversation-toolbar.html`（已 approved）
 > 移动块 M5（会话列表/状态栏 provider 展示）留 PRD，不入 REQ。PDF 附件（原 B7）已放弃归 §12。
 > 技术事实（§10/§13）：provider-change 走最小集热更新 IPC 不换代（ADR-026）；附件持久化 = pi-ai 原生上下文序列化（实证）；kimi `/v1/models` 带能力标志、deepseek `/models` 仅 id；pi-ai 对非视觉模型传图静默忽略；**v0.6：37 个 apiKey 型静态 provider + catalog 端点（pi-ai 目录单一真源）**。
@@ -223,3 +223,16 @@
 5. deepseek 回归：`{data:[{id:"deepseek-v4-flash"}]}` → `{vision:false,reasoning:true}`（既有用例守护——目录补全与既有硬编码逐字一致）。
 6. 拉取 401/超时/空列表/目录全剔除 → `{models, fallback:true}` 兜底（既有 E3 语义回归）。
 7. baseUrl 缺失 provider（amazon-bedrock）→ 直接兜底不发网络请求（集成：mock fetch 计数为 0）。
+
+## REQ-AGENT-105 上下文用量百分比两位小数（v0.7，BUG-003 req-gap 就地补全）
+
+- 优先级 P1 / 必须 / intra-module / StatusBar（format.js 纯函数 seam）/ agent-dialogue / conversation-space / 单元
+- 背景：StatusBar 上下文用量百分比直接拼接 pi SDK 全精度浮点（实证：`5041/262144×100 = 1.9222259521484375%`）；已批准参照 `2026-08-08-pi-agent-ux-enrichment/ux/assistant-rich.html` 为整数格式（`6%`），人拍板推翻为**恒定两位小数**（2026-08-14 BUG-003 分类确认）。数据源（SDK percent 全精度）不变，仅展示层格式化。
+- 接口契约：`contextText({tokens, contextWindow, percent})`（format.js 纯函数）→ `"5k / 262.1k tokens · 1.92%"`；`meterWidth` 仍由全精度 percent 驱动（0-100 clamp 不变）
+- 参照冲突记录：assistant-rich.html 的 `6%` 整数格式以本 REQ 两位小数为准（旧 story 参照文件不回改）
+
+验收标准：
+1. `percent = 1.9222259521484375` → 显示 `1.92%`（单元：contextText 纯函数断言）。
+2. `percent = 6` → `6.00%`（恒定两位小数，去尾零不做）。
+3. `percent = null / NaN` → 不显示百分比段（既有占位语义不变，回归）。
+4. `meterWidth` 行为不变：全精度 percent → 0-100 clamp 宽度（回归）。

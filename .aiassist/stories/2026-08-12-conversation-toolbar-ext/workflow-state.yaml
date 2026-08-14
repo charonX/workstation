@@ -7,7 +7,7 @@ intention: >-
 
 phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 3    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -27,6 +27,7 @@ history:
   - {at: 2026-08-14, from: REFLECT, to: BUG, note: "BUG-001（req-gap 就地补全，人确认分类+方案 A+expected 值）：kimi-coding 点「测试连接」误报「请选择供应商」——test-connection 端点仍用三 provider 时代硬编码 AGENT_PROVIDER_ENDPOINTS，v0.6 放出 37 provider 时未定其 test-connection 语义。就地补全：REQ-AGENT-103 追加（requirements v3，isApiKeyProvider 同源校验 + catalog baseUrl+/models 派生 + baseUrl 缺失 7 项返 E-TEST-UNSUPPORTED「该供应商不支持连接测试，可直接保存」+ 前端中性展示）；phase 保持 BUG 不退回，补测试后回步骤 5 修复"}
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-001 修复完成（c65358f [docs] + b7aacea [test] 先红 + 6b75cb8 [bugfix]）：API 6/6 + 回归 51/51 + E2E 8/8 全绿。用户实测转入 BUG-002（req-gap 就地补全，人确认分类+范围 A 全族含 google——key-in-URL 安全边界人签）：kimi-coding 真实 key 下列表拉取失败 + 测试连接不通。根因实证：kimi-coding 是 anthropic-messages 协议族（pi-ai Anthropic SDK 形态 x-api-key+anthropic-version），BUG-001 的「baseUrl+/models+Bearer 通吃」假设被推翻（/coding/models→404，/coding/v1/models→401 端点存在）；全量实测 37 provider 协议族分布与端点存在性（openai×23/anthropic×6/mistral×1/google×1/无 baseUrl×7）。就地补全：REQ-103 v4 修正（协议族感知派生）+ REQ-104 追加（动态拉取全族化，能力标志=供应商直存或目录补全），requirements v4 hash 656101…"}
 
+  - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-003（人确认分类）：症状② 状态栏上下文百分比全精度直拼（1.9222259521484375%）——req-gap 就地补全：REQ-AGENT-105（恒定两位小数，推翻 assistant-rich.html 整数格式，人签 expected）+ contextText/meterWidth 抽 format.js 纯函数补 seam；症状① 上下文窗口不随模型变——not-a-bug 记录：SDK getContextUsage=model.contextWindow 随当前模型变（agent-session.js:2544）+ provider-change setModel 热更新链路实证（worker.js:1400），kimi-coding 目录实证 k3=1048576 vs 其余 262144，截图 262.1k 即当前模型真实窗口；用户可实测 k3↔kimi-for-coding 分母 1048.6k↔262.1k 跳变验证"}
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
 #  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
