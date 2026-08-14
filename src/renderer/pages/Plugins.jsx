@@ -79,6 +79,7 @@ export default function Plugins() {
     env: "",
     url: "",
     auth: "none",
+    token: "",
     headers: "",
   });
   const [mcpFormError, setMcpFormError] = useState(null);
@@ -179,7 +180,7 @@ export default function Plugins() {
 
   // ---------- 添加 MCP ----------
   const openAddMcp = () => {
-    setMcpForm({ name: "", type: "stdio", command: "", args: "", env: "", url: "", auth: "none", headers: "" });
+    setMcpForm({ name: "", type: "stdio", command: "", args: "", env: "", url: "", auth: "none", token: "", headers: "" });
     setMcpFormError(null);
     setAddMcpOpen(true);
   };
@@ -201,6 +202,8 @@ export default function Plugins() {
     } else {
       body.url = mcpForm.url.trim();
       body.auth = mcpForm.auth;
+      // BUG-006：bearer token 加密存凭据库（服务端 secretStore），表单提交后不回显
+      if (mcpForm.auth === "bearer") body.token = mcpForm.token.trim();
       const headers = parseKeyValueLines(mcpForm.headers);
       if (headers !== null) body.headers = headers;
     }
@@ -650,8 +653,22 @@ export default function Plugins() {
                         </button>
                       ))}
                     </div>
-                    <span className="hint">Bearer token 存系统凭据库；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
+                    <span className="hint">Bearer token 加密存系统凭据库（不明文落库）；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
                   </div>
+                  {mcpForm.auth === "bearer" && (
+                    <div className="field">
+                      <label>Bearer Token</label>
+                      <input
+                        data-testid="mcp-token-input"
+                        type="password"
+                        className="mono"
+                        placeholder="粘贴 token，保存后不再回显"
+                        value={mcpForm.token}
+                        onChange={(e) => setMcpForm({ ...mcpForm, token: e.target.value })}
+                      />
+                      <span className="hint">加密存储于系统凭据库（macOS Keychain）；保存/列表均不回显明文</span>
+                    </div>
+                  )}
                   <div className="field">
                     <label>请求头（KEY=VALUE，每行一条，可选）</label>
                     <textarea

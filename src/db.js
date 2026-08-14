@@ -188,6 +188,7 @@ const MCP_DDL = `
     url TEXT,
     headers TEXT NOT NULL DEFAULT '{}',
     auth TEXT,
+    token_enc TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     createdAt TEXT NOT NULL
   );
@@ -435,4 +436,9 @@ function migrateSchema(database) {
   database.exec(SPACE_META_DDL);
   // REQ-AGENT-084：mcp_servers + 项目启用映射（旧库补建，与 initSchema 同 DDL，幂等）。
   database.exec(MCP_DDL);
+  // BUG-006（REQ-AGENT-084 标准 6）：bearer token 密文列（CREATE IF NOT EXISTS 不覆盖旧库，
+  // 需 ALTER 补列；token 永不落明文）。
+  if (!hasColumn(database, "mcp_servers", "token_enc")) {
+    database.exec(`ALTER TABLE mcp_servers ADD COLUMN token_enc TEXT`);
+  }
 }

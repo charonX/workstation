@@ -4,18 +4,23 @@
 // ServerRow = { id, name, type: "stdio"|"http", command?, args?, env?, url?, headers?,
 //               auth?: "none"|"bearer"|"oauth", enabled /* 全局开关默认 true */ }
 //
+// bearer token（BUG-006，REQ-AGENT-084 标准 6）：create/update 接受 token 明文入参，
+// 经 secretStore 加密存 token_enc 列——DB/API/list 永不出现明文；effectiveConfig 快照
+// 解密映射桥 ServerEntry.bearerToken（pi-mcp-adapter 据此注入 Authorization 头）。
+//
 // DB 落库（mcp_servers + mcp_project_enablement，见 src/db.js），SQLite 为真相。
 // DB 路径解析：`DB_PATH` ?? `<configDir>/data.db`（configDir = OPC_WORKSTATION_CONFIG_DIR
 // 或 ~/.opc-workstation）——测试只设 OPC_WORKSTATION_CONFIG_DIR 即隔离到临时库。
 //
 // effectiveConfig(projectId) → { servers: { [name]: <桥 config 项> } }，只含
 // 「全局开关开 ∧ 项目已启用」的 server；每项对齐 pi-mcp-adapter ServerEntry 形态
-// （stdio: command/args/env；http: url/headers/auth）。
+// （stdio: command/args/env；http: url/headers/auth/bearerToken）。
 
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { getDb } from "../db.js";
+import { encryptSecret, decryptSecret } from "./secretStore.js";
 
 function timestamp() {
   return new Date().toISOString();
@@ -69,8 +74,8 @@ function getByName(db, name) {
   return row ? rowToServerRow(row) : undefined;
 }
 
-/** 落库字段序列化：与 mcp_servers 列序 (type, command, args, env, url, headers, auth, enabled) 一致，create/update 共用。 */
-function toDbColumns(row) {
+/** 落库字段序列化：与 mcp_servers 列序 (type, command, args, env, url, headers, auth, token_enc, enabled) 一致，create/update 共用。 */
+function toDbColumns(row, existingTokenEnc) {
   return [
     row.type,
     row.command ?? null,
@@ -79,8 +84,22 @@ function toDbColumns(row) {
     row.url ?? null,
     JSON.stringify(row.headers ?? {}),
     row.auth,
+    computeTokenEnc(row, existingTokenEnc),
     row.enabled ? 1 : 0,
   ];
+}
+
+/**
+ * bearer token 落库值：仅 http+bearer 留存（其余一律清 null，stdio/切走 auth 即丢弃）；
+ * 新 token 明文经 secretStore 加密；未给新 token 时保留既有密文（update 不强制重填）。
+ * 明文 token 永不落库。
+ */
+function computeTokenEnc(row, existingTokenEnc) {
+  if (row.type !== "http" || row.auth !== "bearer") return null;
+  if (typeof row.token === "string" && row.token.trim() !== "") {
+    return encryptSecret(row.token.trim());
+  }
+  return existingTokenEnc ?? null;
 }
 
 /** env/headers 必须是 { KEY: string }，KEY 为合法环境变量名（错误文案含 KEY=VALUE）。 */
@@ -111,7 +130,7 @@ function validateName(db, name) {
   }
 }
 
-function validateHttp(row) {
+function validateHttp(row, existingTokenEnc) {
   if (typeof row.url !== "string" || row.url.trim() === "") {
     throw new Error("URL 不合法: url is required");
   }
@@ -127,6 +146,13 @@ function validateHttp(row) {
   if (row.headers !== undefined) validateKeyValue(row.headers, "headers");
   if (row.auth !== undefined && !["none", "bearer", "oauth"].includes(row.auth)) {
     throw new Error("auth 不合法: 仅支持 none/bearer/oauth");
+  }
+  // BUG-006：bearer 必须有 token 来源——新明文或既有密文（update 可只改其他字段）。
+  if (row.auth === "bearer") {
+    const hasNew = typeof row.token === "string" && row.token.trim() !== "";
+    if (!hasNew && !existingTokenEnc) {
+      throw new Error("auth=bearer 必须提供 token（加密存系统凭据库）");
+    }
   }
 }
 
@@ -152,12 +178,13 @@ function normalizeRow(row) {
     url: row?.url,
     headers: row?.headers,
     auth: row?.auth ?? "none",
+    token: row?.token,
     enabled: row?.enabled ?? true,
   };
 }
 
-/** 对齐 pi-mcp-adapter ServerEntry：stdio 输出 command/args/env；http 输出 url/headers/auth。 */
-function toBridgeEntry(row) {
+/** 对齐 pi-mcp-adapter ServerEntry：stdio 输出 command/args/env；http 输出 url/headers/auth/bearerToken。 */
+function toBridgeEntry(row, tokenEnc) {
   const entry = {};
   if (row.type === "stdio") {
     if (row.command) entry.command = row.command;
@@ -167,6 +194,8 @@ function toBridgeEntry(row) {
     if (row.url) entry.url = row.url;
     if (row.headers && Object.keys(row.headers).length > 0) entry.headers = row.headers;
     if (row.auth && row.auth !== "none") entry.auth = row.auth; // "bearer" | "oauth"
+    // BUG-006：快照是唯一解密点——桥据此注入 Authorization: Bearer 头
+    if (row.auth === "bearer" && tokenEnc) entry.bearerToken = decryptSecret(tokenEnc);
   }
   return entry;
 }
@@ -195,8 +224,8 @@ export function createMcpService() {
       const createdAt = timestamp();
       d.prepare(
         `INSERT INTO mcp_servers
-           (id, name, type, command, args, env, url, headers, auth, enabled, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, type, command, args, env, url, headers, auth, token_enc, enabled, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(id, normalized.name, ...toDbColumns(normalized), createdAt);
       return getById(d, id);
     },
@@ -236,15 +265,18 @@ export function createMcpService() {
         ...(p.url !== undefined ? { url: p.url } : {}),
         ...(p.headers !== undefined ? { headers: p.headers } : {}),
         ...(p.auth !== undefined ? { auth: p.auth } : {}),
+        ...(p.token !== undefined ? { token: p.token } : {}),
         ...(p.enabled !== undefined ? { enabled: p.enabled } : {}),
         name,
       };
+      // 既有密文：bearer 未给新 token 时保留；校验「bearer 必须有 token 来源」也认它。
+      const existingTokenEnc = d.prepare("SELECT token_enc FROM mcp_servers WHERE id = ?").get(existing.id)?.token_enc ?? null;
       if (merged.type === "stdio") validateStdio(merged);
-      else if (merged.type === "http") validateHttp(merged);
+      else if (merged.type === "http") validateHttp(merged, existingTokenEnc);
       d.prepare(
-        `UPDATE mcp_servers SET type = ?, command = ?, args = ?, env = ?, url = ?, headers = ?, auth = ?, enabled = ?
+        `UPDATE mcp_servers SET type = ?, command = ?, args = ?, env = ?, url = ?, headers = ?, auth = ?, token_enc = ?, enabled = ?
          WHERE id = ?`
-      ).run(...toDbColumns(merged), existing.id);
+      ).run(...toDbColumns(merged, existingTokenEnc), existing.id);
       return getById(d, existing.id);
     },
 
@@ -288,7 +320,7 @@ export function createMcpService() {
         .all(projectId);
       const servers = {};
       for (const row of rows) {
-        servers[row.name] = toBridgeEntry(rowToServerRow(row));
+        servers[row.name] = toBridgeEntry(rowToServerRow(row), row.token_enc);
       }
       return { servers };
     },

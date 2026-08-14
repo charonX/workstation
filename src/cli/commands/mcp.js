@@ -2,7 +2,7 @@
 // REQ-AGENT-090：`opc-workstation mcp` 命令族（ADR-001 共享服务层，CLI 即测试 seam）。
 //
 //   mcp add <name> --type stdio --command <cmd> [--args a,b] [--env K=V]…
-//   mcp add <name> --type http --url <u> [--header K=V]… [--auth none|bearer|oauth]
+//   mcp add <name> --type http --url <u> [--header K=V]… [--auth none|bearer|oauth] [--token <t>]
 //   mcp list                                     -> GET /api/mcp
 //   mcp enable|disable <name> --project <id>     -> POST /api/mcp/:name/project-enable
 //
@@ -33,6 +33,7 @@ export async function add(flags, positional = []) {
     body.url = String(flags.url);
     if (flags.header !== undefined) body.headers = parseKeyValues(flags.header);
     if (flags.auth !== undefined) body.auth = String(flags.auth);
+    if (flags.token !== undefined) body.token = String(flags.token);
   }
   const server = await ensureServer();
   const res = await fetch(`${server.baseUrl}/api/mcp`, {
