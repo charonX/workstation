@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-pi-mcp-plugin/REQ-AGENT-083, 2026-08-12-pi-mcp-plugin/REQ-AGENT-084
-// REQ-VERSION: v1-hash:080af1f439bec8660eeadc84b57fbef5650081f47d8918a7da585b9c172a49a1
+// REQ-VERSION: v1-hash:6c7fd998525a697ef21587c808800edfb15182b428d588f83c9ae835acf09243
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: extension
 // TEST-AUTHOR: agent
@@ -171,5 +171,28 @@ test.describe("REQ-AGENT-084 MCP server 管理表单（E2E）", () => {
     await firstWindow.locator("[data-testid='mcp-form-submit']").click();
     // 字段级错误呈现，弹窗不关
     await expect(firstWindow.locator("[data-testid='mcp-form-modal'] .err:visible")).toBeVisible();
+  });
+
+  // BUG-006（REQ-AGENT-084 标准 6，req-gap 就地补全）：bearer token 录入入口。
+  // UX 参照 ux/plugins-page.html：认证选 Bearer Token 时显示 mcp-token-input（password 型）。
+  test("认证选 Bearer Token → 显示 token 输入框；带 token 保存后列表出现该 server", async () => {
+    await firstWindow.locator("[data-testid='mcp-add-button']").click();
+    await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='http']").click();
+    const tokenInput = firstWindow.locator("[data-testid='mcp-token-input']");
+    await expect(tokenInput).toBeHidden();
+    await firstWindow.locator("[data-testid='mcp-auth-seg'] button", { hasText: "Bearer Token" }).click();
+    await expect(tokenInput).toBeVisible();
+    // 切回「无」→ 隐藏
+    await firstWindow.locator("[data-testid='mcp-auth-seg'] button", { hasText: "无", exact: true }).click();
+    await expect(tokenInput).toBeHidden();
+    // bearer + token 保存成功
+    await firstWindow.locator("[data-testid='mcp-auth-seg'] button", { hasText: "Bearer Token" }).click();
+    await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-bearer");
+    await firstWindow.locator("[data-testid='mcp-url-input']").fill("https://mcp.example.com/v2/mcp");
+    await tokenInput.fill("e2e-secret-token");
+    await firstWindow.locator("[data-testid='mcp-form-submit']").click();
+    await expect(firstWindow.locator("[data-testid='mcp-row-e2e-bearer']")).toBeVisible();
+    // 页面任何位置不回显明文 token
+    await expect(firstWindow.locator("text=e2e-secret-token")).toHaveCount(0);
   });
 });

@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-pi-mcp-plugin/REQ-AGENT-084
-// REQ-VERSION: v1-hash:080af1f439bec8660eeadc84b57fbef5650081f47d8918a7da585b9c172a49a1
+// REQ-VERSION: v1-hash:6c7fd998525a697ef21587c808800edfb15182b428d588f83c9ae835acf09243
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: mcp-server
 // TEST-AUTHOR: agent
@@ -116,5 +116,63 @@ describe("REQ-AGENT-084 MCP server 配置 CRUD + 项目启用（B4）", () => {
     await svc.setProjectEnabled(pid, "compat", true);
     const snap = await svc.effectiveConfig(pid);
     assert.doesNotThrow(() => adapter.createMcpAdapter({ config: snap }), "快照 schema 与桥对齐");
+  });
+
+  // 标准 6（BUG-006 req-gap 就地补全 2026-08-14，人拍板「表单输入 + secretStore 加密」）：
+  // bearer token 全链路——录入 → 加密落库（无明文）→ 快照解密映射桥 bearerToken → API 不回显。
+  it("标准 6a：auth=bearer 缺 token → 字段错误（文案含 token）", async () => {
+    await assert.rejects(
+      () => svc.create({ name: "no-token", type: "http", url: "https://mcp.example.com/v2/mcp", auth: "bearer" }),
+      /token/i,
+      "bearer 缺 token 拒绝"
+    );
+    assert.equal((await svc.list()).length, 0, "非法输入不落库");
+  });
+
+  it("标准 6b：bearer token 加密落库无明文；快照含解密后 bearerToken；API 不回显明文", async () => {
+    const PLAINTEXT = "fc-test-token-12345";
+    const row = await svc.create({
+      name: "firecrawl",
+      type: "http",
+      url: "https://mcp.firecrawl.dev/v2/mcp",
+      auth: "bearer",
+      token: PLAINTEXT,
+    });
+    // API 返回值不回显明文 token
+    assert.equal(row.token, undefined, "create 返回值不含明文 token");
+    assert.ok(!JSON.stringify(row).includes(PLAINTEXT), "create 返回值任何字段不含明文");
+    const list = await svc.list();
+    assert.ok(!JSON.stringify(list).includes(PLAINTEXT), "list 不回显明文 token");
+    // DB 层：无明文，有密文（测试环境 secretStore fake 后端 → opc-fake:v1: 前缀密文）
+    const { getDb } = await import("../../../../../../src/db.js");
+    const db = getDb(path.join(workdir, "data.db"));
+    const raw = db.prepare("SELECT * FROM mcp_servers WHERE name = ?").get("firecrawl");
+    assert.ok(!JSON.stringify(raw).includes(PLAINTEXT), "DB 行无明文 token");
+    assert.ok(typeof raw.token_enc === "string" && raw.token_enc.length > 0, "DB 存 token_enc 密文");
+    // 快照：解密映射桥 bearerToken 字段
+    const pid = "proj-1";
+    await svc.setProjectEnabled(pid, "firecrawl", true);
+    const snap = await svc.effectiveConfig(pid);
+    assert.equal(snap.servers.firecrawl.auth, "bearer");
+    assert.equal(snap.servers.firecrawl.bearerToken, PLAINTEXT, "快照解密回明文供桥注入 Authorization 头");
+  });
+
+  it("标准 6c：auth=none/oauth 或 stdio 忽略 token；update 可轮换 token", async () => {
+    const PLAINTEXT2 = "rotated-token-67890";
+    await svc.create({
+      name: "firecrawl",
+      type: "http",
+      url: "https://mcp.firecrawl.dev/v2/mcp",
+      auth: "bearer",
+      token: "old-token",
+    });
+    await svc.update("firecrawl", { token: PLAINTEXT2 });
+    const pid = "proj-1";
+    await svc.setProjectEnabled(pid, "firecrawl", true);
+    const snap = await svc.effectiveConfig(pid);
+    assert.equal(snap.servers.firecrawl.bearerToken, PLAINTEXT2, "update 后快照为新 token");
+    // stdio 忽略 token
+    const row = await svc.create({ name: "s1", type: "stdio", command: "x", token: "ignored" });
+    assert.ok(!JSON.stringify(row).includes("ignored"), "stdio 不留存 token");
   });
 });
