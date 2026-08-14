@@ -83,7 +83,8 @@
 ## REQ-AGENT-084 MCP server 配置 CRUD + 项目启用（B4）
 
 - 优先级 P0 / 必须 / cross-module / mcpService + DB 新表 / plugin-management / mcp-server / 集成 + 单元
-- 接口契约：CRUD `{ name, type: "stdio"|"http", command?, args?, env?, url?, headers?, auth?: "none"|"bearer"|"oauth" }`；`setProjectEnabled(projectId, serverId, enabled)`；`effectiveConfig(projectId|spaceKey) → McpConfigSnapshot`（桥可直接消费）
+- 接口契约：CRUD `{ name, type: "stdio"|"http", command?, args?, env?, url?, headers?, auth?: "none"|"bearer"|"oauth", token?: string }`；`setProjectEnabled(projectId, serverId, enabled)`；`effectiveConfig(projectId|spaceKey) → McpConfigSnapshot`（桥可直接消费）
+- token 语义（BUG-006 req-gap 就地补全 2026-08-14，人拍板「表单输入 + secretStore 加密」）：`token` 仅在 `type=http ∧ auth=bearer` 时有意义（此时必填）；落库前经 secretStore 加密存 `token_enc` 列，DB/API/列表**永不出现明文**；`effectiveConfig` 快照解密映射桥 `bearerToken` 字段（pi-mcp-adapter ServerEntry 原生字段，桥据此注入 Authorization 头）。auth=none/oauth 或 stdio 时忽略 token。
 
 验收标准：
 1. 建 stdio server：合法配置落库（API：字段断言）。
@@ -91,6 +92,7 @@
 3. 名称库内唯一；重复 → 业务错误（API）。
 4. 项目启用/停用持久化；`effectiveConfig` 只含「全局启用开关开 ∧ 项目已启用」的 server（API：组合矩阵断言）。
 5. 快照形态与桥 `createMcpAdapter({config})` 的 config schema 对齐（集成：快照直接传入桥工厂不报错——fixture 校验）。
+6. bearer token 全链路：auth=bearer 建 server 带 token → DB 中只有密文（token_enc，无明文 token）→ `effectiveConfig` 快照含解密后 `bearerToken` → API/列表响应不回显 token 明文（API + 单元）。auth=bearer 缺 token → 字段错误（E2 文案含 token）。
 
 ## REQ-AGENT-085 MCP 桥装配与工具链路（B5）
 
