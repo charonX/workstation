@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-091
-// REQ-VERSION: v2-hash:22c8de75d005da3d563a527cdbad04c00451768daf2d8bc36b0052757bfa1621
+// REQ-VERSION: v3-hash:253ff44240a7dc1db95967cead3d95ed990ef61c7c4b8f8654fd146cdc93c005
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
@@ -149,5 +149,21 @@ test.describe("Settings 多 provider 管理（E2E）", () => {
     await firstWindow.click("[data-testid='save-provider']");
     await expect(firstWindow.locator(PROVIDER_ENTRY)).toHaveCount(3); // 2 seed + openrouter
     await expect(firstWindow.locator(PROVIDER_ENTRY).filter({ hasText: /openrouter/i })).toBeVisible();
+  });
+
+  // REQ-AGENT-103 标准 7（v0.7 / BUG-001）：E-TEST-UNSUPPORTED 前端中性展示——
+  // baseUrl 缺失 provider（amazon-bedrock）点测试连接 → 结果区展示 message 原文，
+  // 无「连接失败」前缀（人签 expected 值）。
+  test("标准 8：E-TEST-UNSUPPORTED 中性展示（amazon-bedrock 测试连接，REQ-103）", async () => {
+    await firstWindow.reload();
+    await openSettings(firstWindow);
+    await firstWindow.click("[data-testid='add-provider-button']");
+    await firstWindow.selectOption("[data-testid='provider-select']", "amazon-bedrock");
+    await firstWindow.fill("[data-testid='provider-key-input']", "sk-e2e-br");
+    await firstWindow.click("[data-testid='agent-test-connection-button']");
+    const result = firstWindow.locator("[data-testid='agent-test-connection-result']");
+    await expect(result).toBeVisible();
+    await expect(result).toContainText("该供应商不支持连接测试，可直接保存");
+    await expect(result).not.toContainText("连接失败");
   });
 });
