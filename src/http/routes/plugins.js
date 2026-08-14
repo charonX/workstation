@@ -58,12 +58,18 @@ const BUILTIN_ROW = () => ({
   builtin: true,
 });
 
+// agentDir 真源 = <cwd>/.agent-home（与 worker 装配 OPC_AGENT_HOME 同源，2026-08-14
+// 人裁决 A：生产一致，避免「插件页装了但会话读不到」）。优先级：
+//   OPC_AGENT_HOME 显式注入 > OPC_WORKSTATION_CONFIG_DIR（测试隔离 → <configDir>/agent-home）
+//   > path.join(process.cwd(), ".agent-home")（生产，匹配 agentService spawn 的 OPC_AGENT_HOME）。
 function configDir() {
   return settingsService.configDir();
 }
 
 function agentDir() {
-  return path.join(configDir(), "agent-home");
+  if (process.env.OPC_AGENT_HOME) return process.env.OPC_AGENT_HOME;
+  if (process.env.OPC_WORKSTATION_CONFIG_DIR) return path.join(configDir(), "agent-home");
+  return path.join(process.cwd(), ".agent-home");
 }
 
 function getService() {
