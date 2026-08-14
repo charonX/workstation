@@ -1,5 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
-import { fetchModels, listCatalog } from "../../services/modelCatalogService.js";
+import { fetchModels, listCatalog, isApiKeyProvider, providerBaseUrl } from "../../services/modelCatalogService.js";
 import {
   broadcastAgentConfigChange,
   broadcastJudgeConfig,
@@ -9,14 +9,6 @@ import {
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
-
-// 供应商 → 最小校验端点（REQ-AGENT-001 AC4「测试连接」，PRD §7 输入验证）。
-// 端点域名即测试 seam：agentConfig.test.js 按 deepseek.com / moonshot 前缀 mock。
-const AGENT_PROVIDER_ENDPOINTS = {
-  deepseek: "https://api.deepseek.com/models",
-  moonshotai: "https://api.moonshot.ai/v1/models",
-  "moonshotai-cn": "https://api.moonshot.cn/v1/models"
-};
 
 export async function handleSettings(req, res, body, subPath = [], context = {}) {
   const { agentRouter } = context;
@@ -169,16 +161,27 @@ function handleAgentConfigSave(req, res, body) {
 // POST /api/settings/agent/test-connection：对当前供应商发最小校验请求。
 // 失败透传供应商原因（E-AGENT-LLM-FAIL）且不阻止后续保存（签核决策 3）。
 // 输入校验按字段拆分提示：非法 provider →「请选择供应商」，空 key →「API key 不能为空」。
+//
+// REQ-AGENT-103（v0.7 / BUG-001 req-gap 补全）：provider 合法性 = isApiKeyProvider
+// （catalog 单一真源，与保存校验同源——v0.6 放出 37 项后不再用硬编码端点表）；
+// 端点 = pi-ai 目录 baseUrl + "/models"（legacy 3 项派生结果与原 AGENT_PROVIDER_ENDPOINTS
+// 逐字一致，testConnection.test.js 标准 5 守护）；baseUrl 缺失 provider
+// （amazon-bedrock 等 7 项）→ 200 E-TEST-UNSUPPORTED「该供应商不支持连接测试，
+// 可直接保存」，不发网络请求（人签 expected 值）。
 async function handleAgentTestConnection(req, res, body) {
   const { provider, apiKey } = body ?? {};
-  if (!AGENT_PROVIDER_ENDPOINTS[provider]) {
+  if (!isApiKeyProvider(provider)) {
     return invalid(res, "E-CONFIG-INVALID", "请选择供应商");
   }
   if (typeof apiKey !== "string" || apiKey.trim() === "") {
     return invalid(res, "E-CONFIG-INVALID", "API key 不能为空");
   }
-  // 校验通过后取端点（provider 已确认在枚举内）。
-  const endpoint = AGENT_PROVIDER_ENDPOINTS[provider];
+  // 端点派生（provider 已确认在 catalog 内）。
+  const base = providerBaseUrl(provider);
+  if (!base) {
+    return ok(res, { ok: false, error: "E-TEST-UNSUPPORTED", message: "该供应商不支持连接测试，可直接保存" });
+  }
+  const endpoint = `${base}/models`;
   try {
     const resp = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${apiKey}` },

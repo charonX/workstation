@@ -677,10 +677,14 @@ export default function Settings() {
     setAgentTesting(true);
     try {
       const result = await testConnection({ provider, apiKey });
+      // REQ-AGENT-103（BUG-001）：baseUrl 缺失 provider（E-TEST-UNSUPPORTED）中性展示
+      // 后端 message 原文，不加「连接失败：」前缀（人签 expected 值）。
       setAgentTestResult(
         result.ok
           ? { ok: true, message: t("settings.agent.testSuccess") }
-          : { ok: false, message: t("settings.agent.testFailed", { reason: result.message || "" }) }
+          : result.error === "E-TEST-UNSUPPORTED"
+            ? { ok: false, neutral: true, message: result.message }
+            : { ok: false, message: t("settings.agent.testFailed", { reason: result.message || "" }) }
       );
     } catch (err) {
       setAgentTestResult({ ok: false, message: t("settings.agent.testFailed", { reason: err.message || "" }) });
@@ -1032,7 +1036,12 @@ export default function Settings() {
                         style={{
                           marginTop: "var(--ch-space-2)",
                           marginBottom: 0,
-                          color: agentTestResult.ok ? "var(--ch-success)" : "var(--ch-error)",
+                          // 中性态（E-TEST-UNSUPPORTED）不着色——help-text 默认色
+                          color: agentTestResult.neutral
+                            ? undefined
+                            : agentTestResult.ok
+                              ? "var(--ch-success)"
+                              : "var(--ch-error)",
                         }}
                       >
                         {agentTestResult.message}

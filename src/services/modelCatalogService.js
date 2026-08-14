@@ -60,6 +60,17 @@ export function isApiKeyProvider(provider) {
   );
 }
 
+// provider baseUrl 查询（REQ-AGENT-103，v0.7 / BUG-001）：test-connection 端点派生
+// 的单一真源 = pi-ai 静态目录 getProvider().baseUrl。目录不可解析 / baseUrl 缺失
+// （amazon-bedrock / azure-openai-responses / cloudflare×2 / google-vertex /
+// opencode×2）→ null，调用方返 E-TEST-UNSUPPORTED。
+export function providerBaseUrl(provider) {
+  if (typeof provider !== "string" || provider === "") {
+    return null;
+  }
+  return catalog.getProvider(provider)?.baseUrl ?? null;
+}
+
 // catalog 端点（REQ-AGENT-100 / PRD §10.4 接口 6，v0.6）：全量 apiKey 型静态
 // provider 的 provider/模型/能力/defaultModel/displayName——数据源 = pi-ai 静态
 // 目录（getBuiltinProviders 单一真源，本地实证 39 项——不含动态 radius；排除
