@@ -150,6 +150,14 @@ describe("REQ-AGENT-028 发送错误映射（标准 3）", () => {
   beforeEach(async () => {
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-copilot-msg-"));
     serverCtx = await startServer();
+    // BUG-007（test-gap）：ADR-026 slice-1（1dfeff8）后 resetSettings 走 E13 语义——
+    // 磁盘已有 settings.json 则以磁盘为真相、不覆盖（迁移 fixture 保护契约）。而
+    // startServer 的临时 configDir 进程内设一次复用（server.js），同文件前一 describe
+    // 的 configureAgent 已把 agent 配置落盘——本 describe 的「agent 未配置」前提需
+    // 显式重建：删 settings.json + 重载默认。断言本体不变。
+    const settingsMod = await import("../../../../../../src/services/settingsService.js");
+    fs.rmSync(path.join(settingsMod.configDir(), "settings.json"), { force: true });
+    settingsMod.resetSettings();
   });
 
   afterEach(async () => {
@@ -159,7 +167,7 @@ describe("REQ-AGENT-028 发送错误映射（标准 3）", () => {
 
   it("agent 未配置时发送返回 409 E-AGENT-CONFIG", async () => {
     await loadSessionsRouteSeam();
-    // 注意：本用例不调用 configureAgent——startServer reset 后 agent 默认未配置。
+    // 注意：本用例不调用 configureAgent——beforeEach 已显式重建「未配置」前提（BUG-007）。
     const spaceKey = await createUiSession(serverCtx.baseUrl);
 
     const { res, body } = await postMessage(serverCtx.baseUrl, spaceKey, { text: "你好" });
