@@ -1,14 +1,15 @@
 // src/services/modelCatalogService.js
-// 动态模型列表（REQ-AGENT-092 / PRD §10.2）：配置 provider 条目时实时拉取供应商
-// 模型列表——无缓存，每次实时拉取（tech-design 决策「实时拉取无缓存」），仅配置时调用。
+// 动态模型列表（REQ-AGENT-092 / PRD §10.2；REQ-AGENT-104 全协议族化 / BUG-002）：
+// 配置 provider 条目时实时拉取供应商模型列表——无缓存，每次实时拉取（tech-design
+// 决策「实时拉取无缓存」），仅配置时调用。
 //
 // 契约（providerModelConfig.test.js 签核断言）：fetchModels(provider, apiKey)
 // - 拉取成功 → 裸数组 [{model, vision, reasoning}]（REQ-092 接口契约数组形态）；
-// - 无 key / 拉取失败 / 列表为空 → { models: [...], fallback: true }
+// - 无 key / 拉取失败 / 列表为空 / baseUrl 缺失 → { models: [...], fallback: true }
 //   （E2「填 key 后自动刷新」/ E3「已使用内置列表」+ 错误标记）。
-// - kimi 系（moonshotai / moonshotai-cn）：GET /v1/models——supports_image_in →
-//   vision、supports_reasoning → reasoning，能力标志直存（B2）；
-// - deepseek：GET /models 仅 id → 内置能力表补全（全系 vision=false、reasoning=true）；
+// - 端点与鉴权按协议族派生（REQ-103/104，族数据源 = pi-ai 目录 model.api 单一真源）；
+// - 能力标志：供应商返回带 supports_image_in/supports_reasoning → 直存（kimi 系 B2
+//   签核语义）；否则 pi-ai 目录补全（deepseek「仅 id → 补全」模式泛化）；
 // - 回退源 = pi-ai 内置目录（@earendil-works/pi-ai providers/all 静态目录；
 //   input.includes("image") → vision）；
 // - 防御（REQ-092 AC5）：id 在 pi-ai 静态目录不可解析（getModel 失败）→ 剔除
@@ -18,12 +19,6 @@
 // ADR-009：本模块无顶层 env/磁盘/electron 读取——builtinModels() 是纯内存静态目录。
 
 import { builtinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
-
-const PROVIDER_ENDPOINTS = {
-  deepseek: "https://api.deepseek.com/models",
-  moonshotai: "https://api.moonshot.ai/v1/models",
-  "moonshotai-cn": "https://api.moonshot.cn/v1/models",
-};
 
 const FETCH_TIMEOUT_MS = 10000;
 
@@ -71,6 +66,42 @@ export function providerBaseUrl(provider) {
   return catalog.getProvider(provider)?.baseUrl ?? null;
 }
 
+// 协议族（REQ-AGENT-103/104，v4 / BUG-002）：pi-ai 目录 model.api 单一真源
+// （provider 对象本身不暴露 api，取首个模型的 api 字段；目录无模型 → null）。
+function providerApiFamily(provider) {
+  return catalog.getModels(provider)[0]?.api ?? null;
+}
+
+// 供应商探针派生（REQ-AGENT-103 test-connection 与 REQ-104 动态拉取同一派生源）：
+// { url, headers } | null（baseUrl 缺失 / provider 不可解析 → null，调用方兜底）。
+// 端点形态按协议族分派（存在性已全量实测 2026-08-14）：
+// - anthropic-messages → {baseUrl}/v1/models + x-api-key/anthropic-version
+//   （pi-ai Anthropic SDK 实证形态；BUG-002：/models → 404 实证推翻初版假设）
+// - mistral-conversations → {baseUrl}/v1/models + Bearer
+// - google-generative-ai → {baseUrl}/models?key=<key>（google 官方唯一形态，
+//   key 进 URL——REQ-103 人签安全边界）
+// - openai-completions / openai-responses / 未知族（防御默认）→ {baseUrl}/models + Bearer
+export function providerProbe(provider, apiKey) {
+  const base = providerBaseUrl(provider);
+  if (!base) {
+    return null;
+  }
+  const family = providerApiFamily(provider);
+  if (family === "anthropic-messages") {
+    return {
+      url: `${base}/v1/models`,
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    };
+  }
+  if (family === "google-generative-ai") {
+    return { url: `${base}/models?key=${encodeURIComponent(apiKey)}`, headers: {} };
+  }
+  if (family === "mistral-conversations") {
+    return { url: `${base}/v1/models`, headers: { Authorization: `Bearer ${apiKey}` } };
+  }
+  return { url: `${base}/models`, headers: { Authorization: `Bearer ${apiKey}` } };
+}
+
 // catalog 端点（REQ-AGENT-100 / PRD §10.4 接口 6，v0.6）：全量 apiKey 型静态
 // provider 的 provider/模型/能力/defaultModel/displayName——数据源 = pi-ai 静态
 // 目录（getBuiltinProviders 单一真源，本地实证 39 项——不含动态 radius；排除
@@ -111,21 +142,50 @@ function fallbackResult(provider) {
   return { models: fallbackModels(provider), fallback: true };
 }
 
-// kimi 系：/v1/models 能力标志直存（supports_image_in / supports_reasoning）。
-// 目录不可解析的 id 剔除（REQ-092 AC5 防御）。
-function parseKimiModels(provider, data) {
-  const items = Array.isArray(data?.data) ? data.data : [];
+// 响应解析按族分派（REQ-AGENT-104）：
+// - google 族：{models: [{name: "models/<id>", ...}]} → 剥 "models/" 前缀；
+// - 其余族（openai / anthropic / mistral）：{data: [{id, ...}]} → 取 id。
+// 能力标志：item 带 supports_image_in/supports_reasoning → 直存（kimi 系 B2 签核
+// 语义）；否则 pi-ai 目录补全（deepseek 模式泛化，目录值与既有硬编码逐字一致）。
+// 全部过 modelInCatalog 防御（REQ-092 AC5）。
+function parseModelsByFamily(provider, data) {
+  const items = [];
+  if (Array.isArray(data?.models)) {
+    for (const m of data.models) {
+      const name = typeof m?.name === "string" ? m.name : "";
+      const id = name.startsWith("models/") ? name.slice("models/".length) : name;
+      if (id !== "") {
+        items.push({ id, direct: null });
+      }
+    }
+  } else if (Array.isArray(data?.data)) {
+    for (const m of data.data) {
+      if (typeof m?.id !== "string" || m.id === "") {
+        continue;
+      }
+      const hasCaps =
+        typeof m.supports_image_in === "boolean" || typeof m.supports_reasoning === "boolean";
+      items.push({
+        id: m.id,
+        direct: hasCaps
+          ? { vision: m.supports_image_in === true, reasoning: m.supports_reasoning === true }
+          : null,
+      });
+    }
+  }
   return items
-    .filter((m) => m && typeof m.id === "string" && modelInCatalog(provider, m.id))
-    .map((m) => ({ model: m.id, vision: m.supports_image_in === true, reasoning: m.supports_reasoning === true }));
-}
-
-// deepseek 系：/models 仅 id → 内置能力表补全（全系 text-only、reasoning=true）。
-function parseDeepseekModels(data) {
-  const items = Array.isArray(data?.data) ? data.data : [];
-  return items
-    .filter((m) => m && typeof m.id === "string" && modelInCatalog("deepseek", m.id))
-    .map((m) => ({ model: m.id, vision: false, reasoning: true }));
+    .filter((item) => modelInCatalog(provider, item.id))
+    .map((item) => {
+      if (item.direct) {
+        return { model: item.id, ...item.direct };
+      }
+      const entry = catalog.getModel(provider, item.id);
+      return {
+        model: item.id,
+        vision: Array.isArray(entry.input) && entry.input.includes("image"),
+        reasoning: entry.reasoning === true,
+      };
+    });
 }
 
 export async function fetchModels(provider, apiKey) {
@@ -133,19 +193,20 @@ export async function fetchModels(provider, apiKey) {
   if (typeof apiKey !== "string" || apiKey.trim() === "") {
     return fallbackResult(provider);
   }
-  const endpoint = PROVIDER_ENDPOINTS[provider];
-  if (!endpoint) {
-    // 未知 provider（faux 等测试 seam）：无供应商端点 → 回退内置目录。
+  const probe = providerProbe(provider, apiKey);
+  if (!probe) {
+    // baseUrl 缺失（amazon-bedrock 等 7 项）/ 未知 provider（faux 等测试 seam）：
+    // 无供应商端点 → 回退内置目录，不发网络请求（REQ-104 标准 7）。
     return fallbackResult(provider);
   }
   try {
-    const resp = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const resp = await fetch(probe.url, {
+      headers: probe.headers,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    const models = provider === "deepseek" ? parseDeepseekModels(data) : parseKimiModels(provider, data);
+    const models = parseModelsByFamily(provider, data);
     // E3：模型列表为空（供应商无返回 / 全部被目录防御剔除）→ 回退内置目录。
     if (models.length === 0) {
       return fallbackResult(provider);

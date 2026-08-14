@@ -1,5 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
-import { fetchModels, listCatalog, isApiKeyProvider, providerBaseUrl } from "../../services/modelCatalogService.js";
+import { fetchModels, listCatalog, isApiKeyProvider, providerProbe } from "../../services/modelCatalogService.js";
 import {
   broadcastAgentConfigChange,
   broadcastJudgeConfig,
@@ -162,12 +162,13 @@ function handleAgentConfigSave(req, res, body) {
 // 失败透传供应商原因（E-AGENT-LLM-FAIL）且不阻止后续保存（签核决策 3）。
 // 输入校验按字段拆分提示：非法 provider →「请选择供应商」，空 key →「API key 不能为空」。
 //
-// REQ-AGENT-103（v0.7 / BUG-001 req-gap 补全）：provider 合法性 = isApiKeyProvider
+// REQ-AGENT-103（v0.7 / BUG-001+002 req-gap 补全）：provider 合法性 = isApiKeyProvider
 // （catalog 单一真源，与保存校验同源——v0.6 放出 37 项后不再用硬编码端点表）；
-// 端点 = pi-ai 目录 baseUrl + "/models"（legacy 3 项派生结果与原 AGENT_PROVIDER_ENDPOINTS
-// 逐字一致，testConnection.test.js 标准 5 守护）；baseUrl 缺失 provider
-// （amazon-bedrock 等 7 项）→ 200 E-TEST-UNSUPPORTED「该供应商不支持连接测试，
-// 可直接保存」，不发网络请求（人签 expected 值）。
+// 探针 = providerProbe 协议族感知派生（v4：anthropic 族 /v1/models + x-api-key 实证
+// 形态——/models+Bearer 假设被 BUG-002 实证推翻；legacy 3 项派生结果与原
+// AGENT_PROVIDER_ENDPOINTS 逐字一致，testConnection.test.js 标准 5 守护）；
+// baseUrl 缺失 provider（amazon-bedrock 等 7 项）→ 200 E-TEST-UNSUPPORTED
+// 「该供应商不支持连接测试，可直接保存」，不发网络请求（人签 expected 值）。
 async function handleAgentTestConnection(req, res, body) {
   const { provider, apiKey } = body ?? {};
   if (!isApiKeyProvider(provider)) {
@@ -176,15 +177,14 @@ async function handleAgentTestConnection(req, res, body) {
   if (typeof apiKey !== "string" || apiKey.trim() === "") {
     return invalid(res, "E-CONFIG-INVALID", "API key 不能为空");
   }
-  // 端点派生（provider 已确认在 catalog 内）。
-  const base = providerBaseUrl(provider);
-  if (!base) {
+  // 探针派生（provider 已确认在 catalog 内）。
+  const probe = providerProbe(provider, apiKey);
+  if (!probe) {
     return ok(res, { ok: false, error: "E-TEST-UNSUPPORTED", message: "该供应商不支持连接测试，可直接保存" });
   }
-  const endpoint = `${base}/models`;
   try {
-    const resp = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const resp = await fetch(probe.url, {
+      headers: probe.headers,
       signal: AbortSignal.timeout(10000)
     });
     if (resp.ok) {
