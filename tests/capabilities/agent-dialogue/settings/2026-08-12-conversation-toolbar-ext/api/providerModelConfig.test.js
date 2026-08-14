@@ -1,5 +1,5 @@
-// REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-090, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-092, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-099
-// REQ-VERSION: v3-hash:253ff44240a7dc1db95967cead3d95ed990ef61c7c4b8f8654fd146cdc93c005
+// REQ-TRACE: 2026-08-12-conversation-toolbar-ext/REQ-AGENT-090, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-092, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-099, 2026-08-12-conversation-toolbar-ext/REQ-AGENT-104
+// REQ-VERSION: v4-hash:6561019623cc0a639dbe9590db95fdec1ac812b68be7d1e3e31617668a4ef5c7
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: settings
 // TEST-AUTHOR: agent
@@ -328,6 +328,108 @@ describe("REQ-AGENT-092 动态模型列表（B2）", () => {
       const out = await fetchModels("moonshotai", "sk-x");
       // AC5：目录不可解析 id 剔除，输出只含真实模型（BUG-004 教训）
       assert.deepEqual(out, [{ model: "kimi-k3", vision: true, reasoning: true }]);
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+});
+
+// REQ-AGENT-104（v0.7 / BUG-002 req-gap 补全）：动态拉取全协议族化——端点/鉴权与
+// REQ-103 同一派生源；响应解析按族分派；能力标志 = 供应商直存（带能力字段时）或
+// pi-ai 目录补全（deepseek 模式泛化）；E2/E3 兜底语义不变。
+describe("REQ-AGENT-104 动态模型拉取全协议族化", () => {
+  let workdir;
+
+  beforeEach(async () => {
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "models104-"));
+    process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
+  });
+
+  afterEach(() => {
+    delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+  });
+
+  async function loadCatalog() {
+    const mod = await import("../../../../../../src/services/modelCatalogService.js").catch(() => null);
+    assert.ok(mod, "seam 未就绪：src/services/modelCatalogService.js 未导出 fetchModels（REQ-AGENT-104）");
+    return mod;
+  }
+
+  it("标准 1：kimi-coding（anthropic 族）→ /v1/models + x-api-key，anthropic 格式解析 + 目录补能力", async () => {
+    const { fetchModels } = await loadCatalog();
+    const calls = [];
+    const globalFetch = global.fetch;
+    global.fetch = async (url, init) => {
+      calls.push({ url: String(url), headers: init?.headers ?? {} });
+      return {
+        ok: true,
+        json: async () => ({ data: [{ id: "k3", display_name: "K3", type: "model" }, { id: "kimi-for-coding", type: "model" }] }),
+      };
+    };
+    try {
+      const out = await fetchModels("kimi-coding", "sk-kc");
+      assert.equal(calls[0].url, "https://api.kimi.com/coding/v1/models");
+      assert.equal(calls[0].headers["x-api-key"], "sk-kc");
+      // anthropic 格式无能力字段 → pi-ai 目录补全（k3 目录值 vision/reasoning 均 true）
+      assert.deepEqual(out, [
+        { model: "k3", vision: true, reasoning: true },
+        { model: "kimi-for-coding", vision: true, reasoning: true },
+      ]);
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  it("标准 2：google（google-generative-ai 族）→ /v1beta/models?key=，剥 models/ 前缀 + 目录补能力", async () => {
+    const { fetchModels } = await loadCatalog();
+    const calls = [];
+    const globalFetch = global.fetch;
+    global.fetch = async (url, init) => {
+      calls.push({ url: String(url), headers: init?.headers ?? {} });
+      return {
+        ok: true,
+        json: async () => ({ models: [{ name: "models/gemini-2.0-flash", supportedGenerationMethods: ["generateContent"] }] }),
+      };
+    };
+    try {
+      const out = await fetchModels("google", "sk-go");
+      assert.equal(calls[0].url, "https://generativelanguage.googleapis.com/v1beta/models?key=sk-go");
+      // 目录值（gemini-2.0-flash：vision=true reasoning=false）
+      assert.deepEqual(out, [{ model: "gemini-2.0-flash", vision: true, reasoning: false }]);
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  it("标准 3：openrouter（openai 族新放出项）→ /models + Bearer，仅 id → 目录补能力", async () => {
+    const { fetchModels } = await loadCatalog();
+    const calls = [];
+    const globalFetch = global.fetch;
+    global.fetch = async (url, init) => {
+      calls.push({ url: String(url), headers: init?.headers ?? {} });
+      return { ok: true, json: async () => ({ data: [{ id: "ai21/jamba-large-1.7" }] }) };
+    };
+    try {
+      const out = await fetchModels("openrouter", "sk-or");
+      assert.equal(calls[0].url, "https://openrouter.ai/api/v1/models");
+      assert.equal(calls[0].headers.Authorization, "Bearer sk-or");
+      // 目录值（ai21/jamba-large-1.7：vision=false reasoning=false）
+      assert.deepEqual(out, [{ model: "ai21/jamba-large-1.7", vision: false, reasoning: false }]);
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  it("标准 7：amazon-bedrock（baseUrl 缺失）→ 直接兜底，不发网络请求", async () => {
+    const { fetchModels } = await loadCatalog();
+    let called = 0;
+    const globalFetch = global.fetch;
+    global.fetch = async () => { called++; return { ok: true, json: async () => ({ data: [] }) }; };
+    try {
+      const out = await fetchModels("amazon-bedrock", "sk-br");
+      assert.equal(called, 0, "baseUrl 缺失不得发网络请求");
+      assert.equal(out.fallback, true);
+      assert.ok(out.models.length >= 1, "兜底 = 内置目录非空");
     } finally {
       global.fetch = globalFetch;
     }
