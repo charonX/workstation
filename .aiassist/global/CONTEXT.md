@@ -27,6 +27,7 @@
 | 发布物 | Release | 一次应用分发的版本发布（GitHub Release + tag，含 dmg/zip 资产），驱动检查更新与手动重装 | GitHub Release（无 DB 表） | 版本发布 |
 | 嵌套执行 | Nested Execution | 子流程被调用时产生的 execution，通过 parentExecutionId/parentNodeId/depth 与父执行关联 | `executions` 表 | — |
 | 对话空间 | Conversation Space | 对话的上下文容器，**空间 = 会话**（2026-08-06 ADR-016 修订）：每条 chat 一个独立空间，上下文互不串扰；spaceKey 语法 `feishu:<chatId>`（世代制沿用）、`ui:copilot:<sessionId>`、`ui:project:<projectId>:<sessionId>` | `agent_sessions` 表 + PI session | 聊天（"会话"在 UI 语境 = 对话空间本身，是规范说法；禁止用它指代 execution 等其他概念） |
+| 模型配置 | Model Config | 对话与 auto 判断的模型来源条目：provider + apiKey + 可选模型覆盖 + 默认标记；可配置多条、默认唯一；会话级切换选择的对象；存量单条配置迁移为第一条 + 默认 | settings.json `agent` 段（列表形态） | provider 设置、模型条目（UI 文案「模型」= 模型配置，provider · 模型一体呈现） |
 
 ## 业务概念
 
@@ -60,6 +61,13 @@
 | 历史投影 | History Projection：把 PI JSONL 投影为历史消息列表的规则——**历史 = 对话文本**（只投影 user/assistant 且剔除空文本行），工具产物（toolResult/thinking 载体）不落历史（BUG-009 收紧；REQ-AGENT-054） | 对话空间 | 历史会话重开 |
 | 权限模式 | Permission Mode：会话级权限档位——**strict**（全确认，含配置 allow 的）/ **standard**（按项目权限配置执行，现状）/ **auto**（standard 基础上配置 ask 的由模型判断）；运行时档位不改持久配置；全局 lastMode 记录上次选择（首次 auto） | 对话空间 | 模式切换（2026-08-11-pi-agent-modes，ADR-023） |
 | auto-judge link | 权限模式 auto 档的模型判断链节（authorizerChain）：审 ask → allow/deny/defer；**deny-first**（只 deny 明确危险，external_directory/path 的 allow 被 envelope 系统级降级 defer）；判断不了 defer 弹卡；连续 deny 熔断降级 standard | 对话空间, 确认挂起 | auto 模式（ADR-023） |
+| 默认模型 | 标记为默认的模型配置：新会话初始模型、auto 判断锚点（decide 不随会话漂移）、会话配置被删时的回落对象 | 模型配置 | 新会话 / auto 判断 / 删除兜底 |
+| 动态模型列表 | 配置模型时从供应商 API 拉取的可用模型清单——全协议族化（REQ-104/ADR-027：端点/鉴权按协议族派生，能力标志供应商直存或 pi-ai 目录补全）；拉取失败/无 baseUrl 回退内置目录，不阻塞保存 | 模型配置 | Settings 模型选择 |
+| 会话级切换 | 当前会话切换模型配置的行为：对话历史保留、仅影响后续消息（与 Settings 级修改触发重建会话区分） | 模型配置, 对话空间 | 工具栏模型选择器 |
+| 视觉模型 | 支持 image input 的模型（kimi-k2.5 及以上）；纯文本模型（deepseek 全系）附加图片被阻止并提示——不静默忽略 | 模型配置 | 图片附件能力判定 |
+| 协议族 | API family | provider 的 API 协议形态（pi-ai 目录 `model.api` 字段）：openai-completions/openai-responses、anthropic-messages、mistral-conversations、google-generative-ai、bedrock/vertex 等——决定探针端点与鉴权头（ADR-027） | 模型配置 | test-connection / 动态模型拉取 |
+| 供应商探针 | providerProbe | 对供应商发最小校验/列表请求的统一派生函数（`{url, headers} \| null`）：test-connection 与动态模型拉取同一派生源；baseUrl 缺失 → null → E-TEST-UNSUPPORTED/目录兜底，不阻塞保存 | 模型配置, 协议族 | Settings 添加表单 |
+| 附件 | 随消息注入上下文的文件（v1：图片——jpeg/png/gif/webp/bmp/heic/heif，SVG 拒收；PDF 本期放弃留后续）：内容进会话历史（pi-ai 原生序列化）、重放可见；经文件选择器添加即显式授权（项目外不弹确认、无特殊标记）；非视觉模型阻止附加（附加时判定 + 发送时复核）；每消息 ≤10 个 | 对话空间 | 图片注入（**≠ 产物**：执行产出物，两者不同） |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -109,7 +117,9 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-12 | 新增「模型配置」实体（provider 条目列表）；「默认模型」「动态模型列表」「会话级切换」「视觉模型」「附件」概念（附件 ≠ 产物） | 2026-08-12-conversation-toolbar-ext /domain-model |
 | 2026-08-12 | 新增「权限模式」（strict/standard/auto 三档，ADR-023）「auto-judge link」（模型判断链节，deny-first + envelope 强制） | 2026-08-11-pi-agent-modes |
+| 2026-08-14 | 新增「协议族」「供应商探针」概念（ADR-027）；「动态模型列表」定义修订为全协议族化（REQ-104） | 2026-08-12-conversation-toolbar-ext /reflect（BUG-001/002） |
 | 2026-08-10 | 新增「工具折叠块」「历史投影」（历史=对话文本，工具不落历史） | 2026-08-08-pi-agent-ux-enrichment |
 | 2026-08-08 | 「agent 一词三义」归位（PI 对话 agent / flow agent 节点 / Agent Registry 外部 CLI）；新增会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted） | 2026-08-07-pi-agent-consolidation |
 | 2026-07-08 | 初始化词汇表 | bootstrap-workflow |

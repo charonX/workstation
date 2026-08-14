@@ -33,3 +33,9 @@
 | ADR-021 | 对话渲染安全边界——LLM 输出 HTML 全转义（零 raw 白名单）+ 图片主进程白名单 + blob URL 访问机制 + mermaid securityLevel strict | 已接受 | 2026-08-10 | REQ-AGENT-047、REQ-AGENT-049、REQ-AGENT-051（2026-08-08-pi-agent-ux-enrichment） |
 | ADR-022 | 项目级权限配置 = 字段级覆盖语义——项目文件为最小覆盖集（未定义继承全局），取消覆盖=删除字段，保存即生效（gotgenes mtime 实证） | 已接受 | 2026-08-10 | REQ-AGENT-041 语义延伸（2026-08-10-pi-permission-config-ui） |
 | ADR-023 | agent 权限模式化——authorizerChain 模型 link + 模式门控（三档 strict/standard/auto；envelope 强制从严；模式不改 .pi） | 已接受 | 2026-08-12 | REQ-AGENT-070~077（2026-08-11-pi-agent-modes） |
+| ADR-024 | PI 插件机制全量复用官方包管理——worker 从封闭装配转官方发现链路 | 已接受 | 2026-08-12 | 待结晶（2026-08-12-pi-mcp-plugin） |
+| ADR-025 | MCP 桥内置内联 + DB 快照注入 + broker 权限接线 | 已接受 | 2026-08-12 | 待结晶（2026-08-12-pi-mcp-plugin） |
+| ADR-026 | 会话级模型配置持久化 + provider-change 热更新——agent_sessions 加 provider/model 列（SQLite 为真相），切换走最小集热更新 IPC 不换代（历史保留），水合/懒恢复按行重装 | 已接受 | 2026-08-13 | 待结晶（2026-08-12-conversation-toolbar-ext B3/B4） |
+| ADR-027 | 供应商探针协议族感知派生——pi-ai 目录 model.api + baseUrl 单一真源（providerProbe 同源 test-connection/动态拉取）；google key-in-URL 人签边界；无 baseUrl → E-TEST-UNSUPPORTED 不阻塞保存 | 已接受 | 2026-08-14 | REQ-AGENT-103、REQ-AGENT-104（2026-08-12-conversation-toolbar-ext BUG-001/002） |
+| ADR-024 | PI 插件机制全量复用官方包管理——worker 从封闭装配转官方发现链路 | 已接受 | 2026-08-12 | 待结晶（2026-08-12-pi-mcp-plugin） |
+| ADR-025 | MCP 桥内置内联 + DB 快照注入 + broker 权限接线 | 已接受 | 2026-08-12 | 待结晶（2026-08-12-pi-mcp-plugin） |

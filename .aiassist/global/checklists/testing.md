@@ -146,3 +146,12 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 监督方 stop 不等待子进程退出 | stop 返回后 worker 仍运行 → 测试 utimes/清理竞态（hydration ~50% flake） | stop() 捕获 child + 'exit' 事件 + 超时兜底（SIGKILL + 宽限）；「stop 返回 = 进程已停」 |
 | 无会话操作被静默丢弃 | UI 乐观显示但服务端未收到（handleModeChange if(!key) return）→ 后续数据流取位暴露不一致 | 无会话操作显式定义语义（降级为全局默认并落盘）；「UI 显示 ≠ 服务端状态」窗口必以取位暴露 |
 | 同一视觉区块内背景层级不一致 | composer surface 白块 vs toolbar 透页面底 → 视觉色带（用户感知「有背景色」） | 容器化：同一区块元素共享统一背景容器（底部输入区 Composer+Toolbar 一个 surface 容器） |
+
+## 2026-08-14 追加（2026-08-12-conversation-toolbar-ext /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 域集合放出时不盘点散落枚举点 | 37 provider 放出漏改 test-connection 硬编码表 → 34 项误报（BUG-001） | 放出/收缩域集合前 grep 全部枚举点（硬编码表/白名单/switch/路由校验）列清单核对；长期：单一真源派生（ADR-027） |
+| 跨供应商端点假设未实证进 BUILD | 「baseUrl+/models 通吃」被 anthropic 族推翻（BUG-002） | 假 key 探测法：401/403=端点存在、404/405=不存在；响应 error type 复核；协议族看 pi-ai `model.api` |
+| 测试零输出挂起当测试问题查 | ABI 翻转的挂起形态（E-DB-UNWRITABLE 被 beforeEach 吞没） | 挂起先 `npm run rebuild:node`/`rebuild:electron` 对齐 ABI 再诊断；并行 story 交叉跑两套测试必翻转 |
+| 展示格式化函数住 JSX | node 无法 import → 数值格式无单元 seam（BUG-003） | 格式化纯函数一律 format.js 类纯 JS 模块；UX 参照示例值（6%）签核时显式确认为格式契约 |

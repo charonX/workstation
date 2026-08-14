@@ -406,3 +406,23 @@
 ## 重复信息标识清理（BUG-003）
 
 - 同一信息（spaceName）在两处显示（header 徽标 + composer chip）——保留权威位置（header），删除冗余（chips 行 + 死数据 spaceName prop 链）。删 UI 元素必须同步清理 props/调用方/样式（checklists 既有教训再印证）。
+
+## 域集合放出时，散落枚举表必然分叉（BUG-001，2026-08-14）
+
+- **现象**：v0.6 放出 37 个 apiKey provider——保存校验（isApiKeyProvider）、catalog 端点、模型列表兜底三处都跟进，唯独 test-connection 的 `AGENT_PROVIDER_ENDPOINTS` 硬编码表漏改 → 34 个新 provider 全部误报「请选择供应商」。
+- **结论**：放出/收缩一个域集合（provider、权限面、工具集）时，先 grep 该域的**全部枚举点**（硬编码表、白名单、switch、路由校验）列清单逐一核对——"以为只有一处"是常态错觉。长期解法：单一真源派生（providerProbe 同源 test-connection 与 fetchModels，ADR-027），消灭枚举表。
+
+## 跨供应商端点假设必须逐个实证；假 key 探测法（BUG-002，2026-08-14）
+
+- **现象**：「baseUrl+/models+Bearer 通吃」假设未实证即落 REQ 并实现，被 anthropic 族推翻（/models→404 端点不存在，/v1/models→401 端点存在）——一轮返工。
+- **结论**：外部 API 形态假设在 /research 或 /tech-design 阶段就该实证，不许带未验证假设进 BUILD。**假 key 探测法**零成本区分端点存在性：401/403 = 端点存在（鉴权层拒绝假 key），404/405 = 端点不存在；响应 body 的 error type（resource_not_found vs invalid_authentication）进一步确认。协议族判定看 pi-ai 目录 `model.api` + provider 实现源码（`api: anthropicMessagesApi()` 等）。
+
+## 测试无端挂起（零输出）先查 better-sqlite3 ABI（2026-08-14）
+
+- **现象**：node --test 启动后无任何输出、不退出的挂起——根因是 ABI 翻转（Electron rebuild 后 node 测试打不开 DB，E-DB-UNWRITABLE 在 beforeEach 吞没成挂起形态，而非报错）。
+- **结论**：本项目 better-sqlite3 双 ABI（test:unit 前置 rebuild:node、test:e2e 前置 rebuild:electron）是既有设计；**并行 story 交叉跑两套测试时 ABI 必被翻转**。症状从"报错"变"挂起"也要第一时间 `npm run rebuild:node` / `rebuild:electron` 对齐再诊断。
+
+## 展示格式化纯函数别住 JSX（BUG-003，2026-08-14）
+
+- **现象**：StatusBar 的 contextText/meterWidth 住在 .jsx 里——node 测试无法 import JSX，百分比全精度直拼的缺陷长期无单元 seam 拦截（E2E 只断言可见性，数值格式无覆盖）。
+- **结论**：展示格式化函数（token/耗时/百分比/文案拼接）一律放纯 JS 模块（format.js 先例），JSX 只做绑定。数值格式（小数位/单位/千分位）是签核对象——UX 参照里的示例值（6%）要被显式签认为格式契约，否则实现自由发挥。

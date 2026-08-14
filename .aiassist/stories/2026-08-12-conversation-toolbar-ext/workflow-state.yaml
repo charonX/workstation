@@ -5,10 +5,12 @@ story_id: 2026-08-12-conversation-toolbar-ext
 intention: >-
   对话区底部工具栏目前只有权限模式切换，未来需要扩展模型选择与附件添加——工具栏容器已预留槽位（toolbar-slot-model/attach），但尚无实际功能。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 3    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
+completed: true
+completed_at: 2026-08-14
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -28,6 +30,7 @@ history:
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-001 修复完成（c65358f [docs] + b7aacea [test] 先红 + 6b75cb8 [bugfix]）：API 6/6 + 回归 51/51 + E2E 8/8 全绿。用户实测转入 BUG-002（req-gap 就地补全，人确认分类+范围 A 全族含 google——key-in-URL 安全边界人签）：kimi-coding 真实 key 下列表拉取失败 + 测试连接不通。根因实证：kimi-coding 是 anthropic-messages 协议族（pi-ai Anthropic SDK 形态 x-api-key+anthropic-version），BUG-001 的「baseUrl+/models+Bearer 通吃」假设被推翻（/coding/models→404，/coding/v1/models→401 端点存在）；全量实测 37 provider 协议族分布与端点存在性（openai×23/anthropic×6/mistral×1/google×1/无 baseUrl×7）。就地补全：REQ-103 v4 修正（协议族感知派生）+ REQ-104 追加（动态拉取全族化，能力标志=供应商直存或目录补全），requirements v4 hash 656101…"}
 
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-003（人确认分类）：症状② 状态栏上下文百分比全精度直拼（1.9222259521484375%）——req-gap 就地补全：REQ-AGENT-105（恒定两位小数，推翻 assistant-rich.html 整数格式，人签 expected）+ contextText/meterWidth 抽 format.js 纯函数补 seam；症状① 上下文窗口不随模型变——not-a-bug 记录：SDK getContextUsage=model.contextWindow 随当前模型变（agent-session.js:2544）+ provider-change setModel 热更新链路实证（worker.js:1400），kimi-coding 目录实证 k3=1048576 vs 其余 262144，截图 262.1k 即当前模型真实窗口；用户可实测 k3↔kimi-for-coding 分母 1048.6k↔262.1k 跳变验证"}
+  - {at: 2026-08-14, from: BUG, to: REFLECT, note: "门 2 通过：全量回归 unit 843/844（1 环境性先存）+ E2E 218/218 全绿；BUG-001~003 清零（3 req-gap 就地补全 + 1 not-a-bug 记录）；最终验收检查清单人逐项确认「接受」。经验沉淀：lessons ×4 + ADR-027 + CONTEXT 协议族/供应商探针 + capabilities 更新 + checklists testing/security + STANDARDS 纯函数规则"}
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
 #  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}

@@ -105,3 +105,10 @@ Referrer-Policy: strict-origin-when-cross-origin
 ---
 
 来源：改编自 `reference/agent-skills/references/security-checklist.md`。
+
+## 2026-08-14 追加（ADR-027 / BUG-002 人签边界）
+
+- **google 供应商探针 key-in-URL**：google-generative-ai 官方 API 唯一形态是
+  `?key=<apiKey>`（query 参数）。已确认：fetch 错误消息与透传响应均不含 URL（key 不进入
+  错误透传/日志链路）。边界已人签接受（2026-08-14）；**其他供应商禁止自行引入 key-in-URL
+  形态**，新增探针形态须重新过安全签核。

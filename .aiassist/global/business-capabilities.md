@@ -105,6 +105,16 @@
 | conversation-space (ux-enrichment) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-08-pi-agent-ux-enrichment/e2e/`, `.../api/` | REQ-AGENT-047~058（v1 047-055 + v2 范围扩展 056-058，2026-08-10 验收） | E2E `richRender/toolCallBlock/streamingRender/statusBar.test.cjs` + api `workerToolEventExt/sessionStats/toolNameSanitize/fsToolRelativePath/toolErrorAttribution/workerServerDiscovery/hydrationCooling/confirmChronology/historyToolFilter.test.js`（含 BUG-002~010 回归） |
 | conversation-space (permission-config-ui) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-10-pi-permission-config-ui/e2e/`, `.../api/` | REQ-AGENT-059~069（2026-08-11 验收） | E2E `permissionConfig.test.cjs`（10 用例）+ api `permissionConfig/permissionMerge/permissionEvaluation.test.js`（30 用例；字段级覆盖语义 ADR-022 + 保存即生效 + merge 对照 gotgenes） |
 | conversation-space (pi-agent-modes) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-11-pi-agent-modes/e2e/`, `.../api/` | REQ-AGENT-070~077（2026-08-12 验收） | E2E `modeToolbar.test.cjs`（5 用例）+ api `modeService/autoJudgeLink.test.js`（14 用例；三档模式/工具栏/lastMode/auto link/envelope 从严/熔断/可观测/模式不改配置，ADR-023） |
+| settings (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/settings/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-090~092, 099~102, 104（2026-08-14 验收） | `providerModelConfig.test.js`（090/092/099/104）, `catalog.test.js`（100）, `testConnection.test.js`（103）+ E2E `settingsProviders.test.cjs`（091/101/103 标准 7）：多 provider 列表/迁移/动态模型拉取全族化/catalog 端点/test-connection 协议族派生（ADR-026/027） |
+| conversation-space (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-093~098, 105（2026-08-14 验收） | `providerSwitch.test.js`（093/095）, `autoJudgeDefaultModel.test.js`（096）, `imageAttachment.test.js`（097）, `statusBarContext.test.js`（105）+ E2E `modelSelector.test.cjs`（094）, `imageAttachmentUi.test.cjs`（098/102）：会话级切换/模型选择器/懒恢复重装/auto 默认 judge/图片附件/视觉判定 catalog 化/上下文百分比两位小数（ADR-026） |
+
+### plugin-management
+> PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）。（2026-08-12-pi-mcp-plugin 登记）
+
+| 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
+|------|----------|---------------|----------|
+| extension | `tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/api/`, `.../cli/`, `.../e2e/` | REQ-AGENT-078~083, 089 | 待生成（/test-author） |
+| mcp-server | `tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-084~088 | 待生成（/test-author） |
 
 ## 能力依赖图
 
@@ -117,6 +127,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
                                     │                                       │
                                     └─> internationalization-theme          │
                                                                             │
+plugin-management ──> agent-dialogue、workspace-management
 channel-integration ──> workspace-management                                │
 collection-pipeline ──> scheduling-execution、flow-orchestration、skill-management、channel-integration
 ```
@@ -136,3 +147,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 4 | 2026-07-29 |
 | agent-dialogue | 5 | 356 | 2026-08-12 |
+| plugin-management | 2 | 0 | 2026-08-12 |
