@@ -30,6 +30,8 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("node:path");
+const os = require("node:os");
+const fs = require("node:fs");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 
@@ -41,13 +43,37 @@ const SAFETY_NOTE = "[data-testid='plugin-safety-note']";
 const PLUGINS_ROUTE = "#/plugins";
 
 const GOOD_EXT_ABS = path.resolve(__dirname, "../../../../../fixtures/pi-extension-good");
+const BAD_EXT_ABS = path.resolve(__dirname, "../../../../../fixtures/pi-extension-bad");
+
+// 标准 3/4 专用 seed（经应用 HTTP API）：安装插件 / 建 demo 项目 / 装坏插件。
+// 保持标准 1/2 的干净添加流不受 seed 影响（seed 只在需要它的用例内执行）。
+async function seedViaApi(apiBaseUrl, fn) {
+  const res = await fetch(`${apiBaseUrl}${fn.path}`, {
+    method: fn.method ?? "POST",
+    headers: { "Content-Type": "application/json" },
+    body: fn.body ? JSON.stringify(fn.body) : undefined,
+  });
+  if (!res.ok) throw new Error(`seed ${fn.path} failed: ${res.status}`);
+}
+async function seedPlugin(apiBaseUrl, source) {
+  await seedViaApi(apiBaseUrl, { path: "/api/plugins", body: { source } });
+}
+async function seedDemoProject(apiBaseUrl) {
+  const projDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-demo-"));
+  await seedViaApi(apiBaseUrl, {
+    path: "/api/projects",
+    body: { name: "demo", sourceType: "local", localPath: projDir },
+  });
+  return projDir;
+}
 
 test.describe("REQ-AGENT-083 插件管理 UI（E2E）", () => {
   let electronApp;
   let firstWindow;
+  let apiBaseUrl;
 
   test.beforeEach(async () => {
-    ({ electronApp, firstWindow } = await startElectronApp());
+    ({ electronApp, firstWindow, apiBaseUrl } = await startElectronApp());
     await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
   });
 
@@ -80,7 +106,10 @@ test.describe("REQ-AGENT-083 插件管理 UI（E2E）", () => {
   });
 
   test("标准 3：行内项目启用切换可点且状态持久（刷新后保持）", async () => {
-    // 前置（实现接线）：经 API seed 已安装插件 + 一个项目
+    // 前置（实现接线）：经 API seed 已安装插件 + 一个项目，然后重新加载清单
+    await seedPlugin(apiBaseUrl, GOOD_EXT_ABS);
+    await seedDemoProject(apiBaseUrl);
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
     const row = firstWindow.locator("[data-testid='plugin-row-pi-extension-good']");
     await row.locator("[data-testid='plugin-project-toggle']").click();
     const pop = row.locator("[data-testid='plugin-project-pop']");
@@ -93,7 +122,9 @@ test.describe("REQ-AGENT-083 插件管理 UI（E2E）", () => {
   });
 
   test("标准 4：错误态插件行标红 + 详情可见", async () => {
-    // 前置（实现接线）：经 API seed 坏插件（tests/fixtures/pi-extension-bad）
+    // 前置（实现接线）：经 API seed 坏插件（tests/fixtures/pi-extension-bad），然后重新加载清单
+    await seedPlugin(apiBaseUrl, BAD_EXT_ABS);
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
     const errRow = firstWindow.locator("[data-testid='plugin-row-error']");
     await expect(errRow).toBeVisible();
     await expect(errRow.locator(".error-detail")).toBeVisible();
