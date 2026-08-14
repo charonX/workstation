@@ -1,9 +1,9 @@
 # Requirements — 对话区工具栏扩展（模型选择 + 附件）
 
 > 故事 ID：`2026-08-12-conversation-toolbar-ext`
-> 版本：v3（v0.7 补丁：REQ-103 test-connection 全量 provider 语义——BUG-001 req-gap 就地补全）
+> 版本：v4（v0.7 补丁：REQ-103 协议族感知修正 + REQ-104 动态拉取全族化——BUG-002 req-gap 就地补全）
 > 最后更新：2026-08-14
-> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）+ BUG-001 req-gap 增量（v0.6 放出 37 provider 时未定 test-connection 语义）
+> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）+ BUG-001/BUG-002 req-gap 增量（v0.6 放出 37 provider 时未定 test-connection / 动态拉取的全族语义）
 > UX 参照：`ux/settings-providers.html`、`ux/conversation-toolbar.html`（已 approved）
 > 移动块 M5（会话列表/状态栏 provider 展示）留 PRD，不入 REQ。PDF 附件（原 B7）已放弃归 §12。
 > 技术事实（§10/§13）：provider-change 走最小集热更新 IPC 不换代（ADR-026）；附件持久化 = pi-ai 原生上下文序列化（实证）；kimi `/v1/models` 带能力标志、deepseek `/models` 仅 id；pi-ai 对非视觉模型传图静默忽略；**v0.6：37 个 apiKey 型静态 provider + catalog 端点（pi-ai 目录单一真源）**。
@@ -180,22 +180,46 @@
 3. catalog 加载失败 → 附加图片保守拒绝 + 提示（E2E/组件：mock catalog 失败）。
 4. `modelCapabilities.js` 移除（grep：无残留引用）。
 
-## REQ-AGENT-103 test-connection 支持全部 apiKey 型 provider（v0.7，BUG-001 req-gap 就地补全）
+## REQ-AGENT-103 test-connection 支持全部 apiKey 型 provider（v0.7，BUG-001 req-gap 就地补全；v4 修正：BUG-002 协议族感知派生）
 
 - 优先级 P0 / 必须 / cross-module / settings HTTP 路由 + Settings 页 / agent-dialogue / settings / 集成 + 浏览器 E2E
-- 背景：v0.6（REQ-100/101）把添加表单 provider 放到 37 个 catalog 项，但 test-connection 端点仍用三 provider 时代硬编码端点表（`AGENT_PROVIDER_ENDPOINTS` 仅 deepseek/moonshotai/moonshotai-cn），34 个新 provider 点「测试连接」误报「请选择供应商」（BUG-001）。
+- 背景：v0.6（REQ-100/101）把添加表单 provider 放到 37 个 catalog 项，但 test-connection 端点仍用三 provider 时代硬编码端点表（`AGENT_PROVIDER_ENDPOINTS` 仅 deepseek/moonshotai/moonshotai-cn），34 个新 provider 点「测试连接」误报「请选择供应商」（BUG-001）。v3 初版「baseUrl+/models 通吃」假设被 BUG-002 实证推翻（anthropic 族 `/models` → 404 resource_not_found，`/v1/models` → 401 端点存在），v4 修正为协议族感知派生。
 - 接口契约：`POST /api/settings/agent/test-connection` `{provider, apiKey}`
   - provider 合法性判定 = `isApiKeyProvider`（catalog 单一真源，与保存校验同源）；非法 → 400 `E-CONFIG-INVALID`「请选择供应商」
-  - 端点派生：pi-ai 目录 `baseUrl + "/models"`（`Authorization: Bearer <apiKey>`）；legacy 3 项（deepseek/moonshotai/moonshotai-cn）派生结果与原硬编码端点逐字一致（行为不变）
+  - 端点与鉴权按**协议族**派生（族数据源 = pi-ai 目录 `model.api`，单一真源；端点存在性已全量实测 2026-08-14，假 key 探测 anthropic 族/mistral 全 401、google 400 = 端点存在）：
+    - openai-completions / openai-responses（23 项）→ `GET {baseUrl}/models`，`Authorization: Bearer <key>`；legacy 3 项（deepseek/moonshotai/moonshotai-cn）派生结果与原硬编码端点逐字一致（行为不变）
+    - anthropic-messages（6 项有 baseUrl：anthropic/kimi-coding/minimax/minimax-cn/fireworks/vercel-ai-gateway）→ `GET {baseUrl}/v1/models`，`x-api-key: <key>` + `anthropic-version: 2023-06-01`（pi-ai Anthropic SDK 实证形态）
+    - mistral-conversations（mistral）→ `GET {baseUrl}/v1/models`，`Authorization: Bearer <key>`
+    - google-generative-ai（google）→ `GET {baseUrl}/models?key=<key>`（google 官方唯一形态，key 进 URL——人签安全边界 2026-08-14）
   - baseUrl 缺失 provider（amazon-bedrock / azure-openai-responses / cloudflare-ai-gateway / cloudflare-workers-ai / google-vertex / opencode / opencode-go）→ 200 `{ok:false, error:"E-TEST-UNSUPPORTED", message:"该供应商不支持连接测试，可直接保存"}`，不发网络请求（人签 expected 值）
   - 网络/HTTP 失败 → 沿用 `{ok:false, error:"E-AGENT-LLM-FAIL", message: 透传原因}`；测试连接失败不阻塞保存（REQ-AGENT-001 AC4 签核语义不变）
   - 前端：`error === "E-TEST-UNSUPPORTED"` → 中性样式展示 message，不加「连接失败：」前缀（人签 expected 值）
 
 验收标准：
-1. `kimi-coding` + key → 对 `https://api.kimi.com/coding/models` 发 GET，`Authorization: Bearer <key>`（集成：mock fetch 断言 URL 与请求头）；供应商 200 → `{ok:true}`。
+1. `kimi-coding`（anthropic 族）+ key → 对 `https://api.kimi.com/coding/v1/models` 发 GET，`x-api-key: <key>` + `anthropic-version: 2023-06-01`（集成：mock fetch 断言 URL 与请求头）；供应商 200 → `{ok:true}`。
 2. `kimi-coding` + 无效 key → 供应商 401 → `{ok:false, error:"E-AGENT-LLM-FAIL", message 透传供应商原因}`（集成：mock fetch 401）。
 3. `amazon-bedrock`（baseUrl 缺失）→ 200 `{ok:false, error:"E-TEST-UNSUPPORTED", message:"该供应商不支持连接测试，可直接保存"}`；全程不发网络请求（集成：mock fetch 调用计数为 0）。
 4. 非法 provider（faux / 不存在的 id）→ 400 `E-CONFIG-INVALID`「请选择供应商」（集成回归）。
-5. legacy 3 项端点逐字不变：deepseek → `https://api.deepseek.com/models`；moonshotai → `https://api.moonshot.ai/v1/models`；moonshotai-cn → `https://api.moonshot.cn/v1/models`（集成：mock fetch 断言 URL）。
+5. legacy 3 项端点逐字不变：deepseek → `https://api.deepseek.com/models`；moonshotai → `https://api.moonshot.ai/v1/models`；moonshotai-cn → `https://api.moonshot.cn/v1/models`（集成：mock fetch 断言 URL + Bearer 头）。
 6. 空 key → 400 `E-CONFIG-INVALID`「API key 不能为空」（集成回归，既有行为）。
 7. `E-TEST-UNSUPPORTED` 响应 → 前端结果区展示「该供应商不支持连接测试，可直接保存」，无「连接失败」字样（E2E：settingsProviders 添加表单选 amazon-bedrock + 填 key + 点测试连接）。
+8. 协议族分派抽样：`openrouter`（openai 族）→ `https://openrouter.ai/api/v1/models` + Bearer；`mistral` → `https://api.mistral.ai/v1/models` + Bearer；`google` → `https://generativelanguage.googleapis.com/v1beta/models?key=<key>`（集成：mock fetch 断言 URL 与头）。
+
+## REQ-AGENT-104 动态模型拉取全协议族化（v0.7，BUG-002 req-gap 就地补全）
+
+- 优先级 P0 / 必须 / cross-module / modelCatalogService / agent-dialogue / settings / 集成
+- 背景：REQ-092 动态拉取仅承诺 kimi 系（moonshotai/moonshotai-cn）+ deepseek 三家，v0.6 放出 37 provider 后其余全走内置目录兜底；用户实证 kimi-coding 期望真实拉取（BUG-002 症状①）。
+- 接口契约：`fetchModels(provider, apiKey)` 与 `POST /api/settings/agent/models` 形态不变；拉取端点与鉴权按 REQ-103 协议族分派（同一派生源）；无 key / baseUrl 缺失 / 拉取失败 / 空列表 → `{models, fallback:true}` 兜底（E2/E3 既有签核语义不变）
+- 响应解析按族分派（能力标志规则：供应商返回带能力字段（supports_image_in/supports_reasoning）→ 直存（kimi 系 B2 签核语义不变）；否则以 pi-ai 目录补全——deepseek 既有「仅 id → 补全」模式的泛化，目录值与既有硬编码逐字一致已实证）：
+  - openai 系 / anthropic 系 / mistral：`{data: [{id, ...}]}` 取 id
+  - google：`{models: [{name: "models/<id>", ...}]}` 剥 `models/` 前缀取 id
+  - 全部过 `modelInCatalog` 防御（REQ-092 AC5 不变）
+
+验收标准：
+1. `kimi-coding` 动态拉取：mock `GET https://api.kimi.com/coding/v1/models`（x-api-key 头）返 anthropic 格式 `{data:[{id:"k3"},{id:"kimi-for-coding"}]}` → `[{model:"k3",vision:true,reasoning:true}, {model:"kimi-for-coding",vision:true,reasoning:true}]`（能力目录补全；集成）。
+2. `google` 动态拉取：mock `GET .../v1beta/models?key=...` 返 `{models:[{name:"models/gemini-2.5-pro"}]}` → id 剥前缀 + 目录补能力（集成）。
+3. openai 系新放出项（openrouter）：mock `{data:[{id:"<目录内 id>"}]}` → 目录补能力（集成）。
+4. kimi 系能力标志直存回归：mock moonshotai 返 `{data:[{id:"kimi-k3",supports_image_in:true,supports_reasoning:true}]}` → 直存（既有用例守护，行为不变）。
+5. deepseek 回归：`{data:[{id:"deepseek-v4-flash"}]}` → `{vision:false,reasoning:true}`（既有用例守护——目录补全与既有硬编码逐字一致）。
+6. 拉取 401/超时/空列表/目录全剔除 → `{models, fallback:true}` 兜底（既有 E3 语义回归）。
+7. baseUrl 缺失 provider（amazon-bedrock）→ 直接兜底不发网络请求（集成：mock fetch 计数为 0）。
