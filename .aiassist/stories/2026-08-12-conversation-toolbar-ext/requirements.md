@@ -1,9 +1,9 @@
 # Requirements — 对话区工具栏扩展（模型选择 + 附件）
 
 > 故事 ID：`2026-08-12-conversation-toolbar-ext`
-> 版本：v2（v0.6 扩展：全量 provider + catalog 端点）
+> 版本：v3（v0.7 补丁：REQ-103 test-connection 全量 provider 语义——BUG-001 req-gap 就地补全）
 > 最后更新：2026-08-14
-> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）
+> 来源：`prd.md` v0.6（B1-B6、B8 + §10 技术方案）+ BUG-001 req-gap 增量（v0.6 放出 37 provider 时未定 test-connection 语义）
 > UX 参照：`ux/settings-providers.html`、`ux/conversation-toolbar.html`（已 approved）
 > 移动块 M5（会话列表/状态栏 provider 展示）留 PRD，不入 REQ。PDF 附件（原 B7）已放弃归 §12。
 > 技术事实（§10/§13）：provider-change 走最小集热更新 IPC 不换代（ADR-026）；附件持久化 = pi-ai 原生上下文序列化（实证）；kimi `/v1/models` 带能力标志、deepseek `/models` 仅 id；pi-ai 对非视觉模型传图静默忽略；**v0.6：37 个 apiKey 型静态 provider + catalog 端点（pi-ai 目录单一真源）**。
@@ -179,3 +179,23 @@
 2. 新 provider 的非视觉模型（如 openrouter 下某 text-only 模型）会话附加图片被阻止（E2E：catalog 数据生效——若 openrouter 全模型视觉，用 mistral/其他 text-only 模型）。
 3. catalog 加载失败 → 附加图片保守拒绝 + 提示（E2E/组件：mock catalog 失败）。
 4. `modelCapabilities.js` 移除（grep：无残留引用）。
+
+## REQ-AGENT-103 test-connection 支持全部 apiKey 型 provider（v0.7，BUG-001 req-gap 就地补全）
+
+- 优先级 P0 / 必须 / cross-module / settings HTTP 路由 + Settings 页 / agent-dialogue / settings / 集成 + 浏览器 E2E
+- 背景：v0.6（REQ-100/101）把添加表单 provider 放到 37 个 catalog 项，但 test-connection 端点仍用三 provider 时代硬编码端点表（`AGENT_PROVIDER_ENDPOINTS` 仅 deepseek/moonshotai/moonshotai-cn），34 个新 provider 点「测试连接」误报「请选择供应商」（BUG-001）。
+- 接口契约：`POST /api/settings/agent/test-connection` `{provider, apiKey}`
+  - provider 合法性判定 = `isApiKeyProvider`（catalog 单一真源，与保存校验同源）；非法 → 400 `E-CONFIG-INVALID`「请选择供应商」
+  - 端点派生：pi-ai 目录 `baseUrl + "/models"`（`Authorization: Bearer <apiKey>`）；legacy 3 项（deepseek/moonshotai/moonshotai-cn）派生结果与原硬编码端点逐字一致（行为不变）
+  - baseUrl 缺失 provider（amazon-bedrock / azure-openai-responses / cloudflare-ai-gateway / cloudflare-workers-ai / google-vertex / opencode / opencode-go）→ 200 `{ok:false, error:"E-TEST-UNSUPPORTED", message:"该供应商不支持连接测试，可直接保存"}`，不发网络请求（人签 expected 值）
+  - 网络/HTTP 失败 → 沿用 `{ok:false, error:"E-AGENT-LLM-FAIL", message: 透传原因}`；测试连接失败不阻塞保存（REQ-AGENT-001 AC4 签核语义不变）
+  - 前端：`error === "E-TEST-UNSUPPORTED"` → 中性样式展示 message，不加「连接失败：」前缀（人签 expected 值）
+
+验收标准：
+1. `kimi-coding` + key → 对 `https://api.kimi.com/coding/models` 发 GET，`Authorization: Bearer <key>`（集成：mock fetch 断言 URL 与请求头）；供应商 200 → `{ok:true}`。
+2. `kimi-coding` + 无效 key → 供应商 401 → `{ok:false, error:"E-AGENT-LLM-FAIL", message 透传供应商原因}`（集成：mock fetch 401）。
+3. `amazon-bedrock`（baseUrl 缺失）→ 200 `{ok:false, error:"E-TEST-UNSUPPORTED", message:"该供应商不支持连接测试，可直接保存"}`；全程不发网络请求（集成：mock fetch 调用计数为 0）。
+4. 非法 provider（faux / 不存在的 id）→ 400 `E-CONFIG-INVALID`「请选择供应商」（集成回归）。
+5. legacy 3 项端点逐字不变：deepseek → `https://api.deepseek.com/models`；moonshotai → `https://api.moonshot.ai/v1/models`；moonshotai-cn → `https://api.moonshot.cn/v1/models`（集成：mock fetch 断言 URL）。
+6. 空 key → 400 `E-CONFIG-INVALID`「API key 不能为空」（集成回归，既有行为）。
+7. `E-TEST-UNSUPPORTED` 响应 → 前端结果区展示「该供应商不支持连接测试，可直接保存」，无「连接失败」字样（E2E：settingsProviders 添加表单选 amazon-bedrock + 填 key + 点测试连接）。

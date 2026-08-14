@@ -5,9 +5,9 @@ story_id: 2026-08-12-conversation-toolbar-ext
 intention: >-
   对话区底部工具栏目前只有权限模式切换，未来需要扩展模型选择与附件添加——工具栏容器已预留槽位（toolbar-slot-model/attach），但尚无实际功能。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -23,6 +23,8 @@ history:
   - {at: 2026-08-13, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md + [test] assertion-signoff commit 41e5d0b）：人确认初衷/跨模块契约/expected 值/安全边界/GAP 去处；AI 自检全绿。解锁 BUILD。commit 修正：首版误含并行 story 暂存文件，软回退后仅 signoff.md"}
   - {at: 2026-08-13, from: BUILD, to: QA, note: "BUILD 完成（5/5 切片，业务断言 52/52：API 34 + E2E 18；各切片经 PRD 对齐 + refactor 双验证）：S1 settings 模型/迁移/目录服务 12/12；S2 会话级切换/默认语义 11/11；S3 auto 判断解耦 5/5；S4 图片附件协议 6/6；S5 前端三件套 18/18 E2E。GAP-1（回落提示）就地补全 + 签核断言。旧测试契约演化 [test] ×4（modeToolbar 槽位/settingsTabs 表单/agentConfig 形态 + story 测试补齐）。待处理清单 12 项（test-gap ×6、观察 ×4 等）见 build-progress。PRD v0.5（renderer 主防线/E6/E10 文案）。环境：ABI 翻转需 rebuild 先例已记录"}
   - {at: 2026-08-13, from: QA, to: REFLECT, note: "QA 通过（qa-report.md）：test-gap ×6 清零后业务断言 57/57（API 39 + E2E 18）全绿。全量回归 unit 821/823 + E2E 211/213——4 红全部归因外部：1 环境性先存（sessionMessage 409 读真实配置）+ 3 并行 story in-progress RED（mcpService seam 未就绪、pluginsPage 标准 3/4）。首轮 E2E 108 红系 better-sqlite3 ABI 环境竞态（E-DB-UNWRITABLE 实证），重建后全绿。进入门 2 REFLECT"}
+  - {at: 2026-08-14, from: REFLECT, to: REFLECT, note: "v0.6 REFLECT 前扩展（人拍板）：放出全部 37 个 apiKey 型 provider（排除 OAuth 型 codex/github-copilot）+ catalog 端点（GET /api/settings/agent/catalog，pi-ai 目录单一真源）+ Settings 动态下拉 + 视觉判定数据源替换（modelCapabilities.js 移除，GAP-3 关闭）。REQ-100~102 追加（requirements v2，hash 22c8de…），断言批量签核。S6 实现 5e1eba2 + 测试侧 ×3 修正后：API 45/45 + E2E 22/22 + 全量单元 828/829（1 环境性先存）+ lint 0。业务断言总计 67/67。qa-report v0.6 补充落档"}
+  - {at: 2026-08-14, from: REFLECT, to: BUG, note: "BUG-001（req-gap 就地补全，人确认分类+方案 A+expected 值）：kimi-coding 点「测试连接」误报「请选择供应商」——test-connection 端点仍用三 provider 时代硬编码 AGENT_PROVIDER_ENDPOINTS，v0.6 放出 37 provider 时未定其 test-connection 语义。就地补全：REQ-AGENT-103 追加（requirements v3，isApiKeyProvider 同源校验 + catalog baseUrl+/models 派生 + baseUrl 缺失 7 项返 E-TEST-UNSUPPORTED「该供应商不支持连接测试，可直接保存」+ 前端中性展示）；phase 保持 BUG 不退回，补测试后回步骤 5 修复"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
