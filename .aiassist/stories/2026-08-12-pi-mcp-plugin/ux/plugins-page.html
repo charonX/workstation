@@ -291,11 +291,16 @@
         <div class="field" style="margin-top: var(--ch-space-3);">
           <label>认证</label>
           <div class="seg" data-testid="mcp-auth-seg">
-            <button class="active" onclick="segPick(this)">无</button>
-            <button onclick="segPick(this)">Bearer Token</button>
-            <button onclick="segPick(this)">OAuth</button>
+            <button class="active" data-auth="none" onclick="mcpAuthPick(this)">无</button>
+            <button data-auth="bearer" onclick="mcpAuthPick(this)">Bearer Token</button>
+            <button data-auth="oauth" onclick="mcpAuthPick(this)">OAuth</button>
           </div>
-          <span class="hint">Bearer token 存系统凭据库；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
+          <span class="hint">Bearer token 加密存系统凭据库（不明文落库）；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
+        </div>
+        <div class="field" id="mcp-token-field" style="display:none; margin-top: var(--ch-space-3);">
+          <label>Bearer Token</label>
+          <input data-testid="mcp-token-input" type="password" class="mono" placeholder="粘贴 token，保存后不再回显">
+          <span class="hint">加密存储于系统凭据库（macOS Keychain）；保存/列表均不回显明文</span>
         </div>
         <div class="field" style="margin-top: var(--ch-space-3);">
           <label>请求头（KEY=VALUE，每行一条，可选）</label>
@@ -329,6 +334,10 @@
       document.querySelector('[data-testid="plugin-source-input"]').placeholder = srcMeta[t].ph;
       document.getElementById('plugin-source-hint').textContent = srcMeta[t].hint;
     }
+  }
+  function mcpAuthPick(btn){
+    segPick(btn);
+    document.getElementById('mcp-token-field').style.display = btn.dataset.auth === 'bearer' ? '' : 'none';
   }
   function mcpTypePick(btn){
     segPick(btn);
