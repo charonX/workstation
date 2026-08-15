@@ -141,9 +141,10 @@ test.describe("REQ-AGENT-083 插件管理 UI（E2E）", () => {
 test.describe("REQ-AGENT-084 MCP server 管理表单（E2E）", () => {
   let electronApp;
   let firstWindow;
+  let apiBaseUrl;
 
   test.beforeEach(async () => {
-    ({ electronApp, firstWindow } = await startElectronApp());
+    ({ electronApp, firstWindow, apiBaseUrl } = await startElectronApp());
     await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
   });
 
@@ -194,5 +195,68 @@ test.describe("REQ-AGENT-084 MCP server 管理表单（E2E）", () => {
     await expect(firstWindow.locator("[data-testid='mcp-row-e2e-bearer']")).toBeVisible();
     // 页面任何位置不回显明文 token
     await expect(firstWindow.locator("text=e2e-secret-token")).toHaveCount(0);
+  });
+
+  // BUG-008 回归（REQ-AGENT-084 CRUD-U + UX 参照行内「编辑」按钮，plugins-page.html）：
+  // 行内「编辑」打开同一弹窗（编辑模式）：名称为主键只读，字段回填；token 不回填
+  // （已签：API 永不回显明文），留空 = 保持不变。
+  test("行内「编辑」按钮打开回填弹窗，改 URL 保存后行更新", async () => {
+    await seedViaApi(apiBaseUrl, {
+      path: "/api/mcp",
+      body: { name: "e2e-edit", type: "http", url: "https://old.example.com/mcp", auth: "bearer", token: "keep-me" },
+    });
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
+    const row = firstWindow.locator("[data-testid='mcp-row-e2e-edit']");
+    await expect(row).toBeVisible();
+
+    await row.locator("[data-testid='mcp-edit-button']").click();
+    const modal = firstWindow.locator("[data-testid='mcp-form-modal']");
+    await expect(modal).toBeVisible();
+    // 回填：url 回填旧值；name 主键只读；token 不回填（留空 = 保留）
+    await expect(modal.locator("[data-testid='mcp-url-input']")).toHaveValue("https://old.example.com/mcp");
+    await expect(modal.locator("[data-testid='mcp-name-input']")).toBeDisabled();
+    await expect(modal.locator("[data-testid='mcp-token-input']")).toHaveValue("");
+
+    await modal.locator("[data-testid='mcp-url-input']").fill("https://new.example.com/mcp");
+    await modal.locator("[data-testid='mcp-form-submit']").click();
+    await expect(modal).toBeHidden();
+    await expect(row.locator(".mono")).toContainText("https://new.example.com/mcp");
+    // 页面任何位置不回显明文 token（含编辑后）
+    await expect(firstWindow.locator("text=keep-me")).toHaveCount(0);
+  });
+
+  // BUG-008 回归（req-gap 就地补全后的 UX 结构契约）：
+  // 全局开关 switch 须为可见尺寸（UX 定稿 32×18），非 inline 塌缩；
+  // 项目启用 pill on 态文字为 accent 色（可读），非白字不可见。
+  test("渲染结构：全局开关可见尺寸 + 项目启用 pill on 态文字可读", async () => {
+    await seedViaApi(apiBaseUrl, {
+      path: "/api/mcp",
+      body: { name: "e2e-visual", type: "http", url: "https://visual.example.com/mcp" },
+    });
+    const projDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-vis-"));
+    const projRes = await fetch(`${apiBaseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "vis-demo", sourceType: "local", localPath: projDir }),
+    });
+    const proj = await projRes.json();
+    await seedViaApi(apiBaseUrl, {
+      path: "/api/mcp/e2e-visual/project-enable",
+      body: { projectId: proj.id, enabled: true },
+    });
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
+    const row = firstWindow.locator("[data-testid='mcp-row-e2e-visual']");
+    await expect(row).toBeVisible();
+
+    // 开关可见尺寸（塌缩时 boundingBox 宽度 ≈ 0）
+    const toggleBox = await row.locator("[data-testid='mcp-global-toggle']").boundingBox();
+    expect(toggleBox.width).toBeGreaterThanOrEqual(30);
+    expect(toggleBox.height).toBeGreaterThanOrEqual(16);
+
+    // pill on 态文字色 = accent（rgb(13,148,136) 浅主题），白字 = rgb(255,255,255) 为缺陷态
+    const pillColor = await row.locator("[data-testid='mcp-project-toggle']").evaluate(
+      (el) => getComputedStyle(el).color
+    );
+    expect(pillColor).not.toBe("rgb(255, 255, 255)");
   });
 });
