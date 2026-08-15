@@ -54,6 +54,12 @@ export function sendMessage(spaceKey, text, attachments) {
   return post(`/api/agent/sessions/${encodeKey(spaceKey)}/messages`, body);
 }
 
+/** 手动停止当前生成（REQ-AGENT-091，BUG-010）：202 受理；idle/不存在均 no-op
+ *  不报错。停止结果经 SSE 事件流收尾（streaming 复位走既有 text_end 链）。 */
+export function stopSession(spaceKey) {
+  return post(`/api/agent/sessions/${encodeKey(spaceKey)}/stop`);
+}
+
 /** 确认项全量（U-1）：{ pending, confirmations }——confirmations 含 status
  *  （pending|approved|rejected），页面重载后已处理卡重建依赖它。 */
 export function listConfirmations() {

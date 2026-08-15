@@ -657,6 +657,23 @@ function forwardEvent(sessionKey, ev) {
     }
   }
   if (ev?.type === "message_end") {
+    // REQ-AGENT-091（BUG-010）：abort 中断（stopReason=aborted）时流被掐断、SDK 不发
+    // text_end → 若本轮 text_end 缺失则合成收尾（content = 中断消息已生成文本——
+    // 「已生成保留」语义），否则 lastReplies 无值（prompt-result 丢 reply）且 UI
+    // streaming 永不复位（text_end 是回合收尾的唯一权威信号）。正常路径（text_end
+    // 已到、pending 非空）不受影响。
+    const msg = ev.message;
+    const hasPending = (pendingTextEnds.get(sessionKey) ?? []).length > 0;
+    if (msg?.stopReason === "aborted" && !hasPending) {
+      const content = (msg.content ?? [])
+        .filter((c) => c?.type === "text")
+        .map((c) => c.text ?? "")
+        .join("");
+      const list = pendingTextEnds.get(sessionKey) ?? [];
+      list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer: undefined });
+      pendingTextEnds.set(sessionKey, list);
+      log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
+    }
     // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
     flushPendingTextEnds(sessionKey, ev.message?.usage);
   }
@@ -1651,6 +1668,13 @@ rl.on("line", (line) => {
     handleMessage(msg);
     return;
   }
+  // 停止带外响应（REQ-AGENT-091，BUG-010）：stop-session 若进串行队列，排在在途
+  // 长 prompt 之后永不执行 → 停止完全失效（与 ping/确认回执同型坑）。abort()
+  // 调用同步发起、返回 promise 不 await——事件循环能读行即能中断当前生成。
+  if (msg.type === "stop-session") {
+    handleMessage(msg);
+    return;
+  }
   messageQueue.enqueue(() => handleMessage(msg));
 });
 
@@ -1696,6 +1720,24 @@ async function handleMessage(msg) {
     case "prompt":
       await handlePrompt(msg);
       break;
+    case "stop-session": {
+      // REQ-AGENT-091（BUG-010）：手动停止当前生成。SDK abort() 中断进行中 turn
+      //（中断消息 stopReason=aborted 照常走 message_end/text_end 事件链收尾，
+      // prompt-result ok:true + 部分回复文本——已生成内容保留）。fire-and-forget：
+      // abort promise 不 await（其语义为「等到 idle」，等待无必要且不阻塞消息面）。
+      const entry = lifecycle.get(msg.sessionKey);
+      if (!entry) {
+        // 未知/已淘汰 key → 静默 no-op（REQ-091 标准 3：停止非用户错误，
+        // 不发 session-error——用户感知的「已停止」本就是目标状态）。
+        log(`stop-session 未知 key 静默 no-op session=${msg.sessionKey}`);
+        break;
+      }
+      log(`stop-session 中断 session=${msg.sessionKey} streaming=${!!entry.streaming}`);
+      entry.agentSession.abort().catch((err) =>
+        log(`abort 失败 session=${msg.sessionKey} err=${err?.message ?? String(err)}`)
+      );
+      break;
+    }
     case "mode-change": {
       // Slice 3（REQ-AGENT-070）：会话模式热更新（S4 切换入口 → 主进程模式服务
       // → IPC mode-change）。生效于下一个评估（PRD §6.2：当前操作不受影响）。

@@ -429,6 +429,11 @@ function createInMemoryAgentService(options = {}) {
     // Slice 3（REQ-AGENT-096，B5）：内存内核无 auto-judge 数据面（decide 注入缝归
     // worker）——广播 no-op，保持服务接口一致。
     broadcastJudgeConfig() {},
+    // REQ-AGENT-091（BUG-010）：内存内核 runTurn 同步完成、无流式窗口可中断——
+    // 停止 = no-op，保持服务接口一致。
+    stopSession() {
+      return Promise.resolve({ ok: true });
+    },
     start() {},
     stop() {},
     kill() {},
@@ -1384,6 +1389,17 @@ function createProcessAgentService(options = {}) {
         pendingPrompts.set(id, { id, seq, resolve, reject, sessionKey: spaceKey, text, attachments });
         sendToChild(promptPayload(id, spaceKey, text, attachments));
       });
+    },
+    // REQ-AGENT-091（BUG-010）：对话手动停止。fire-and-forget——IPC 发出即返回，
+    // 停止结果经既有事件流收尾（SDK abort → 中断消息 stopReason=aborted → text_end
+    // → prompt-result），无独立回执。子进程未就绪/主进程无句柄（未建/已淘汰清理）
+    // → no-op：停止是幂等安全操作，非用户错误（worker 侧对 tombstone/未知 key 同样
+    // 静默，REQ-091 标准 3）。
+    stopSession(spaceKey) {
+      if (state !== "ready") return Promise.resolve({ ok: true });
+      if (!sessions.get(spaceKey)) return Promise.resolve({ ok: true });
+      sendToChild({ type: "stop-session", sessionKey: spaceKey });
+      return Promise.resolve({ ok: true });
     },
     // 配置变更广播（GAP 补全，tech-design 数据流 7）：
     // - identity 变更（仅）→ 存量会话热更新 systemPrompt，不重建（REQ-AGENT-004 标准 2）；

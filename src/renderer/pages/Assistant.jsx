@@ -21,6 +21,7 @@ import {
   resetSession,
   getMessages,
   sendMessage,
+  stopSession,
   listConfirmations,
   approveConfirmation,
   rejectConfirmation,
@@ -799,6 +800,12 @@ export default function Assistant() {
           busy: streaming,
         }}
         onSend={handleSend}
+        // REQ-AGENT-091（BUG-010）：流式中停止键 → POST stop（202 受理）；
+        // streaming 复位走既有 SSE text_end 链，本地不抢跑。失败静默（停止是
+        // 幂等安全操作，目标状态 =「不在生成」，网络失败时用户可再点）。
+        onStop={() => {
+          if (selectedKey) stopSession(selectedKey).catch(() => {});
+        }}
         projectDir={selectedProjectDir}
         execState={execState}
         gitState={gitState}

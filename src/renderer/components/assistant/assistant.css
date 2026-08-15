@@ -624,6 +624,21 @@
   border-radius: var(--ch-radius-lg);
 }
 
+/* —— 停止键（REQ-AGENT-091 / UX composer-stop.html）：流式中同位替换发送键。
+   ■ 方块随文字色（currentColor），次键形态由 btn-secondary 承担。 —— */
+.stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stop-btn .sq {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
 /* —— 模式工具栏（REQ-AGENT-071 / UX mode-toolbar.html）：composer 下方，Codex 式
    底部工具条；无独立背景/边框——落在 .composer-area 容器 surface 背景上（BUG-002
    容器化后继承容器背景，视觉一体无色带）。色点语义：严格红 / 标准蓝 / 自动绿

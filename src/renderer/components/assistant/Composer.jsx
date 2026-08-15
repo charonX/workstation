@@ -61,7 +61,7 @@ function formatSize(bytes) {
 
 // React 19：ref 为普通 prop（forwardRef 已并入），useImperativeHandle 暴露
 // openFilePicker 供 ModeToolbar 附件按钮触发（ChatView 持有 ref 接线）。
-export default function Composer({ readonly, readonlyReason, disabled, busy, onSend, provider = "", model = "", ref }) {
+export default function Composer({ readonly, readonlyReason, disabled, busy, onSend, onStop, provider = "", model = "", ref }) {
   const [text, setText] = useState("");
   // 附件 chips（{name, size, mimeType, kind:"image", path}）——发送载荷与消息
   // 附件块同形（REQ-098 接口契约）。attachmentsRef = 同步真相（快速连续附加
@@ -253,9 +253,19 @@ export default function Composer({ readonly, readonlyReason, disabled, busy, onS
             }
           }}
         />
-        <button type="button" className="btn btn-primary" data-testid="send-button" disabled={!canSend} onClick={submit}>
-          {busy ? "回复中…" : "发送"}
-        </button>
+        {/* REQ-AGENT-091（BUG-010，UX 参照 ux/composer-stop.html）：流式中发送键位
+            由「停止」键同位替换（原「回复中…」disabled 死键废止）；停止 = 次键形态
+            （btn-secondary，非 accent 填充）。点击仅发停止指令——streaming 复位经
+            既有 SSE text_end 事件链，UI 不本地抢跑。 */}
+        {busy ? (
+          <button type="button" className="btn btn-secondary stop-btn" data-testid="stop-button" onClick={onStop}>
+            <span className="sq" aria-hidden="true" />停止
+          </button>
+        ) : (
+          <button type="button" className="btn btn-primary" data-testid="send-button" disabled={!canSend} onClick={submit}>
+            发送
+          </button>
+        )}
       </div>
       {/* 文件选择器（附件按钮触发；accept = 图片白名单） */}
       <input

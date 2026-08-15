@@ -10,6 +10,9 @@
 //   POST /api/agent/sessions/:spaceKey/reset           → 200 { spaceKey: 新 }（UI 空间 = 同分组
 //                                                      新建会话并切换，旧行保留可读可继续，F4 语义）；
 //                                                      feishu:* → 403 E-SESSION-READONLY
+//   POST /api/agent/sessions/:spaceKey/stop            → 202（REQ-AGENT-091，BUG-010 对话手动
+//                                                      停止；idle/不存在/未起子进程均 no-op 202，
+//                                                      幂等安全操作不报错、不启动子进程）
 // Slice 2（REQ-AGENT-029 分组列表与历史回看）端点：
 //   GET  /api/agent/sessions                          → 200 { general, projects, feishu }
 //                                                     （完整分组：join projects 取名 / 孤儿标记 /
@@ -257,6 +260,12 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
   if (tail.length === 1 && tail[0] === "reset") {
     if (req.method === "POST") return handleReset(res, spaceKey, store);
+    return notFound(res);
+  }
+
+  // 对话手动停止（REQ-AGENT-091，BUG-010）：POST stop → 202 受理。
+  if (tail.length === 1 && tail[0] === "stop") {
+    if (req.method === "POST") return handleStop(res, spaceKey, store, context);
     return notFound(res);
   }
 
@@ -514,6 +523,20 @@ function handleReset(res, spaceKey, store) {
   if (!newKey) return sendError(res, 400, "E-SESSION-CREATE", "不支持的空间 key");
   store.getOrCreate(newKey);
   return ok(res, { spaceKey: newKey });
+}
+
+// 对话手动停止（REQ-AGENT-091，BUG-010）：停止 = 幂等安全操作——store 无行 /
+// 子进程未起 / 会话 idle 或已淘汰均 202 no-op（不报错、不因此启动子进程——
+// peekAgentService 惰性纪律，与 events/mode 端点同型）。有活跃服务 → 发
+// stop-session IPC（fire-and-forget，停止结果经 SSE 事件流自然收尾）。
+function handleStop(res, spaceKey, store, context) {
+  const row = store.get(spaceKey);
+  if (!row) return ok(res, { stopped: false }, 202);
+  const svc = peekAgentService(context);
+  if (svc && typeof svc.stopSession === "function") {
+    svc.stopSession(spaceKey);
+  }
+  return ok(res, { stopped: true }, 202);
 }
 
 // —— 会话模式端点（REQ-AGENT-071/072，Slice 4）——

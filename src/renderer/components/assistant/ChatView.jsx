@@ -22,6 +22,7 @@ export default function ChatView({
   onGoConfigure,
   composer,
   onSend,
+  onStop,
   projectDir,
   execState,
   gitState,
@@ -95,6 +96,7 @@ export default function ChatView({
           provider={sessionProvider}
           model={sessionModelId}
           onSend={onSend}
+          onStop={onStop}
         />
 
         {/* 模式工具栏（REQ-AGENT-071）：composer 下方——既有渲染顺序契约
