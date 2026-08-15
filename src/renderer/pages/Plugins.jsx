@@ -62,6 +62,22 @@ export default function Plugins() {
   // 行内项目 popover 打开态（当前打开的插件/MCP 名）。
   const [openPluginPop, setOpenPluginPop] = useState(null);
   const [openMcpPop, setOpenMcpPop] = useState(null);
+  // BUG-009：popover 为 fixed 视口定位（CSS 见 Plugins.css），打开时按 pill 坐标定位；
+  // 点击弹层外关闭（对齐 UX 参照 plugins-page.html 的 document click-away）。
+  const [popPos, setPopPos] = useState({ top: 0, left: 0 });
+
+  const togglePop = (kind, name) => (e) => {
+    const isOpen = (kind === "plugin" ? openPluginPop : openMcpPop) === name;
+    if (isOpen) {
+      setOpenPluginPop(null);
+      setOpenMcpPop(null);
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    setPopPos({ top: r.bottom + 6, left: r.left });
+    setOpenPluginPop(kind === "plugin" ? name : null);
+    setOpenMcpPop(kind === "mcp" ? name : null);
+  };
 
   // 添加插件弹窗。
   const [addPluginOpen, setAddPluginOpen] = useState(false);
@@ -151,6 +167,18 @@ export default function Plugins() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // BUG-009：点击弹层外关闭 popover（对齐 UX 参照 click-away 行为）。
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!e.target.closest(".toggle-cell")) {
+        setOpenPluginPop(null);
+        setOpenMcpPop(null);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, []);
 
   // ---------- 添加插件 ----------
   const openAddPlugin = () => {
@@ -415,12 +443,12 @@ export default function Plugins() {
                           type="button"
                           className={`toggle-pill${count > 0 ? " on" : ""}`}
                           data-testid="plugin-project-toggle"
-                          onClick={() => setOpenPluginPop(openPluginPop === p.name ? null : p.name)}
+                          onClick={togglePop("plugin", p.name)}
                         >
                           {count > 0 ? `${count} 个项目 ▸` : "未启用 ▸"}
                         </button>
                         {openPluginPop === p.name && (
-                          <div className="toggle-pop open" data-testid="plugin-project-pop">
+                          <div className="toggle-pop open" data-testid="plugin-project-pop" style={popPos}>
                             <div className="pop-title">按项目启用（写入项目 .pi/settings.json）</div>
                             {projects.map((proj) => (
                               <div
@@ -493,12 +521,12 @@ export default function Plugins() {
                     type="button"
                     className={`toggle-pill${mcpCount(s.name) > 0 ? " on" : ""}`}
                     data-testid="mcp-project-toggle"
-                    onClick={() => setOpenMcpPop(openMcpPop === s.name ? null : s.name)}
+                    onClick={togglePop("mcp", s.name)}
                   >
                     {mcpCount(s.name) > 0 ? `${mcpCount(s.name)} 个项目 ▸` : "未启用 ▸"}
                   </button>
                   {openMcpPop === s.name && (
-                    <div className="toggle-pop open" data-testid="mcp-project-pop">
+                    <div className="toggle-pop open" data-testid="mcp-project-pop" style={popPos}>
                       <div className="pop-title">按项目启用</div>
                       {projects.map((proj) => (
                         <div key={proj.id} className="pop-row" onClick={() => toggleMcpProject(s.name, proj.id)}>

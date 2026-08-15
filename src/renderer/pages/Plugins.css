@@ -154,9 +154,10 @@
 }
 
 .toggle-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  /* BUG-009：fixed 视口定位（top/left 由 JSX 按 pill 坐标注入）——原 absolute 贴
+     单元格向下展开，单行/末行被 .plugin-section.section(overflow:hidden) 整体裁剪。
+     对齐 UX 参照 ux/plugins-page.html（2026-08-15 修订）。 */
+  position: fixed;
   z-index: 20;
   min-width: 220px;
   background: var(--ch-surface);
