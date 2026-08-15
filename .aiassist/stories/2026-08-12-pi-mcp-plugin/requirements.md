@@ -159,6 +159,24 @@
 2. 业务错误退出码非零 + stderr 含错误码（CLI 测试）。
 3. enable/disable 与 UI 操作结果一致（CLI 测试：状态对照）。
 
+## REQ-AGENT-091 对话手动停止（BUG-010 req-gap 就地补全 2026-08-15，人拍板「当作本 story bug 修」）
+
+- 优先级 P0 / 必须 / cross-module / Composer UI + HTTP + agentService + worker / agent-dialogue / conversation-space / 集成+E2E
+- 背景：「对话无法手动停止」——pi SDK `AgentSession.abort()` 存在但 worker/HTTP/UI/REQ 四层全链路未接。本 REQ 补 U 形链路（UI 停止键 → HTTP → IPC → SDK abort）。
+- 接口契约：
+  - HTTP：`POST /api/agent/sessions/:spaceKey/stop` → 202 受理（对齐 messages 受理语义）；会话 idle/不存在/已淘汰 → 202 no-op（不报错）
+  - IPC：`{ type:"stop-session", sessionKey }`（fire-and-forget 无回执；停止结果经既有 SSE 事件流收尾：SDK abort → 中断消息 stopReason=aborted → text_end → UI streaming 复位）
+  - worker：`stop-session` → `lifecycle.get(sessionKey)?.agentSession.abort()`；未知/已淘汰 key → 静默 no-op + log（不发 session-error——停止非用户错误）
+  - UI（UX 参照 ux/composer-stop.html）：Composer 流式中（busy）发送键位变「停止」键 `data-testid="stop-button"`；idle 态无停止键（恢复原发送键）
+- 语义边界（v1）：已生成文本保留在气泡（中断消息照常落盘呈现，不加「已停止」标记——观感决策）；挂起的确认卡不随停止撤销（用户仍可手动决定）；停止中断当前生成+工具循环，不删历史、不换代 sessionRef
+
+验收标准：
+1. 流式中停止 → 生成中断且已生成文本保留在气泡；输入框恢复可用（集成：FAUX 可编程延迟响应 + stop → 事件流收尾 + 气泡文本断言）。
+2. idle 态/不存在会话 stop → 202 no-op 不报错（API）。
+3. worker 收到未知 key 的 stop-session → 静默 no-op（无 session-error 事件；集成）。
+4. UI：流式中停止键可见可点、idle 态发送键复原（E2E 结构断言）；点击停止后流式收尾、可立即发送下一条并正常回复（E2E：FAUX 驱动）。
+5. 停止后会话不损坏：再 prompt 正常回复（集成：stop 后紧跟 prompt，回声正常）。
+
 ---
 
 ## REFLECT 人工验收备注（不进 REQ 断言）
@@ -183,5 +201,6 @@
 | REQ-AGENT-088 | B7 | plugin-management | mcp-server | 通道会话 | 集成 |
 | REQ-AGENT-089 | B8 | plugin-management | extension | 故障 fixture | 集成 |
 | REQ-AGENT-090 | （CLI seam） | command-interface | cli | CLI | CLI 测试 |
+| REQ-AGENT-091 | （BUG-010 补全） | agent-dialogue | conversation-space | HTTP + worker IPC + Composer | 集成+E2E |
 
-预期测试文件路径：`tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/{api,cli,e2e}/`、`tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/{api,e2e}/`（REQ-AGENT-090 归 `tests/capabilities/command-interface/cli/2026-08-12-pi-mcp-plugin/cli/`）。
+预期测试文件路径：`tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/{api,cli,e2e}/`、`tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/{api,e2e}/`（REQ-AGENT-090 归 `tests/capabilities/command-interface/cli/2026-08-12-pi-mcp-plugin/cli/`；REQ-AGENT-091 归 `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-pi-mcp-plugin/{api,e2e}/`）。
