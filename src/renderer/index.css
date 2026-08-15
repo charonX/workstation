@@ -1888,7 +1888,10 @@ body {
 }
 
 /* Toggle switch */
+/* BUG-008：须 inline-block——span 用法（Plugins 页行内/弹层）下 inline 元素宽高失效塌缩；
+   button 用法（Sources 页）本就 inline-block，加上无回归面。 */
 .switch {
+  display: inline-block;
   position: relative;
   width: 32px;
   height: 18px;

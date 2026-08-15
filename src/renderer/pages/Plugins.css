@@ -149,7 +149,7 @@
 
 .toggle-pill.on {
   border-color: var(--ch-accent);
-  color: var(--ch-accent-text);
+  color: var(--ch-accent);
   background: var(--ch-accent-soft);
 }
 
@@ -268,7 +268,7 @@
 
 .seg button.active {
   background: var(--ch-accent-soft);
-  color: var(--ch-accent-text);
+  color: var(--ch-accent);
   font-weight: var(--ch-weight-medium);
 }
 
@@ -301,7 +301,7 @@
 }
 
 .btn-tertiary:hover {
-  color: var(--ch-accent-text);
+  color: var(--ch-accent);
 }
 
 .btn-tertiary.danger:hover {

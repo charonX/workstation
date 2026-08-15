@@ -26,6 +26,7 @@ import {
   setPluginProjectEnabled,
   listMcpServers,
   addMcpServer,
+  updateMcpServer,
   removeMcpServer,
   setMcpGlobalEnabled,
   setMcpProjectEnabled,
@@ -69,8 +70,9 @@ export default function Plugins() {
   const [pluginAddError, setPluginAddError] = useState(null);
   const [pluginAdding, setPluginAdding] = useState(false);
 
-  // 添加 MCP 弹窗。
+  // 添加/编辑 MCP 弹窗（editingMcp 非空 = 编辑模式，REQ-084 CRUD-U，BUG-008）。
   const [addMcpOpen, setAddMcpOpen] = useState(false);
+  const [editingMcp, setEditingMcp] = useState(null);
   const [mcpForm, setMcpForm] = useState({
     name: "",
     type: "stdio",
@@ -180,17 +182,44 @@ export default function Plugins() {
 
   // ---------- 添加 MCP ----------
   const openAddMcp = () => {
+    setEditingMcp(null);
     setMcpForm({ name: "", type: "stdio", command: "", args: "", env: "", url: "", auth: "none", token: "", headers: "" });
+    setMcpFormError(null);
+    setAddMcpOpen(true);
+  };
+
+  // ---------- 编辑 MCP（BUG-008，REQ-084 CRUD-U） ----------
+  // 回填行数据；name 主键只读；token 永不回填（已签：API 不回显明文），留空 = 保留。
+  const openEditMcp = (server) => {
+    const kvLines = (obj) =>
+      obj && typeof obj === "object"
+        ? Object.entries(obj).map(([k, v]) => `${k}=${v}`).join("\n")
+        : "";
+    setEditingMcp(server);
+    setMcpForm({
+      name: server.name,
+      type: server.type,
+      command: server.command ?? "",
+      args: Array.isArray(server.args) ? server.args.join("\n") : "",
+      env: kvLines(server.env),
+      url: server.url ?? "",
+      auth: server.auth ?? "none",
+      token: "",
+      headers: kvLines(server.headers),
+    });
     setMcpFormError(null);
     setAddMcpOpen(true);
   };
 
   const handleMcpSave = async () => {
     const body = {
-      name: mcpForm.name.trim(),
       type: mcpForm.type,
-      enabled: true,
     };
+    // 新增模式才送 name/enabled；编辑模式 name 是路径主键，enabled 开关不碰。
+    if (!editingMcp) {
+      body.name = mcpForm.name.trim();
+      body.enabled = true;
+    }
     if (mcpForm.type === "stdio") {
       body.command = mcpForm.command.trim();
       body.args = mcpForm.args
@@ -203,15 +232,23 @@ export default function Plugins() {
       body.url = mcpForm.url.trim();
       body.auth = mcpForm.auth;
       // BUG-006：bearer token 加密存凭据库（服务端 secretStore），表单提交后不回显
-      if (mcpForm.auth === "bearer") body.token = mcpForm.token.trim();
+      // BUG-008：编辑模式 token 留空 = 保留原 token（不送字段），填写 = 轮换
+      if (mcpForm.auth === "bearer" && (!editingMcp || mcpForm.token.trim() !== "")) {
+        body.token = mcpForm.token.trim();
+      }
       const headers = parseKeyValueLines(mcpForm.headers);
       if (headers !== null) body.headers = headers;
     }
     setMcpSaving(true);
     setMcpFormError(null);
     try {
-      await addMcpServer(body);
+      if (editingMcp) {
+        await updateMcpServer(editingMcp.name, body);
+      } else {
+        await addMcpServer(body);
+      }
       setAddMcpOpen(false);
+      setEditingMcp(null);
       await reload();
     } catch (err) {
       setMcpFormError(err?.message || String(err));
@@ -474,6 +511,9 @@ export default function Plugins() {
                   )}
                 </td>
                 <td style={{ textAlign: "right" }}>
+                  <button type="button" className="btn-tertiary" data-testid="mcp-edit-button" onClick={() => openEditMcp(s)}>
+                    编辑
+                  </button>
                   <button type="button" className="btn-tertiary danger" onClick={() => handleRemoveMcp(s)}>
                     删除
                   </button>
@@ -546,12 +586,12 @@ export default function Plugins() {
         </div>
       )}
 
-      {/* ============ 添加 MCP 服务弹窗（stdio / http 类型切换） ============ */}
+      {/* ============ 添加/编辑 MCP 服务弹窗（stdio / http 类型切换） ============ */}
       {addMcpOpen && (
         <div className="modal-overlay" data-testid="mcp-form-modal" onClick={() => setAddMcpOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className="modal-header">
-              <h2 className="modal-title">添加 MCP 服务</h2>
+              <h2 className="modal-title">{editingMcp ? "编辑 MCP 服务" : "添加 MCP 服务"}</h2>
               <button type="button" className="icon-btn" onClick={() => setAddMcpOpen(false)} aria-label="close">✕</button>
             </div>
             <div className="modal-body">
@@ -561,6 +601,7 @@ export default function Plugins() {
                   data-testid="mcp-name-input"
                   placeholder="local-db"
                   value={mcpForm.name}
+                  disabled={!!editingMcp}
                   onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })}
                 />
               </div>
@@ -662,7 +703,7 @@ export default function Plugins() {
                         data-testid="mcp-token-input"
                         type="password"
                         className="mono"
-                        placeholder="粘贴 token，保存后不再回显"
+                        placeholder={editingMcp ? "留空 = 保持原 token 不变；填写 = 轮换" : "粘贴 token，保存后不再回显"}
                         value={mcpForm.token}
                         onChange={(e) => setMcpForm({ ...mcpForm, token: e.target.value })}
                       />

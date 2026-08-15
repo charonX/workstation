@@ -4,6 +4,7 @@
 //
 //   GET    /api/mcp                               → mcpService.list()
 //   POST   /api/mcp                               → mcpService.create
+//   PUT    /api/mcp/:name                         → mcpService.update（BUG-008）
 //   DELETE /api/mcp/:name                         → mcpService.remove
 //   POST   /api/mcp/:name/project-enable  { projectId, enabled } → mcpService.setProjectEnabled
 //   POST   /api/mcp/:name/global-enabled { enabled }             → mcpService.setGlobalEnabled
@@ -44,6 +45,17 @@ export async function handleMcp(req, res, body, pathParts) {
   }
 
   const name = decodeParam(pathParts[0]);
+
+  // REQ-AGENT-084 CRUD-U（BUG-008）：PUT 编辑 server（部分字段补丁；token 缺省=保留）。
+  if (pathParts.length === 1 && req.method === "PUT") {
+    try {
+      return ok(res, await getService().update(name, body || {}));
+    } catch (err) {
+      // 对齐 DELETE 先例：不存在 → 404（service 对缺失名抛「不存在」文案错误）。
+      if (err?.message?.includes("不存在")) return notFound(res, err.message);
+      return mapError(res, err);
+    }
+  }
 
   if (pathParts.length === 1 && req.method === "DELETE") {
     try {

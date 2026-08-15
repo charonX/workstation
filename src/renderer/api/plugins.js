@@ -1,4 +1,4 @@
-import { get, post, del } from "./client.js";
+import { get, post, put, del } from "./client.js";
 
 // 插件 HTTP API（REQ-AGENT-083/090 支撑面，见 src/http/routes/plugins.js）：
 //   GET    /api/plugins[?project=<id>]         → 插件清单（内置 pi-mcp-adapter 行由 HTTP 层合成）
@@ -28,6 +28,7 @@ export function setPluginProjectEnabled(name, projectId, enabled) {
 // MCP server HTTP API（REQ-AGENT-084/090 支撑面，见 src/http/routes/mcp.js）：
 //   GET    /api/mcp                             → mcpService.list()
 //   POST   /api/mcp { name, type, command?, args?, url?, ... } → create
+//   PUT    /api/mcp/:name { 部分字段 }           → update（BUG-008；token 缺省=保留）
 //   DELETE /api/mcp/:name                       → remove
 //   POST   /api/mcp/:name/global-enabled { enabled }          → 全局开关
 //   POST   /api/mcp/:name/project-enable { projectId, enabled } → 按项目启用
@@ -37,6 +38,10 @@ export function listMcpServers() {
 
 export function addMcpServer(body) {
   return post("/api/mcp", body);
+}
+
+export function updateMcpServer(name, body) {
+  return put(`/api/mcp/${encodeURIComponent(name)}`, body);
 }
 
 export function removeMcpServer(name) {
