@@ -4,6 +4,13 @@
   "startingPoints": [],
   "cards": [
     {
+      "path": "composer-stop.html",
+      "group": "dialogue",
+      "viewport": "720x420",
+      "subtitle": "",
+      "name": "composer-stop"
+    },
+    {
       "path": "oauth-present.html",
       "group": "dialogue",
       "viewport": "1080x720",

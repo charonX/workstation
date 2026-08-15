@@ -11,7 +11,7 @@
   ],
   "primaryDesignSystem": "global",
   "createdAt": "2026-08-12T10:53:21.391Z",
-  "updatedAt": "2026-08-12T11:02:21.565Z",
+  "updatedAt": "2026-08-15T12:59:49.054Z",
   "assets": {
     "插件管理页（插件清单 + MCP 服务）": {
       "versions": [
@@ -37,6 +37,15 @@
           "path": "oauth-present.html",
           "createdAt": "2026-08-12T11:02:21.565Z",
           "status": "needs-review"
+        }
+      ]
+    },
+    "对话输入区 · 手动停止态（idle 对照 + 流式停止键）": {
+      "versions": [
+        {
+          "path": "composer-stop.html",
+          "createdAt": "2026-08-15T12:59:49.054Z",
+          "status": "approved"
         }
       ]
     }

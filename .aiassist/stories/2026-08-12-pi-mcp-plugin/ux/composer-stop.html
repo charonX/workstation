@@ -1,0 +1,88 @@
+<!-- @dsCard group="dialogue" name="composer-stop" viewport="720x420" -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对话输入区 · 手动停止态 — UX 原型</title>
+<link rel="stylesheet" href="_ds/global/tokens.css">
+<link rel="stylesheet" href="_ds/global/styles.css">
+<style>
+  /* ============ 原型舞台 ============ */
+  body { background: var(--ch-bg); color: var(--ch-text); font-family: var(--ch-font-sans); }
+  .stage { max-width: 720px; margin: 24px auto; padding: 0 var(--ch-space-4); }
+  .stage-note { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-bottom: var(--ch-space-2); }
+  .case { margin-bottom: var(--ch-space-6); }
+  .case-title { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-bottom: var(--ch-space-2); }
+
+  /* ============ 输入区（对齐 conversation-toolbar.html composer-row 结构） ============ */
+  .composer { border: 1px solid var(--ch-border); border-radius: var(--ch-radius-xl); background: var(--ch-surface); padding: var(--ch-space-3); }
+  .composer-row { display: flex; align-items: flex-end; gap: var(--ch-space-2); }
+  .composer-input {
+    flex: 1; min-height: 40px; max-height: 120px; resize: none;
+    border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+    background: var(--ch-surface); color: var(--ch-text);
+    padding: var(--ch-space-2) var(--ch-space-3); font-size: var(--ch-text-sm);
+    font-family: var(--ch-font-sans);
+  }
+
+  /* 发送键（idle 态，既有形态）：accent 填充 */
+  .send-btn {
+    padding: var(--ch-space-2) var(--ch-space-4);
+    background: var(--ch-accent); color: #fff; border: none;
+    border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); cursor: pointer;
+  }
+  .send-btn:disabled { opacity: .45; cursor: default; }
+
+  /* 停止键（流式态，本原型新增）：同位替换发送键；次要动作 = surface 底 + border，
+     非 accent 填充（停止非主行动）；■ 图标 = 业界通用停止符号。可点（cursor pointer）——
+     替代现状「回复中…」disabled 死键（BUG-010 痛点：流式中无任何可点停止手段）。 */
+  .stop-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: var(--ch-space-2) var(--ch-space-4);
+    background: var(--ch-surface); color: var(--ch-text-secondary);
+    border: 1px solid var(--ch-border-strong); border-radius: var(--ch-radius-md);
+    font-size: var(--ch-text-sm); cursor: pointer;
+  }
+  .stop-btn:hover { border-color: var(--ch-text-tertiary); color: var(--ch-text); }
+  .stop-btn .sq { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+
+  /* 流式中的消息气泡尾部光标（既有流式呈现，对照用） */
+  .bubble-stream {
+    margin-bottom: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-3);
+    background: var(--ch-surface-high); border-radius: var(--ch-radius-lg);
+    font-size: var(--ch-text-sm); color: var(--ch-text);
+  }
+  .cursor { display: inline-block; width: 8px; height: 14px; background: var(--ch-accent); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="stage-note">REQ-AGENT-091（BUG-010 就地补全）· 对话手动停止——Composer 流式中发送键位变「停止」键。语义边界：已生成文本保留（不加中断标记）；挂起确认卡不随停止撤销；停止后可立即发下一条。</div>
+
+  <!-- ============ 态 1：idle（既有形态，对照基准） ============ -->
+  <div class="case">
+    <div class="case-title">态 1 · idle（既有，对照基准）——发送键，空输入 disabled</div>
+    <div class="composer">
+      <div class="composer-row">
+        <textarea class="composer-input" placeholder="随心输入…"></textarea>
+        <button class="send-btn" data-testid="send-button" disabled>发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 态 2：流式中（新增停止键） ============ -->
+  <div class="case">
+    <div class="case-title">态 2 · 流式中（本原型新增）——发送键位变「停止」键（可点）；输入框保持可编辑（排队语义不变）</div>
+    <div class="bubble-stream">正在生成的回复文本保留在气泡中，停止后原样留存<span class="cursor"></span></div>
+    <div class="composer">
+      <div class="composer-row">
+        <textarea class="composer-input" placeholder="随心输入…">中途想到补充，可以直接打字…</textarea>
+        <button class="stop-btn" data-testid="stop-button"><span class="sq"></span>停止</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
