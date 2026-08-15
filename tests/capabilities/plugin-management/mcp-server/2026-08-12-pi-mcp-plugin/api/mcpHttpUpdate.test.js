@@ -63,7 +63,7 @@ describe("REQ-AGENT-084 MCP server HTTP update（BUG-008 回归）", () => {
   async function seedHttp(overrides = {}) {
     const res = mockRes();
     await handleMcp(
-      { method: "POST" },
+      { method: "POST", url: "/api/mcp", headers: { host: "test.local" } },
       res,
       {
         name: "firecrawl",
@@ -90,7 +90,7 @@ describe("REQ-AGENT-084 MCP server HTTP update（BUG-008 回归）", () => {
     assert.equal(res.statusCode, 200, `PUT 应成功: ${JSON.stringify(res.body)}`);
 
     const listRes = mockRes();
-    await handleMcp({ method: "GET" }, listRes, undefined, []);
+    await handleMcp({ method: "GET", url: "/api/mcp", headers: { host: "test.local" } }, listRes, undefined, []);
     const row = listRes.body.find((s) => s.name === "firecrawl");
     assert.equal(row.url, "https://new.example.com/mcp", "list 反映新 url");
     assert.deepEqual(row.headers, { X_Team: "core" }, "list 反映新 headers");
