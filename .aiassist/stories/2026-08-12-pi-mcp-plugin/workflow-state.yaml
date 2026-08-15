@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 7    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 8    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -29,6 +29,7 @@ history:
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-005（code-defect）：agentDir 真源统一为 <cwd>/.agent-home（HTTP 层与 worker OPC_AGENT_HOME 同源；保留测试隔离/显式注入），commit eb6101a [bugfix]。三处 REFLECT 裁决完成：飞书走通用空间✓；B1 装配层过滤 ADR-024 姿态补充✓；agentDir 真源 A✓"}
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-006（req-gap，人确认+拍板「表单输入+secretStore 加密」）：bearer token 无录入点——REQ-084 契约/已批准 HTML/实现三层一致地漏 token 字段。就地补全（不退 phase）：REQ 契约+AC6（d7dab13 [docs]）、UX 加 token 输入框+重生成 preview（dd50033 [ux]）、回归测试 6a/6b/6c+E2E 先红（3bd6022 [test]）、mcpBridge 标准4 契约适配（9ba0b99 [test]）、实现 4943dfd [bugfix]：secretStore 加密落 token_enc 列→快照解密映射桥 bearerToken。单测全绿+E2E 9/9；唯一预存 fail=sessionMessage 409（干净 HEAD 复现，非本 bug，疑 <cwd>/.agent-home 残留致'未配置'前提失效）"}
   - {at: 2026-08-14, from: BUG, to: BUG, note: "BUG-007（test-gap，人确认）：BUG-006 尾注的预存 fail 根治——sessionMessage「agent 未配置→409」实际是同进程 describe 间污染：前一 describe configureAgent 落盘共享临时 configDir 的 settings.json，ADR-026 slice-1（1dfeff8）后 resetSettings E13『磁盘为真相不覆盖』使后一 describe 的『未配置』前提失效（.agent-home 假设实证排除；单跑全绿/连跑必红）。修测试侧 beforeEach 显式删 settings.json+重载默认，断言不动（0002a62 [test]）。全量单元 847/847 绿"}
+  - {at: 2026-08-15, from: BUG, to: BUG, note: "BUG-008（症状1=code-defect + 症状2=req-gap，人确认）：MCP 服务行缺「编辑」+ 开关/pill 颜色不对。根因1：REQ-084 契约 CRUD 但 HTTP 面无 U（service.update 存在未暴露）+ UI 无编辑按钮，测试未覆盖（E2E 无编辑用例/API 直调 service）。根因2：已批准 UX HTML 本身缺陷被实现忠实复刻——.switch 无 display（span inline 塌缩，E2E 实测 2px 竖条）、.toggle-pill.on/.seg.active/.btn-tertiary:hover 三处 accent-text 白字-on-soft 不可读。就地补全 UX HTML（504ead8/addfb77 [ux]）+ 回归测试先红（9816c6f [test]，API 3 + E2E 2）+ 修复（5ca1c0a [bugfix]：PUT 路由/编辑按钮弹窗回填 name 只读 token 留空保留/全局 .switch inline-block/Plugins.css 三色）+ fixture 修正（1a58af2 [test]，X-Team→X_Team 合 KEY 契约）。API 11/11、E2E 11/11、全量单元 850/850 绿。同源残留（未修，提示另起 bug）：permission-mcp-group.html 的 .scope-seg.active/.override-tag accent-text 误用、Plugins.css .badge-npm 白字-on-soft"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
