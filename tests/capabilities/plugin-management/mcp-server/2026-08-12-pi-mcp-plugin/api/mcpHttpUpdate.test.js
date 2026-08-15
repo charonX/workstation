@@ -84,7 +84,7 @@ describe("REQ-AGENT-084 MCP server HTTP update（BUG-008 回归）", () => {
     await handleMcp(
       { method: "PUT" },
       res,
-      { url: "https://new.example.com/mcp", headers: { "X-Team": "core" } },
+      { url: "https://new.example.com/mcp", headers: { X_Team: "core" } },
       ["firecrawl"]
     );
     assert.equal(res.statusCode, 200, `PUT 应成功: ${JSON.stringify(res.body)}`);
@@ -93,7 +93,7 @@ describe("REQ-AGENT-084 MCP server HTTP update（BUG-008 回归）", () => {
     await handleMcp({ method: "GET" }, listRes, undefined, []);
     const row = listRes.body.find((s) => s.name === "firecrawl");
     assert.equal(row.url, "https://new.example.com/mcp", "list 反映新 url");
-    assert.deepEqual(row.headers, { "X-Team": "core" }, "list 反映新 headers");
+    assert.deepEqual(row.headers, { X_Team: "core" }, "list 反映新 headers");
   });
 
   it("标准 7b：PUT 带 token = 轮换；不带 token = 保留（BUG-006 已签语义）", async () => {
