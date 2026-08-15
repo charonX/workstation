@@ -225,6 +225,35 @@ test.describe("REQ-AGENT-084 MCP server 管理表单（E2E）", () => {
     await expect(firstWindow.locator("text=keep-me")).toHaveCount(0);
   });
 
+  // BUG-009 回归（req-gap 就地补全，UX 参照 plugins-page.html 弹层 fixed 视口定位）：
+  // 单行 MCP 表点「项目启用」pill → 弹层须真实可见。原 absolute 贴单元格向下展开，
+  // 单行/末行时整体超出 .section(overflow:hidden) 边界被裁剪（用户实证「点了没反应」）。
+  // toBeVisible 不查祖先裁剪，故用命中测试锚定「真实可见」：
+  // 弹层内项目行中心点 elementFromPoint 必须落在弹层内部（被裁剪时命中卡片外背景）。
+  test("BUG-009：单行 MCP 表点「项目启用」→ 弹层可见且不被卡片裁剪", async () => {
+    await seedViaApi(apiBaseUrl, {
+      path: "/api/mcp",
+      body: { name: "e2e-pop", type: "http", url: "https://pop.example.com/mcp" },
+    });
+    await seedDemoProject(apiBaseUrl);
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
+    const row = firstWindow.locator("[data-testid='mcp-row-e2e-pop']");
+    await expect(row).toBeVisible();
+
+    await row.locator("[data-testid='mcp-project-toggle']").click();
+    const pop = row.locator("[data-testid='mcp-project-pop']");
+    await expect(pop).toBeVisible();
+
+    const popRow = pop.locator(".pop-row", { hasText: "demo" });
+    await expect(popRow).toHaveCount(1);
+    const hit = await popRow.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hitEl = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return hitEl != null && (hitEl === el || el.contains(hitEl));
+    });
+    expect(hit).toBe(true);
+  });
+
   // BUG-008 回归（req-gap 就地补全后的 UX 结构契约）：
   // 全局开关 switch 须为可见尺寸（UX 定稿 32×18），非 inline 塌缩；
   // 项目启用 pill on 态文字为 accent 色（可读），非白字不可见。
