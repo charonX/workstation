@@ -3,6 +3,7 @@
 // CLI/HTTP 共享服务层，CLI 即测试 seam）。
 //
 //   GET    /api/mcp                               → mcpService.list()
+//   GET    /api/mcp?project=<id>                  → mcpService.list(projectId) 项目感知（BUG-012）
 //   POST   /api/mcp                               → mcpService.create
 //   PUT    /api/mcp/:name                         → mcpService.update（BUG-008）
 //   DELETE /api/mcp/:name                         → mcpService.remove
@@ -29,7 +30,11 @@ export async function handleMcp(req, res, body, pathParts) {
   if (pathParts.length === 0) {
     if (req.method === "GET") {
       try {
-        return ok(res, getService().list());
+        // BUG-012：?project=<id> 项目感知清单（对齐 plugins.js:129 先例）——
+        // 项目启用弹层的真实启用态数据源。
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const projectId = url.searchParams.get("project") || undefined;
+        return ok(res, getService().list(projectId));
       } catch (err) {
         return mapError(res, err);
       }

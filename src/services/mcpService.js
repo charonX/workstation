@@ -230,8 +230,23 @@ export function createMcpService() {
       return getById(d, id);
     },
 
-    list() {
+    list(projectId) {
       const d = db();
+      // BUG-012：项目感知模式（HTTP ?project=，对齐 plugins?project= 先例）——
+      // row.enabled = 该项目启用态（无启用行缺省 false）；无 projectId 保持全局开关语义。
+      // 管理页「项目启用」弹层依赖真实项目启用态，不得拿全局开关冒充（否则启用行永不落库）。
+      if (projectId) {
+        const rows = d
+          .prepare(
+            `SELECT s.*, COALESCE((
+               SELECT e.enabled FROM mcp_project_enablement e
+               WHERE e.serverId = s.id AND e.projectId = ?
+             ), 0) AS project_enabled
+             FROM mcp_servers s ORDER BY s.name`
+          )
+          .all(projectId);
+        return rows.map((row) => ({ ...rowToServerRow(row), enabled: row.project_enabled === 1 }));
+      }
       const rows = d.prepare("SELECT * FROM mcp_servers ORDER BY name").all();
       return rows.map(rowToServerRow);
     },

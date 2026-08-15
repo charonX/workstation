@@ -32,8 +32,11 @@ export function setPluginProjectEnabled(name, projectId, enabled) {
 //   DELETE /api/mcp/:name                       → remove
 //   POST   /api/mcp/:name/global-enabled { enabled }          → 全局开关
 //   POST   /api/mcp/:name/project-enable { projectId, enabled } → 按项目启用
-export function listMcpServers() {
-  return get("/api/mcp");
+export function listMcpServers(projectId) {
+  // BUG-012：带 projectId 时走项目感知清单（row.enabled = 该项目启用态）——
+  // 对齐 listPlugins(projectId) 先例；无参保持全局开关语义。
+  const endpoint = projectId ? `/api/mcp?project=${encodeURIComponent(projectId)}` : "/api/mcp";
+  return get(endpoint);
 }
 
 export function addMcpServer(body) {

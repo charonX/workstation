@@ -122,7 +122,9 @@ export default function Plugins() {
       try {
         const [pRows, mRows] = await Promise.all([
           listPlugins(proj.id),
-          listMcpServers(),
+          // BUG-012：必须带 proj.id 走项目感知清单——无参拿到的是全局开关，
+          // 会拿全局开关冒充项目启用态（弹层假 on、真实启用行永不落库）。
+          listMcpServers(proj.id),
         ]);
         for (const row of pRows ?? []) {
           if (row.builtin) continue;
