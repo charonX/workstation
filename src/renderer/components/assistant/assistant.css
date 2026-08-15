@@ -1035,6 +1035,11 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* BUG-010：用户气泡为 --ch-accent 实底（assistant.html 参照），全局 .md a 的 accent
+   链接色与底色相同会隐身——气泡内链接继承气泡文字色（--ch-accent-text），保留下划线。 */
+.msg.user .bubble .md a {
+  color: inherit;
+}
 .assistant-zone .md code {
   font-family: var(--ch-font-mono);
   font-size: 0.9em;
