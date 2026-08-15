@@ -254,6 +254,38 @@ test.describe("REQ-AGENT-084 MCP server 管理表单（E2E）", () => {
     expect(hit).toBe(true);
   });
 
+  // BUG-012 回归（code-defect，人确认 2026-08-15）：MCP「项目启用」弹层必须显示
+  // 真实启用态——buildProjectMaps 曾调无参 listMcpServers()，拿全局开关冒充项目
+  // 启用态（全局开 → 每个项目都显示 on），真实启用行永不落库 → 桥 0 server。
+  // 对齐插件侧标准 3 的往返语义：初始 off → 点击启用 → 刷新持久化。
+  test("BUG-012：弹层初始 off（不被全局开关冒充）→ 点击启用 on → 刷新后保持", async () => {
+    await seedViaApi(apiBaseUrl, {
+      path: "/api/mcp",
+      body: { name: "e2e-proj", type: "http", url: "https://proj.example.com/mcp" },
+    });
+    await seedDemoProject(apiBaseUrl);
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
+    const row = firstWindow.locator("[data-testid='mcp-row-e2e-proj']");
+    await expect(row).toBeVisible();
+
+    // 未启用时 pill 显示「未启用」，弹层 demo 行 switch 为 off
+    await expect(row.locator("[data-testid='mcp-project-toggle']")).toContainText("未启用");
+    await row.locator("[data-testid='mcp-project-toggle']").click();
+    const pop = row.locator("[data-testid='mcp-project-pop']");
+    const demoRow = pop.locator(".pop-row", { hasText: "demo" });
+    await expect(demoRow).toHaveCount(1);
+    await expect(demoRow.locator(".switch")).not.toHaveClass(/on/);
+
+    // 点击启用 → on；pill 变「1 个项目」
+    await demoRow.click();
+    await expect(demoRow.locator(".switch")).toHaveClass(/on/);
+    await expect(row.locator("[data-testid='mcp-project-toggle']")).toContainText("1 个项目");
+
+    // 刷新重进 → 持久化保持（真实启用行落库）
+    await goToAdminRoute(firstWindow, PLUGINS_ROUTE);
+    await expect(row.locator("[data-testid='mcp-project-toggle']")).toContainText("1 个项目");
+  });
+
   // BUG-008 回归（req-gap 就地补全后的 UX 结构契约）：
   // 全局开关 switch 须为可见尺寸（UX 定稿 32×18），非 inline 塌缩；
   // 项目启用 pill on 态文字为 accent 色（可读），非白字不可见。
