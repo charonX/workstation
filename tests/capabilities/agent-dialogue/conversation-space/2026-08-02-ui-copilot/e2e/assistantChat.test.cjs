@@ -30,7 +30,8 @@
 //   [data-message-role='user|agent']         消息气泡
 //   [data-message-role='agent'][data-streaming='true']  流式中的 agent 气泡（完成即移除该属性）
 //   [data-testid='composer-input']           输入框
-//   [data-testid='send-button']              发送按钮（流式中 disabled）
+//   [data-testid='send-button']              发送按钮（idle 态；流式中由 stop-button 同位替换——REQ-AGENT-091）
+//   [data-testid='stop-button']              停止按钮（REQ-AGENT-091：流式中替换发送键，可点）
 //   空态（2026-08-06 拍板：仅标题 + 当前空间，无引导卡）：
 //   [data-testid='empty-state']              空态容器
 //   [data-testid='empty-space-name']         空态当前空间名
@@ -65,6 +66,8 @@ const SCREEN_ASSISTANT = "[data-testid='screen-assistant']";
 const MESSAGE_LIST = "[data-testid='message-list']";
 const COMPOSER_INPUT = "[data-testid='composer-input']";
 const SEND_BUTTON = "[data-testid='send-button']";
+// REQ-AGENT-091（BUG-010）：流式中停止键同位替换发送键。
+const STOP_BUTTON = "[data-testid='stop-button']";
 const USER_BUBBLE = "[data-message-role='user']";
 const AGENT_BUBBLE = "[data-message-role='agent']";
 const AGENT_STREAMING = "[data-message-role='agent'][data-streaming='true']";
@@ -139,11 +142,13 @@ test.describe("对话收发与 SSE 流式渲染", () => {
     // BUG-001 语义（2026-08-09 req-gap 就地补全）：发送成功后输入框清空。
     await expect(firstWindow.locator(COMPOSER_INPUT)).toHaveValue("");
 
-    // agent 气泡进入流式态；流式中发送按钮置灰 + 等待态文案「回复中…」（防重复提交）。
+    // agent 气泡进入流式态。REQ-AGENT-091（BUG-010，2026-08-15 契约演进）：流式中
+    // 发送键位由「停止」键同位替换（原「回复中…」disabled 死键废止——停止可点，
+    // 防重复提交由「发送键消失」承担）；停止键契约断言归 assistantStop.test.cjs。
     const streamingBubble = firstWindow.locator(AGENT_STREAMING);
     await expect(streamingBubble).toBeVisible({ timeout: STREAM_APPEAR_TIMEOUT });
-    await expect(firstWindow.locator(SEND_BUTTON)).toBeDisabled();
-    await expect(firstWindow.locator(SEND_BUTTON)).toHaveText("回复中…");
+    await expect(firstWindow.locator(STOP_BUTTON)).toBeVisible();
+    await expect(firstWindow.locator(SEND_BUTTON)).toHaveCount(0);
 
     // 流式增量渲染：气泡文本持续增长（采样两次长度，后者更大）。
     const lenBefore = (await streamingBubble.textContent())?.length ?? 0;
