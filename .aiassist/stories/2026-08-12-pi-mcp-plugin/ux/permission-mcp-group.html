@@ -55,10 +55,17 @@
   .btn-tertiary.danger:hover { color: var(--ch-error); }
 
   /* 新规则内联表单 */
-  .new-rule { display: none; padding: var(--ch-space-3) var(--ch-space-4); gap: var(--ch-space-2); align-items: center; border-top: 1px dashed var(--ch-border); }
+  .new-rule { display: none; padding: var(--ch-space-3) var(--ch-space-4); gap: var(--ch-space-2); align-items: center; border-top: 1px dashed var(--ch-border); flex-wrap: wrap; }
   .new-rule.open { display: flex; }
   .new-rule input { flex: 1; padding: var(--ch-space-2) var(--ch-space-3); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); font-family: var(--ch-font-mono); background: var(--ch-surface); color: var(--ch-text); }
   .new-rule input:focus { outline: none; border-color: var(--ch-accent); }
+  /* BUG-014：下拉选择器录入（server → 探测拉工具）；手填 glob 高级入口 */
+  .new-rule select { padding: var(--ch-space-2) var(--ch-space-3); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); font-family: var(--ch-font-mono); background: var(--ch-surface); color: var(--ch-text); }
+  .new-rule .freeform { display: none; }
+  .new-rule.freeform-on .freeform { display: block; }
+  .new-rule.freeform-on select { display: none; }
+  .freeform-toggle { border: none; background: none; color: var(--ch-text-tertiary); font-size: var(--ch-text-xs); cursor: pointer; text-decoration: underline; }
+  .freeform-toggle:hover { color: var(--ch-accent); }
   .hint { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); padding: 0 var(--ch-space-4) var(--ch-space-2); }
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ch-surface-highest); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-md); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-sm); display: none; z-index: 90; }
   .toast.show { display: block; }
@@ -66,7 +73,7 @@
 </head>
 <body>
 <div class="stage">
-  <div class="stage-note">UX 原型 · 权限配置页新增 mcp 规则族（REQ-AGENT-087）· 交互：族展开/三态切换/新增规则/项目覆盖高亮 · 呈现对齐既有 bash/read 族</div>
+  <div class="stage-note">UX 原型 · 权限配置页 mcp 规则族（REQ-AGENT-087；BUG-014 起语义=项目覆盖默认层，默认层在「MCP」页编辑）· 交互：族展开/三态切换/下拉选择录入（server→工具）/手填 glob 高级入口/项目覆盖高亮</div>
 
   <div class="page" data-testid="permission-config-page">
     <div class="page-header">
@@ -143,7 +150,16 @@
           </tbody>
         </table>
         <div class="new-rule" id="new-rule-form">
-          <input data-testid="perm-rule-input" placeholder="server:tool，支持 * 通配，如 local-db:query_*">
+          <!-- BUG-014：下拉选择为主——server 下拉（已配置清单）→ 选中探测拉工具下拉（含「* 全部工具」）；保留手填 glob 高级入口 -->
+          <select data-testid="perm-rule-server-select" id="perm-rule-server" onchange="permServerPick(this)">
+            <option value="">选择 server…</option>
+            <option value="local-db">local-db</option>
+            <option value="github">github</option>
+          </select>
+          <select data-testid="perm-rule-tool-select" id="perm-rule-tool">
+            <option value="*">*（全部工具）</option>
+          </select>
+          <input class="freeform" data-testid="perm-rule-input" placeholder="server:tool，支持 * 通配，如 local-db:query_*">
           <div class="verdict-seg" id="new-rule-verdict">
             <button data-v="allow" onclick="verdictPick(this)">allow</button>
             <button class="active" data-v="ask" onclick="verdictPick(this)">ask</button>
@@ -151,9 +167,10 @@
           </div>
           <button class="btn-tertiary" data-testid="perm-rule-add-submit" onclick="addRule()">添加</button>
           <button class="btn-tertiary" onclick="document.getElementById('new-rule-form').classList.remove('open')">取消</button>
+          <button class="freeform-toggle" data-testid="perm-rule-freeform-toggle" onclick="toggleFreeform()">手填 glob</button>
         </div>
         <div class="add-row"><button class="btn-tertiary" data-testid="perm-rule-add" onclick="document.getElementById('new-rule-form').classList.add('open')">+ 添加规则</button></div>
-        <div class="hint">规则表为单一真源（ADR-020），部署 JSON 由其生成；项目级覆盖在「项目」档位编辑并高亮。</div>
+        <div class="hint">默认权限在「MCP」页编辑（对所有项目生效）；本页规则为<strong>项目覆盖</strong>，命中即高亮「项目已改」；未匹配默认 ask。</div>
       </div>
     </div>
   </div>
@@ -167,20 +184,43 @@
     if (!btn.closest('.new-rule')) toast('规则已更新（演示）');
   }
   function addRule(){
-    const input = document.querySelector('[data-testid="perm-rule-input"]');
-    const val = input.value.trim();
-    if (!val.includes(':')) { input.style.borderColor = 'var(--ch-error)'; return; }
+    const form = document.getElementById('new-rule-form');
+    const freeform = form.classList.contains('freeform-on');
+    let val;
+    if (freeform) {
+      const input = form.querySelector('[data-testid="perm-rule-input"]');
+      val = input.value.trim();
+      if (!val.includes(':')) { input.style.borderColor = 'var(--ch-error)'; return; }
+      input.value = ''; input.style.borderColor = '';
+    } else {
+      const server = document.getElementById('perm-rule-server').value;
+      const tool = document.getElementById('perm-rule-tool').value;
+      if (!server) { toast('请先选择 server'); return; }
+      val = server + ':' + tool;
+    }
     const v = document.querySelector('#new-rule-verdict button.active').dataset.v;
     const tr = document.createElement('tr');
     tr.setAttribute('data-testid', 'perm-rule-row');
-    tr.innerHTML = '<td><span class="pattern"></span></td><td><div class="verdict-seg" data-testid="perm-rule-verdict">'
+    tr.innerHTML = '<td><span class="override-dot" title="项目已覆盖"></span><span class="pattern"></span><span class="override-tag">项目已改</span></td><td><div class="verdict-seg" data-testid="perm-rule-verdict">'
       + ['allow','ask','deny'].map(x => '<button data-v="' + x + '"' + (x===v?' class="active"':'') + ' onclick="verdictPick(this)">' + x + '</button>').join('')
       + '</div></td><td style="text-align:right"><button class="btn-tertiary danger" onclick="this.closest(\'tr\').remove()">删除</button></td>';
     tr.querySelector('.pattern').textContent = val;
     document.getElementById('mcp-rules').appendChild(tr);
-    input.value = ''; input.style.borderColor = '';
-    document.getElementById('new-rule-form').classList.remove('open');
-    toast('规则已添加：' + val + ' → ' + v);
+    form.classList.remove('open');
+    toast('项目覆盖已添加：' + val + ' → ' + v);
+  }
+  // BUG-014：选 server → 演示探测填充工具下拉；手填 glob 切换。
+  const DEMO_TOOLS = { 'local-db': ['query', 'list_tables', 'describe_table'], 'github': ['create_issue', 'search_repositories'] };
+  function permServerPick(sel){
+    const toolSel = document.getElementById('perm-rule-tool');
+    const tools = DEMO_TOOLS[sel.value] || [];
+    toolSel.innerHTML = '<option value="*">*（全部工具）</option>' +
+      tools.map(t => '<option value="' + t + '">' + t + '</option>').join('');
+  }
+  function toggleFreeform(){
+    const form = document.getElementById('new-rule-form');
+    form.classList.toggle('freeform-on');
+    form.querySelector('.freeform-toggle').textContent = form.classList.contains('freeform-on') ? '返回选择器' : '手填 glob';
   }
   function toast(msg){
     const t = document.getElementById('toast');

@@ -92,6 +92,16 @@
 
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ch-surface-highest); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-md); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-sm); display: none; z-index: 90; }
   .toast.show { display: block; }
+
+  /* ============ 默认权限区（BUG-014，REQ-087 默认层） ============ */
+  .perm-add { display: flex; align-items: center; gap: var(--ch-space-2); padding: var(--ch-space-3) var(--ch-space-4); flex-wrap: wrap; }
+  .perm-add select { padding: var(--ch-space-2) var(--ch-space-3); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); background: var(--ch-surface); color: var(--ch-text); font-family: var(--ch-font-mono); }
+  .perm-add .freeform { display: none; flex: 1; min-width: 220px; padding: var(--ch-space-2) var(--ch-space-3); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); font-size: var(--ch-text-sm); font-family: var(--ch-font-mono); background: var(--ch-surface); color: var(--ch-text); }
+  .perm-add.freeform-on .freeform { display: block; }
+  .perm-add.freeform-on select { display: none; }
+  .perm-toggle-freeform { border: none; background: none; color: var(--ch-text-tertiary); font-size: var(--ch-text-xs); cursor: pointer; text-decoration: underline; }
+  .perm-toggle-freeform:hover { color: var(--ch-accent); }
+  .perm-hint { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); padding: 0 var(--ch-space-4) var(--ch-space-3); }
 </style>
 </head>
 <body>
@@ -99,7 +109,10 @@
      管理区独立导航项「MCP」（位于技能之下）+ 独立页 /mcp。本页承载原 plugins-page.html
      的 ② MCP 服务清单与添加/编辑弹窗，结构/testid 契约原样保留。
      同轮补全：配置后直连 server 拉取工具——行内「工具」按钮开工具清单弹窗
-     （名称+描述）；添加/编辑保存后自动连接并弹出工具清单；连接失败弹窗内呈错误。 -->
+     （名称+描述）；添加/编辑保存后自动连接并弹出工具清单；连接失败弹窗内呈错误。
+     BUG-014（2026-08-16，req-gap 就地补全，人拍板）：新增「默认权限」区——用户级
+     默认层（对所有项目生效，项目权限页 mcp 族为覆盖层）；录入为下拉选择器
+     （server 下拉 → 探测拉工具下拉，含「* 全部工具」），保留手填 glob 高级入口。 -->
 <div class="stage">
   <div class="stage-note">UX 原型 · 管理区「MCP」页（REQ-AGENT-084 结构契约锚点）· 交互：MCP 表单类型切换 / 认证切换 / 项目启用 popover / 全局开关 / 工具清单弹窗 / 错误态演示</div>
 
@@ -159,6 +172,64 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- ============ 默认权限（BUG-014，REQ-087 默认层：对所有项目生效，项目页为覆盖） ============ -->
+    <div class="section" data-testid="mcp-perm-defaults">
+      <div class="section-head">
+        <span class="section-title">默认权限</span>
+        <span class="section-desc">对所有项目生效 · 项目权限页可做覆盖 · 未匹配默认 ask · 新会话生效</span>
+      </div>
+      <table>
+        <thead>
+          <tr><th>规则（server:tool）</th><th>裁决</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr data-testid="mcp-perm-row">
+            <td class="mono">local-db:query_*</td>
+            <td>
+              <div class="seg" data-testid="mcp-perm-verdict">
+                <button class="active" data-v="allow" onclick="segPick(this)">allow</button>
+                <button data-v="ask" onclick="segPick(this)">ask</button>
+                <button data-v="deny" onclick="segPick(this)">deny</button>
+              </div>
+            </td>
+            <td style="text-align:right"><button class="btn-tertiary danger" onclick="removeRow(this)">删除</button></td>
+          </tr>
+          <tr data-testid="mcp-perm-row">
+            <td class="mono">github:*</td>
+            <td>
+              <div class="seg" data-testid="mcp-perm-verdict">
+                <button data-v="allow" onclick="segPick(this)">allow</button>
+                <button class="active" data-v="ask" onclick="segPick(this)">ask</button>
+                <button data-v="deny" onclick="segPick(this)">deny</button>
+              </div>
+            </td>
+            <td style="text-align:right"><button class="btn-tertiary danger" onclick="removeRow(this)">删除</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <!-- 添加区：下拉选择为主（server → 探测拉工具，含「* 全部工具」）；保留手填 glob 高级入口 -->
+      <div class="perm-add" id="mcp-perm-add">
+        <select data-testid="mcp-perm-server-select" onchange="permServerPick(this)">
+          <option value="">选择 server…</option>
+          <option value="local-db">local-db</option>
+          <option value="github">github</option>
+          <option value="broken-svc">broken-svc</option>
+        </select>
+        <select data-testid="mcp-perm-tool-select" id="mcp-perm-tool-select">
+          <option value="*">*（全部工具）</option>
+        </select>
+        <input class="freeform" data-testid="mcp-perm-freeform-input" placeholder="手填 server:tool glob，如 local-db:query_*">
+        <div class="seg" data-testid="mcp-perm-new-verdict">
+          <button data-v="allow" onclick="segPick(this)">allow</button>
+          <button class="active" data-v="ask" onclick="segPick(this)">ask</button>
+          <button data-v="deny" onclick="segPick(this)">deny</button>
+        </div>
+        <button class="btn" data-testid="mcp-perm-add-submit" onclick="toast('已添加默认规则（演示）')">添加规则</button>
+        <button class="perm-toggle-freeform" data-testid="mcp-perm-freeform-toggle" onclick="toggleFreeform()">手填 glob</button>
+      </div>
+      <div class="perm-hint">规则 = server:tool glob · 选择工具时自动探测 server（连接失败的 server 可手填）· 项目覆盖在项目权限页编辑并高亮</div>
     </div>
   </div>
 </div>
@@ -304,6 +375,20 @@
   function flipSwitch(row){ row.querySelector('.switch').classList.toggle('on'); }
   function flipSelf(sw){ sw.classList.toggle('on'); }
   function removeRow(btn){ btn.closest('tr').style.opacity = '.35'; toast('已移除（演示）'); }
+  // 默认权限添加区（BUG-014）：选 server → 演示探测填充工具下拉；手填 glob 切换。
+  const DEMO_TOOLS = { 'local-db': ['query', 'list_tables', 'describe_table'], 'github': ['create_issue', 'search_repositories'] };
+  function permServerPick(sel){
+    const toolSel = document.getElementById('mcp-perm-tool-select');
+    const tools = DEMO_TOOLS[sel.value] || [];
+    toolSel.innerHTML = '<option value="*">*（全部工具）</option>' +
+      tools.map(t => `<option value="${t}">${t}</option>`).join('');
+    if (sel.value === 'broken-svc') toast('连接失败：spawn run-missing-command ENOENT（可手填 glob）');
+  }
+  function toggleFreeform(){
+    const row = document.getElementById('mcp-perm-add');
+    row.classList.toggle('freeform-on');
+    row.querySelector('.perm-toggle-freeform').textContent = row.classList.contains('freeform-on') ? '返回选择器' : '手填 glob';
+  }
   function toast(msg){
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
