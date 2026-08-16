@@ -7,9 +7,8 @@
 // deleteSchedule / listSchedules）、resetTasks、getCronDescription；一次执行的
 // 生命周期知识（队列 / generation / 写入原语 / 观察窗 / debug 描述符）已全部收进
 // executionRunner，本模块仅保留转发别名（createTask / executeTask /
-// clearExecutionQueue / 测试 setter / debugFlow → runner）与
-// subscribeToScheduleTriggers 兼容 shim（no-op，不再订阅任何事件——schedule 触发
-// 已改 schedulerService 直调），保证旧 import 不断（REQ-FLOW-049 AC4）。本模块
+// clearExecutionQueue / 测试 setter / debugFlow → runner），保证旧 import 不断
+// （REQ-FLOW-049 AC4）。本模块
 // 不 import schedulerService（模块图无环：schedulerService → runner / taskService
 // 单向；cron 校验由 routes/schedules.js 经 schedulerService.validateCron 承担，
 // 注销由 schedulerService skip 反应承担）。
@@ -446,12 +445,4 @@ export async function debugFlow(flowId, { variables, usePublished, nodeList, edg
     iterations: result.iterations ?? 0,
     branchPath: result.branch ? [result.branch] : []
   };
-}
-
-// 兼容 shim（REQ-SCHEDULE-010）：schedule 触发已改 schedulerService 直调
-// runner.submit，eventBus 一跳与 server.js 订阅接线已删除——本函数不再订阅任何
-// 事件（no-op），仅保留导出供 scheduleTriggers.test.js 等旧 import 不断
-// （[test] 侧 slice 4 迁移后移除）。
-export function subscribeToScheduleTriggers() {
-  return undefined;
 }
