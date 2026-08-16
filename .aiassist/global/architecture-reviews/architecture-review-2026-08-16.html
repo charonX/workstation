@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — OPC Workstation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <header class="space-y-4">
+        <h1 class="text-3xl font-serif font-semibold">OPC Workstation — architecture review</h1>
+        <p class="text-sm text-slate-500">2026-08-16 · scan of three hotspots: agent dialogue, flow execution, service &amp; entry layer</p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-600">
+          <span class="inline-flex items-center gap-2"><span class="inline-block w-5 h-3 border-2 border-slate-700 rounded-sm"></span> module</span>
+          <span class="inline-flex items-center gap-2"><span class="inline-block w-5 h-3 border-2 border-dashed border-slate-500 rounded-sm"></span> seam</span>
+          <span class="inline-flex items-center gap-2"><span class="inline-block w-5 h-3 border-2 border-red-500 rounded-sm"></span> leakage</span>
+          <span class="inline-flex items-center gap-2"><span class="inline-block w-5 h-3 bg-slate-900 rounded-sm"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- ══════════ 1. ExecutionRunner ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">1 · ExecutionRunner — one module owns one run</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1 font-medium">Strong</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/services/taskService.js · src/services/executionQueue.js · src/http/routes/executions.js · src/http/routes/flows.js · src/flowEngine/flowEngine.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart TB
+  M[manual trigger] --> O1[run options]
+  D[debug run] --> O2[run options]
+  C[callFlow executor] --> O3[run options]
+  O1 --> E[flowEngine.run]
+  O2 --> E
+  O3 --> E
+  O1 -. 250ms sleep per run .-> S[sleep for observation]
+  O2 -. phantom parentId .-> P[id points to missing row]
+  O3 -. guards skipped .-> G[reset races reach DB]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class S,P,G leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart TB
+  M[manual trigger] --> R[ExecutionRunner]
+  D[debug run] --> R
+  C[callFlow executor] --> R
+  R --> E[flowEngine.run]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:3px;
+  class R deep
+                </pre>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>How to run a flow is hand-assembled at three call sites, and the copies have already drifted.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>One runner module owns queue slot, generation guards, options assembly, executor wiring, and nested-write policy.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Three entries, one interface</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Guards now cover subflow</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Phantom parent id disappears</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">250ms sleep leaves prod path</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Tests hit one seam</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ 2. Turn event pipeline ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">2 · Extract the turn pipeline from worker.js</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1 font-medium">Strong</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/agent/worker.js · src/services/agentService.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before — call-graph collapse</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[340px] flex items-center justify-center">
+                <div class="border-2 border-slate-700 rounded-lg p-3 w-[330px]">
+                  <div class="text-xs uppercase tracking-wider text-slate-500 mb-2">worker.js — 1835 lines, unimportable</div>
+                  <div class="space-y-1.5">
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">IPC dispatch</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">forwardEvent</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">pendingTextEnds + 5s flusher</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">abort synthesis</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">eviction cleanup — 8 Maps, hand-paired</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">limitSize (twin drifted in agentService)</div>
+                    <div class="border border-red-300 rounded px-2 py-1 text-xs text-red-600">12 state Maps · 86 references</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after — one box, internals faded</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[340px] flex items-center justify-center">
+                <div class="flex items-center gap-3">
+                  <div class="border-2 border-slate-500 rounded-lg p-3 w-[280px] deep">
+                    <div class="text-xs uppercase tracking-wider text-slate-300 mb-2">turn event pipeline</div>
+                    <div class="space-y-1.5 opacity-40">
+                      <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">forwardEvent</div>
+                      <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">pendingTextEnds</div>
+                      <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">abort synthesis</div>
+                      <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">cleanup pairs</div>
+                      <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">limitSize</div>
+                    </div>
+                  </div>
+                  <div class="text-xs text-slate-500 max-w-[110px]">worker = IPC + assembly</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>A turn's state machine lives in three fragments inside a process nothing imports, so its pure functions get zero direct tests.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>One importable turn-pipeline module owns forwarding, delayed text_end, abort synthesis, eviction cleanup, and the size contract.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">BUG hotspot gains direct tests</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Cleanup pairs live in one place</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">256KB contract single-sourced</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">State maps share one lifecycle</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ 3. Permission adjudication ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">3 · Collapse the permission adjudication chain</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1 font-medium">Strong</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">ports &amp; adapters</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/agent/worker.js · src/services/permissionPolicy.js · src/services/agentService.js · src/http/server.js · src/services/permissionBridge.js · src/services/confirmationService.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before — six modules, eight hops</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart LR
+  W[worker pre-gate] -->|classify| P[permissionPolicy]
+  P -->|permission-ask IPC| A[agentService]
+  A --> S[server.js onPermissionAsk]
+  S --> G[strict gate, second copy]
+  S --> B[permissionBridge]
+  B -->|20ms row poll| C[confirmation store]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class G,B leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after — one module, one seam</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart LR
+  W[worker extension] --> ADJ[adjudication module]
+  S[main process] --> ADJ
+  ADJ -->|settle event| C[confirmation store]
+  ADJ --> X{one executor}
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:3px;
+  class ADJ deep
+                </pre>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>One bash confirmation crosses six modules in eight hops, the unique-executor invariant survives only as comments, and both production bugs were born at this seam.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>One shared adjudication module; the confirmation module gains a settle event so polling dies.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Invariant held by structure</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Polling replaced by settle event</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Fallback path keeps confirmations</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Adjudication tested at one seam</li>
+          </ul>
+          <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+            ADR-017 already carries two patch notes from this seam (BUG-001/002). Consolidating restores the structure the ADR chose — no reopening needed.
+          </div>
+        </article>
+
+        <!-- ══════════ 4. Session domain module ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">4 · Move session domain logic out of the route</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1 font-medium">Strong</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/http/routes/agentSessions.js · src/http/server.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before — cross-section</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[300px] flex flex-col justify-center gap-3">
+                <div class="border-l-4 border-slate-300 bg-slate-100 rounded-r-lg h-28 px-3 py-2 text-xs">
+                  <span class="font-semibold">agentSessions.js route — 928 lines</span>
+                  <div class="mt-1 text-slate-600">history projection · pagination · space-key parsing · SSE registry · attachment rules · buildSessionConfig</div>
+                </div>
+                <div class="text-xs text-red-600">server.js imports buildSessionConfig — inverted dependency</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[300px] flex flex-col justify-center gap-3">
+                <div class="border-l-4 border-slate-300 bg-slate-100 rounded-r-lg h-8 px-3 py-2 text-xs leading-6">agentSessions.js route — forwarding only (~300 lines)</div>
+                <div class="deep border-l-4 border-slate-500 rounded-r-lg h-28 px-3 py-2 text-xs text-slate-100">
+                  <span class="font-semibold">session domain module</span>
+                  <div class="mt-1 text-slate-300">config assembly · history projection · key parsing · SSE registry (per instance)</div>
+                </div>
+                <div class="text-xs text-slate-500">server.js → session domain, right way around</div>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>A 928-line route carries the session domain, and server.js imports its internals to reuse one function.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>One session-domain module owns config assembly, history projection, and key parsing; the route thins to forwarding.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Dependencies point the right way</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Projection gains unit tests</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">SSE registry travels with instance</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Route thins to forwarding</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ 5. getDb per-path cache ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">5 · Per-path connection cache kills the thrash</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1 font-medium">Strong</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/db.js · src/services/sessionStore.js · src/services/confirmationService.js · src/http/routes/agentSessions.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before — one slot</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[280px]">
+                <div class="flex items-center gap-2 mt-8">
+                  <div class="border-2 border-slate-700 rounded px-3 py-2 text-xs">data.db</div>
+                  <div class="text-red-600 text-xs">close / reopen</div>
+                  <div class="border-2 border-slate-700 rounded px-3 py-2 text-xs">agent-sessions.db</div>
+                </div>
+                <div class="text-xs text-red-600 mt-6">every module re-fetches per operation · defense comments everywhere</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after — per path</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[280px]">
+                <div class="border-2 border-slate-900 rounded-lg p-3 w-60 mt-4">
+                  <div class="border border-slate-400 rounded px-2 py-1 text-xs mb-1">data.db — open</div>
+                  <div class="border border-slate-400 rounded px-2 py-1 text-xs">agent-sessions.db — open</div>
+                </div>
+                <div class="text-xs text-slate-500 mt-6">comments deleted · handles cacheable</div>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>One connection slot forces every module to re-fetch per operation and bolt on defensive comments.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>Cache per path; delete the re-fetch dance and the comments it breeds.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Defense comments deleted</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Connections stop thrashing</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">Cross-DB joins stay honest</li>
+            <li class="rounded-full bg-emerald-50 text-emerald-800 px-3 py-1">All modules share one cache</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ 6. ChannelSender seam ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">6 · Retire the _channelManager shim</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-amber-100 text-amber-800 text-xs px-3 py-1 font-medium">Worth exploring</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">ports &amp; adapters</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/services/taskService.js · src/flowEngine/executors/feishuSendExecutor.js · src/services/channels/imRouter.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart LR
+  V[execution variables] -->|_channelManager shim| F[feishuSend executor]
+  F -. dynamic import, skips online check .-> CM[channelManager]
+  R[imRouter] -. channelReply magic key .-> F
+  D[debug runs] -. shim never injected .-> F
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class CM,D leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+                <pre class="mermaid">
+flowchart LR
+  V[execution variables] --> R[runner]
+  R -->|services bag seam| AD[channel adapter]
+  AD --> F[feishuSend executor]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:3px;
+  class AD deep
+                </pre>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>The context shim ADR-008 rejected still lives in the variable registry, so debug runs and tests silently bypass the real adapter path.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>Resolve the adapter through one sanctioned seam in the services bag; drop the shim and the magic key.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Rejected pattern leaves registry</li>
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Debug matches production</li>
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Online check lives in one place</li>
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Test injection stops bypassing</li>
+          </ul>
+          <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+            ADR-008 rejected context._xxx shims and chose the services bag — the shim is that rejected pattern still alive. Aligning with the ADR, not reopening it.
+          </div>
+        </article>
+
+        <!-- ══════════ 7. server.js assembly ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">7 · Give service assembly a home</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-amber-100 text-amber-800 text-xs px-3 py-1 font-medium">Worth exploring</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/http/server.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[280px] flex flex-col items-center justify-center gap-3">
+                <div class="border-2 border-slate-700 rounded-lg p-3 w-72">
+                  <div class="text-xs uppercase tracking-wider text-slate-500 mb-2">server.js — 648 lines</div>
+                  <div class="space-y-1.5">
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">routing</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">8 lazy factories, inline closures</div>
+                    <div class="border border-red-300 rounded px-2 py-1 text-xs text-red-600">_opcXxx attributes on the server object</div>
+                    <div class="border border-red-300 rounded px-2 py-1 text-xs text-red-600">confirmation callback imports route internals</div>
+                  </div>
+                </div>
+                <div class="text-xs text-slate-500">reader tracks closures and attributes in parallel</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[280px] flex flex-col items-center justify-center gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="border-2 border-slate-700 rounded-lg p-3 w-40">
+                    <div class="text-xs uppercase tracking-wider text-slate-500 mb-2">server.js</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs">routing</div>
+                    <div class="border border-slate-400 rounded px-2 py-1 text-xs mt-1.5">lifecycle</div>
+                  </div>
+                  <div class="text-slate-400">→</div>
+                  <div class="deep border-2 border-slate-500 rounded-lg p-3 w-44">
+                    <div class="text-xs uppercase tracking-wider text-slate-300 mb-2">service container</div>
+                    <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">factories</div>
+                    <div class="border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 mt-1.5">wiring</div>
+                  </div>
+                </div>
+                <div class="text-xs text-slate-500">assembly has an owner; server thins</div>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>A 648-line module is router, DI container, and lifecycle owner at once, so readers track two parallel state paths.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>Extract one container module for the lazy factories and wiring; server keeps routing and lifecycle.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Assembly has one owner</li>
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">_opcXxx stops being magic</li>
+            <li class="rounded-full bg-amber-50 text-amber-800 px-3 py-1">Callback imports the right way</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ 8. Shallow residue sweep ══════════ -->
+        <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="text-lg font-serif font-semibold">8 · Sweep the silent mocks and re-homed leftovers</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">Speculative</span>
+              <span class="rounded-full bg-slate-200 text-slate-700 text-xs px-3 py-1 font-medium">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-sm text-slate-600">src/flowEngine/agentAdapter.js · src/flowEngine/executors/agentExecutor.js · src/services/taskService.js · src/services/flowService.js · src/http/routes/{mcp,plugins,skills,projects,settings}.js · src/cli/commands/{mcp,plugin}.js</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">before — mass diagram</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[300px] flex flex-col justify-center gap-3">
+                <div class="flex items-center gap-2 text-xs"><span class="w-32">agentAdapter mock</span><span class="h-5 bg-slate-300 rounded w-10"></span><span class="h-5 bg-slate-400 rounded w-11"></span><span class="text-red-600">fabricated success</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32">responders ×5 routes</span><span class="h-5 bg-slate-300 rounded w-8"></span><span class="h-5 bg-slate-400 rounded w-9"></span><span class="text-red-600">plugins→mcp import</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32">cron description</span><span class="h-5 bg-slate-300 rounded w-3"></span><span class="h-5 bg-slate-400 rounded w-16"></span><span class="text-slate-500">wrong home</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32">flowService UI helpers</span><span class="h-5 bg-slate-300 rounded w-10"></span><span class="h-5 bg-slate-400 rounded w-11"></span><span class="text-slate-500">dead interface</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32">recoverInterrupted import</span><span class="h-5 bg-slate-300 rounded w-6"></span><span class="h-5 bg-slate-400 rounded w-7"></span><span class="text-slate-500">dead alias</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">after</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[300px] flex flex-col justify-center gap-3">
+                <div class="flex items-center gap-2 text-xs"><span class="w-32 text-red-600 line-through">agentAdapter mock</span><span class="text-slate-500">missing provider → error, not success</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32 text-red-600 line-through">responders ×5</span><span class="text-slate-500">one shared module</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32 text-red-600 line-through">cron description</span><span class="text-slate-500">moved to owning module</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32 text-red-600 line-through">flowService UI helpers</span><span class="text-slate-500">deleted</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-32 text-red-600 line-through">dead alias</span><span class="text-slate-500">removed</span></div>
+              </div>
+            </div>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div><dt class="font-semibold">Problem</dt><dd>A mock adapter lets flows succeed with fabricated output; five routes re-implement the same responders; helpers live in the wrong modules.</dd></div>
+            <div><dt class="font-semibold">Solution</dt><dd>Missing provider errors instead of mocking; one responders module; move helpers to their owning modules.</dd></div>
+          </dl>
+          <ul class="flex flex-wrap gap-2 text-xs">
+            <li class="rounded-full bg-slate-100 text-slate-700 px-3 py-1">Mock can't fake success</li>
+            <li class="rounded-full bg-slate-100 text-slate-700 px-3 py-1">Five responders become one</li>
+            <li class="rounded-full bg-slate-100 text-slate-700 px-3 py-1">Each passes the deletion test</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="rounded-xl border-2 border-slate-900 bg-white p-8 space-y-3">
+        <h2 class="text-xl font-serif font-semibold">Top recommendation — ExecutionRunner</h2>
+        <p class="text-sm text-slate-700">
+          The knowledge of "how to run once" has no owner, has already drifted three ways,
+          and one seam makes every entry path testable.
+        </p>
+        <p class="text-sm"><a href="#candidates" class="text-emerald-700 underline">Candidate 1 →</a></p>
+      </section>
+
+    </main>
+  </body>
+</html>

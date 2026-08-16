@@ -1,0 +1,42 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-16-deepen-channel-sender-seam
+intention: >-
+  ADR-008 否决的 context._xxx shim 以 _channelManager 存活在执行变量注册表：
+  feishuSend 动态 import 跳过 online 检查与测试注入，debug 路径与生产行为分叉。
+  一句话痛点：通道适配器解析有三条语义不同的路径，ADR 已否决的模式仍在生产存活。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-16
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #6，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html；对齐 ADR-008 已选的 services-bag seam，非重开 ADR）"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
