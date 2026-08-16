@@ -58,6 +58,10 @@ function timestamp() {
   return new Date().toISOString();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function nextExecutionId() {
   return crypto.randomUUID();
 }
@@ -126,30 +130,26 @@ export function submit({ projectId, flowId, trigger, variables, scheduleId }) {
     run: runOnceBound
   });
 
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    execution.id,
-    execution.projectId,
-    execution.flowId,
-    execution.trigger,
-    execution.status,
-    execution.startedAt,
-    execution.endedAt,
-    execution.duration,
-    execution.nodesRun,
-    JSON.stringify(execution.variables),
-    execution.output !== null ? JSON.stringify(execution.output) : null,
-    JSON.stringify(execution.branchPath),
-    JSON.stringify(execution.iterations),
-    JSON.stringify(execution.logs),
-    JSON.stringify(execution.artifacts),
-    null,
-    null,
-    0
-  );
+  insertExecutionRow({
+    id: execution.id,
+    projectId: execution.projectId,
+    flowId: execution.flowId,
+    trigger: execution.trigger,
+    status: execution.status,
+    startedAt: execution.startedAt,
+    endedAt: execution.endedAt,
+    duration: execution.duration,
+    nodesRun: execution.nodesRun,
+    variables: execution.variables,
+    output: execution.output,
+    branchPath: execution.branchPath,
+    iterations: execution.iterations,
+    logs: execution.logs,
+    artifacts: execution.artifacts,
+    parentExecutionId: null,
+    parentNodeId: null,
+    depth: 0
+  });
 
   // Don't await the queue run here; return immediately with position.
   enqueuePromise.catch((err) => {
@@ -186,36 +186,28 @@ export async function runOnce(executionCtx, descriptor = {}) {
   const myGeneration = executionGeneration;
   // 持久化路径判定：有 execution 行且 persist 开启才触碰 DB。
   const persisted = Boolean(execution) && persist;
+  // startedAt 只读一次，三个检查点（①/②/③）共用同一基准，结算时长一致。
+  const startedAtMs = persisted ? Date.parse(execution.startedAt) : 0;
+  // generation 失配判定（reset 竞态守卫）：队列/DB 已重置，本 run 不再写库。
+  const generationStale = () => persisted && executionGeneration !== myGeneration;
 
   // 观察窗（tech-design 决议）：出队启动时睡眠而非 submit 返回前——250ms 必须在
   // 响应之后，调用方才能观察到 queued；深队列下与排队等待重叠，总墙钟不变。
   // 时长保持常量 250ms（不配置化）。仅入队触发（observeQueued=true）走观察窗。
   if (descriptor.observeQueued === true) {
-    await new Promise((resolve) => setTimeout(resolve, QUEUED_STATE_OBSERVATION_MS));
+    await sleep(QUEUED_STATE_OBSERVATION_MS);
   }
 
   // 检查点①：观察窗后 generation 失配 → queued 行结算（abortExecutionIfQueued，
   // 写 QUEUE_DRAINED_REASON）后返回，不触碰已重置 DB。
-  if (persisted && executionGeneration !== myGeneration) {
-    abortExecutionIfQueued(execution, Date.parse(execution.startedAt), QUEUE_DRAINED_REASON);
+  if (generationStale()) {
+    abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
     return undefined;
   }
 
-  const startedAtMs = persisted ? Date.parse(execution.startedAt) : 0;
-
   // 迁移 queued → running（仅持久化路径）。
   if (persisted) {
-    getDb().prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("running", execution.id);
-    // REQ-AGENT-020：执行启动事件（任务卡片渲染器消费；sessionKey 由执行上下文
-    // 解析——对话下发需记录 originating spaceKey，见 cardRenderer 接线）。
-    eventBus.publish("execution:started", {
-      executionId: execution.id,
-      projectId: execution.projectId,
-      flowId: execution.flowId,
-      status: "running",
-      trigger: execution.trigger,
-      variables: execution.variables,
-    });
+    markExecutionRunning(execution);
   }
 
   // trigger=schedule 出队二次 published 校验（REQ-FLOW-048 AC5）：执行时 flow
@@ -244,18 +236,7 @@ export async function runOnce(executionCtx, descriptor = {}) {
     // (live channelManager adapter or test adapter).
     const variablesForRun = {
       ...(execution?.variables ?? {}),
-      _channelManager: {
-        async send(channelType, payload) {
-          const adapter = await resolveChannelAdapter();
-          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-          return adapter.send(payload);
-        },
-        async reply(channelType, payload) {
-          const adapter = await resolveChannelAdapter();
-          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-          return adapter.reply(payload);
-        }
-      }
+      _channelManager: buildChannelManagerShim()
     };
 
     // REQ-FLOW-035 AC7 / D1: 注入 invokeSubflow 服务，绑定当前 execution.id 作为
@@ -273,7 +254,7 @@ export async function runOnce(executionCtx, descriptor = {}) {
 
     // 检查点②：引擎运行期间 generation 可能已变（server stop / 测试生命周期）。
     // 失配 → 结算后返回，不写已重置 DB。
-    if (persisted && executionGeneration !== myGeneration) {
+    if (generationStale()) {
       abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
       return undefined;
     }
@@ -318,7 +299,7 @@ export async function runOnce(executionCtx, descriptor = {}) {
     return result;
   } catch (err) {
     // 检查点③：catch 路径 generation 失配 → 结算后返回。
-    if (persisted && executionGeneration !== myGeneration) {
+    if (generationStale()) {
       abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
       return undefined;
     }
@@ -376,7 +357,7 @@ export async function reset() {
       oldQueue.destroy();
       const deadline = Date.now() + 5000;
       while (oldQueue.pendingCount() > 0 && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await sleep(20);
       }
     }
   }
@@ -395,6 +376,49 @@ function parseVariables(variables) {
 }
 
 // ---- 写入原语（从 taskService 逐点等价迁入，runner 全收） ----
+
+// executions 行插入（submit 的 queued 行与 subflow 子行共用同一列序/序列化规则）。
+function insertExecutionRow({ id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth }) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    projectId,
+    flowId,
+    trigger,
+    status,
+    startedAt,
+    endedAt,
+    duration,
+    nodesRun,
+    JSON.stringify(variables),
+    output !== null ? JSON.stringify(output) : null,
+    JSON.stringify(branchPath),
+    JSON.stringify(iterations),
+    JSON.stringify(logs),
+    JSON.stringify(artifacts),
+    parentExecutionId,
+    parentNodeId,
+    depth
+  );
+}
+
+// queued → running 迁移 + 启动事件（仅持久化路径）。
+function markExecutionRunning(execution) {
+  getDb().prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("running", execution.id);
+  // REQ-AGENT-020：执行启动事件（任务卡片渲染器消费；sessionKey 由执行上下文
+  // 解析——对话下发需记录 originating spaceKey，见 cardRenderer 接线）。
+  eventBus.publish("execution:started", {
+    executionId: execution.id,
+    projectId: execution.projectId,
+    flowId: execution.flowId,
+    status: "running",
+    trigger: execution.trigger,
+    variables: execution.variables,
+  });
+}
 
 // REQ-FLOW-028 / tech-design §5.6：把引擎 run() 返回的 nodeRecords 逐行写入
 // execution_nodes（同一 db 连接，单事务）。
@@ -492,6 +516,24 @@ function buildTerminalSuccessText(execution) {
 function buildTerminalFailureText(execution) {
   const reason = execution.variables?.reason || extractErrorCode(execution) || "E-AGENT-FAILED";
   return `执行失败：${reason}`;
+}
+
+// REQ-FLOW-032: shim 注入 execution variables——feishuSend 节点经它拿到当前
+// live adapter（channelManager 重启后实例替换，运行时动态解析）或测试注入
+// adapter（resolveChannelAdapter 兜底）。
+function buildChannelManagerShim() {
+  return {
+    async send(channelType, payload) {
+      const adapter = await resolveChannelAdapter();
+      if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
+      return adapter.send(payload);
+    },
+    async reply(channelType, payload) {
+      const adapter = await resolveChannelAdapter();
+      if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
+      return adapter.reply(payload);
+    }
+  };
 }
 
 async function resolveChannelAdapter() {
@@ -710,6 +752,26 @@ function addExecutionLog(id, { node, status, message }) {
 // 在每次递归时重新绑定新的 parentExecutionId（子 execution id），形成链式可观测记录。
 // persist 传播：子描述符继承父 persist（debug 子树零落库，slice 3）。
 
+// REQ-FLOW-035 AC6 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口（见 FLOW-033 AC4）。
+function findSubflowExit(nodeRecords, nodeList) {
+  const nodesById = new Map(nodeList.map((n) => [n.id, n]));
+  const exitRecord = nodeRecords
+    .filter((r) => nodesById.get(r.nodeId)?.type?.toLowerCase() === "flowoutput")
+    .pop();
+  return { nodesById, exitRecord: exitRecord ?? null };
+}
+
+// 按 flowOutput 节点 config.outputVariables 从 record.outputVariables 取出子出参。
+function extractSubflowOutputs(exitRecord, exitNode) {
+  const childOutputs = {};
+  for (const varDef of exitNode.config?.outputVariables ?? []) {
+    if (!varDef || typeof varDef.name !== "string") continue;
+    const fqKey = `${exitRecord.nodeId}.${varDef.name}`;
+    childOutputs[varDef.name] = exitRecord.outputVariables?.[fqKey];
+  }
+  return childOutputs;
+}
+
 async function invokeSubflowImpl({
   targetFlowId,
   entryNodeId,
@@ -742,30 +804,26 @@ async function invokeSubflowImpl({
   // REQ-FLOW-040 AC2: 子 execution 入库（status=running, trigger=subflow）。
   // persist=false（debug 子树）时零落库。
   if (persistChild) {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      childExecutionId,
-      project.id,
-      targetFlowId,
-      "subflow",
-      "running",
+    insertExecutionRow({
+      id: childExecutionId,
+      projectId: project.id,
+      flowId: targetFlowId,
+      trigger: "subflow",
+      status: "running",
       startedAt,
-      null,
-      null,
-      0,
-      JSON.stringify(inputVars || {}),
-      null,
-      JSON.stringify([]),
-      JSON.stringify([]),
-      JSON.stringify([]),
-      JSON.stringify([]),
+      endedAt: null,
+      duration: null,
+      nodesRun: 0,
+      variables: inputVars || {},
+      output: null,
+      branchPath: [],
+      iterations: [],
+      logs: [],
+      artifacts: [],
       parentExecutionId,
       parentNodeId,
-      childDepth
-    );
+      depth: childDepth
+    });
   }
 
   // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId。
@@ -794,11 +852,7 @@ async function invokeSubflowImpl({
       inputVars || {}
     );
 
-    // REQ-FLOW-035 AC6 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口（见 FLOW-033 AC4）。
-    const nodesById = new Map(childNodeList.map((n) => [n.id, n]));
-    const exitRecord = childResult.nodeRecords
-      .filter((r) => nodesById.get(r.nodeId)?.type?.toLowerCase() === "flowoutput")
-      .pop();
+    const { nodesById, exitRecord } = findSubflowExit(childResult.nodeRecords, childNodeList);
 
     if (!exitRecord) {
       // REQ-FLOW-037 AC2: 未达出口 → 子 execution 标记 error，抛错冒泡。
@@ -811,14 +865,8 @@ async function invokeSubflowImpl({
       throw err;
     }
 
-    // 按 flowOutput 节点 config.outputVariables 从 record.outputVariables 取出子出参。
     const exitNode = nodesById.get(exitRecord.nodeId);
-    const childOutputs = {};
-    for (const varDef of exitNode.config?.outputVariables ?? []) {
-      if (!varDef || typeof varDef.name !== "string") continue;
-      const fqKey = `${exitRecord.nodeId}.${varDef.name}`;
-      childOutputs[varDef.name] = exitRecord.outputVariables?.[fqKey];
-    }
+    const childOutputs = extractSubflowOutputs(exitRecord, exitNode);
 
     if (persistChild) {
       insertExecutionNodes(childExecutionId, childResult.nodeRecords);
