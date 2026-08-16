@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { getDb } from "../db.js";
 import { encryptSecret, decryptSecret } from "./secretStore.js";
+import { listMcpPermissionDefaults, replaceMcpPermissionDefaults } from "./mcpPermissionDefaults.js";
 
 // REQ-AGENT-084 AC7（BUG-013）：工具探测走官方 MCP client SDK（@modelcontextprotocol/client，
 // pi-mcp-adapter 传递依赖）。main/worker bundle 均已 external（regex 含子路径），运行期从
@@ -132,6 +133,11 @@ function validateName(db, name) {
   }
   if (!NAME_RE.test(name)) {
     throw new Error(`MCP 名称不合法（仅支持 slug 安全字符）: ${name}`);
+  }
+  // BUG-014（REQ-AGENT-087 默认层）：permission-defaults 为路由字面量保留字——
+  // GET/PUT /api/mcp/permission-defaults 必须先于 /:name 路由命中，同名 server 不可建。
+  if (name === "permission-defaults") {
+    throw new Error("MCP 名称不合法（permission-defaults 为保留字）: permission-defaults");
   }
   const existing = db.prepare("SELECT id FROM mcp_servers WHERE name = ?").get(name);
   if (existing) {
@@ -329,6 +335,16 @@ export function createMcpService() {
          ON CONFLICT(serverId, projectId) DO UPDATE SET enabled = excluded.enabled`
       ).run(existing.id, projectId, enabled ? 1 : 0);
       return existing;
+    },
+
+    // BUG-014（REQ-AGENT-087 默认层）：用户级默认权限 CRUD——委托
+    // mcpPermissionDefaults（worker 部署/视图合并共用同一读写路径）。
+    listPermissionDefaults() {
+      return listMcpPermissionDefaults(dbPath);
+    },
+
+    replacePermissionDefaults(rules) {
+      return replaceMcpPermissionDefaults(rules, dbPath);
     },
 
     /** 只含「全局开关开 ∧ 项目已启用」的 server；形态直接被 createMcpAdapter({config}) 消费。 */

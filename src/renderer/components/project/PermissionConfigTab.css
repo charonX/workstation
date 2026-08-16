@@ -817,6 +817,49 @@
   border-color: var(--ch-accent);
 }
 
+/* BUG-014：录入选择器（ux/permission-mcp-group.html 就地补全）——server/工具
+   下拉为主；手填 glob input 降为 .freeform 高级入口（freeform-on 切换显隐）。 */
+.new-rule select {
+  padding: var(--ch-space-2) var(--ch-space-3);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md);
+  font-size: var(--ch-text-sm);
+  font-family: var(--ch-font-mono);
+  background: var(--ch-surface);
+  color: var(--ch-text);
+}
+
+.new-rule .freeform {
+  display: none;
+}
+
+.new-rule.freeform-on .freeform {
+  display: block;
+}
+
+.new-rule.freeform-on select {
+  display: none;
+}
+
+.freeform-toggle {
+  border: none;
+  background: none;
+  color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.freeform-toggle:hover {
+  color: var(--ch-accent);
+}
+
+.picker-probe-error {
+  flex-basis: 100%;
+  font-size: var(--ch-text-xs);
+  color: var(--ch-warning);
+}
+
 .mcp-hint {
   font-size: var(--ch-text-xs);
   color: var(--ch-text-tertiary);

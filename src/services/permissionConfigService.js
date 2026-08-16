@@ -36,6 +36,7 @@ import * as projectService from "./projectService.js";
 import { expandTilde, realpathBestEffort, comparisonKey, isInsideOrEqual } from "./pathUtils.js";
 import { GLOBAL_POLICY_PATH, PROJECT_POLICY_REL_PATH } from "./permissionPolicy.js";
 import { BASH_RULES } from "./policyRules.js";
+import { listMcpPermissionDefaults, mergeMcpDefaultsIntoPolicy } from "./mcpPermissionDefaults.js";
 
 // —— 项目路径解析（与 agentService 项目装配同源：expandTilde + realpath）——
 // 项目不存在/无 localPath → E-PROJECT-NOT-FOUND（S2 路由映射 404）。
@@ -520,7 +521,17 @@ function buildRules(global, project, merged) {
 // 人裁决落地）——UI 显示坏文件提示而非「未配置」空态，保存即覆盖修复。
 export function getPermissionView(projectId) {
   const { projectConfigPath } = resolveProject(projectId);
-  const global = readGlobalConfig();
+  const globalBase = readGlobalConfig();
+  // BUG-014（REQ-AGENT-087 默认层）：视图层合并用户级默认权限——mcp 族行
+  // global = 用户默认（项目页 projectOverridden 高亮对照之）。空默认层 → merge
+  // no-op 原样返回（REQ-AGENT-060 兼容：body.global 与部署 JSON 原文一致）；
+  // DB 读失败 → 回退出厂原文（不阻断视图）。
+  let global = globalBase;
+  try {
+    global = mergeMcpDefaultsIntoPolicy(globalBase, listMcpPermissionDefaults());
+  } catch (err) {
+    console.warn(`[permissionConfig] permission.mcp-defaults-read-failed: ${err?.message ?? String(err)}`);
+  }
   const { config: project, invalid: projectInvalid } = readProjectConfig(projectConfigPath);
   // 无项目文件 → merged = 全局原文（干净继承态，REQ-AGENT-061 标准 2）；坏文件
   // 同样回落全局（运行时对坏文件 fail-closed，UI 侧按全局默认展示 + 坏文件提示）。

@@ -4,6 +4,8 @@
 //
 //   GET    /api/mcp                               → mcpService.list()
 //   GET    /api/mcp?project=<id>                  → mcpService.list(projectId) 项目感知（BUG-012）
+//   GET    /api/mcp/permission-defaults           → mcpService.listPermissionDefaults（BUG-014 默认层）
+//   PUT    /api/mcp/permission-defaults { rules } → mcpService.replacePermissionDefaults（全量替换）
 //   GET    /api/mcp/:name/tools                   → mcpService.probeTools（BUG-013 AC7 工具探测）
 //   POST   /api/mcp                               → mcpService.create
 //   PUT    /api/mcp/:name                         → mcpService.update（BUG-008）
@@ -43,6 +45,26 @@ export async function handleMcp(req, res, body, pathParts) {
     if (req.method === "POST") {
       try {
         return ok(res, await getService().create(body || {}));
+      } catch (err) {
+        return mapError(res, err);
+      }
+    }
+    return notFound(res);
+  }
+
+  // REQ-AGENT-087 AC8（BUG-014）：用户级默认权限层——literal 分支必须先于
+  // /:name 路由（permission-defaults 为保留字，validateName 拒绝同名 server）。
+  if (pathParts.length === 1 && pathParts[0] === "permission-defaults") {
+    if (req.method === "GET") {
+      try {
+        return ok(res, { rules: getService().listPermissionDefaults() });
+      } catch (err) {
+        return mapError(res, err);
+      }
+    }
+    if (req.method === "PUT") {
+      try {
+        return ok(res, { rules: getService().replacePermissionDefaults(body?.rules ?? {}) });
       } catch (err) {
         return mapError(res, err);
       }

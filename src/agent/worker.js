@@ -38,6 +38,7 @@ import { fauxProvider, fauxAssistantMessage, fauxToolCall, contentText } from "@
 import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
+import { listMcpPermissionDefaults, mergeMcpDefaultsIntoPolicy } from "../services/mcpPermissionDefaults.js";
 import { createAutoJudgeLink } from "./autoJudgeLink.js";
 import { assembleSessionExtensions } from "./sessionAssembly.js";
 import { createMcpBrokerLink } from "./mcpBrokerLink.js";
@@ -131,7 +132,25 @@ function deployGlobalPolicy() {
       return;
     }
     fs.mkdirSync(path.dirname(GOTGENES_GLOBAL_CONFIG_PATH), { recursive: true });
-    fs.copyFileSync(source, GOTGENES_GLOBAL_CONFIG_PATH);
+    // BUG-014（REQ-AGENT-087 默认层）：用户级默认权限 merge 进部署 JSON 的
+    // permission.mcp——出厂 "*" 保持首位（gotgenes 同层 last-match-wins，具体
+    // pattern 必须后于 "*" 才生效）；默认层变更 = 新会话生效（对齐 REQ-AGENT-085
+    // 标准 3）。DB 读/合并失败 → 回退静态源拷贝（不阻断会话）。
+    try {
+      const defaults = listMcpPermissionDefaults();
+      if (Object.keys(defaults).length === 0) {
+        fs.copyFileSync(source, GOTGENES_GLOBAL_CONFIG_PATH);
+      } else {
+        const policy = JSON.parse(fs.readFileSync(source, "utf8"));
+        fs.writeFileSync(
+          GOTGENES_GLOBAL_CONFIG_PATH,
+          `${JSON.stringify(mergeMcpDefaultsIntoPolicy(policy, defaults), null, 2)}\n`
+        );
+      }
+    } catch (mergeErr) {
+      log(`默认权限层合并失败，回退静态拷贝 err=${mergeErr?.message ?? String(mergeErr)}`);
+      fs.copyFileSync(source, GOTGENES_GLOBAL_CONFIG_PATH);
+    }
   } catch (err) {
     log(`全局策略部署失败 err=${err?.message ?? String(err)}`);
   }

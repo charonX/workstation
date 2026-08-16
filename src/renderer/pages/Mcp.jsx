@@ -9,6 +9,13 @@
 //   mcp-project-toggle（pill）→ mcp-project-pop（.pop-row .switch）/ mcp-edit-button /
 //   mcp-tools-button / mcp-tools-modal / mcp-tools-table / mcp-tools-error-text。
 //
+// 默认权限区（BUG-014，REQ-AGENT-087 默认层）：mcp-perm-defaults / mcp-perm-row /
+// mcp-perm-verdict / mcp-perm-server-select / mcp-perm-tool-select /
+// mcp-perm-new-verdict / mcp-perm-add-submit / mcp-perm-freeform-input /
+// mcp-perm-freeform-toggle——用户级默认权限在此编辑（存 workstation DB，
+// 对所有项目生效，新会话生效）；项目页 mcp 族为覆盖层。录入 = 共享选择器
+// McpRulePicker（server 下拉 → 探测拉工具下拉；手填 glob 高级入口）。
+//
 // 数据面：GET/POST/PUT/DELETE /api/mcp、GET /api/mcp?project=<id>（项目感知，BUG-012）、
 // POST /api/mcp/:name/{project-enable,global-enabled}、GET /api/mcp/:name/tools（AC7）。
 //
@@ -24,10 +31,15 @@ import {
   setMcpGlobalEnabled,
   setMcpProjectEnabled,
   listMcpTools,
+  getMcpPermissionDefaults,
+  putMcpPermissionDefaults,
 } from "../api/plugins.js";
 import { getProjects } from "../api/projects.js";
+import McpRulePicker from "../components/mcp/McpRulePicker.jsx";
 // 样式与插件页同源（区块卡/表格/pill/popover/switch/弹窗均为同一套类）。
 import "./Plugins.css";
+
+const VERDICTS = ["allow", "ask", "deny"];
 
 export default function Mcp() {
   const [mcpServers, setMcpServers] = useState([]);
@@ -74,6 +86,42 @@ export default function Mcp() {
   const [toolsLoading, setToolsLoading] = useState(false);
   const [toolsError, setToolsError] = useState(null);
   const [toolsList, setToolsList] = useState([]);
+
+  // 默认权限（BUG-014）：permRules = { pattern: verdict }（插入序），即改即存
+  //（GET → 本地 mutate → PUT 全量替换）。
+  const [permRules, setPermRules] = useState({});
+  const [permMsg, setPermMsg] = useState(null);
+
+  const loadPermDefaults = useCallback(async () => {
+    try {
+      const res = await getMcpPermissionDefaults();
+      setPermRules(res?.rules && typeof res.rules === "object" ? res.rules : {});
+    } catch (err) {
+      setPermMsg(err?.message || String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPermDefaults();
+  }, [loadPermDefaults]);
+
+  const putDefaults = async (next) => {
+    setPermMsg(null);
+    try {
+      const res = await putMcpPermissionDefaults(next);
+      setPermRules(res?.rules && typeof res.rules === "object" ? res.rules : next);
+    } catch (err) {
+      setPermMsg(err?.message || String(err));
+    }
+  };
+
+  const addDefaultRule = (pattern, verdict) => putDefaults({ ...permRules, [pattern]: verdict });
+  const setDefaultVerdict = (pattern, verdict) => putDefaults({ ...permRules, [pattern]: verdict });
+  const deleteDefaultRule = (pattern) => {
+    const next = { ...permRules };
+    delete next[pattern];
+    putDefaults(next);
+  };
 
   const loadProjects = useCallback(async () => {
     try {
@@ -346,6 +394,61 @@ export default function Mcp() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* ============ 默认权限（BUG-014：用户级默认层，对所有项目生效；项目页为覆盖） ============ */}
+      <div className="plugin-section section" data-testid="mcp-perm-defaults">
+        <div className="section-head">
+          <span className="section-title">默认权限</span>
+          <span className="section-desc">对所有项目生效 · 项目权限页可做覆盖 · 未匹配默认 ask · 新会话生效</span>
+        </div>
+        <table className="plugin-table">
+          <thead>
+            <tr>
+              <th>规则（server:tool）</th>
+              <th>裁决</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(permRules).map(([pattern, verdict]) => (
+              <tr key={pattern} data-testid="mcp-perm-row">
+                <td className="mono">{pattern}</td>
+                <td>
+                  <div className="verdict-seg" data-testid="mcp-perm-verdict">
+                    {VERDICTS.map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        data-v={v}
+                        className={verdict === v ? "active" : ""}
+                        onClick={() => setDefaultVerdict(pattern, v)}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <button type="button" className="btn-tertiary danger" onClick={() => deleteDefaultRule(pattern)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <McpRulePicker
+          className="perm-add"
+          testidPrefix="mcp-perm"
+          freeformTestid="mcp-perm-freeform-input"
+          onSubmit={addDefaultRule}
+          onError={setPermMsg}
+        />
+        {permMsg && <div className="perm-msg">{permMsg}</div>}
+        <div className="perm-hint">
+          规则 = server:tool glob · 选择工具时自动探测 server（连接失败的 server 可手填）· 项目覆盖在项目权限页编辑并高亮
+        </div>
       </div>
 
       {/* ============ 添加/编辑 MCP 服务弹窗（stdio / http 类型切换） ============ */}

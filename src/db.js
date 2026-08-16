@@ -92,6 +92,7 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS agent_confirmations;
     DROP TABLE IF EXISTS mcp_servers;
     DROP TABLE IF EXISTS mcp_project_enablement;
+    DROP TABLE IF EXISTS mcp_permission_defaults;
   `);
   initSchema(database);
 }
@@ -199,6 +200,13 @@ const MCP_DDL = `
     PRIMARY KEY (serverId, projectId)
   );
   CREATE INDEX IF NOT EXISTS idx_mcp_project_enablement_project ON mcp_project_enablement(projectId);
+  -- BUG-014（REQ-AGENT-087 默认层）：用户级 MCP 默认权限（MCP 页编辑，对所有项目
+  -- 生效；项目策略文件为覆盖层）。pattern = server:tool glob；插入序 = rowid
+  -- （读取 ORDER BY rowid 保序，last-match-wins 合并依赖该序）。
+  CREATE TABLE IF NOT EXISTS mcp_permission_defaults (
+    pattern TEXT PRIMARY KEY,
+    verdict TEXT NOT NULL CHECK (verdict IN ('allow', 'ask', 'deny'))
+  );
 `;
 
 function initSchema(database) {

@@ -70,3 +70,13 @@ export function setMcpProjectEnabled(name, projectId, enabled) {
 export function listMcpTools(name) {
   return get(`/api/mcp/${encodeURIComponent(name)}/tools`);
 }
+
+// BUG-014（REQ-AGENT-087 默认层）：用户级默认权限——MCP 页「默认权限」区编辑，
+// 对所有项目生效；项目页 mcp 族为覆盖层。PUT 为全量替换语义。
+export function getMcpPermissionDefaults() {
+  return get("/api/mcp/permission-defaults");
+}
+
+export function putMcpPermissionDefaults(rules) {
+  return put("/api/mcp/permission-defaults", { rules });
+}

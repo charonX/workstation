@@ -1,17 +1,25 @@
 // src/renderer/components/project/McpPermissionGroup.jsx
 // 权限配置「MCP 工具」规则族（REQ-AGENT-087 UI 面）。
 //
-// UX 参照：ux/permission-mcp-group.html（已定稿 2026-08-13）。结构契约锚点：
+// UX 参照：ux/permission-mcp-group.html（已定稿 2026-08-13；BUG-014 就地补全
+// 2026-08-16）。结构契约锚点：
 //   [data-testid='perm-family-mcp']      族分组（与 bash/read 族同构，三态裁决）
 //   [data-testid='perm-rule-row']        规则行（pattern = server:tool glob）
 //   [data-testid='perm-rule-verdict']    allow/ask/deny 三态切换（button[data-v]）
-//   [data-testid='perm-rule-add'] / [data-testid='perm-rule-input'] /
-//   [data-testid='perm-rule-add-submit']
+//   [data-testid='perm-rule-add'] / [data-testid='perm-rule-add-submit']
 //   项目覆盖高亮（.override-tag「项目已改」）
+//   BUG-014 录入选择器：perm-rule-server-select / perm-rule-tool-select /
+//   perm-rule-freeform-toggle / perm-rule-input（手填 glob 高级入口，默认隐藏）
 //
 // 出厂零预置规则（signoff D4）：`permission.mcp = { "*": "ask" }` 是族默认（族头
 // 「未匹配默认 ask」），不是规则行——规则行只列用户规则（项目覆盖层写入的
 // server:tool glob）。数据面已由 permissionConfigService.buildRules 跳过默认 `*`。
+//
+// BUG-014（REQ-AGENT-087 默认层注记）：本族语义 = 项目覆盖——用户级默认权限在
+// 「MCP」页编辑（存 workstation DB），经视图层合并进规则行 global 值
+//（行 global = 用户默认，无默认则出厂 ask）；本页写入即项目覆盖，命中即高亮
+// 「项目已改」。录入从手填 input 升级为共享选择器 McpRulePicker（server 下拉 →
+// 探测拉工具下拉；手填 glob 降为高级入口）。
 //
 // 双模式：
 // - projectId 给定（权限配置页签/项目档位）：自管理持久化——新增/切换裁决/删除
@@ -24,6 +32,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getProjectPermission, putProjectPermission } from "../../api/projects.js";
+import McpRulePicker from "../mcp/McpRulePicker.jsx";
 import "./PermissionConfigTab.css";
 
 const VERDICTS = ["allow", "ask", "deny"];
@@ -34,8 +43,6 @@ export default function McpPermissionGroup({ projectId, onSaved }) {
   const [loadError, setLoadError] = useState(null);
   const [closed, setClosed] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
-  const [pattern, setPattern] = useState("");
-  const [newVerdict, setNewVerdict] = useState("ask");
   const [msg, setMsg] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -107,28 +114,19 @@ export default function McpPermissionGroup({ projectId, onSaved }) {
     return next;
   };
 
-  const handleAdd = () => {
-    const p = pattern.trim();
-    if (!p) {
-      setMsg("规则不能为空");
-      return;
-    }
-    if (!p.includes(":")) {
-      setMsg("规则须为 server:tool 形态，如 local-db:query_*");
-      return;
-    }
+  // BUG-014：录入校验在选择器内完成（picker 形态拼接 / freeform 校验含「:」）。
+  const handleAdd = (p, verdict) => {
     if (!projectId) {
       setLocalRows((prev) => [
         ...prev,
-        { key: `permission.mcp.${p}`, pattern: p, global: undefined, value: newVerdict, overridden: true },
+        { key: `permission.mcp.${p}`, pattern: p, global: undefined, value: verdict, overridden: true },
       ]);
     } else {
       const config = withMcp(baseConfig(), (mcp) => {
-        mcp[p] = newVerdict;
+        mcp[p] = verdict;
       });
       save(config);
     }
-    setPattern("");
     setNewOpen(false);
     setMsg(null);
   };
@@ -238,44 +236,17 @@ export default function McpPermissionGroup({ projectId, onSaved }) {
           )}
 
           {newOpen && (
-            <div className="new-rule open">
-              <input
-                data-testid="perm-rule-input"
-                placeholder="server:tool，支持 * 通配，如 local-db:query_*"
-                value={pattern}
-                onChange={(e) => {
-                  setPattern(e.target.value);
-                  setMsg(null);
-                }}
-              />
-              <div className="verdict-seg">
-                {VERDICTS.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    data-v={v}
-                    className={newVerdict === v ? "active" : ""}
-                    onClick={() => setNewVerdict(v)}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
-              <button type="button" className="btn-tertiary" data-testid="perm-rule-add-submit" onClick={handleAdd}>
-                添加
-              </button>
-              <button
-                type="button"
-                className="btn-tertiary"
-                onClick={() => {
-                  setNewOpen(false);
-                  setPattern("");
-                  setMsg(null);
-                }}
-              >
-                取消
-              </button>
-            </div>
+            <McpRulePicker
+              className="new-rule open"
+              testidPrefix="perm-rule"
+              freeformTestid="perm-rule-input"
+              onSubmit={handleAdd}
+              onCancel={() => {
+                setNewOpen(false);
+                setMsg(null);
+              }}
+              onError={setMsg}
+            />
           )}
 
           <div className="add-row">
@@ -285,7 +256,7 @@ export default function McpPermissionGroup({ projectId, onSaved }) {
           </div>
           {msg && <div className="path-msg">{msg}</div>}
           <div className="mcp-hint">
-            规则表为单一真源（ADR-020），部署 JSON 由其生成；项目级覆盖在「项目」档位编辑并高亮。
+            默认权限在「MCP」页编辑（对所有项目生效）；本页规则为<strong>项目覆盖</strong>，命中即高亮「项目已改」；未匹配默认 ask。
           </div>
         </div>
       )}
