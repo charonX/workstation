@@ -133,6 +133,7 @@
   - **视图层合并**：`getPermissionView` 的 `global` 先合并默认层再组规则行——项目页 mcp 族行 `global` 值 = 用户默认（无默认则出厂 ask），`projectOverridden` 高亮对照用户默认。
   - **录入选择器**（两页同构）：添加规则 = server 下拉（已配置清单，GET /api/mcp）→ 选中后经 probeTools 拉该 server 工具下拉（含 `*` 全部工具项）→ 裁决三态 → 生成 `server:tool` 规则；保留手填 glob 高级入口。testid 契约：`mcp-perm-defaults`（MCP 页默认权限区）/`mcp-perm-row` / `mcp-perm-verdict` / `mcp-perm-server-select` / `mcp-perm-tool-select` / `mcp-perm-add-submit`；项目页族内复用 `perm-rule-*` 前缀。
   - IA：默认层编辑归属 MCP 页（`#/mcp` 默认权限区，UX 参照 `ux/mcp-page.html`）；项目权限页 mcp 族保留，语义 = 项目覆盖默认层。
+  - IA 修正（BUG-015 req-gap 就地补全 2026-08-16，人确认）：`#/workspace` 项目列表页底部「权限配置 · MCP 工具」区块**移除**——门 1（2026-08-13）签核的「权限配置入口沿用 #/workspace」锚点废止；该区块绑死 `projects[0]` 语义怪，且 BUG-014 后成冗余第三入口。项目覆盖编辑唯一入口 = 项目详情「权限配置」页签（`PermissionConfigTab` 内 `McpPermissionGroup`）；默认层在 MCP 页。E2E 锚点同步重锚项目详情页签（断言语义不变）。
 
 验收标准：
 1. 规则表 mcp 族进部署 JSON，gotgenes 按 `server:tool` glob 匹配（集成：`checkPermission("mcp", ...)` 对照矩阵）。
