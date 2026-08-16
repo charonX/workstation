@@ -127,11 +127,20 @@
 - 优先级 P1 / 必须 / cross-module / policyRules.js + permissionConfigService + 权限配置 UI / plugin-management / mcp-server / 集成 + E2E
 - 接口契约：规则表新增 `mcp` 族，pattern = `server:tool` glob，裁决 allow/ask/deny，默认 ask；部署 JSON 由规则表生成（ADR-020 单一真源）
 - UX 参照：`ux/permission-mcp-group.html`（已定稿）：族分组 `perm-family-mcp`、规则行 `perm-rule-row`、三态切换 `perm-rule-verdict`、项目覆盖高亮
+- **默认层 + 选择器注记（BUG-014 req-gap 就地补全 2026-08-16，人拍板：默认层存 workstation DB、项目页保留为覆盖、下拉选择为主）**：
+  - 新增**用户级默认层**：workstation DB 表 `mcp_permission_defaults`（pattern TEXT 主键 = `server:tool` glob、verdict ∈ allow/ask/deny）；HTTP 面 `GET /api/mcp/permission-defaults` → `{ rules: { [pattern]: verdict } }`（插入序）、`PUT /api/mcp/permission-defaults` body 同构**全量替换**（非法 verdict / pattern 不含 `:` → 4xx）。`permission-defaults` 保留为路由字面量，不得作为 server 名（create 拒绝）。
+  - **运行时合并**：worker 启动部署全局策略时，把默认层 merge 进部署 JSON 的 `permission.mcp`——出厂 `"*": "ask"` 保持首位，用户 pattern 追加在后（gotgenes 同层 last-match-wins，具体 pattern 必须后于 `*` 才生效）；项目策略文件仍是更高层（覆盖语义不变）。DB 读失败 → 落静态源拷贝（不阻断会话）。默认层变更 = 新会话生效（对齐 REQ-AGENT-085 标准 3）。
+  - **视图层合并**：`getPermissionView` 的 `global` 先合并默认层再组规则行——项目页 mcp 族行 `global` 值 = 用户默认（无默认则出厂 ask），`projectOverridden` 高亮对照用户默认。
+  - **录入选择器**（两页同构）：添加规则 = server 下拉（已配置清单，GET /api/mcp）→ 选中后经 probeTools 拉该 server 工具下拉（含 `*` 全部工具项）→ 裁决三态 → 生成 `server:tool` 规则；保留手填 glob 高级入口。testid 契约：`mcp-perm-defaults`（MCP 页默认权限区）/`mcp-perm-row` / `mcp-perm-verdict` / `mcp-perm-server-select` / `mcp-perm-tool-select` / `mcp-perm-add-submit`；项目页族内复用 `perm-rule-*` 前缀。
+  - IA：默认层编辑归属 MCP 页（`#/mcp` 默认权限区，UX 参照 `ux/mcp-page.html`）；项目权限页 mcp 族保留，语义 = 项目覆盖默认层。
 
 验收标准：
 1. 规则表 mcp 族进部署 JSON，gotgenes 按 `server:tool` glob 匹配（集成：`checkPermission("mcp", ...)` 对照矩阵）。
 2. 权限配置页新增 mcp 分组：规则行 allow/ask/deny 切换、项目覆盖高亮（与既有族同构）（E2E：分组可见 + 切换持久）。
 3. 未匹配任何规则的 MCP 调用 = 默认 ask（集成）。
+4. （BUG-014 AC8，API）默认层 CRUD：GET 空 → `{}`；PUT `{ rules }` → GET 回读同 map；非法 verdict / pattern 缺 `:` / server 名撞保留字 `permission-defaults` → 4xx。
+5. （BUG-014 AC9，单元+集成）运行时合并：默认层 pattern 出现在 worker 部署的 config.json `permission.mcp` 且 `"*"` 条目保持首位；`getPermissionView` 的 mcp 族行 `global` = 默认层值、项目文件显式规则仍标 `projectOverridden`。
+6. （BUG-014 AC10，E2E）MCP 页默认权限区：server 下拉选已配置 server → 工具下拉列出 probeTools 结果（含 `*`）→ 添加后规则行出现且刷新持久；项目页 mcp 族添加区同为选择器录入。
 
 ## REQ-AGENT-088 飞书通道同工同权（B7）
 
