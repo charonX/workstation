@@ -42,6 +42,37 @@ PRD→代码 可追溯性表：见本文件下方「### Slice 2」小节（子�
 - **裁决⑤（schedules.js 环破）**：cron 校验（E-SCHED-CRON 400）从 taskService 移路由——避免 taskService→schedulerService 依赖环，语义不变（路由直接校验）。
 - **PRD 对齐（slice 2）**：ALIGNED（15 项逐条 COVERED；模块图 import 边逐一核对无环；hash 一致）。3 项 [test] 侧缺口全部列入 **slice 4 必做**：①补 HTTP 400 用例（缺 project/缺 flow，删 executionQueue.test.js 之前必须落）；②scheduleTriggers AC5「到点不补偿」空真化——迁移为「loadAll 后 500ms 内无执行行」（LOAD_GRACE_MS 抑制仍实现，失去观测）；③executeTask 转发等价 by-construction 记录（无调用方，AC4 typeof 够）。备注：debug 路径新增 _channelManager shim（加性改进）；{skipped} 返回加 scheduleId（§10.4 契约）。
 
+### Slice 3: 嵌套执行收编（REQ-FLOW-051）
+
+状态：**complete**（ef55131 实现 + d544ae6 seam 归一化撤除 + 190f9a6 [test] executor 契约归一；nestedExecutionConsolidated **4/4 绿** + 全回归 58/58 绿）。
+实现：writeAllowed=()=>persistChild && executionGeneration===generation **live 求值**门控全部子写点（子行 INSERT/节点记录/完成态/日志）——reset 中途子引擎内存跑完、写全跳过、子行保持 running（recoverInterruptedExecutions 兜底）；子日志逐条 addExecutionLog 写子行（成功/未达出口/失败冒泡路径），返回 logs:[] 不再冒泡父行；execution:completed payload 追加 parentExecutionId/depth（additive，父事件如实带 null/0）。
+PRD→代码 可追溯性表：见本文件下方「### Slice 3」小节。
+
+#### 父代理验证 + 裁决（2026-08-16）
+
+- 独立验证：nestedExecutionConsolidated 4/4 + executionRunner/executionRunnerReset 12/12（16/16 复核绿）+ 回归 42/42（子代理）+ 业务回归（子代理 112 用例 0 失败）。
+- **裁决⑥（seam 归一化撤除）**：slice 3 初版在 runner 装配 seam 把替换后 prompt 并入注入 executor 的 context——撤除（d544ae6），恢复 `executors.agent = testAgentExecutor` 直通。理由：测试 seam 契约应与生产契约一致（claudeAgentAdapter 即读 node.config.prompt）；测试侧改读 node.config.prompt（190f9a6，断言不变）。
+
+### Slice 4: 测试 seam 迁移（REQ-FLOW-053，[test] 侧，父代理执行）
+
+状态：**complete**（2d4d5d9 [test] + 31e2fd5 [build]；**全量单元 891/891 绿**）。
+执行：①artifacts/linkCapture/dailyDigest/nestedExecution 的 setter import 改挂 executionRunner（断言不变；清理引用同步修正——原 afterEach 的 seams.taskService 清理被 try/catch 吞掉，实际未执行，已修）；②scheduleTriggers AC1/AC2/AC3/AC5 从 eventBus 协议断言迁移为直调可观察断言（执行行/variables 注入/CRUD 自动生效/DELETE 注销/宽限期抑制实断言——AC5 由空真转实断言）；③删旧 executionQueue.test.js（行为并入 REQ-FLOW-052，replace don't layer）；④executionRunnerSubmit 补 PRD §7 400 校验用例（缺 project/缺 flow）；⑤删 taskService subscribeToScheduleTriggers no-op shim（REQ-SCHEDULE-010 AC3 导出移除）。
+
+## BUILD 总结（父代理）
+
+- **4 切片全部 complete**：runner 核心（slice 1）→ 入口接线（slice 2）→ 嵌套收编（slice 3）→ seam 迁移（slice 4）。
+- commit 链：[build] 2a227da（slice 1）+ de75608（slice 2）+ ef55131/d544ae6（slice 3）+ 31e2fd5（slice 4 收尾）；[refactor] 797a4c9 + 8e9b830 + 83db522；[test] 0e71ebe/94cb634/9429050/1e7272e/190f9a6/2d4d5d9。
+- 全量单元 **891/891 绿**（含 story 6 文件 29 用例 + 迁移后既有套件）；PRD 对齐 slice 1-3 全 ALIGNED。
+- 待办（QA 阶段）：E2E 回归（Playwright——执行相关 E2E 未跑：flowRun/executions 相关 .test.cjs）；REFLECT 时按 §10.5 把 tech-design 5 项新决策补进 ADR-028；记录项（parseVariables/timestamp 跨模块重复、destroy length 洞预存缺陷）已在台账。
+
+## v2 修订（2026-08-16）：撤除 250ms 观察窗（architecture-review #1 字面落实）
+
+状态：**complete**（[docs] eed68d3 + [test] 5d8853a + [build] 见 commit 链；受影响测试 41/41 绿）。
+缘起：review #1 收益项「250ms sleep leaves prod path」。深潜证伪 v1 保留依据：①renderer 零 queued 消费（UI 泛化渲染 status）；②串行队列下睡眠占队头槽位，N×250ms 累加进墙钟（「总墙钟不变」不成立）。人拍板「直接改吧」→ signoff v2 重签（S2' 零睡眠 / S4' reset 同步竞态 / S8 排队语义承载可观察性）。
+实现要点：runOnce 删观察窗分支与 observeQueued 字段；**generation 快照提前到 submit 时捕获**（descriptor.generation 内部绑定）——撤除睡眠后 submit→dequeue 窗口失去遮蔽，捕获提前使检查点① 覆盖该窗口（旧生命周期提交的僵尸 run 在 reset 后不再写库），REQ-FLOW-052 AC2 竞态语义由同步时序确定性承载。
+测试迁移：时序敏感断言全部去睡眠化——容量满/schedule 二次校验/HTTP queued 观察改闸门 executor 队头占用模式；reset AC2 改同步竞态；AC4 改零睡眠上界（<250ms，旧实现验证为红）；跨 story scheduleTriggers REQ-SCHEDULE-005 AC2 断言文本不变、观察方式迁移。
+顺带修复：server.js recoverInterruptedExecutions 改经 runner 再导出导入（executionQueue 接口私有化名副其实）。
+
 ### Slice 1: ExecutionRunner 模块核心（REQ-FLOW-048 + 052）
 
 状态：**complete**（2a227da 实现 + 0e71ebe fixture 修正 + 797a4c9 refactor pass；12/12 + 23/23 绿；PRD 对齐 ALIGNED；三项裁决见下节）。
@@ -54,7 +85,7 @@ PRD→代码 可追溯性表：见本文件下方「### Slice 2」小节（子�
 |---|---|---|---|
 | §10.4 submit 契约：`{id, executionId, queuePosition}`，id===executionId（REQ-FLOW-048 AC1） | executionRunner.js: submit | executionRunner.test.js AC1 | COVERED |
 | §8 E-QUEUE-FULL 容量满同步拒、不落行（REQ-FLOW-048 AC2 / 052 AC4b） | executionRunner.js: submit（isFull + enqueue） | executionRunner.test.js AC2；executionRunnerReset.test.js AC4b | COVERED |
-| §10.5 观察窗 250ms 常量、出队后迁移前（REQ-FLOW-048 AC4） | executionRunner.js: runOnce（observeQueued 门控） | executionRunner.test.js AC4 | COVERED |
+| §10.5 观察窗 250ms 常量、出队后迁移前（REQ-FLOW-048 AC4） | executionRunner.js: runOnce（observeQueued 门控） | executionRunner.test.js AC4 | SUPERSEDED（v2 撤除，见「v2 修订」节） |
 | §6.2/§8 schedule 出队二次 published 校验 → error + E-SCHED-FLOW-INVALID（REQ-FLOW-048 AC5） | executionRunner.js: runOnce（trigger=schedule 重读 flowService.getFlow） | executionRunner.test.js AC5 | COVERED |
 | §10.2 写入原语全收：节点记录/完成态/日志/产物/终态通知/queued 结算/通道解析（REQ-FLOW-048 AC6） | executionRunner.js: insertExecutionNodes/completeExecution/addExecutionLog/collectArtifacts/deliverTerminalNotification/writeExecutionNotification/abortExecutionIfQueued/resolveChannelAdapter | executionRunner.test.js AC3（终态+output 断言） | PARTIAL：AC3 断言被 fixture 阻塞（flow 无 agent 节点 → executor 不被调用，output=null）；实现侧探针已验证等价 |
 | §10.4 debug 描述符 persist=false 零落库 + 零睡眠（REQ-FLOW-048 AC3/AC4） | executionRunner.js: runOnce（persisted 判定 + observeQueued 缺省 false） | executionRunner.test.js「runOnce（debug 描述符）」 | COVERED |
@@ -140,7 +171,7 @@ PRD→代码 可追溯性表：见本文件下方「### Slice 2」小节（子�
 | §10.7 子日志归子行 + REQ-FLOW-051 AC2：子日志写子 execution 行（含跨 flow 同名 n1 撞名，按执行归属），返回 logs:[] 不冒泡父行；reset 中途日志也不写 | executionRunner.js: invokeSubflowImpl（成功路径逐条 addExecutionLog(childExecutionId)；错误路径 addExecutionLog 子行；返回 logs: []） | nestedExecutionConsolidated.test.js AC2 | COVERED |
 | §10.7/§10.4 execution:completed 事件父子字段 + REQ-FLOW-051 AC3：payload 追加 parentExecutionId/depth（additive，父事件 null/0 如实带出，既有字段不变） | executionRunner.js: completeExecution（从行读 row.parentExecutionId/row.depth） | nestedExecutionConsolidated.test.js AC3；cardRenderer（既有消费回归） | COVERED |
 | §8 深度兜底 E-FLOW-MAX-DEPTH / 未达出口 E-SUBFLOW-NO-OUTPUT / 失败冒泡 childExecutionId（REQ-FLOW-051 AC4 既有行为保持） | executionRunner.js: invokeSubflowImpl（深度检查前置不变；未达出口标 error + 冒泡；catch 附 err.childExecutionId） | nestedExecutionConsolidated.test.js AC4；nestedExecution/subflowFailure/subflowIsolation/foreachCallflow/callFlowValidation 回归 | COVERED |
-| §10.2 executor 装配 + 测试 seam 契约：注入 executor 经 context.prompt 读节点 prompt（本 story 测试先例） | executionRunner.js: runOnce executors.agent 装配 seam（替换后 prompt 并入 context，仅注入 seam） | nestedExecutionConsolidated.test.js AC2/AC1；executionRunner.test.js/executionRunnerReset.test.js（变量注入路径回归不变） | COVERED（见 concerns #1） |
+| §10.2 executor 装配 + 测试 seam 契约：注入 executor 经 node.config.prompt 读节点 prompt（与生产 claudeAgentAdapter 同源；裁决⑥撤除 context.prompt 并入） | executionRunner.js: runOnce executors.agent = testAgentExecutor 直通 | nestedExecutionConsolidated.test.js AC2/AC1；executionRunner.test.js/executionRunnerReset.test.js（node.config.prompt 路径） | COVERED |
 
 #### Slice 3 验证摘要
 
