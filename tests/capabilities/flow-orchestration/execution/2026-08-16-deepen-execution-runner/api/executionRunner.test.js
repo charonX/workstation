@@ -25,9 +25,9 @@ import { getDb } from "../../../../../../src/db.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-const FAKE_EXECUTOR = async ({ context }) => ({
+const FAKE_EXECUTOR = async ({ node }) => ({
   status: "success",
-  output: `echo:${context.prompt}`,
+  output: `echo:${node.config.prompt}`,
   nodeRecords: [],
   logs: [],
 });

@@ -29,13 +29,14 @@ import { setAgentExecutorForTests, reset, recoverInterruptedExecutions } from ".
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-// 带日志的 fake executor：按 context.prompt 区分父/子调用，logs 携带
-// {node: node.id, message: prompt}——撞名节点 n1 的归属靠 prompt 内容区分。
-const LOGGED_EXECUTOR = async ({ node, context }) => ({
+// 带日志的 fake executor：按 node.config.prompt 区分父/子调用（生产契约同源——
+// claudeAgentAdapter 即读 node.config.prompt），logs 携带 {node: node.id, message:
+// prompt}——撞名节点 n1 的归属靠 prompt 内容区分。
+const LOGGED_EXECUTOR = async ({ node }) => ({
   status: "success",
-  output: `echo:${context.prompt}`,
+  output: `echo:${node.config.prompt}`,
   nodeRecords: [],
-  logs: [{ node: node.id, message: context.prompt }],
+  logs: [{ node: node.id, message: node.config.prompt }],
 });
 
 async function createParentChildFlows(serverCtx) {

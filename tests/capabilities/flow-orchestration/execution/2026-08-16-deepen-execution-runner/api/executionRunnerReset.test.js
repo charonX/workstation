@@ -112,10 +112,10 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
 
   it("AC4a: 队列串行——同项目前项完成才启动后项（并发 submit）", async () => {
     const order = [];
-    setAgentExecutorForTests(async ({ context }) => {
-      order.push(context.prompt);
+    setAgentExecutorForTests(async ({ node }) => {
+      order.push(node.config.prompt);
       await new Promise((r) => setTimeout(r, 50));
-      return { status: "success", output: context.prompt, nodeRecords: [], logs: [] };
+      return { status: "success", output: node.config.prompt, nodeRecords: [], logs: [] };
     });
     await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "A" } });
     await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "B" } });
