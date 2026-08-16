@@ -100,3 +100,5 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-020: 权限出厂策略单一真源（代码规则表 + 生成配平，修订 ADR-017「文件=契约」）
 - ADR-021: 对话渲染安全边界（LLM 输出 HTML 全转义 + 图片主进程白名单 + mermaid strict）
 - ADR-023: agent 权限模式化（authorizerChain 模型 link + 模式门控，三档 strict/standard/auto）
+- ADR-024: PI 插件机制全量复用官方包管理（worker 从封闭装配转官方发现链路）
+- ADR-025: MCP 桥内置内联 + DB 快照注入 + broker 权限接线（gotgenes mcp 面）

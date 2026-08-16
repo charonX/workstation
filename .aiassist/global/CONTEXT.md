@@ -43,6 +43,8 @@
 | 外部条目 | External Entry：项目 agent 目录中非 workstation 创建的 skill 条目（实体目录或外部软链）；如实显示+标注，不动实体，冲突跳过 | Project, Skill | 项目技能扫描视图 |
 | 素材库 | 项目目录内约定的内容沉淀区：速存 markdown + 索引文件，供下游文章/视频 Flow 消费 | Project | 链接速存 / 收集管线 |
 | 通道 | 连接外部 IM 的投递通道（第一实现：飞书长连接）；**收=消息进 agent 对话（agent 优先，2026-08-03 修订 REQ-CHANNEL-002）**，发=执行结果/回复送达 | 对话空间, Execution | 对话入口 / 结果送达 |
+| 默认权限层 | MCP 权限的用户级默认值（pattern=server:tool glob → allow/ask/deny），存 workstation DB `mcp_permission_defaults`，在「MCP」页编辑；运行时合并进部署 JSON（`*` 首位 + last-match-wins），新会话生效 | MCP Server | 权限配置 / MCP 页 |
+| 项目权限覆盖 | 项目对默认权限层/出厂策略的字段级覆盖（ADR-022），在项目详情「权限配置」页签编辑，命中即高亮「项目已改」；语义 = 覆盖默认层，项目文件仍是最高层 | Project, MCP Server | 项目权限配置页签 |
 | 通道绑定 | Channel Binding | 通道类型到 Flow/Project 的单一路由绑定；**修订后（2026-08-03）：不再直接触发，成为 agent 下发任务的默认目标候选** | `channel_bindings` 表 | — |
 | 用户绑定 | User Binding | settings 中登记的飞书 open_id，内置 agent 的唯一操作者（未绑定用户一切消息拒绝，含查询）；经"Settings 引导发消息"一次性绑定，可解绑 | settings 配置 | 单用户绑定、授权用户（易与通道绑定混淆） |
 | 确认挂起 | Pending Confirmation | 高危操作被命令保险层拦截后进入挂起队列的状态；飞书卡片确认/拒绝回调驱动后续执行或中止（确认与执行解耦） | `agent_confirmations` 表 | 待确认 |
@@ -110,6 +112,7 @@
 
 ## 变更记录
 
+- 2026-08-16：新增实体「插件 Extension」「MCP Server」；新增概念「默认权限层」「项目权限覆盖」（2026-08-12-pi-mcp-plugin /reflect，ADR-024/025）
 - 2026-08-12：新增「权限模式」「auto-judge link」（2026-08-11-pi-agent-modes /reflect，ADR-023）
 - 2026-08-10：新增「工具折叠块」「历史投影」（2026-08-08-pi-agent-ux-enrichment /reflect）
 - 2026-08-08：新增「agent 一词三义」归位 + 会话生命周期术语（淘汰/懒恢复/水合窗口/同组单活/session-evicted/evicted）（2026-08-07-pi-agent-consolidation）

@@ -112,3 +112,8 @@ Referrer-Policy: strict-origin-when-cross-origin
   `?key=<apiKey>`（query 参数）。已确认：fetch 错误消息与透传响应均不含 URL（key 不进入
   错误透传/日志链路）。边界已人签接受（2026-08-14）；**其他供应商禁止自行引入 key-in-URL
   形态**，新增探针形态须重新过安全签核。
+
+## 2026-08-16 追加（2026-08-12-pi-mcp-plugin /reflect，BUG-006）
+
+- **第三方凭据一等字段化 + 加密落库**：bearer token 类凭据必须是一等表单/CLI 字段，落库前经 secretStore 加密存 `*_enc` 列；**DB/API 响应/列表/页面/日志永不出现明文**，解密仅发生在快照注入消费方的瞬间（effectiveConfig → 桥 bearerToken）。手填 headers 注入凭据只是 workaround，不是凭据管理。
+- **探测即连即断**：工具探测（probeTools）按库内配置直连第三方服务拉清单，10s 超时、不写库、不影响会话快照；错误呈「连接失败 + 详情」但不回显 token。

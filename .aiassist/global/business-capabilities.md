@@ -87,7 +87,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `tests/capabilities/command-interface/cli/2026-07-29-multi-agent-skills/cli/` | REQ-CLI-001~002 | `cli.test.js`, `skillCli.test.js` |
+| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `.../2026-07-29-multi-agent-skills/cli/`, `.../2026-08-12-pi-mcp-plugin/cli/` | REQ-CLI-001~002, REQ-AGENT-090 | `cli.test.js`, `skillCli.test.js`, `pluginMcpCli.test.js`（4 用例：plugin/mcp 命令族映射 + 错误码 + enable/disable 对照） |
 
 ### agent-dialogue
 > 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式（含定型：PATCH settings 关 streaming_mode + summary 换正文摘要）、权限策略（gotgenes+授权桥：唯一执行者/单一评估，ADR-017 补充）、会话生命周期（淘汰/懒恢复/水合窗口/同组单活）、权限出厂策略单一真源（规则表+生成配平）、对话富呈现（GFM/高亮/Mermaid/KaTeX/图片/工具折叠块，ADR-021 安全边界）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展并验收 2026-08-07；2026-08-07-pi-agent-consolidation 验收 2026-08-08；2026-08-08-pi-agent-ux-enrichment 验收 2026-08-10）
@@ -107,14 +107,15 @@
 | conversation-space (pi-agent-modes) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-11-pi-agent-modes/e2e/`, `.../api/` | REQ-AGENT-070~077（2026-08-12 验收） | E2E `modeToolbar.test.cjs`（5 用例）+ api `modeService/autoJudgeLink.test.js`（14 用例；三档模式/工具栏/lastMode/auto link/envelope 从严/熔断/可观测/模式不改配置，ADR-023） |
 | settings (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/settings/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-090~092, 099~102, 104（2026-08-14 验收） | `providerModelConfig.test.js`（090/092/099/104）, `catalog.test.js`（100）, `testConnection.test.js`（103）+ E2E `settingsProviders.test.cjs`（091/101/103 标准 7）：多 provider 列表/迁移/动态模型拉取全族化/catalog 端点/test-connection 协议族派生（ADR-026/027） |
 | conversation-space (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-093~098, 105（2026-08-14 验收） | `providerSwitch.test.js`（093/095）, `autoJudgeDefaultModel.test.js`（096）, `imageAttachment.test.js`（097）, `statusBarContext.test.js`（105）+ E2E `modelSelector.test.cjs`（094）, `imageAttachmentUi.test.cjs`（098/102）：会话级切换/模型选择器/懒恢复重装/auto 默认 judge/图片附件/视觉判定 catalog 化/上下文百分比两位小数（ADR-026） |
+| conversation-space (pi-mcp-plugin) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-091（2026-08-16 验收；含 BUG-011 用户气泡链接） | api `sessionStop.test.js`（4 用例：HTTP 202 受理/idle no-op/停止后再发）+ E2E `assistantStop.test.cjs`（停止键/流式收尾/立即可再发）、`userBubbleLink.test.cjs`（BUG-011 链接色继承） |
 
 ### plugin-management
 > PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）。（2026-08-12-pi-mcp-plugin 登记）
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| extension | `tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/api/`, `.../cli/`, `.../e2e/` | REQ-AGENT-078~083, 089 | 待生成（/test-author） |
-| mcp-server | `tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-084~088 | 待生成（/test-author） |
+| extension | `tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/`（CLI 归 command-interface） | REQ-AGENT-078~083, 089（2026-08-16 验收） | api `extensionService.test.js`（12）、`workerAssembly.test.js`（6）+ E2E `pluginsPage.test.cjs`（6）：三来源安装/清单/项目启用/装配链路/故障隔离（ADR-024） |
+| mcp-server | `tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-084~088（2026-08-16 验收） | api 9 文件（40 用例：`mcpService`/`mcpBridge`/`mcpPermissionBroker`/`mcpPermissionDefaults`/`mcpProbeTools`/`policyRulesMcp`/`mcpHttpUpdate`/`mcpHttpProjectList`/`channelParity`）+ E2E `mcpPage.test.cjs`（13）、`permissionMcpGroup.test.cjs`（5）：CRUD/桥装配/broker 接线/默认权限层/工具探测/飞书同工（ADR-025） |
 
 ## 能力依赖图
 
@@ -145,6 +146,6 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | information-aggregation | 2 | 7 | 2026-07-19 |
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
-| command-interface | 1 | 4 | 2026-07-29 |
-| agent-dialogue | 5 | 356 | 2026-08-12 |
-| plugin-management | 2 | 0 | 2026-08-12 |
+| command-interface | 1 | 8 | 2026-08-16 |
+| agent-dialogue | 5 | 362 | 2026-08-16 |
+| plugin-management | 2 | 82 | 2026-08-16 |

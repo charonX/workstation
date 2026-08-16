@@ -155,3 +155,12 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 跨供应商端点假设未实证进 BUILD | 「baseUrl+/models 通吃」被 anthropic 族推翻（BUG-002） | 假 key 探测法：401/403=端点存在、404/405=不存在；响应 error type 复核；协议族看 pi-ai `model.api` |
 | 测试零输出挂起当测试问题查 | ABI 翻转的挂起形态（E-DB-UNWRITABLE 被 beforeEach 吞没） | 挂起先 `npm run rebuild:node`/`rebuild:electron` 对齐 ABI 再诊断；并行 story 交叉跑两套测试必翻转 |
 | 展示格式化函数住 JSX | node 无法 import → 数值格式无单元 seam（BUG-003） | 格式化纯函数一律 format.js 类纯 JS 模块；UX 参照示例值（6%）签核时显式确认为格式契约 |
+
+## 2026-08-16 追加（2026-08-12-pi-mcp-plugin /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| hash 重导航当「刷新持久」证明 | `page.goto(base+hash)` 同 URL 是 fragment no-op，组件不卸载——「刷新后仍在」断言空转（BUG-014 收紧原 2b） | 持久化断言三要素：seed 真实持久化实体（走 PUT 路径）→ `page.reload()` 真实刷新 → 重新进入再断言 |
+| `toBeVisible` 当真实可见性 | 不查祖先 `overflow:hidden` 裁剪——弹层末行出界潜伏至用户实测（BUG-009） | 真实命中用 `elementFromPoint` 锚定（点坐标处命中的必须是目标元素） |
+| 行级态用无参聚合读 seam | 全局开关冒充行级启用态：UI 假 on、点击反写 false、启用行永不落库（BUG-012） | 读 seam 带行标识参数；E2E「点开关 → 真实落库 → 刷新回读」三步闭环 |
+| mock req 对象形状不随路由演进 | 路由开始读 `req.url` 后，缺 url 字段的旧 mock 全挂（efa6d4d） | mock 对齐真实 req/res 形状；路由新增读取面时盘点既有 mock |
