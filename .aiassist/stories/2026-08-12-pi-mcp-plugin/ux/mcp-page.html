@@ -1,12 +1,10 @@
-<!-- @dsCard group="management" name="plugins-page" viewport="1080x820" -->
+<!-- @dsCard group="management" name="mcp-page" viewport="1080x820" -->
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>插件管理 — UX 原型</title>
-<!-- BUG-013（2026-08-16，req-gap 就地补全，人拍板）：MCP 服务管理拆出为管理区独立
-     导航项「MCP」+ 独立页（见 mcp-page.html）；本页只留扩展插件清单与添加插件弹窗。 -->
+<title>MCP 服务 — UX 原型</title>
 <link rel="stylesheet" href="_ds/global/tokens.css">
 <link rel="stylesheet" href="_ds/global/styles.css">
 <style>
@@ -40,14 +38,11 @@
   tr:last-child td { border-bottom: none; }
   .mono { font-family: var(--ch-font-mono); font-size: var(--ch-text-xs); }
   .name-cell { font-weight: var(--ch-weight-medium); }
-  .name-cell .sub { display: block; font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); font-weight: var(--ch-weight-normal); margin-top: 2px; }
 
   .badge { display: inline-block; font-size: 11px; padding: 2px 10px; border-radius: var(--ch-radius-full); border: 1px solid var(--ch-border); background: var(--ch-surface-high); color: var(--ch-text-secondary); }
-  .badge.npm { color: var(--ch-accent-text); background: var(--ch-accent-soft); border-color: transparent; }
   .badge.git { color: var(--ch-info); background: var(--ch-info-soft); border-color: transparent; }
   .badge.local { color: var(--ch-text-secondary); }
   .badge.error { color: var(--ch-error); background: var(--ch-error-soft); border-color: transparent; }
-  .badge.ok { color: var(--ch-success); background: var(--ch-success-soft); border-color: transparent; }
 
   tr.row-error td { background: var(--ch-error-soft); }
   .error-detail { font-size: var(--ch-text-xs); color: var(--ch-error); margin-top: 4px; }
@@ -95,74 +90,72 @@
   .seg button { padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-xs); background: var(--ch-surface); color: var(--ch-text-secondary); border: none; cursor: pointer; }
   .seg button.active { background: var(--ch-accent-soft); color: var(--ch-accent); font-weight: var(--ch-weight-medium); }
 
-  /* 安全告知（M2） */
-  .safety-note { display: flex; gap: var(--ch-space-2); padding: var(--ch-space-3); border-radius: var(--ch-radius-md); background: var(--ch-warning-soft); font-size: var(--ch-text-xs); color: var(--ch-text-secondary); line-height: var(--ch-leading-relaxed); }
-  .safety-note .icon { color: var(--ch-warning); flex-shrink: 0; }
-
-  .kv-list { display: flex; flex-direction: column; gap: var(--ch-space-2); }
-  .kv-row { display: flex; gap: var(--ch-space-2); }
-  .kv-row input { flex: 1; }
-  .kv-row .kv-del { flex-shrink: 0; }
-
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ch-surface-highest); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-md); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-text-sm); display: none; z-index: 90; }
   .toast.show { display: block; }
 </style>
 </head>
 <body>
+<!-- BUG-013（2026-08-16，req-gap 就地补全，人拍板）：MCP 管理从「插件」页拆出为
+     管理区独立导航项「MCP」（位于技能之下）+ 独立页 /mcp。本页承载原 plugins-page.html
+     的 ② MCP 服务清单与添加/编辑弹窗，结构/testid 契约原样保留。
+     同轮补全：配置后直连 server 拉取工具——行内「工具」按钮开工具清单弹窗
+     （名称+描述）；添加/编辑保存后自动连接并弹出工具清单；连接失败弹窗内呈错误。 -->
 <div class="stage">
-  <div class="stage-note">UX 原型 · 管理区「插件」页（REQ-AGENT-083 结构契约锚点）· 交互：添加插件弹窗 / 来源切换 / 项目启用 popover / 错误态演示</div>
+  <div class="stage-note">UX 原型 · 管理区「MCP」页（REQ-AGENT-084 结构契约锚点）· 交互：MCP 表单类型切换 / 认证切换 / 项目启用 popover / 全局开关 / 工具清单弹窗 / 错误态演示</div>
 
-  <div class="page" data-testid="plugins-page">
+  <div class="page" data-testid="mcp-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">插件</h1>
-        <div class="page-sub">PI agent 扩展 · 集中安装，按项目启用</div>
+        <h1 class="page-title">MCP 服务</h1>
+        <div class="page-sub">配置存 workstation · 新会话生效 · 调用全程过权限面</div>
       </div>
-      <button class="btn btn-primary" data-testid="plugin-add-button" onclick="openModal('add-plugin')">添加插件</button>
+      <button class="btn btn-primary" data-testid="mcp-add-button" onclick="openModal('add-mcp')">添加 MCP 服务</button>
     </div>
 
-    <!-- ============ ① 扩展插件清单 ============ -->
+    <!-- ============ MCP 服务清单 ============ -->
     <div class="section">
-      <div class="section-head">
-        <span class="section-title">扩展插件</span>
-        <span class="section-desc">npm / git / 本地路径 · 真相 = pi 全局设置</span>
-      </div>
-      <table data-testid="plugin-table">
+      <table data-testid="mcp-table">
         <thead>
-          <tr><th>名称</th><th>来源</th><th>版本</th><th>状态</th><th>项目启用</th><th></th></tr>
+          <tr><th>名称</th><th>类型</th><th>端点</th><th>全局开关</th><th>项目启用</th><th></th></tr>
         </thead>
-        <tbody id="plugin-rows">
-          <tr data-testid="plugin-row-pi-mcp-adapter">
-            <td class="name-cell">pi-mcp-adapter<span class="sub mono">npm:pi-mcp-adapter@2.23.0</span></td>
-            <td><span class="badge npm">npm</span></td>
-            <td class="mono">2.23.0</td>
-            <td><span class="badge ok">内置</span> <span class="section-desc">随应用发布，不可停用</span></td>
-            <td><span class="section-desc">—（由 MCP 服务启用控制）</span></td>
-            <td></td>
-          </tr>
-          <tr data-testid="plugin-row-git-checkpoint">
-            <td class="name-cell">git-checkpoint<span class="sub mono">git:github.com/example/pi-git-checkpoint@v1</span></td>
-            <td><span class="badge git">git</span></td>
-            <td class="mono">v1.4.0</td>
-            <td><span class="badge ok">正常</span></td>
+        <tbody>
+          <tr data-testid="mcp-row-local-db">
+            <td class="name-cell">local-db</td>
+            <td><span class="badge local">stdio</span></td>
+            <td class="mono">npx -y @modelcontextprotocol/server-sqlite …</td>
+            <td><span class="switch on" onclick="flipSelf(this)" data-testid="mcp-global-toggle"></span></td>
             <td class="toggle-cell">
-              <button class="toggle-pill on" data-testid="plugin-project-toggle" onclick="togglePop(this)">2 个项目 ▸</button>
-              <div class="toggle-pop" data-testid="plugin-project-pop">
-                <div class="pop-title">按项目启用（写入项目 .pi/settings.json）</div>
+              <button class="toggle-pill on" onclick="togglePop(this)">1 个项目 ▸</button>
+              <div class="toggle-pop">
+                <div class="pop-title">按项目启用</div>
                 <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">charon/workstation</span><span class="switch on"></span></div>
-                <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">side-blog</span><span class="switch on"></span></div>
-                <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">data-pipeline</span><span class="switch"></span></div>
+                <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">side-blog</span><span class="switch"></span></div>
               </div>
             </td>
-            <td style="text-align:right"><button class="btn-tertiary danger" data-testid="plugin-remove-button" onclick="removeRow(this)">移除</button></td>
+            <td style="text-align:right"><button class="btn-tertiary" data-testid="mcp-tools-button" onclick="openTools('local-db')">工具</button><button class="btn-tertiary" onclick="openModal('add-mcp')">编辑</button><button class="btn-tertiary danger" onclick="removeRow(this)">删除</button></td>
           </tr>
-          <tr class="row-error" data-testid="plugin-row-error">
-            <td class="name-cell">local-tools<span class="sub mono">/Users/me/dev/my-pi-ext</span></td>
-            <td><span class="badge local">本地</span></td>
-            <td class="mono">—</td>
-            <td><span class="badge error">加载失败</span><div class="error-detail">SyntaxError: Unexpected token (my-pi-ext/index.ts:14) — 会话不受影响，其余插件正常</div></td>
-            <td><span class="section-desc">不可用</span></td>
-            <td style="text-align:right"><button class="btn-tertiary danger" onclick="removeRow(this)">移除</button></td>
+          <tr data-testid="mcp-row-github">
+            <td class="name-cell">github</td>
+            <td><span class="badge git">http</span></td>
+            <td class="mono">https://api.githubcopilot.com/mcp/ · bearer</td>
+            <td><span class="switch on" onclick="flipSelf(this)"></span></td>
+            <td class="toggle-cell">
+              <button class="toggle-pill" onclick="togglePop(this)">未启用 ▸</button>
+              <div class="toggle-pop">
+                <div class="pop-title">按项目启用</div>
+                <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">charon/workstation</span><span class="switch"></span></div>
+                <div class="pop-row" onclick="flipSwitch(this)"><span class="proj">side-blog</span><span class="switch"></span></div>
+              </div>
+            </td>
+            <td style="text-align:right"><button class="btn-tertiary" onclick="openTools('github')">工具</button><button class="btn-tertiary" onclick="openModal('add-mcp')">编辑</button><button class="btn-tertiary danger" onclick="removeRow(this)">删除</button></td>
+          </tr>
+          <tr class="row-error" data-testid="mcp-row-error">
+            <td class="name-cell">broken-svc</td>
+            <td><span class="badge local">stdio</span></td>
+            <td class="mono">run-missing-command --serve</td>
+            <td><span class="switch on" onclick="flipSelf(this)"></span></td>
+            <td><span class="badge error">连接失败</span><div class="error-detail">spawn run-missing-command ENOENT — 其工具未注册，会话与其他服务不受影响</div></td>
+            <td style="text-align:right"><button class="btn-tertiary" onclick="openTools('broken-svc')">工具</button><button class="btn-tertiary" onclick="openModal('add-mcp')">编辑</button><button class="btn-tertiary danger" onclick="removeRow(this)">删除</button></td>
           </tr>
         </tbody>
       </table>
@@ -170,33 +163,95 @@
   </div>
 </div>
 
-<!-- ============ 添加插件弹窗（含 M2 安全告知） ============ -->
-<div class="overlay" id="overlay-add-plugin" data-testid="plugin-add-modal">
+<!-- ============ 工具清单弹窗（配置后直连 server 拉取，名称+描述） ============ -->
+<div class="overlay" id="overlay-mcp-tools" data-testid="mcp-tools-modal">
   <div class="modal">
-    <div class="modal-head"><span class="modal-title">添加插件</span><button class="modal-close" onclick="closeModal('add-plugin')">✕</button></div>
+    <div class="modal-head"><span class="modal-title" id="mcp-tools-title">local-db 的工具</span><button class="modal-close" onclick="closeModal('mcp-tools')">✕</button></div>
+    <div class="modal-body">
+      <!-- 连接中态 -->
+      <div class="hint" id="mcp-tools-loading" style="display:none">正在连接 server 拉取工具…</div>
+      <!-- 连接失败态（演示 broken-svc）：错误详情可见，会话与其他服务不受影响 -->
+      <div class="field invalid" id="mcp-tools-error" style="display:none">
+        <span class="err" style="display:block" data-testid="mcp-tools-error-text">连接失败：spawn run-missing-command ENOENT</span>
+      </div>
+      <table data-testid="mcp-tools-table">
+        <thead>
+          <tr><th>工具</th><th>描述</th></tr>
+        </thead>
+        <tbody id="mcp-tools-rows">
+          <tr><td class="name-cell mono">query</td><td>Run a read-only SQL query against the database</td></tr>
+          <tr><td class="name-cell mono">list_tables</td><td>List all tables with schema summaries</td></tr>
+          <tr><td class="name-cell mono">describe_table</td><td>Show columns, types and indexes of one table</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('mcp-tools')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 添加/编辑 MCP 服务弹窗（stdio / http 类型切换） ============ -->
+<div class="overlay" id="overlay-add-mcp" data-testid="mcp-form-modal">
+  <div class="modal">
+    <div class="modal-head"><span class="modal-title">添加 MCP 服务</span><button class="modal-close" onclick="closeModal('add-mcp')">✕</button></div>
     <div class="modal-body">
       <div class="field">
-        <label>来源类型</label>
-        <div class="seg" data-testid="plugin-source-type">
-          <button class="active" data-type="npm" onclick="segPick(this)">npm 包</button>
-          <button data-type="git" onclick="segPick(this)">git 仓库</button>
-          <button data-type="local" onclick="segPick(this)">本地路径</button>
+        <label>名称（库内唯一）</label>
+        <input data-testid="mcp-name-input" placeholder="local-db">
+      </div>
+      <div class="field">
+        <label>连接类型</label>
+        <div class="seg" data-testid="mcp-type-seg">
+          <button class="active" data-type="stdio" onclick="mcpTypePick(this)">stdio（本地命令）</button>
+          <button data-type="http" onclick="mcpTypePick(this)">HTTP（远程服务）</button>
         </div>
       </div>
-      <div class="field" id="plugin-source-field">
-        <label id="plugin-source-label">包名</label>
-        <input data-testid="plugin-source-input" placeholder="pi-git-checkpoint 或 pi-git-checkpoint@1.4.0" oninput="this.closest('.field').classList.remove('invalid')">
-        <span class="hint" id="plugin-source-hint">将从 npm registry 安装到插件库（agentHome/npm/）</span>
-        <span class="err" data-testid="plugin-source-error">来源格式不正确，请检查后重试</span>
+
+      <div id="mcp-stdio-fields">
+        <div class="field">
+          <label>启动命令</label>
+          <input data-testid="mcp-command-input" class="mono" placeholder="npx">
+        </div>
+        <div class="field" style="margin-top: var(--ch-space-3);">
+          <label>参数（每行一个）</label>
+          <textarea data-testid="mcp-args-input" class="mono" rows="2" placeholder="-y&#10;@modelcontextprotocol/server-sqlite"></textarea>
+        </div>
+        <div class="field" style="margin-top: var(--ch-space-3);">
+          <label>环境变量（KEY=VALUE，每行一条）</label>
+          <textarea data-testid="mcp-env-input" class="mono" rows="2" placeholder="DB_PATH=./data/app.db"></textarea>
+        </div>
       </div>
-      <div class="safety-note" data-testid="plugin-safety-note">
-        <span class="icon">⚠</span>
-        <span>插件是第三方代码，加载后拥有<strong>完全系统权限</strong>（可读写文件、执行命令）。请确认来源可信。安装后其工具调用仍受项目权限配置与模式档位管控。</span>
+
+      <div id="mcp-http-fields" style="display:none">
+        <div class="field">
+          <label>服务 URL</label>
+          <input data-testid="mcp-url-input" class="mono" placeholder="https://example.com/mcp">
+          <span class="err">URL 不合法（仅支持 http/https）</span>
+        </div>
+        <div class="field" style="margin-top: var(--ch-space-3);">
+          <label>认证</label>
+          <div class="seg" data-testid="mcp-auth-seg">
+            <button class="active" data-auth="none" onclick="mcpAuthPick(this)">无</button>
+            <button data-auth="bearer" onclick="mcpAuthPick(this)">Bearer Token</button>
+            <button data-auth="oauth" onclick="mcpAuthPick(this)">OAuth</button>
+          </div>
+          <span class="hint">Bearer token 加密存系统凭据库（不明文落库）；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
+        </div>
+        <div class="field" id="mcp-token-field" style="display:none; margin-top: var(--ch-space-3);">
+          <label>Bearer Token</label>
+          <input data-testid="mcp-token-input" type="password" class="mono" placeholder="粘贴 token，保存后不再回显">
+          <span class="hint">加密存储于系统凭据库（macOS Keychain）；保存/列表均不回显明文</span>
+        </div>
+        <div class="field" style="margin-top: var(--ch-space-3);">
+          <label>请求头（KEY=VALUE，每行一条，可选）</label>
+          <textarea data-testid="mcp-headers-input" class="mono" rows="2" placeholder="X-Team-Id=core"></textarea>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn" onclick="closeModal('add-plugin')">取消</button>
-      <button class="btn btn-primary" data-testid="plugin-add-submit" onclick="submitPlugin()">安装</button>
+      <button class="btn" onclick="closeModal('add-mcp')">取消</button>
+      <button class="btn btn-primary" data-testid="mcp-form-submit" onclick="submitMcp()">保存</button>
     </div>
   </div>
 </div>
@@ -204,29 +259,35 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const srcMeta = {
-    npm:  { label: '包名', ph: 'pi-git-checkpoint 或 pi-git-checkpoint@1.4.0', hint: '将从 npm registry 安装到插件库（agentHome/npm/）' },
-    git:  { label: '仓库地址', ph: 'github.com/user/repo 或 git:git@github.com:user/repo@v1', hint: '将克隆到插件库（agentHome/git/），@ref 锁定版本' },
-    local:{ label: '本地路径', ph: '/absolute/path/to/extension', hint: '只登记不拷贝，按路径直接加载' },
-  };
   function openModal(id){ document.getElementById('overlay-' + id).classList.add('open'); }
   function closeModal(id){ document.getElementById('overlay-' + id).classList.remove('open'); }
   function segPick(btn){
     btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    const t = btn.dataset.type;
-    if (t && srcMeta[t]) {
-      document.getElementById('plugin-source-label').textContent = srcMeta[t].label;
-      document.querySelector('[data-testid="plugin-source-input"]').placeholder = srcMeta[t].ph;
-      document.getElementById('plugin-source-hint').textContent = srcMeta[t].hint;
-    }
   }
-  function submitPlugin(){
-    const field = document.getElementById('plugin-source-field');
-    const val = document.querySelector('[data-testid="plugin-source-input"]').value.trim();
-    if (!val) { field.classList.add('invalid'); return; }
-    closeModal('add-plugin');
-    toast('安装成功：' + val + '（全局可用，按项目启用后生效）');
+  function mcpAuthPick(btn){
+    segPick(btn);
+    document.getElementById('mcp-token-field').style.display = btn.dataset.auth === 'bearer' ? '' : 'none';
+  }
+  function mcpTypePick(btn){
+    segPick(btn);
+    const isStdio = btn.dataset.type === 'stdio';
+    document.getElementById('mcp-stdio-fields').style.display = isStdio ? '' : 'none';
+    document.getElementById('mcp-http-fields').style.display = isStdio ? 'none' : '';
+  }
+  // 工具清单弹窗：配置后直连 server 拉取；连接失败呈错误态（演示：broken-svc）。
+  function openTools(name){
+    document.getElementById('mcp-tools-title').textContent = name + ' 的工具';
+    const isBroken = name === 'broken-svc';
+    document.getElementById('mcp-tools-error').style.display = isBroken ? '' : 'none';
+    document.getElementById('mcp-tools-rows').style.display = isBroken ? 'none' : '';
+    openModal('mcp-tools');
+  }
+  // 保存后自动连接拉取工具（演示：关表单 → toast → 开工具清单）。
+  function submitMcp(){
+    closeModal('add-mcp');
+    toast('已保存，正在连接拉取工具…');
+    setTimeout(() => openTools('local-db'), 600);
   }
   function togglePop(btn){
     const pop = btn.nextElementSibling;
@@ -241,6 +302,7 @@
     pop.classList.toggle('open');
   }
   function flipSwitch(row){ row.querySelector('.switch').classList.toggle('on'); }
+  function flipSelf(sw){ sw.classList.toggle('on'); }
   function removeRow(btn){ btn.closest('tr').style.opacity = '.35'; toast('已移除（演示）'); }
   function toast(msg){
     const t = document.getElementById('toast');
