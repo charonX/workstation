@@ -41,23 +41,31 @@ function scheduleTask(schedule) {
       console.error(`[scheduler] scheduled execution submit failed for schedule ${schedule.id}:`, err.message);
       return;
     }
-    // skip 反应（S6 / REQ-SCHEDULE-010）：submit 只返回 {skipped:true}，日志 +
-    // markScheduleInvalid + 注销 cron 任务在本模块执行（taskService 不再承载
-    // schedulerService.remove——taskService 不 import schedulerService，无环）。
+    // submit 只返回 {skipped:true}；skip 反应（日志 + markScheduleInvalid + 注销
+    // cron 任务）归本模块执行（taskService 不再承载 schedulerService.remove——
+    // taskService 不 import schedulerService，模块图无环）。
     if (result && result.skipped) {
-      const flow = flowService.getFlow(schedule.flowId);
-      const statusLabel = flow ? flow.status : "missing";
-      console.error(`E-SCHED-FLOW-INVALID: Scheduled execution skipped for flow ${schedule.flowId} (status=${statusLabel})`);
-      try {
-        taskService.markScheduleInvalid(schedule.id, result.reason ?? "E-SCHED-FLOW-INVALID");
-      } catch (err) {
-        console.error(`[scheduler] markScheduleInvalid failed for schedule ${schedule.id}:`, err.message);
-      }
-      remove(schedule.id);
+      reactToSkippedSubmit(schedule, result);
     }
   });
   tasks.set(schedule.id, task);
   return task;
+}
+
+// skip 反应（S6 / REQ-SCHEDULE-010）：runner.submit 返回 {skipped:true}（到点 flow
+// 非 published）时执行三连——日志 E-SCHED-FLOW-INVALID（含当前 flow 状态标签）+
+// taskService.markScheduleInvalid（schedule 行落 error + enabled=0）+ 注销本 cron
+// 任务（remove）。日志文案与标记时机为既有契约（scheduleTriggers 回归断言）。
+function reactToSkippedSubmit(schedule, result) {
+  const flow = flowService.getFlow(schedule.flowId);
+  const statusLabel = flow ? flow.status : "missing";
+  console.error(`E-SCHED-FLOW-INVALID: Scheduled execution skipped for flow ${schedule.flowId} (status=${statusLabel})`);
+  try {
+    taskService.markScheduleInvalid(schedule.id, result.reason ?? "E-SCHED-FLOW-INVALID");
+  } catch (err) {
+    console.error(`[scheduler] markScheduleInvalid failed for schedule ${schedule.id}:`, err.message);
+  }
+  remove(schedule.id);
 }
 
 function parseScheduleVariables(raw) {

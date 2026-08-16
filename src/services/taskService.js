@@ -7,10 +7,12 @@
 // deleteSchedule / listSchedules）、resetTasks、getCronDescription；一次执行的
 // 生命周期知识（队列 / generation / 写入原语 / 观察窗 / debug 描述符）已全部收进
 // executionRunner，本模块仅保留转发别名（createTask / executeTask /
-// clearExecutionQueue / 测试 setter / debugFlow → runner），保证旧 import 不断
-// （REQ-FLOW-049 AC4）。本模块不 import schedulerService（模块图无环：
-// schedulerService → runner / taskService 单向；cron 校验由 routes/schedules.js
-// 经 schedulerService.validateCron 承担，注销由 schedulerService skip 反应承担）。
+// clearExecutionQueue / 测试 setter / debugFlow → runner）与
+// subscribeToScheduleTriggers 兼容 shim（no-op，不再订阅任何事件——schedule 触发
+// 已改 schedulerService 直调），保证旧 import 不断（REQ-FLOW-049 AC4）。本模块
+// 不 import schedulerService（模块图无环：schedulerService → runner / taskService
+// 单向；cron 校验由 routes/schedules.js 经 schedulerService.validateCron 承担，
+// 注销由 schedulerService skip 反应承担）。
 
 import { getDb, resetDb } from "../db.js";
 import * as flowService from "./flowService.js";
