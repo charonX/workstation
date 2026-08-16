@@ -4,15 +4,20 @@
 // （直跑执行器，描述符参数化）/ reset（单一失效机制：generation+1 + 队列 destroy
 // + 有界等待）三接口 + 内部队列（executionQueue 接口私有化，本模块是其唯一消费者）
 // + 执行写入原语全收（节点记录/完成态/日志/产物/终态通知/queued 结算/通道适配器
-// 解析/executor 装配/观察窗）。
+// 解析/executor 装配）。
 //
 // 契约来源（逐点等价拷贝，非重新发明）：taskService.createTask / executeTask /
 // clearExecutionQueue / 写入原语 —— 相同 SQL、相同事件、相同错误码。本模块不 import
 // taskService（模块图无环：schedulerService → runner.submit 单向）。
 //
-// 描述符（runOnce 第二参）：{trigger, persist, artifacts, notify, observeQueued}；
+// 描述符（runOnce 第二参）：{trigger, persist, artifacts, notify}；
 // subflow 附加 {parentExecutionId, parentNodeId, depth, entryNodeId}（经 services
 // bag 绑定，见 makeInvokeSubflow）。persist=false → 纯内存运行（debug 路径，零落库）。
+//
+// v2（2026-08-16，prd.md 文首注记）：250ms 观察窗撤除——出队后 queued→running
+// 立即迁移，无任何固定睡眠。generation 快照提前到 submit 时捕获（经描述符内部
+// 字段 generation 绑定）：reset 先于出队微任务执行时，检查点① 失配结算 queued
+// 行——守卫覆盖 submit→dequeue 窗口，旧队列的僵尸 run 不会在 reset 后写库。
 
 import { getDb } from "../db.js";
 import * as eventBus from "./eventBus.js";
@@ -26,7 +31,6 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 const QUEUE_DRAINED_REASON = "E-QUEUE-DRAINED: execution aborted by queue lifecycle change (QUEUE_DRAINED_REASON)";
-const QUEUED_STATE_OBSERVATION_MS = 250;
 const MAX_SUBFLOW_DEPTH = 8;
 // REQ-FLOW-028 AC2：agent prompt 落库前截断到前 4000 字符。
 const PROMPT_LOG_MAX_LENGTH = 4000;
@@ -87,7 +91,9 @@ function nextExecutionId() {
 // 缺失/非 published → {skipped:true, reason, scheduleId}（只返回 skipped——
 // 不调 markScheduleInvalid、不写日志；skip 反应归 schedulerService，slice 2）。
 // 容量满同步拒绝 E-QUEUE-FULL（第 51 个，复用 executionQueue.isFull + enqueue
-// 拒绝）。落 queued 行后入队，立即返回（观察窗在 runOnce 出队启动时，不阻塞 submit）。
+// 拒绝）。落 queued 行后入队，立即返回。generation 在 submit 时捕获并绑进描述符
+//（v2）：守卫覆盖 submit→dequeue 窗口——reset 先于出队微任务执行时检查点① 失配，
+// 旧生命周期的 queued 行结算 error，僵尸 run 不写库。
 export function submit({ projectId, flowId, trigger, variables, scheduleId }) {
   if (!projectId) throw new Error("Project is required");
   const project = projectService.getProjectDetail(projectId);
@@ -137,7 +143,10 @@ export function submit({ projectId, flowId, trigger, variables, scheduleId }) {
     persist: true,
     artifacts: true,
     notify: true,
-    observeQueued: true
+    // runner 内部绑定（v2）：submit 时的 generation 快照，runOnce 检查点① 以此为
+    // 基准——覆盖 submit→dequeue 窗口的 reset 竞态（观察窗撤除后该窗口不再有
+    // 睡眠遮蔽，必须显式捕获，否则旧生命周期提交的执行会在 reset 后照跑照写）。
+    generation: executionGeneration
   };
   const runOnceBound = () => runOnce({ execution, flow, project }, descriptor);
   const enqueuePromise = executionQueue.enqueue({
@@ -182,15 +191,17 @@ export function submit({ projectId, flowId, trigger, variables, scheduleId }) {
 // 接口契约（REQ-FLOW-048）：runOnce(executionCtx, descriptor)。
 // executionCtx = {execution, flow, project}（入队路径；debug 路径无 execution，
 // persist=false → 纯内存运行，返回引擎结果）。
-// 行为 = 现状 executeTask 逐点等价：generation 快照 → 观察窗（仅 observeQueued
-// =true，250ms 常量）→ 检查点①（失配 → abortExecutionIfQueued 结算 queued 行 →
-// return）→ 迁移 queued→running → 拼装（executors：testAgentExecutor 注入；
-// _channelManager shim 经 resolveChannelAdapter；services.invokeSubflow =
-// makeInvokeSubflow 绑定自身 persist）→ 引擎 run → 检查点②（成功）/③（catch）→
-// 写入（insertExecutionNodes/completeExecution/collectArtifacts（仅 artifacts=
-// true）/addExecutionLog）→ finally 检查点④ 门控 deliverTerminalNotification/
-// writeExecutionNotification（仅 notify=true）。trigger=schedule 出队二次 published
-// 校验（执行时非 published → completeExecutionError + 日志 E-SCHED-FLOW-INVALID）。
+// 行为 = 现状 executeTask 逐点等价：generation 基准（描述符 generation 字段——
+// submit 时快照；缺省则入口捕获，debug 路径 persist=false 守卫不生效）→
+// 检查点①（失配 → abortExecutionIfQueued 结算 queued 行 → return）→
+// 迁移 queued→running（v2：出队后立即，零睡眠）→ 拼装（executors：
+// testAgentExecutor 注入；_channelManager shim 经 resolveChannelAdapter；
+// services.invokeSubflow = makeInvokeSubflow 绑定自身 persist）→ 引擎 run →
+// 检查点②（成功）/③（catch）→ 写入（insertExecutionNodes/completeExecution/
+// collectArtifacts（仅 artifacts=true）/addExecutionLog）→ finally 检查点④ 门控
+// deliverTerminalNotification/writeExecutionNotification（仅 notify=true）。
+// trigger=schedule 出队二次 published 校验（执行时非 published →
+// completeExecutionError + 日志 E-SCHED-FLOW-INVALID）。
 export async function runOnce(executionCtx, descriptor = {}) {
   const { execution, project } = executionCtx;
   const flow = executionCtx.flow ?? null;
@@ -199,7 +210,9 @@ export async function runOnce(executionCtx, descriptor = {}) {
   const wantArtifacts = descriptor.artifacts !== false;
   const wantNotify = descriptor.notify !== false;
 
-  const myGeneration = executionGeneration;
+  // generation 基准：入队路径由 submit 在提交时捕获（descriptor.generation，
+  // 覆盖 submit→dequeue 窗口）；直跑路径（debug/subflow 不经 submit）入口捕获。
+  const myGeneration = descriptor.generation ?? executionGeneration;
   // 持久化路径判定：有 execution 行且 persist 开启才触碰 DB。
   const persisted = Boolean(execution) && persist;
   // startedAt 只读一次，三个检查点（①/②/③）共用同一基准，结算时长一致。
@@ -207,15 +220,8 @@ export async function runOnce(executionCtx, descriptor = {}) {
   // generation 失配判定（reset 竞态守卫）：队列/DB 已重置，本 run 不再写库。
   const generationStale = () => persisted && executionGeneration !== myGeneration;
 
-  // 观察窗（tech-design 决议）：出队启动时睡眠而非 submit 返回前——250ms 必须在
-  // 响应之后，调用方才能观察到 queued；深队列下与排队等待重叠，总墙钟不变。
-  // 时长保持常量 250ms（不配置化）。仅入队触发（observeQueued=true）走观察窗。
-  if (descriptor.observeQueued === true) {
-    await sleep(QUEUED_STATE_OBSERVATION_MS);
-  }
-
-  // 检查点①：观察窗后 generation 失配 → queued 行结算（abortExecutionIfQueued，
-  // 写 QUEUE_DRAINED_REASON）后返回，不触碰已重置 DB。
+  // 检查点①：generation 失配（reset 先于出队/直跑启动）→ queued 行结算
+  //（abortExecutionIfQueued，写 QUEUE_DRAINED_REASON）后返回，不触碰已重置 DB。
   if (generationStale()) {
     abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
     return undefined;

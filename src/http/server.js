@@ -7,7 +7,6 @@ import * as settingsService from "../services/settingsService.js";
 import * as taskService from "../services/taskService.js";
 import * as runner from "../services/executionRunner.js";
 import * as schedulerService from "../services/schedulerService.js";
-import { recoverInterruptedExecutions } from "../services/executionQueue.js";
 import * as eventBus from "../services/eventBus.js";
 import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
 import { handleProjects } from "./routes/projects.js";
@@ -148,7 +147,7 @@ export function startServer(options = {}) {
       }
 
       // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
-      await runStartupStep("Failed to recover interrupted executions:", () => recoverInterruptedExecutions(getDb()));
+      await runStartupStep("Failed to recover interrupted executions:", () => runner.recoverInterruptedExecutions(getDb()));
       await runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
       // REQ-SCHEDULE-010：schedule 触发已改 schedulerService 直调 runner.submit——
       // 不再注册 subscribeToScheduleTriggers（删 eventBus 一跳与订阅接线）。

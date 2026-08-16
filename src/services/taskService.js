@@ -373,8 +373,10 @@ export function createTask(args) {
   return runner.submit(args);
 }
 
-// executeTask → runner.runOnce（入队描述符：persist/artifacts/notify/
-// observeQueued 全开，trigger 取 execution.trigger——与现状 executeTask 逐点等价）。
+// executeTask → runner.runOnce（入队描述符：persist/artifacts/notify 全开，
+// trigger 取 execution.trigger——与现状 executeTask 逐点等价；v2：观察窗撤除，
+// generation 缺省入口捕获——直调 executeTask 的旧调用方不经 submit，无
+// submit→dequeue 窗口需覆盖）。
 export function executeTask(execution, flow, project) {
   return runner.runOnce(
     { execution, flow, project },
@@ -382,8 +384,7 @@ export function executeTask(execution, flow, project) {
       trigger: execution?.trigger ?? "manual",
       persist: true,
       artifacts: true,
-      notify: true,
-      observeQueued: true
+      notify: true
     }
   );
 }
