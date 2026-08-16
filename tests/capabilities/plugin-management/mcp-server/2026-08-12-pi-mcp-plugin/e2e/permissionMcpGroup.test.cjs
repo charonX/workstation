@@ -95,6 +95,10 @@ test.describe("REQ-AGENT-087 权限配置 mcp 分组（E2E，项目详情页签�
   });
 
   test("BUG-015：#/workspace 项目列表页不再渲染「权限配置 · MCP 工具」区块", async () => {
+    // beforeEach 统一入口已打开项目详情弹窗（含页签内 FAMILY）——本用例考察
+    // 列表页本体，先关弹窗，再断言区块与 FAMILY 均不存在
+    await firstWindow.locator(`${PROJECT_DETAIL_MODAL} .modal-header .icon-btn`).click();
+    await expect(firstWindow.locator(PROJECT_DETAIL_MODAL)).toHaveCount(0);
     await goToAdminRoute(firstWindow, WORKSPACE_ROUTE);
     await expect(firstWindow.locator(".workspace-permission-section")).toHaveCount(0);
     await expect(firstWindow.locator(FAMILY)).toHaveCount(0);
