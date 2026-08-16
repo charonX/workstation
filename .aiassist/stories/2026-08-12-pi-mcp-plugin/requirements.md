@@ -72,6 +72,7 @@
 - 优先级 P1 / 必须 / intra-module / 管理区插件页 / plugin-management / extension / E2E（Playwright Electron）
 - 接口契约：`[data-testid='plugins-page']`、`plugin-add-button`、`plugin-source-input`、`plugin-row-<name>`、`plugin-row-error`、`plugin-project-toggle`；形态对齐既有「技能」页
 - UX 参照：`ux/plugins-page.html`（已定稿）；结构契约以 testid 锚定
+- IA 注记（BUG-013 req-gap 就地补全 2026-08-16，人拍板）：插件页只承载扩展插件清单；MCP 服务管理拆出为管理区独立导航项「MCP」（位于「技能」之下）+ 独立路由 `#/mcp`，页面契约见 REQ-AGENT-084 注记。
 
 验收标准：
 1. 管理区出现「插件」页入口，页面渲染插件清单（E2E：行数与 API 清单一致）。
@@ -85,6 +86,7 @@
 - 优先级 P0 / 必须 / cross-module / mcpService + DB 新表 / plugin-management / mcp-server / 集成 + 单元
 - 接口契约：CRUD `{ name, type: "stdio"|"http", command?, args?, env?, url?, headers?, auth?: "none"|"bearer"|"oauth", token?: string }`；`setProjectEnabled(projectId, serverId, enabled)`；`effectiveConfig(projectId|spaceKey) → McpConfigSnapshot`（桥可直接消费）
 - token 语义（BUG-006 req-gap 就地补全 2026-08-14，人拍板「表单输入 + secretStore 加密」）：`token` 仅在 `type=http ∧ auth=bearer` 时有意义（此时必填）；落库前经 secretStore 加密存 `token_enc` 列，DB/API/列表**永不出现明文**；`effectiveConfig` 快照解密映射桥 `bearerToken` 字段（pi-mcp-adapter ServerEntry 原生字段，桥据此注入 Authorization 头）。auth=none/oauth 或 stdio 时忽略 token。
+- IA + 工具探测注记（BUG-013 req-gap 就地补全 2026-08-16，人拍板）：MCP 管理 UI 独立成页——管理区导航项「MCP」（位于「技能」之下），路由 `#/mcp`，UX 参照 `ux/mcp-page.html`；`[data-testid='mcp-page']`、`mcp-tools-button`、`mcp-tools-modal`、`mcp-tools-table`。新增工具探测契约：`probeTools(name) → [{ name, description }]`（HTTP `GET /api/mcp/:name/tools`）——按库内配置**直连** server（stdio spawn / http+bearer 解密 token 注入 Authorization，同 effectiveConfig 解密路径）拉取 `tools/list`；连接失败 → 业务错误（前端弹窗内呈「连接失败 + 详情」）；探测即连即断，不写库、不影响会话快照；**API 不回显 token 明文**。
 
 验收标准：
 1. 建 stdio server：合法配置落库（API：字段断言）。
@@ -93,6 +95,7 @@
 4. 项目启用/停用持久化；`effectiveConfig` 只含「全局启用开关开 ∧ 项目已启用」的 server（API：组合矩阵断言）。
 5. 快照形态与桥 `createMcpAdapter({config})` 的 config schema 对齐（集成：快照直接传入桥工厂不报错——fixture 校验）。
 6. bearer token 全链路：auth=bearer 建 server 带 token → DB 中只有密文（token_enc，无明文 token）→ `effectiveConfig` 快照含解密后 `bearerToken` → API/列表响应不回显 token 明文（API + 单元）。auth=bearer 缺 token → 字段错误（E2 文案含 token）。
+7. 工具探测（BUG-013 新增）：stdio fixture server 落库后 `probeTools` 返回其 `tools/list`（名称+描述，API 集成）；http fixture（bearer）同（API 集成）；command 不存在 / 端口不通 → 业务错误含「连接失败」（API）；MCP 页行内「工具」按钮开弹窗列出名称+描述（E2E）。
 
 ## REQ-AGENT-085 MCP 桥装配与工具链路（B5）
 
