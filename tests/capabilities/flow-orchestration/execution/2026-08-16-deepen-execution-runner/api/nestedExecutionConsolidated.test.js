@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import { getDb } from "../../../../../../src/db.js";
-import { eventBus } from "../../../../../../src/services/eventBus.js";
+import * as eventBus from "../../../../../../src/services/eventBus.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
