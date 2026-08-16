@@ -30,6 +30,8 @@ const QUEUED_STATE_OBSERVATION_MS = 250;
 const MAX_SUBFLOW_DEPTH = 8;
 // REQ-FLOW-028 AC2：agent prompt 落库前截断到前 4000 字符。
 const PROMPT_LOG_MAX_LENGTH = 4000;
+// REQ-FLOW-037 AC2：未达出口错误文案（子执行日志与抛错共用同一串，避免漂移）。
+const SUBFLOW_NO_OUTPUT_MSG = "E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput";
 
 // 模块内部状态：队列实例 + generation（与现状 taskService 同模式——reset 是唯一
 // 失效机制；队列实例整体替换，旧实例 destroy + 有界等待在飞项 settle）。
@@ -65,6 +67,11 @@ export function setChannelAdapter(adapter) {
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+// 结算时长（ms）：ISO 起时到当前时刻（Date.parse(timestamp()) 精度一致）。
+function elapsedMs(sinceIso) {
+  return Date.now() - Date.parse(sinceIso);
 }
 
 function sleep(ms) {
@@ -298,15 +305,7 @@ export async function runOnce(executionCtx, descriptor = {}) {
       artifacts
     });
 
-    if (result.logs && result.logs.length > 0) {
-      for (const log of result.logs) {
-        addExecutionLog(execution.id, {
-          node: log.node ?? "unknown",
-          status: status,
-          message: log.message || JSON.stringify(log)
-        });
-      }
-    }
+    writeExecutionLogs(execution.id, result.logs, status);
 
     if (result.status === "error" && result.error) {
       addExecutionLog(execution.id, { node: "engine", status: "error", message: result.error });
@@ -773,10 +772,31 @@ function addExecutionLog(id, { node, status, message }) {
   return getExecution(id);
 }
 
+// 引擎日志条目批量写 execution 行（逐条 addExecutionLog，含 logs 表 + progress
+// 事件）。日志条目 node/message 可能缺失，做归一化；defaultStatus 补齐状态——
+// 与既有语义一致（不读条目自带 status 字段）。
+// REQ-FLOW-051 AC2 起：子执行日志写子行（传子 executionId），不再冒泡父行。
+function writeExecutionLogs(executionId, logs, defaultStatus) {
+  for (const log of logs ?? []) {
+    addExecutionLog(executionId, {
+      node: log.node ?? "unknown",
+      status: defaultStatus,
+      message: log.message || JSON.stringify(log)
+    });
+  }
+}
+
+// 引擎错误日志写 execution 行（终态错误统一入口）。
+function logEngineError(executionId, message) {
+  addExecutionLog(executionId, { node: "engine", status: "error", message });
+}
+
 // ---- invokeSubflow（REQ-FLOW-040 / D2 / D4）：同步内联递归执行子流程 ----
-// 由 makeInvokeSubflow 闭包绑定 { project, executors, parentExecutionId, persist }，
-// 在每次递归时重新绑定新的 parentExecutionId（子 execution id），形成链式可观测记录。
-// persist 传播：子描述符继承父 persist（debug 子树零落库，slice 3）。
+// 由 makeInvokeSubflow 闭包绑定 { project, executors, parentExecutionId, persist,
+// generation }，在每次递归时重新绑定新的 parentExecutionId（子 execution id），
+// 形成链式可观测记录。
+// persist/generation 传播：子描述符继承父 persist（debug 子树零落库）与父 runOnce
+// 的 generation 快照（REQ-FLOW-051 AC1 子写点守卫），随递归链逐层下传。
 
 // REQ-FLOW-035 AC6 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口（见 FLOW-033 AC4）。
 function findSubflowExit(nodeRecords, nodeList) {
@@ -826,14 +846,14 @@ async function invokeSubflowImpl({
   const childExecutionId = nextExecutionId();
   const startedAt = timestamp();
   const childDepth = parentDepth + 1;
-  const persistChild = persist !== false;
 
   // REQ-FLOW-051 AC1: 子执行写点纳入父 runOnce 的 generation 快照守卫——reset
   // 中途（generation 失配）子引擎继续跑完（内存），写全跳过，子行保持 running
   // （由 recoverInterruptedExecutions 兜底）；父 runOnce 检查点②照常结算。
   // writeAllowed 为 live 检查（写点逐个求值）：reset 在子引擎运行期间发生 →
   // 后续写点全部拦截；行 INSERT 发生在引擎前（守卫通过时已落行）不受影响。
-  const writeAllowed = () => persistChild && executionGeneration === generation;
+  // 终态写点收编进 finalizeChild*（各自在写点同一同步时刻求值该守卫）。
+  const writeAllowed = () => persist !== false && executionGeneration === generation;
 
   // REQ-FLOW-040 AC2: 子 execution 入库（status=running, trigger=subflow）。
   // persist=false（debug 子树）时零落库。
@@ -892,12 +912,8 @@ async function invokeSubflowImpl({
 
     if (!exitRecord) {
       // REQ-FLOW-037 AC2: 未达出口 → 子 execution 标记 error，抛错冒泡。
-      if (writeAllowed()) {
-        insertExecutionNodes(childExecutionId, childResult.nodeRecords);
-        completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
-        addExecutionLog(childExecutionId, { node: "engine", status: "error", message: "E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput" });
-      }
-      const err = new Error("E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput");
+      finalizeChildNoOutput({ childExecutionId, childResult, startedAt, writeAllowed });
+      const err = new Error(SUBFLOW_NO_OUTPUT_MSG);
       err.nodeRecords = childResult.nodeRecords;
       throw err;
     }
@@ -905,27 +921,7 @@ async function invokeSubflowImpl({
     const exitNode = nodesById.get(exitRecord.nodeId);
     const childOutputs = extractSubflowOutputs(exitRecord, exitNode);
 
-    if (writeAllowed()) {
-      insertExecutionNodes(childExecutionId, childResult.nodeRecords);
-      completeExecution(childExecutionId, {
-        status: "success",
-        duration: Date.now() - Date.parse(startedAt),
-        nodesRun: childResult.nodesRun ?? 0,
-        output: childOutputs,
-        branchPath: [],
-        iterations: [],
-        artifacts: []
-      });
-      // REQ-FLOW-051 AC2: 子日志写子 execution 行（逐条 addExecutionLog），不再
-      // 冒泡父行；reset 中途（writeAllowed=false）日志同样不写。
-      for (const log of childResult.logs ?? []) {
-        addExecutionLog(childExecutionId, {
-          node: log.node ?? "unknown",
-          status: "success",
-          message: log.message || JSON.stringify(log)
-        });
-      }
-    }
+    finalizeChildSuccess({ childExecutionId, childResult, childOutputs, startedAt, writeAllowed });
 
     return {
       status: "success",
@@ -940,18 +936,48 @@ async function invokeSubflowImpl({
       err.childExecutionId = childExecutionId;
     }
     // REQ-FLOW-037 AC1: 子流程节点失败冒泡 → 子 execution 标 error，持久化已累积节点记录。
-    if (writeAllowed()) {
-      completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
-      try {
-        insertExecutionNodes(childExecutionId, err.nodeRecords ?? []);
-      } catch {
-        // 写失败不掩盖主错误。
-      }
-      // REQ-FLOW-051 AC2: 子失败日志写子行（错误路径同理）。
-      addExecutionLog(childExecutionId, { node: "engine", status: "error", message: err.message });
-    }
+    finalizeChildFailure({ childExecutionId, err, startedAt, writeAllowed });
     throw err;
   }
+}
+
+// 子执行成功终态写点（REQ-FLOW-051 AC1 守卫）：节点记录 + 完成态 + 子日志归子行。
+function finalizeChildSuccess({ childExecutionId, childResult, childOutputs, startedAt, writeAllowed }) {
+  if (!writeAllowed()) return;
+  insertExecutionNodes(childExecutionId, childResult.nodeRecords);
+  completeExecution(childExecutionId, {
+    status: "success",
+    duration: elapsedMs(startedAt),
+    nodesRun: childResult.nodesRun ?? 0,
+    output: childOutputs,
+    branchPath: [],
+    iterations: [],
+    artifacts: []
+  });
+  // REQ-FLOW-051 AC2: 子日志写子 execution 行（逐条 addExecutionLog），不再
+  // 冒泡父行；reset 中途（writeAllowed=false）日志同样不写。
+  writeExecutionLogs(childExecutionId, childResult.logs, "success");
+}
+
+// 子执行未达出口终态写点（守卫同上）：落节点记录 + 标 error + 错误日志。
+function finalizeChildNoOutput({ childExecutionId, childResult, startedAt, writeAllowed }) {
+  if (!writeAllowed()) return;
+  insertExecutionNodes(childExecutionId, childResult.nodeRecords);
+  completeExecutionError(childExecutionId, elapsedMs(startedAt));
+  logEngineError(childExecutionId, SUBFLOW_NO_OUTPUT_MSG);
+}
+
+// 子执行失败冒泡终态写点（守卫同上）：先标 error（终态先落，节点写失败不掩盖
+// 主错误），再落已累积节点记录 + 错误日志；节点写失败仅记录不抛出。
+function finalizeChildFailure({ childExecutionId, err, startedAt, writeAllowed }) {
+  if (!writeAllowed()) return;
+  completeExecutionError(childExecutionId, elapsedMs(startedAt));
+  try {
+    insertExecutionNodes(childExecutionId, err.nodeRecords ?? []);
+  } catch {
+    // 写失败不掩盖主错误。
+  }
+  logEngineError(childExecutionId, err.message);
 }
 
 // 闭包工厂：绑定 project / executors / parentExecutionId / persist / generation，
