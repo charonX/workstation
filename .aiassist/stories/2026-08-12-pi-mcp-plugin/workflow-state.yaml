@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 12    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 13    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -35,6 +35,8 @@ history:
   - {at: 2026-08-15, from: BUG, to: BUG, note: "BUG-010（req-gap 超范围→人拍板留本 story 就地补全）：对话无法手动停止——pi SDK AgentSession.abort() 存在但 worker/HTTP/UI/REQ 四层全链路未接（零「停止」字样）。就地补全：REQ-AGENT-091 增量（3dbe6b1 [docs]：HTTP 202 受理/idle no-op + IPC fire-and-forget + 语义边界=已生成保留不加标记/确认卡不撤销/停止后即可再发）+ composer-stop.html 停止态原型（822df24 [ux]，■停止 次键同位替换发送键）+ 回归先红（16c5630 [test]：HTTP 2 + worker 集成 2 + E2E 1）+ AC4 契约适配（8df82bb [test]：「回复中…」死键断言废止）+ 修复（8995f75 [bugfix] 8 文件，闸门已确认）：worker stop-session 带外通道（对齐 ping 先例：进串行队列排在长 prompt 后则永失效）→ abort()；关键坑=abort 掐断 text_end → UI streaming 永不复位/reply 丢失 → message_end stopReason=aborted 时合成 text_end（事件链最高层修复）；HTTP stop 端点 peek 惰性不启动子进程；Composer 停止键 + Assistant 接线。fixture 修正一轮（短回声窗口过紧 → 1500 字符探针 @150tps）。绿：API+集成 4/4、E2E 3/3、全量单元 857/857。期间吸收并行 BUG-012 影响：mcpHttpUpdate mock req 补 url/headers（efa6d4d [test]）"}
   - {at: 2026-08-15, from: BUG, to: BUG, note: "BUG-012（code-defect，人确认）：「配置了 MCP 也没启用，新会话桥 0 server」——UI 显示「1 个项目 ▸」+弹层 switch on 是假态：buildProjectMaps 在项目循环里调无参 listMcpServers()，拿全局开关冒充项目启用态（全局开→每个项目都显示 on）；用户点击实为反转写入 enabled:false，真实启用行永不落库 → effectiveConfig 恒空（活库实证 mcp_project_enablement 0 行）。桥/快照链本身无缺陷。修复（bac43ed [bugfix]，4 文件）：mcpService.list(projectId) COALESCE 子查询读真实启用态（无启用行缺省 false；无参保持全局语义）+ GET /api/mcp?project= 路由（对齐 plugins?project= 先例）+ renderer listMcpServers(projectId) + buildProjectMaps 带 proj.id。回归先红已锁（7b068a2 [test]：API 3 用例 mcpHttpProjectList + E2E 弹层初始 off→点击启用→刷新持久化）。E2E 13/13 绿；单元套件验证受并行会话 better-sqlite3 Electron ABI 重打包污染（18 fail 全为 ERR_DLOPEN_FAILED/E-DB-UNWRITABLE，非断言失败；mcpHttpProjectList 在污染前已绿）。环境注记：E2E 一轮 10 fail 为并行会话改文件触发 vite HMR 所致，静期重跑全绿。用户侧残留：重启应用后删 firecawl 重配 firecrawl → 「项目启用」弹层拨开 knowledge（现在会真实落库）→ knowledge 项目空间新开会话"}
 
+  - {at: 2026-08-16, from: BUG, to: BUG, note: "BUG-013（req-gap 就地补全，人确认×2：拆导航 + 并入工具探测，行内按钮+弹窗）：①MCP 配置拆独立导航项「MCP」（技能之下、插件之上），②配置后直接连接拉取全部工具+描述在 MCP 页操作展示。就地补全（不退 phase）：REQ-083 IA 注记 + REQ-084 IA/工具探测注记+AC7（f59b6e8 [docs]，hash 重算顺带吸收 BUG-010 REQ-091 漂移）、UX 拆页 mcp-page.html + plugins-page 回归纯插件（0e8ad01 [ux]）、回归先红（29b08d1 [test]：API 4 用例 mcpProbeTools + E2E 迁移 7 用例至新路由 + 新增导航 1 + AC7 3）、fixture 路径修正（7716a9b [test]，ROOT 5→6 层对齐 mcpBridge 先例，RED 时 case1/2 误挂路径断言）、修复（24993c5 [bugfix] 9 文件，blast-radius 闸门人确认）：mcpService.probeTools（@modelcontextprotocol/client 直连 tools/list，10s 超时，bearer 同 effectiveConfig 解密路径不回显明文）+ GET /api/mcp/:name/tools + listMcpTools + Mcp.jsx 新页（表格+工具弹窗+保存后自动探测）+ Plugins.jsx 剥离 MCP + /mcp 路由 + nav-mcp + SDK 外联 main/worker bundle（BUG-002 同因）。绿：API 4/4、mcpPage E2E 11/11、pluginsPage E2E 6/6"}
+
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
 
@@ -50,7 +52,8 @@ design_system:
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
   recorded:
-    - {path: ux/plugins-page.html, name: "插件管理页（插件清单 + MCP 服务）", status: needs-review}
+    - {path: ux/plugins-page.html, name: "插件管理页（扩展插件，BUG-013 起 MCP 拆出）", status: needs-review}
+    - {path: ux/mcp-page.html, name: "MCP 服务页（清单 + 工具探测弹窗）", status: needs-review}
     - {path: ux/permission-mcp-group.html, name: "权限配置 · MCP 规则族", status: needs-review}
     - {path: ux/oauth-present.html, name: "OAuth 授权呈现", status: needs-review}
 
