@@ -10,6 +10,9 @@ export function handleSchedules(req, res, body, pathParts) {
 
     if (req.method === "POST") {
       try {
+        // cron 合法性校验（E-SCHED-CRON 400 契约）由 schedulerService.validateCron
+        // 承担（taskService 不 import schedulerService——模块图无环）。
+        if (body?.cron) schedulerService.validateCron(body.cron);
         const schedule = taskService.createSchedule(body);
         try {
           schedulerService.upsert(schedule);

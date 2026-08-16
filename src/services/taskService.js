@@ -1,68 +1,49 @@
+// taskService — 查询 + schedule CRUD + 兼容转发（PRD §10.2 / ADR-028）。
+//
+// ExecutionRunner 深化后本模块瘦身为：查询（getExecution / listExecutions /
+// listExecutionNodes / getExecutionDetailTabs / getDefaultDetailTab /
+// setExecutionVariables / purgeExpiredExecutions）、schedule CRUD
+// （markScheduleInvalid / createSchedule / setScheduleEnabled / toggleSchedule /
+// deleteSchedule / listSchedules）、resetTasks、getCronDescription；一次执行的
+// 生命周期知识（队列 / generation / 写入原语 / 观察窗 / debug 描述符）已全部收进
+// executionRunner，本模块仅保留转发别名（createTask / executeTask /
+// clearExecutionQueue / 测试 setter / debugFlow → runner），保证旧 import 不断
+// （REQ-FLOW-049 AC4）。本模块不 import schedulerService（模块图无环：
+// schedulerService → runner / taskService 单向；cron 校验由 routes/schedules.js
+// 经 schedulerService.validateCron 承担，注销由 schedulerService skip 反应承担）。
+
 import { getDb, resetDb } from "../db.js";
-import * as eventBus from "./eventBus.js";
-import { run } from "../flowEngine/flowEngine.js";
 import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
-import { createExecutionQueue, recoverInterruptedExecutions as recoverInterruptedExecutionsFromQueue } from "./executionQueue.js";
-import * as schedulerService from "./schedulerService.js";
-import * as notificationService from "./notificationService.js";
-import fs from "node:fs";
-import path from "node:path";
+import * as runner from "./executionRunner.js";
 import crypto from "node:crypto";
-
-const QUEUE_DRAINED_REASON = "E-QUEUE-DRAINED: execution aborted by queue lifecycle change";
-const QUEUED_STATE_OBSERVATION_MS = 250;
-
-let executionQueue = createExecutionQueue();
-let executionGeneration = 0;
-
-// Test injection seams.
-let testAgentExecutor = null;
-let testChannelAdapter = null;
-
-// Production channel adapter injected by server startup (REQ-CHANNEL-001).
-let channelAdapter = null;
-
-// Optional lazy reference to channelManager so taskService can always resolve
-// the current live adapter (survives channelManager.restart()). Caches the
-// module after first successful load; missing module or import errors are
-// treated as "channelManager not available" and fall back to the adapters above.
-let channelManagerModule = null;
-
-export function setAgentExecutorForTests(executor) {
-  testAgentExecutor = executor;
-}
-
-export function setChannelAdapter(adapter) {
-  channelAdapter = adapter;
-}
-
-export function setChannelAdapterForTests(adapter) {
-  testChannelAdapter = adapter;
-}
-
-export async function clearExecutionQueue() {
-  // Replace the queue instance entirely so tests/server restarts don't inherit
-  // pending or running executions from a previous lifecycle.
-  executionGeneration += 1;
-  const oldQueue = executionQueue;
-  executionQueue = createExecutionQueue();
-  if (oldQueue) {
-    // Drain: reject pending items and wait for the currently running item to
-    // finish so it cannot write to a DB that has already been reset.
-    oldQueue.destroy();
-    const deadline = Date.now() + 5000;
-    while (oldQueue.pendingCount() > 0 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  }
-}
 
 function timestamp() {
   return new Date().toISOString();
 }
 
-export function resetTasks(seed = { executions: [], schedules: [] }) {
+function nextExecutionId() {
+  return crypto.randomUUID();
+}
+
+function nextScheduleId() {
+  return crypto.randomUUID();
+}
+
+function parseVariables(variables) {
+  if (variables === undefined || variables === null) return {};
+  if (typeof variables === "object") return variables;
+  try {
+    return JSON.parse(variables);
+  } catch {
+    throw new Error("Invalid variables JSON");
+  }
+}
+
+export async function resetTasks(seed = { executions: [], schedules: [] }) {
+  // 内部队列重置改调 runner.reset()（REQ-FLOW-052：单一失效机制——generation+1 +
+  // destroy + 有界等待；本模块不再持有队列实例与 generation）。
+  await runner.reset();
   resetDb();
   const db = getDb();
   const insertExecution = db.prepare(`
@@ -108,61 +89,7 @@ export function resetTasks(seed = { executions: [], schedules: [] }) {
   }
 }
 
-function nextExecutionId() {
-  return crypto.randomUUID();
-}
-
-// REQ-FLOW-028 AC2：agent prompt 落库前截断到前 4000 字符。
-const PROMPT_LOG_MAX_LENGTH = 4000;
-
-// REQ-FLOW-028 / tech-design §5.6：把引擎 run() 返回的 nodeRecords 逐行写入
-// execution_nodes（同一 db 连接，单事务）。
-function insertExecutionNodes(executionId, nodeRecords) {
-  if (!Array.isArray(nodeRecords) || nodeRecords.length === 0) return;
-  const db = getDb();
-  const insert = db.prepare(`
-    INSERT INTO execution_nodes (id, executionId, nodeId, nodeName, inputVariables, outputVariables, branchTaken, error, attemptCount, prompt, output, model, provider, status, durationMs)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const writeAll = db.transaction((records) => {
-    records.forEach((record, index) => {
-      insert.run(...executionNodeInsertParams(executionId, record, index));
-    });
-  });
-  writeAll(nodeRecords);
-}
-
-// nodeRecord → execution_nodes 行参数（列序与 §5.6 DDL 一致）。record.agent 存在时展开
-// agent 调用详情。
-// status 语义：record.error 非空 → "error"（含 onError=ignore 降级路径，错误信息记入
-// error 列），否则 → "success"。
-// output 列：仅 agent 节点（record.agent 存在）填充，优先取 agent.output（adapter 返回文本，
-// REQ-FLOW-028 v1.2，不经 outputVariable 声明），回落 outputVariables 首个值；两者皆无时为 NULL。
-function executionNodeInsertParams(executionId, record, index) {
-  const agent = record.agent ?? null;
-  return [
-    `${executionId}:${index}`,
-    executionId,
-    record.nodeId,
-    record.nodeName ?? null,
-    JSON.stringify(record.inputVariables ?? {}),
-    JSON.stringify(record.outputVariables ?? {}),
-    record.branchTaken ?? null,
-    record.error ?? null,
-    record.attemptCount ?? 1,
-    agent?.prompt != null ? String(agent.prompt).slice(0, PROMPT_LOG_MAX_LENGTH) : null,
-    agent ? (agent.output ?? firstOutputVariableValue(record)) : null,
-    agent?.model ?? null,
-    agent?.provider ?? null,
-    record.error ? "error" : "success",
-    agent?.durationMs ?? null
-  ];
-}
-
-function firstOutputVariableValue(record) {
-  const values = Object.values(record.outputVariables ?? {});
-  return values.length > 0 ? String(values[0]) : null;
-}
+// ---- 查询（保留） ----
 
 function rowToExecutionNode(row) {
   return {
@@ -225,10 +152,6 @@ export function purgeExpiredExecutions(db, { retentionDays = 7, now = new Date()
   return purge();
 }
 
-function nextScheduleId() {
-  return crypto.randomUUID();
-}
-
 function rowToExecution(row) {
   const flow = flowService.getFlow(row.flowId);
   const project = projectService.getProjectDetail(row.projectId);
@@ -269,640 +192,56 @@ function rowToSchedule(row) {
   };
 }
 
-export function createTask({ projectId, flowId, trigger, variables, scheduleId }) {
-  if (!projectId) throw new Error("Project is required");
-  const project = projectService.getProjectDetail(projectId);
-  if (!project) throw new Error("Project not found");
-  const flow = flowService.getFlow(flowId);
-
-  if (trigger === "schedule") {
-    if (!flow || flow.status !== "published") {
-      const reason = "E-SCHED-FLOW-INVALID";
-      const statusLabel = flow ? flow.status : "missing";
-      console.error(`${reason}: Scheduled execution skipped for flow ${flowId} (status=${statusLabel})`);
-      if (scheduleId) {
-        markScheduleInvalid(scheduleId, reason);
-      }
-      return { skipped: true, reason };
-    }
-  } else if (!flow) {
-    throw new Error("Flow not found");
-  }
-
-  const inputVariables = parseVariables(variables);
-
-  const execution = {
-    id: nextExecutionId(),
-    projectId,
-    flowId,
-    trigger: trigger || "manual",
-    status: "queued",
-    startedAt: timestamp(),
-    endedAt: null,
-    duration: null,
-    nodesRun: 0,
-    variables: inputVariables,
-    output: null,
-    branchPath: [],
-    iterations: [],
-    logs: [],
-    artifacts: []
-  };
-
-  // REQ-SCHEDULE-007：先检查容量，队列已满时同步拒绝，避免残留 queued 记录。
-  if (executionQueue.isFull(projectId)) {
-    const err = new Error("队列已满，稍后再发");
-    err.code = "E-QUEUE-FULL";
-    throw err;
-  }
-
-  const run = async () => executeTask(execution, flow, project);
-  const enqueuePromise = executionQueue.enqueue({
-    projectId,
-    executionId: execution.id,
-    run
-  });
-
+export function listExecutions({ parentExecutionId } = {}) {
   const db = getDb();
-  db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    execution.id,
-    execution.projectId,
-    execution.flowId,
-    execution.trigger,
-    execution.status,
-    execution.startedAt,
-    execution.endedAt,
-    execution.duration,
-    execution.nodesRun,
-    JSON.stringify(execution.variables),
-    execution.output !== null ? JSON.stringify(execution.output) : null,
-    JSON.stringify(execution.branchPath),
-    JSON.stringify(execution.iterations),
-    JSON.stringify(execution.logs),
-    JSON.stringify(execution.artifacts),
-    null,
-    null,
-    0
-  );
-
-  // Don't await the queue run here; return immediately with position.
-  enqueuePromise.catch((err) => {
-    console.error(`[taskService] queue run rejected for ${execution.id}:`, err.message);
-  });
-
-  const queuePosition = executionQueue.getPosition(execution.id);
-  // Keep `id` for backward compatibility with older tests/clients that expect
-  // the full execution object shape; `executionId` is the canonical field per
-  // tech-design「taskService.createTask」契约.
-  return { id: execution.id, executionId: execution.id, queuePosition };
+  if (parentExecutionId !== undefined) {
+    return db.prepare(
+      "SELECT * FROM executions WHERE parentExecutionId = ? ORDER BY startedAt ASC, rowid ASC"
+    ).all(parentExecutionId).map(rowToExecution);
+  }
+  return db.prepare("SELECT * FROM executions ORDER BY startedAt DESC, rowid DESC").all().map(rowToExecution);
 }
 
-export async function debugFlow(flowId, { variables, usePublished, nodeList, edges } = {}) {
-  const flow = flowService.getFlow(flowId);
-  if (!flow) return undefined;
-
-  const project = projectService.getProjectDetail(flow.projectId) || {};
-
-  let effectiveNodeList = nodeList;
-  let effectiveEdges = edges;
-  if (effectiveNodeList === undefined) {
-    if (usePublished) {
-      effectiveNodeList = flow.publishedNodeList || [];
-      effectiveEdges = edges === undefined ? (flow.publishedEdges || []) : edges;
-    } else {
-      effectiveNodeList = flow.nodeList || [];
-      effectiveEdges = edges === undefined ? (flow.edges || []) : edges;
-    }
-  }
-
-  const inputVariables = parseVariables(variables);
-
-  const executors = testAgentExecutor ? { agent: testAgentExecutor } : {};
-  // REQ-FLOW-039 AC3: 调试路径同样注入 invokeSubflow（draft 版本），保持和生产路径行为一致。
-  // debug 模式无持久化 execution 行，用一个合成 parentExecutionId 以支持嵌套追溯。
-  const debugParentExecutionId = `debug-${crypto.randomUUID()}`;
-  const services = {
-    invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId: debugParentExecutionId })
-  };
-
-  const result = await run(
-    { flow: { ...flow, nodeList: effectiveNodeList, edges: effectiveEdges }, project },
-    { maxDepth: 100, maxIterations: 1000, executors, services, currentDepth: 0 },
-    inputVariables
-  );
-
-  return {
-    status: result.status,
-    output: result.output,
-    nodesRun: result.nodesRun ?? 0,
-    logs: result.logs ?? [],
-    iterations: result.iterations ?? 0,
-    branchPath: result.branch ? [result.branch] : []
-  };
-}
-
-function parseVariables(variables) {
-  if (variables === undefined || variables === null) return {};
-  if (typeof variables === "object") return variables;
-  try {
-    return JSON.parse(variables);
-  } catch {
-    throw new Error("Invalid variables JSON");
-  }
-}
-
-// REQ-FLOW-040 / D2 / D4: invokeSubflow 服务实现（同步内联递归执行子流程）。
-// 由 makeInvokeSubflow 闭包绑定 { project, executors, parentExecutionId }，在每次
-// 递归时重新绑定新的 parentExecutionId（子 execution id），形成链式可观测记录。
-const MAX_SUBFLOW_DEPTH = 8;
-
-async function invokeSubflowImpl({
-  targetFlowId,
-  entryNodeId,
-  inputVars,
-  parentNodeId,
-  parentDepth,
-  parentExecutionId,
-  project,
-  executors
-}) {
-  // REQ-FLOW-037 AC4: 运行时深度兜底（保存时静态检测已拦截，此为竞态兜底）。
-  if (parentDepth + 1 > MAX_SUBFLOW_DEPTH) {
-    throw new Error(`E-FLOW-MAX-DEPTH: nested call depth exceeds ${MAX_SUBFLOW_DEPTH}`);
-  }
-
-  // REQ-FLOW-039 AC1/AC4: 加载子流程当前版本（draft，不读 published），并检查软删除。
-  const childFlowRow = flowService.getFlow(targetFlowId);
-  if (!childFlowRow) {
-    throw new Error(`E-FLOW-REF-MISSING: subflow ${targetFlowId} not found or deleted`);
-  }
-  const childNodeList = childFlowRow.nodeList || [];
-  const childEdges = childFlowRow.edges || [];
-
-  const childExecutionId = nextExecutionId();
-  const startedAt = timestamp();
-  const childDepth = parentDepth + 1;
-
-  // REQ-FLOW-040 AC2: 子 execution 入库（status=running, trigger=subflow）。
+export function getExecution(id) {
   const db = getDb();
-  db.prepare(`
-    INSERT INTO executions (id, projectId, flowId, trigger, status, startedAt, endedAt, duration, nodesRun, variables, output, branchPath, iterations, logs, artifacts, parentExecutionId, parentNodeId, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    childExecutionId,
-    project.id,
-    targetFlowId,
-    "subflow",
-    "running",
-    startedAt,
-    null,
-    null,
-    0,
-    JSON.stringify(inputVars || {}),
-    null,
-    JSON.stringify([]),
-    JSON.stringify([]),
-    JSON.stringify([]),
-    JSON.stringify([]),
-    parentExecutionId,
-    parentNodeId,
-    childDepth
-  );
-
-  // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId。
-  const childServices = {
-    invokeSubflow: makeInvokeSubflow({
-      project,
-      executors,
-      parentExecutionId: childExecutionId
-    })
-  };
-
-  const childFlowForEngine = { nodeList: childNodeList, edges: childEdges };
-
-  try {
-    const childResult = await run(
-      { flow: childFlowForEngine, project },
-      {
-        services: childServices,
-        startNodeId: entryNodeId,
-        currentDepth: childDepth,
-        maxDepth: 100,
-        maxIterations: 1000,
-        executors
-      },
-      inputVars || {}
-    );
-
-    // REQ-FLOW-035 AC6 / D5: 扫 nodeRecords 找最后一个 flowOutput 作为出口（见 FLOW-033 AC4）。
-    const nodesById = new Map(childNodeList.map((n) => [n.id, n]));
-    const exitRecord = childResult.nodeRecords
-      .filter((r) => nodesById.get(r.nodeId)?.type?.toLowerCase() === "flowoutput")
-      .pop();
-
-    if (!exitRecord) {
-      // REQ-FLOW-037 AC2: 未达出口 → 子 execution 标记 error，抛错冒泡。
-      insertExecutionNodes(childExecutionId, childResult.nodeRecords);
-      completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
-      const err = new Error("E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput");
-      err.nodeRecords = childResult.nodeRecords;
-      throw err;
-    }
-
-    // 按 flowOutput 节点 config.outputVariables 从 record.outputVariables 取出子出参。
-    const exitNode = nodesById.get(exitRecord.nodeId);
-    const childOutputs = {};
-    for (const varDef of exitNode.config?.outputVariables ?? []) {
-      if (!varDef || typeof varDef.name !== "string") continue;
-      const fqKey = `${exitRecord.nodeId}.${varDef.name}`;
-      childOutputs[varDef.name] = exitRecord.outputVariables?.[fqKey];
-    }
-
-    insertExecutionNodes(childExecutionId, childResult.nodeRecords);
-    completeExecution(childExecutionId, {
-      status: "success",
-      duration: Date.now() - Date.parse(startedAt),
-      nodesRun: childResult.nodesRun ?? 0,
-      output: childOutputs,
-      branchPath: [],
-      iterations: [],
-      artifacts: []
-    });
-
-    return {
-      status: "success",
-      output: childOutputs,
-      childExecutionId,
-      logs: childResult.logs ?? []
-    };
-  } catch (err) {
-    // REQ-FLOW-044 AC4: propagate childExecutionId on the failure path so the
-    // parent callFlow node can still expose an expand affordance in the UI.
-    if (err && typeof err === "object" && !err.childExecutionId) {
-      err.childExecutionId = childExecutionId;
-    }
-    // REQ-FLOW-037 AC1: 子流程节点失败冒泡 → 子 execution 标 error，持久化已累积节点记录。
-    completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
-    try {
-      insertExecutionNodes(childExecutionId, err.nodeRecords ?? []);
-    } catch {
-      // 写失败不掩盖主错误。
-    }
-    throw err;
-  }
+  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
+  return row ? rowToExecution(row) : undefined;
 }
 
-// 闭包工厂：绑定 project / executors / parentExecutionId，返回供 engine/callFlowExecutor 调用的 invokeSubflow。
-function makeInvokeSubflow({ project, executors, parentExecutionId }) {
-  return async function invokeSubflow(args) {
-    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors });
-  };
-}
-
-function completeExecutionError(executionId, duration) {
-  return completeExecution(executionId, {
-    status: "error",
-    duration,
-    nodesRun: 0,
-    output: null,
-    branchPath: [],
-    iterations: [],
-    artifacts: []
-  });
-}
-
-function abortExecutionIfQueued(execution, startedAtMs, reason) {
-  try {
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(execution.id);
-    if (!row || row.status !== "queued") return;
-    const endedAt = timestamp();
-    const duration = Date.parse(endedAt) - startedAtMs;
-    completeExecutionError(execution.id, duration);
-    addExecutionLog(execution.id, { node: "engine", status: "error", message: reason });
-  } catch {
-    // Ignore teardown races.
-  }
-}
-
-export async function executeTask(execution, flow, project) {
-  const myGeneration = executionGeneration;
-  // Give callers a short window to observe the queued state before the
-  // execution transitions to running. This makes HTTP GETs immediately after
-  // createTask reliably see status=queued without affecting queue semantics.
-  await new Promise((resolve) => setTimeout(resolve, QUEUED_STATE_OBSERVATION_MS));
-  // If the queue was cleared (server restart / test lifecycle), abort this run
-  // instead of touching a potentially unrelated DB row.
-  if (executionGeneration !== myGeneration) {
-    abortExecutionIfQueued(execution, Date.parse(execution.startedAt), QUEUE_DRAINED_REASON);
-    return;
-  }
-
-  const startedAtMs = Date.parse(execution.startedAt);
+export function setExecutionVariables(id, variables) {
   const db = getDb();
-
-  // Move from queued to running.
-  db.prepare(`UPDATE executions SET status = ? WHERE id = ?`).run("running", execution.id);
-
-  // REQ-AGENT-020：执行启动事件（任务卡片渲染器消费；sessionKey 由执行上下文
-  // 解析——对话下发需记录 originating spaceKey，见 cardRenderer 接线）。
-  eventBus.publish("execution:started", {
-    executionId: execution.id,
-    projectId: execution.projectId,
-    flowId: execution.flowId,
-    status: "running",
-    trigger: execution.trigger,
-    variables: execution.variables,
-  });
-
-  const isScheduled = execution.trigger === "schedule";
-  let effectiveFlow = flow;
-  if (isScheduled) {
-    if (flow.status !== "published") {
-      const endedAt = timestamp();
-      const duration = Date.parse(endedAt) - startedAtMs;
-      completeExecutionError(execution.id, duration);
-      addExecutionLog(execution.id, { node: "engine", status: "error", message: "E-SCHED-FLOW-INVALID: Scheduled execution skipped: flow is not published" });
-      return;
-    }
-    effectiveFlow = { ...flow, nodeList: flow.publishedNodeList || [], edges: flow.publishedEdges || [] };
-  }
-
-  try {
-    const executors = {};
-    if (testAgentExecutor) {
-      executors.agent = testAgentExecutor;
-    }
-
-    // REQ-FLOW-032: inject a channel-manager shim into execution variables so
-    // feishuSend nodes can send replies via the currently resolved adapter
-    // (live channelManager adapter, startup-injected adapter, or test adapter).
-    // Production path falls back to dynamic import of channelManager module.
-    const variablesForRun = {
-      ...execution.variables,
-      _channelManager: {
-        async send(channelType, payload) {
-          const adapter = await resolveChannelAdapter();
-          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-          return adapter.send(payload);
-        },
-        async reply(channelType, payload) {
-          const adapter = await resolveChannelAdapter();
-          if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-          return adapter.reply(payload);
-        }
-      }
-    };
-
-    // REQ-FLOW-035 AC7 / D1: 注入 invokeSubflow 服务，绑定当前 execution.id 作为父 executionId。
-    const services = {
-      invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId: execution.id })
-    };
-
-    const result = await run(
-      { flow: effectiveFlow, project },
-      { maxDepth: 100, maxIterations: 1000, executors, services, currentDepth: 0 },
-      variablesForRun
-    );
-
-    // Generation may have changed while the engine was running (server stop /
-    // test lifecycle). Abort before writing to a potentially unrelated DB.
-    if (executionGeneration !== myGeneration) {
-      abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
-      return;
-    }
-
-    // REQ-FLOW-028 AC1/AC3：节点级执行记录随每次执行持久化。
-    insertExecutionNodes(execution.id, result.nodeRecords);
-
-    const endedAt = timestamp();
-    const duration = Date.parse(endedAt) - startedAtMs;
-    const status = result.status === "success" ? "success" : "error";
-    const artifacts = status === "success" ? await collectArtifacts(project, execution) : [];
-
-    completeExecution(execution.id, {
-      status,
-      duration,
-      nodesRun: result.nodesRun ?? 0,
-      output: result.output,
-      branchPath: result.branch ? [result.branch] : [],
-      iterations: Array.from({ length: result.iterations ?? 0 }, (_, i) => i + 1),
-      artifacts
-    });
-
-    if (result.logs && result.logs.length > 0) {
-      for (const log of result.logs) {
-        addExecutionLog(execution.id, {
-          node: log.node ?? "unknown",
-          status: status,
-          message: log.message || JSON.stringify(log)
-        });
-      }
-    }
-
-    if (result.status === "error" && result.error) {
-      addExecutionLog(execution.id, { node: "engine", status: "error", message: result.error });
-    }
-  } catch (err) {
-    if (executionGeneration !== myGeneration) {
-      abortExecutionIfQueued(execution, startedAtMs, QUEUE_DRAINED_REASON);
-      return;
-    }
-    const endedAt = timestamp();
-    const duration = Date.parse(endedAt) - startedAtMs;
-    completeExecutionError(execution.id, duration);
-    addExecutionLog(execution.id, { node: "engine", status: "error", message: err.message });
-    // REQ-FLOW-028：fatal/fail 终止路径同样持久化已累积的节点记录（含失败节点）。
-    // 写失败不掩盖主错误，仅记录。
-    try {
-      insertExecutionNodes(execution.id, err.nodeRecords ?? []);
-    } catch (nodesErr) {
-      console.error("Failed to persist execution nodes:", nodesErr.message);
-    }
-  } finally {
-    // REQ-SCHEDULE-009 v1.1 / REQ-FLOW-032:不再自动回复 IM 消息——最终回复由
-    // flow 中显式 feishuReply 节点控制。imRouter 在入队时仍立即回执"收到，排队中"。
-    // 仅保留通知中心写入（产物/失败通知），delivery 相关代码保留用于 schedule 场景。
-    if (executionGeneration === myGeneration) {
-      try {
-        await deliverTerminalNotification(execution.id);
-      } catch (deliveryErr) {
-        console.error("[taskService] terminal delivery failed:", deliveryErr.message);
-      }
-      try {
-        writeExecutionNotification(execution.id);
-      } catch (notifyErr) {
-        console.error("[taskService] execution notification failed:", notifyErr.message);
-      }
-    }
-  }
+  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
+  if (!row) return undefined;
+  const merged = { ...JSON.parse(row.variables || "{}"), ...variables };
+  db.prepare("UPDATE executions SET variables = ? WHERE id = ?").run(JSON.stringify(merged), id);
+  return getExecution(id);
 }
 
-function extractArtifactPaths(execution) {
-  const artifacts = execution.artifacts || [];
-  return artifacts.map((a) => (typeof a === "string" ? a : a?.path)).filter(Boolean);
+export function getExecutionDetailTabs() {
+  return ["logs", "variables", "output"];
 }
 
-function buildTerminalSuccessText(execution) {
-  const paths = extractArtifactPaths(execution);
-  if (execution.trigger === "schedule") {
-    const date = new Date().toLocaleDateString("zh-CN");
-    const sourceCount = paths.length;
-    return `日报摘要 ${date}：共 ${sourceCount} 条产物` + (paths.length > 0 ? `\n${paths.join("\n")}` : "");
-  }
-  const pathStr = paths.length > 0 ? paths[0] : "（无登记产物）";
-  return `已存：${pathStr}`;
+export function getDefaultDetailTab() {
+  return "logs";
 }
 
-function buildTerminalFailureText(execution) {
-  const reason = execution.variables?.reason || extractErrorCode(execution) || "E-AGENT-FAILED";
-  return `执行失败：${reason}`;
-}
-
-async function resolveChannelAdapter() {
-  // Prefer the live adapter currently held by channelManager. After
-  // channelManager.restart() the adapter instance is replaced, so the
-  // channelAdapter injected at server startup becomes a stale offline reference.
-  if (!channelManagerModule) {
-    try {
-      channelManagerModule = await import("../services/channelManager.js");
-    } catch {
-      channelManagerModule = null;
-    }
-  }
-  if (channelManagerModule?.getAdapter) {
-    const liveAdapter = channelManagerModule.getAdapter("feishu");
-    if (liveAdapter && typeof liveAdapter.getStatus === "function" && liveAdapter.getStatus() === "online") {
-      return liveAdapter;
-    }
-  }
-
-  // Fallback to the adapter injected at server startup or for tests.
-  if (channelAdapter && typeof channelAdapter.getStatus === "function" && channelAdapter.getStatus() === "online") {
-    return channelAdapter;
-  }
-  return testChannelAdapter;
-}
-
-function resolveTerminalRecipient(execution) {
-  // REQ-SCHEDULE-009 v1.1 / REQ-FLOW-032: channel 触发的 execution 不再自动回复 IM
-  // 消息（由 flow 中显式 feishuReply 节点控制）。仅 schedule 触发保留自动投递——
-  // 场景 A 定时日报无显式触发方，系统主动推送。
-  if (execution.trigger === "schedule") {
-    return { chatId: "default", messageId: undefined };
-  }
-  return null;
-}
-
-async function deliverTerminalNotification(executionId) {
-  const execution = getExecution(executionId);
-  if (!execution) return;
-
-  const recipient = resolveTerminalRecipient(execution);
-  if (!recipient) return;
-
-  const adapter = await resolveChannelAdapter();
-  if (!adapter) return;
-
-  const text = execution.status === "success"
-    ? buildTerminalSuccessText(execution)
-    : buildTerminalFailureText(execution);
-
-  try {
-    if (recipient.messageId) {
-      await adapter.reply({ messageId: recipient.messageId, text });
-    } else if (recipient.chatId) {
-      await adapter.send({ chatId: recipient.chatId, text });
-    }
-  } catch (err) {
-    console.error(`[taskService] E-CHANNEL-SEND: failed to deliver terminal notification for ${executionId}:`, err.message);
-    throw err;
-  }
-}
-
-function extractErrorCode(execution) {
-  const logs = execution.logs || [];
-  for (let i = logs.length - 1; i >= 0; i--) {
-    const message = logs[i]?.message || "";
-    const match = message.match(/E-(AGENT|FETCH)-FAILED/);
-    if (match) return match[0];
-  }
-  return undefined;
-}
-
-function writeExecutionNotification(executionId) {
-  const execution = getExecution(executionId);
-  if (!execution) return;
-  if (execution.status === "success") {
-    const paths = extractArtifactPaths(execution);
-    if (paths.length === 0) return;
-    notificationService.notify({
-      type: "artifact",
-      title: "产物产出",
-      body: paths.join("\n") || "执行成功",
-      executionId: execution.id
-    });
-  } else if (execution.status === "error") {
-    const reason = extractErrorCode(execution) || "E-AGENT-FAILED";
-    notificationService.notify({
-      type: "execution-failed",
-      title: "执行失败",
-      body: reason,
-      executionId: execution.id
-    });
-  }
-}
-
-async function collectArtifacts(project, execution) {
-  // Minimal artifact registration: scan the project directory for files created
-  // during this execution. We use a simple heuristic of files newer than the
-  // execution start time. This satisfies the "登记产物路径" contract without
-  // requiring engine/skill internals to know about artifact registration.
-  const artifacts = [];
-  try {
-    const baseDir = project.localPath;
-    if (!baseDir || !fs.existsSync(baseDir)) return artifacts;
-    const startedAtMs = Date.parse(execution.startedAt);
-    const scanDir = (dir) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          scanDir(full);
-        } else {
-          const stat = fs.statSync(full);
-          if (stat.mtimeMs >= startedAtMs) {
-            artifacts.push(full);
-          }
-        }
-      }
-    };
-    scanDir(baseDir);
-  } catch (err) {
-    console.error("[taskService] artifact collection failed:", err.message);
-  }
-  return artifacts;
-}
+// ---- schedule CRUD（保留） ----
 
 export function markScheduleInvalid(scheduleId, error) {
   const db = getDb();
   const row = db.prepare("SELECT * FROM schedules WHERE id = ?").get(scheduleId);
   if (!row) return undefined;
   db.prepare("UPDATE schedules SET enabled = 0, error = ? WHERE id = ?").run(error, scheduleId);
-  try {
-    schedulerService.remove(scheduleId);
-  } catch {
-    // Ignore teardown races.
-  }
+  // 注：cron 任务注销（原 schedulerService.remove）已迁 schedulerService skip 反应
+  //（taskService 不 import schedulerService，模块图无环）。
   return rowToSchedule({ ...row, enabled: 0, error });
 }
 
 export function createSchedule({ projectId, flowId, cron, variables }) {
   if (!projectId) throw new Error("Project is required");
   if (!cron) throw new Error("Cron expression is required");
-  schedulerService.validateCron(cron);
+  // 注：cron 合法性校验（E-SCHED-CRON）由 routes/schedules.js 经
+  // schedulerService.validateCron 承担（taskService 不 import schedulerService）。
   const schedule = {
     id: nextScheduleId(),
     projectId,
@@ -955,95 +294,6 @@ export function deleteSchedule(id) {
 export function listSchedules() {
   const db = getDb();
   return db.prepare("SELECT * FROM schedules").all().map(rowToSchedule);
-}
-
-export function listExecutions({ parentExecutionId } = {}) {
-  const db = getDb();
-  if (parentExecutionId !== undefined) {
-    return db.prepare(
-      "SELECT * FROM executions WHERE parentExecutionId = ? ORDER BY startedAt ASC, rowid ASC"
-    ).all(parentExecutionId).map(rowToExecution);
-  }
-  return db.prepare("SELECT * FROM executions ORDER BY startedAt DESC, rowid DESC").all().map(rowToExecution);
-}
-
-export function getExecution(id) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
-  return row ? rowToExecution(row) : undefined;
-}
-
-export function completeExecution(id, { status = "success", duration, nodesRun, output, branchPath, iterations, artifacts }) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
-  if (!row) return undefined;
-  const endedAt = timestamp();
-  db.prepare(`
-    UPDATE executions
-    SET status = ?, endedAt = ?, duration = ?, nodesRun = ?, output = ?, branchPath = ?, iterations = ?, artifacts = ?
-    WHERE id = ?
-  `).run(
-    status,
-    endedAt,
-    duration,
-    nodesRun,
-    output !== undefined ? JSON.stringify(output) : row.output,
-    branchPath !== undefined ? JSON.stringify(branchPath) : row.branchPath,
-    iterations !== undefined ? JSON.stringify(iterations) : row.iterations,
-    artifacts !== undefined ? JSON.stringify(artifacts) : row.artifacts,
-    id
-  );
-  // REQ-AGENT-020：执行终态事件（任务卡片定型：含执行 id，可 /status 复核；
-  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。Slice 7 补（缺口 4）：
-  // artifacts 随事件承载（任务卡片终态产物行——REQ-AGENT-020 标准 1：产物增量）。
-  eventBus.publish("execution:completed", {
-    executionId: id,
-    status,
-    output,
-    duration,
-    nodesRun,
-    artifacts,
-  });
-  return getExecution(id);
-}
-
-export function addExecutionLog(id, { node, status, message }) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
-  if (!row) return undefined;
-  const logs = JSON.parse(row.logs || "[]");
-  logs.push({ at: timestamp(), node, status, message });
-  db.prepare("UPDATE executions SET logs = ? WHERE id = ?").run(JSON.stringify(logs), id);
-  // Also write to dedicated logs table for future querying.
-  db.prepare(`
-    INSERT INTO logs (executionId, at, node, status, message)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, timestamp(), node, status, message);
-  // REQ-AGENT-020：执行进度事件（任务卡片增量更新；不阻塞执行）。
-  eventBus.publish("execution:progress", {
-    executionId: id,
-    status,
-    log: message,
-    node,
-  });
-  return getExecution(id);
-}
-
-export function setExecutionVariables(id, variables) {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM executions WHERE id = ?").get(id);
-  if (!row) return undefined;
-  const merged = { ...JSON.parse(row.variables || "{}"), ...variables };
-  db.prepare("UPDATE executions SET variables = ? WHERE id = ?").run(JSON.stringify(merged), id);
-  return getExecution(id);
-}
-
-export function getExecutionDetailTabs() {
-  return ["logs", "variables", "output"];
-}
-
-export function getDefaultDetailTab() {
-  return "logs";
 }
 
 export function getCronDescription(cronExpression) {
@@ -1115,8 +365,91 @@ export function getCronDescription(cronExpression) {
   return description;
 }
 
+// ---- 转发别名（REQ-FLOW-049 AC4：保持导出且行为等价；实现已迁 runner） ----
+
+// createTask → runner.submit（唯一入队触发入口；E-QUEUE-FULL 同步拒绝语义保持）。
+export function createTask(args) {
+  return runner.submit(args);
+}
+
+// executeTask → runner.runOnce（入队描述符：persist/artifacts/notify/
+// observeQueued 全开，trigger 取 execution.trigger——与现状 executeTask 逐点等价）。
+export function executeTask(execution, flow, project) {
+  return runner.runOnce(
+    { execution, flow, project },
+    {
+      trigger: execution?.trigger ?? "manual",
+      persist: true,
+      artifacts: true,
+      notify: true,
+      observeQueued: true
+    }
+  );
+}
+
+// clearExecutionQueue → runner.reset（REQ-FLOW-052：单一失效机制——generation+1 +
+// destroy + 有界等待；server.js 停止路径已改直调 runner.reset）。
+export function clearExecutionQueue() {
+  return runner.reset();
+}
+
+// 测试 seam 转发（REQ-FLOW-053：注入经 runner seam 生效；旧 import 保持不断）。
+export function setAgentExecutorForTests(executor) {
+  runner.setAgentExecutorForTests(executor);
+}
+
+export function setChannelAdapterForTests(adapter) {
+  runner.setChannelAdapterForTests(adapter);
+}
+
+// REQ-FLOW-050：debug 描述符零落库——转发 runner.runOnce（trigger:"debug"，
+// persist:false / artifacts:false / notify:false）。flow/版本解析（usePublished /
+// nodeList / edges 分支）保留在本函数（flows.js 端点契约）；变量经
+// executionCtx.variables 带入（runner 无 execution 行时读该字段）。persist:false
+// 经 runner 的 makeInvokeSubflow 绑定传播，debug 子树同样零落库；不再产生合成
+// debug-<uuid> parentExecutionId（runner 传 null）。
+export async function debugFlow(flowId, { variables, usePublished, nodeList, edges } = {}) {
+  const flow = flowService.getFlow(flowId);
+  if (!flow) return undefined;
+
+  const project = projectService.getProjectDetail(flow.projectId) || {};
+
+  let effectiveNodeList = nodeList;
+  let effectiveEdges = edges;
+  if (effectiveNodeList === undefined) {
+    if (usePublished) {
+      effectiveNodeList = flow.publishedNodeList || [];
+      effectiveEdges = edges === undefined ? (flow.publishedEdges || []) : edges;
+    } else {
+      effectiveNodeList = flow.nodeList || [];
+      effectiveEdges = edges === undefined ? (flow.edges || []) : edges;
+    }
+  }
+
+  const result = await runner.runOnce(
+    {
+      flow: { ...flow, nodeList: effectiveNodeList, edges: effectiveEdges },
+      project,
+      variables: parseVariables(variables)
+    },
+    { trigger: "debug", persist: false, artifacts: false, notify: false }
+  );
+
+  // 返回形状与现状 debugFlow 一致（REQ-FLOW-050 AC4：status/output 供调试弹窗消费）。
+  return {
+    status: result.status,
+    output: result.output,
+    nodesRun: result.nodesRun ?? 0,
+    logs: result.logs ?? [],
+    iterations: result.iterations ?? 0,
+    branchPath: result.branch ? [result.branch] : []
+  };
+}
+
+// 兼容 shim（REQ-SCHEDULE-010）：schedule 触发已改 schedulerService 直调
+// runner.submit，eventBus 一跳与 server.js 订阅接线已删除——本函数不再订阅任何
+// 事件（no-op），仅保留导出供 scheduleTriggers.test.js 等旧 import 不断
+// （[test] 侧 slice 4 迁移后移除）。
 export function subscribeToScheduleTriggers() {
-  return eventBus.subscribe("schedule:triggered", ({ scheduleId, projectId, flowId, variables }) => {
-    createTask({ scheduleId, projectId, flowId, trigger: "schedule", variables });
-  });
+  return undefined;
 }

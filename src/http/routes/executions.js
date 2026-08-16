@@ -1,4 +1,5 @@
 import * as taskService from "../../services/taskService.js";
+import * as runner from "../../services/executionRunner.js";
 
 export function handleExecutions(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -12,7 +13,9 @@ export function handleExecutions(req, res, body, pathParts) {
 
     if (req.method === "POST") {
       try {
-        const result = taskService.createTask(body);
+        // REQ-FLOW-049：manual 触发入口直调 runner.submit（taskService.createTask
+        // 转发别名保持导出，行为等价——E-QUEUE-FULL 同步拒绝语义保持）。
+        const result = runner.submit(body);
         res.writeHead(201, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(result));
       } catch (err) {

@@ -40,10 +40,15 @@ let executionGeneration = 0;
 let testAgentExecutor = null;
 let testChannelAdapter = null;
 
+// Production channel adapter injected by server startup (REQ-CHANNEL-001)——
+// resolveChannelAdapter 三级回退的中间层（live channelManager online → 生产注入 →
+// test 注入，对齐 taskService 原三级；server.js startFeishuChannel 接线，裁决②）。
+let channelAdapter = null;
+
 // Optional lazy reference to channelManager so the runner can always resolve
 // the current live adapter (survives channelManager.restart()). Caches the
 // module after first successful load; missing module or import errors are
-// treated as "channelManager not available" and fall back to the test adapter.
+// treated as "channelManager not available" and fall back to the adapters above.
 let channelManagerModule = null;
 
 export function setAgentExecutorForTests(executor) {
@@ -52,6 +57,10 @@ export function setAgentExecutorForTests(executor) {
 
 export function setChannelAdapterForTests(adapter) {
   testChannelAdapter = adapter;
+}
+
+export function setChannelAdapter(adapter) {
+  channelAdapter = adapter;
 }
 
 function timestamp() {
@@ -234,8 +243,10 @@ export async function runOnce(executionCtx, descriptor = {}) {
     // REQ-FLOW-032: inject a channel-manager shim into execution variables so
     // feishuSend nodes can send replies via the currently resolved adapter
     // (live channelManager adapter or test adapter).
+    // debug 直跑路径（execution 为空）经 executionCtx.variables 带入调用方变量
+    //（taskService.debugFlow 转发；slice 2）。
     const variablesForRun = {
-      ...(execution?.variables ?? {}),
+      ...(execution?.variables ?? executionCtx.variables ?? {}),
       _channelManager: buildChannelManagerShim()
     };
 
@@ -552,6 +563,12 @@ async function resolveChannelAdapter() {
     if (liveAdapter && typeof liveAdapter.getStatus === "function" && liveAdapter.getStatus() === "online") {
       return liveAdapter;
     }
+  }
+
+  // Fallback to the adapter injected at server startup (REQ-CHANNEL-001)——
+  // 仅在 online 时使用（与 taskService 原三级回退一致）。
+  if (channelAdapter && typeof channelAdapter.getStatus === "function" && channelAdapter.getStatus() === "online") {
+    return channelAdapter;
   }
 
   // Fallback to the adapter injected for tests.

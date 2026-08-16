@@ -1,6 +1,8 @@
 import cron from "node-cron";
 import { getDb } from "../db.js";
-import * as eventBus from "./eventBus.js";
+import * as runner from "./executionRunner.js";
+import * as taskService from "./taskService.js";
+import * as flowService from "./flowService.js";
 
 const tasks = new Map();
 let loadedAt = 0;
@@ -24,12 +26,35 @@ function scheduleTask(schedule) {
     // Suppress ticks that fire immediately after loadAll so tests (and users)
     // don't see a compensation-like burst when the server restarts.
     if (Date.now() - loadedAt < LOAD_GRACE_MS) return;
-    eventBus.publish("schedule:triggered", {
-      scheduleId: schedule.id,
-      projectId: schedule.projectId,
-      flowId: schedule.flowId,
-      variables
-    });
+    // REQ-SCHEDULE-010：到点直调 runner.submit（删 eventBus 一跳与 server.js
+    // 订阅接线——schedulerService → runner.submit 单向，模块图无环）。
+    let result;
+    try {
+      result = runner.submit({
+        projectId: schedule.projectId,
+        flowId: schedule.flowId,
+        trigger: "schedule",
+        variables,
+        scheduleId: schedule.id
+      });
+    } catch (err) {
+      console.error(`[scheduler] scheduled execution submit failed for schedule ${schedule.id}:`, err.message);
+      return;
+    }
+    // skip 反应（S6 / REQ-SCHEDULE-010）：submit 只返回 {skipped:true}，日志 +
+    // markScheduleInvalid + 注销 cron 任务在本模块执行（taskService 不再承载
+    // schedulerService.remove——taskService 不 import schedulerService，无环）。
+    if (result && result.skipped) {
+      const flow = flowService.getFlow(schedule.flowId);
+      const statusLabel = flow ? flow.status : "missing";
+      console.error(`E-SCHED-FLOW-INVALID: Scheduled execution skipped for flow ${schedule.flowId} (status=${statusLabel})`);
+      try {
+        taskService.markScheduleInvalid(schedule.id, result.reason ?? "E-SCHED-FLOW-INVALID");
+      } catch (err) {
+        console.error(`[scheduler] markScheduleInvalid failed for schedule ${schedule.id}:`, err.message);
+      }
+      remove(schedule.id);
+    }
   });
   tasks.set(schedule.id, task);
   return task;

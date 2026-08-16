@@ -1,6 +1,6 @@
 import { getDb } from "../../db.js";
 import * as eventBus from "../eventBus.js";
-import * as defaultTaskService from "../taskService.js";
+import * as defaultRunner from "../executionRunner.js";
 import * as defaultBindingService from "../channelBindingService.js";
 import * as defaultFlowService from "../flowService.js";
 import * as defaultNotificationService from "../notificationService.js";
@@ -71,7 +71,7 @@ export function createImRouter({
   channelAdapter,
   channelManager,
   baseUrl,
-  taskService = defaultTaskService,
+  runner = defaultRunner,
   channelBindingService = defaultBindingService,
   flowService = defaultFlowService,
   notificationService = defaultNotificationService,
@@ -318,7 +318,9 @@ export function createImRouter({
 
     let taskResult;
     try {
-      taskResult = taskService.createTask(buildTaskVariables(msg, binding));
+      // REQ-FLOW-049：通道触发入口直调 runner.submit（taskService.createTask
+      // 转发别名保持导出；入队回执「收到，排队中（第 N 位）」语义不变）。
+      taskResult = runner.submit(buildTaskVariables(msg, binding));
     } catch (err) {
       console.error("[imRouter] failed to create task:", err.message);
       await safeReply({ messageId, text: formatEnqueueError(err) }, "enqueue error");

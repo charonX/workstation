@@ -5,6 +5,7 @@ import path from "node:path";
 import { resetDb, getDb, closeDb } from "../db.js";
 import * as settingsService from "../services/settingsService.js";
 import * as taskService from "../services/taskService.js";
+import * as runner from "../services/executionRunner.js";
 import * as schedulerService from "../services/schedulerService.js";
 import { recoverInterruptedExecutions } from "../services/executionQueue.js";
 import * as eventBus from "../services/eventBus.js";
@@ -40,7 +41,9 @@ const activeServers = new Set();
 
 async function startFeishuChannel() {
   const result = await channelManager.start();
-  taskService.setChannelAdapter(channelManager.getAdapter("feishu"));
+  // 裁决②：生产通道适配器注入 runner（三级回退中间层：live channelManager online
+  // → 生产注入 → test 注入；REQ-FLOW-032 / REQ-CHANNEL-001）。
+  runner.setChannelAdapter(channelManager.getAdapter("feishu"));
   return result;
 }
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
@@ -147,8 +150,8 @@ export function startServer(options = {}) {
       // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
       await runStartupStep("Failed to recover interrupted executions:", () => recoverInterruptedExecutions(getDb()));
       await runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
-      // REQ-SCHEDULE-005/006：生产环境必须订阅 schedule:triggered，否则 cron 到点只 publish 事件而不创建执行。
-      await runStartupStep("Failed to subscribe to schedule triggers:", () => taskService.subscribeToScheduleTriggers());
+      // REQ-SCHEDULE-010：schedule 触发已改 schedulerService 直调 runner.submit——
+      // 不再注册 subscribeToScheduleTriggers（删 eventBus 一跳与订阅接线）。
       // REQ-CHANNEL-001/002：凭据存在时自动启动飞书通道与 IM 路由。
       await runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel());
       // agent 优先路由（REQ-AGENT-017，REQ-CHANNEL-002 接替）：IM 消息全量进
@@ -438,7 +441,9 @@ export function stopServer({ server }) {
       // ignore
     }
     try {
-      await taskService.clearExecutionQueue();
+      // REQ-FLOW-049 AC5 / REQ-FLOW-052：停止路径改用 runner.reset()（单一失效
+      // 机制——generation+1 + destroy + 有界等待；clearExecutionQueue 双机制废止）。
+      await runner.reset();
     } catch {
       // ignore
     }
