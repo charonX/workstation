@@ -237,7 +237,20 @@ export async function runOnce(executionCtx, descriptor = {}) {
   try {
     const executors = {};
     if (testAgentExecutor) {
-      executors.agent = testAgentExecutor;
+      // REQ-FLOW-051 AC2（测试 seam 装配归一）：注入的 agent executor 按本 story
+      // 测试先例经 context.prompt 读节点 prompt（executionRunner.test.js「executor
+      // 经 context.prompt 读变量」）。engine 只把变量替换后的 prompt 放在
+      // node.config.prompt（context 为扁平变量注册表，无 prompt 键）——runner 的
+      // executor 装配 seam 把替换后的 prompt 并入 context，使字面 prompt 节点
+      // （无 {{var}} 引用，如本 story parent/child 撞名 fixture）同样可经
+      // context.prompt 区分调用来源。仅作用于注入 seam；生产 agentExecutor 走
+      // node.config.prompt 路径，不受影响。
+      executors.agent = async (args) => {
+        const prompt = args.node?.config?.prompt;
+        return typeof prompt === "string"
+          ? testAgentExecutor({ ...args, context: { ...args.context, prompt } })
+          : testAgentExecutor(args);
+      };
     }
 
     // REQ-FLOW-032: inject a channel-manager shim into execution variables so
@@ -251,10 +264,12 @@ export async function runOnce(executionCtx, descriptor = {}) {
     };
 
     // REQ-FLOW-035 AC7 / D1: 注入 invokeSubflow 服务，绑定当前 execution.id 作为
-    // 父 executionId；persist 绑定自身描述符（debug 子树零落库传播，slice 3）。
+    // 父 executionId；persist 绑定自身描述符（debug 子树零落库传播）；generation
+    // 绑定本次 runOnce 捕获的 myGeneration 快照（REQ-FLOW-051 AC1：子执行写点
+    // 纳入父 runOnce 的 generation 守卫——reset 中途子写被拦截）。
     const parentExecutionId = execution?.id ?? null;
     const services = {
-      invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId, persist })
+      invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId, persist, generation: myGeneration })
     };
 
     const result = await run(
@@ -729,8 +744,10 @@ function completeExecution(id, { status = "success", duration, nodesRun, output,
     id
   );
   // REQ-AGENT-020：执行终态事件（任务卡片定型：含执行 id，可 /status 复核；
-  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。父子字段（parentExecutionId/
-  // depth）为 slice 4 additive 补充，本切片保持现状 payload。
+  // 卡片失败不阻断执行——渲染器告警后仍返回终态）。REQ-FLOW-051 AC3：payload
+  // 追加父子字段 parentExecutionId/depth（additive，从本行读取——父执行如实带
+  // null/0，既有字段 executionId/status/output/duration/nodesRun/artifacts 不变，
+  // cardRenderer 只读既有字段不受影响）。
   eventBus.publish("execution:completed", {
     executionId: id,
     status,
@@ -738,6 +755,8 @@ function completeExecution(id, { status = "success", duration, nodesRun, output,
     duration,
     nodesRun,
     artifacts,
+    parentExecutionId: row.parentExecutionId ?? null,
+    depth: row.depth ?? 0,
   });
   return getExecution(id);
 }
@@ -798,7 +817,8 @@ async function invokeSubflowImpl({
   parentExecutionId,
   project,
   executors,
-  persist
+  persist,
+  generation
 }) {
   // REQ-FLOW-037 AC4: 运行时深度兜底（保存时静态检测已拦截，此为竞态兜底）。
   if (parentDepth + 1 > MAX_SUBFLOW_DEPTH) {
@@ -818,9 +838,16 @@ async function invokeSubflowImpl({
   const childDepth = parentDepth + 1;
   const persistChild = persist !== false;
 
+  // REQ-FLOW-051 AC1: 子执行写点纳入父 runOnce 的 generation 快照守卫——reset
+  // 中途（generation 失配）子引擎继续跑完（内存），写全跳过，子行保持 running
+  // （由 recoverInterruptedExecutions 兜底）；父 runOnce 检查点②照常结算。
+  // writeAllowed 为 live 检查（写点逐个求值）：reset 在子引擎运行期间发生 →
+  // 后续写点全部拦截；行 INSERT 发生在引擎前（守卫通过时已落行）不受影响。
+  const writeAllowed = () => persistChild && executionGeneration === generation;
+
   // REQ-FLOW-040 AC2: 子 execution 入库（status=running, trigger=subflow）。
   // persist=false（debug 子树）时零落库。
-  if (persistChild) {
+  if (writeAllowed()) {
     insertExecutionRow({
       id: childExecutionId,
       projectId: project.id,
@@ -843,13 +870,15 @@ async function invokeSubflowImpl({
     });
   }
 
-  // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId。
+  // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId，
+  // generation 继续传播（深层子写点同受父 runOnce 守卫）。
   const childServices = {
     invokeSubflow: makeInvokeSubflow({
       project,
       executors,
       parentExecutionId: childExecutionId,
-      persist
+      persist,
+      generation
     })
   };
 
@@ -873,9 +902,10 @@ async function invokeSubflowImpl({
 
     if (!exitRecord) {
       // REQ-FLOW-037 AC2: 未达出口 → 子 execution 标记 error，抛错冒泡。
-      if (persistChild) {
+      if (writeAllowed()) {
         insertExecutionNodes(childExecutionId, childResult.nodeRecords);
         completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
+        addExecutionLog(childExecutionId, { node: "engine", status: "error", message: "E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput" });
       }
       const err = new Error("E-SUBFLOW-NO-OUTPUT: child flow finished without reaching flowOutput");
       err.nodeRecords = childResult.nodeRecords;
@@ -885,7 +915,7 @@ async function invokeSubflowImpl({
     const exitNode = nodesById.get(exitRecord.nodeId);
     const childOutputs = extractSubflowOutputs(exitRecord, exitNode);
 
-    if (persistChild) {
+    if (writeAllowed()) {
       insertExecutionNodes(childExecutionId, childResult.nodeRecords);
       completeExecution(childExecutionId, {
         status: "success",
@@ -896,13 +926,22 @@ async function invokeSubflowImpl({
         iterations: [],
         artifacts: []
       });
+      // REQ-FLOW-051 AC2: 子日志写子 execution 行（逐条 addExecutionLog），不再
+      // 冒泡父行；reset 中途（writeAllowed=false）日志同样不写。
+      for (const log of childResult.logs ?? []) {
+        addExecutionLog(childExecutionId, {
+          node: log.node ?? "unknown",
+          status: "success",
+          message: log.message || JSON.stringify(log)
+        });
+      }
     }
 
     return {
       status: "success",
       output: childOutputs,
       childExecutionId,
-      logs: childResult.logs ?? []
+      logs: []
     };
   } catch (err) {
     // REQ-FLOW-044 AC4: propagate childExecutionId on the failure path so the
@@ -911,22 +950,25 @@ async function invokeSubflowImpl({
       err.childExecutionId = childExecutionId;
     }
     // REQ-FLOW-037 AC1: 子流程节点失败冒泡 → 子 execution 标 error，持久化已累积节点记录。
-    if (persistChild) {
+    if (writeAllowed()) {
       completeExecutionError(childExecutionId, Date.now() - Date.parse(startedAt));
       try {
         insertExecutionNodes(childExecutionId, err.nodeRecords ?? []);
       } catch {
         // 写失败不掩盖主错误。
       }
+      // REQ-FLOW-051 AC2: 子失败日志写子行（错误路径同理）。
+      addExecutionLog(childExecutionId, { node: "engine", status: "error", message: err.message });
     }
     throw err;
   }
 }
 
-// 闭包工厂：绑定 project / executors / parentExecutionId / persist，返回供
-// engine/callFlowExecutor 调用的 invokeSubflow。
-function makeInvokeSubflow({ project, executors, parentExecutionId, persist }) {
+// 闭包工厂：绑定 project / executors / parentExecutionId / persist / generation，
+// 返回供 engine/callFlowExecutor 调用的 invokeSubflow。generation 为父 runOnce
+// 捕获的 myGeneration 快照（REQ-FLOW-051 AC1），随递归链逐层传播。
+function makeInvokeSubflow({ project, executors, parentExecutionId, persist, generation }) {
   return async function invokeSubflow(args) {
-    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors, persist });
+    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors, persist, generation });
   };
 }

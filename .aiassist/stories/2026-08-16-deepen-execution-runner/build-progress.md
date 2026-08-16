@@ -29,6 +29,19 @@
 
 （子代理与父代理按序追加：Slice N: complete/refactor pass done + PRD→代码 可追溯性表）
 
+### Slice 2: 入口接线（REQ-FLOW-049 + REQ-SCHEDULE-010 + REQ-FLOW-050 接线）
+
+状态：**complete**（de75608 实现 + 9429050 fixture 修正；业务 13/13 绿 + 回归 56/56 绿 + scheduleTriggers 8/10（2 红=eventBus 协议断言，见裁决④））。
+实现：executions.js/imRouter/schedulerService 直调 runner.submit；schedule skip 反应（日志+markScheduleInvalid+注销 cron）；taskService 瘦身（-833 行：删队列/generation/写入原语/订阅/调试递归，转发别名 createTask/executeTask/clearExecutionQueue/setters/debugFlow，保留查询+schedule CRUD+getCronDescription+resetTasks）；server.js 接线（删 :151 订阅、:441→runner.reset()、:43→runner.setChannelAdapter）；runner 补生产通道适配器（裁决②）；schedules.js cron 校验移路由（破 taskService→schedulerService 环）。
+PRD→代码 可追溯性表：见本文件下方「### Slice 2」小节（子代理写入 12 行，父代理已核）。
+
+#### 父代理验证 + 裁决（2026-08-16）
+
+- 独立验证：业务三文件 **13/13 绿**（9429050 fixture 修正后）；回归 9 文件 **56/56 绿**；scheduleTriggers 8/10。
+- **裁决④（scheduleTriggers 2 红 + no-op shim）**：scheduleTriggers AC1/AC3 订阅已删除的 `schedule:triggered` 事件——REQ-SCHEDULE-010 本义删除该一跳，属 test-plan 既定「断言迁移」；AC3 的实质契约（CRUD 后 cron 自动生效）迁移为直调可观察断言（执行行出现）。subscribeToScheduleTriggers 保留为 **no-op 兼容 shim**（旧测试 4 处调用依赖该导出），**slice 4 [test] 迁移后删除 shim**。
+- **裁决⑤（schedules.js 环破）**：cron 校验（E-SCHED-CRON 400）从 taskService 移路由——避免 taskService→schedulerService 依赖环，语义不变（路由直接校验）。
+- **PRD 对齐（slice 2）**：ALIGNED（15 项逐条 COVERED；模块图 import 边逐一核对无环；hash 一致）。3 项 [test] 侧缺口全部列入 **slice 4 必做**：①补 HTTP 400 用例（缺 project/缺 flow，删 executionQueue.test.js 之前必须落）；②scheduleTriggers AC5「到点不补偿」空真化——迁移为「loadAll 后 500ms 内无执行行」（LOAD_GRACE_MS 抑制仍实现，失去观测）；③executeTask 转发等价 by-construction 记录（无调用方，AC4 typeof 够）。备注：debug 路径新增 _channelManager shim（加性改进）；{skipped} 返回加 scheduleId（§10.4 契约）。
+
 ### Slice 1: ExecutionRunner 模块核心（REQ-FLOW-048 + 052）
 
 状态：**complete**（2a227da 实现 + 0e71ebe fixture 修正 + 797a4c9 refactor pass；12/12 + 23/23 绿；PRD 对齐 ALIGNED；三项裁决见下节）。
@@ -111,3 +124,35 @@
 3. **debugZeroPersist.test.js AC4 fixture 缺陷**（同缺陷亦在 nestedExecutionConsolidated.test.js）：callFlow 节点 config 用 `{flowId, inputMapping, outputMapping}`，而 flowService 校验契约（validateCallFlowConfig）要求 `{targetFlowId, targetInputNodeId}`（E-CALLFLOW-TARGET/E-CALLFLOW-INPUT）→ PATCH 400 → nodeList 未落库 → debug 跑空 flow → output undefined（JSON 丢弃 undefined 键）。nestedExecution.test.js 先例使用 targetFlowId/targetInputNodeId。修正后 AC4（及 slice 3 文件）即绿（探针证实）。
 4. scheduleTriggers.test.js AC2-payload/AC3 为**契约删除项**（eventBus schedule:triggered 一跳按 REQ-SCHEDULE-010 移除）——非缺陷，属 test-plan 既定「断言迁移」清单，slice 4 [test] 侧处理。
 
+
+### Slice 3: 嵌套执行收编（REQ-FLOW-051）
+
+状态：**complete（实现全量落地 + 业务测试 4/4 绿 + 全部回归绿）**。
+实现：`src/services/executionRunner.js`（仅此一文件）——①`runOnce` 把本次捕获的 `myGeneration` 经 `makeInvokeSubflow` 绑定进 services bag，`invokeSubflowImpl` 内 `writeAllowed = () => persistChild && executionGeneration === generation`（live 求值，写点逐个门控）覆盖子执行全部写点（子行 INSERT / insertExecutionNodes / completeExecutionError / completeExecution / addExecutionLog）；②子引擎成功后（writeAllowed 时）把 `childResult.logs` 逐条 `addExecutionLog(childExecutionId, ...)` 写入子行，返回 `logs: []`（不再冒泡父行）；错误路径同理（未达出口 E-SUBFLOW-NO-OUTPUT 与 catch 冒泡均写错误日志到子行）；③`completeExecution` 的 `execution:completed` payload 追加 `parentExecutionId`/`depth`（additive，从行读取，父执行如实带 null/0，既有字段不变）。
+另：`runOnce` 的 executor 装配 seam 把变量替换后的 agent prompt 并入注入 executor 的 context（`context.prompt`）——engine 只把 prompt 放 `node.config.prompt`，而本 story 测试先例约定注入 executor 经 `context.prompt` 读 prompt（executionRunner.test.js「executor 经 context.prompt 读变量」）；字面 prompt 节点（parent/child 撞名 fixture）无 {{var}} 引用，不经 runner 装配归一无法经 context.prompt 区分。仅作用于测试注入 seam，生产 agentExecutor（node.config.prompt 路径）不受影响。
+
+#### PRD→代码 可追溯性表（Slice 3）
+
+| PRD 意图（§10 / REQ） | 实现文件/函数 | 测试文件 | 覆盖状态 |
+|---|---|---|---|
+| §10.3 数据流⑤/§8 reset 竞态 + REQ-FLOW-051 AC1：子执行写点纳入父 runOnce generation 守卫（reset 中途子写全跳过，子行保持 running，recoverInterruptedExecutions 兜底） | executionRunner.js: runOnce（myGeneration 捕获）→ makeInvokeSubflow（绑定 generation）→ invokeSubflowImpl（`writeAllowed = () => persistChild && executionGeneration === generation` live 求值，5 处写点门控；行 INSERT 在引擎前落，不受影响） | nestedExecutionConsolidated.test.js AC1 | COVERED |
+| §10.3 数据流⑥ persist 传播 + REQ-FLOW-050：persist:false（debug 子树）零落库语义保持（writeAllowed 含 persistChild） | executionRunner.js: invokeSubflowImpl（writeAllowed 首项 = persistChild） | debugZeroPersist.test.js AC1/AC2/AC3（回归全绿） | COVERED |
+| §10.7 子日志归子行 + REQ-FLOW-051 AC2：子日志写子 execution 行（含跨 flow 同名 n1 撞名，按执行归属），返回 logs:[] 不冒泡父行；reset 中途日志也不写 | executionRunner.js: invokeSubflowImpl（成功路径逐条 addExecutionLog(childExecutionId)；错误路径 addExecutionLog 子行；返回 logs: []） | nestedExecutionConsolidated.test.js AC2 | COVERED |
+| §10.7/§10.4 execution:completed 事件父子字段 + REQ-FLOW-051 AC3：payload 追加 parentExecutionId/depth（additive，父事件 null/0 如实带出，既有字段不变） | executionRunner.js: completeExecution（从行读 row.parentExecutionId/row.depth） | nestedExecutionConsolidated.test.js AC3；cardRenderer（既有消费回归） | COVERED |
+| §8 深度兜底 E-FLOW-MAX-DEPTH / 未达出口 E-SUBFLOW-NO-OUTPUT / 失败冒泡 childExecutionId（REQ-FLOW-051 AC4 既有行为保持） | executionRunner.js: invokeSubflowImpl（深度检查前置不变；未达出口标 error + 冒泡；catch 附 err.childExecutionId） | nestedExecutionConsolidated.test.js AC4；nestedExecution/subflowFailure/subflowIsolation/foreachCallflow/callFlowValidation 回归 | COVERED |
+| §10.2 executor 装配 + 测试 seam 契约：注入 executor 经 context.prompt 读节点 prompt（本 story 测试先例） | executionRunner.js: runOnce executors.agent 装配 seam（替换后 prompt 并入 context，仅注入 seam） | nestedExecutionConsolidated.test.js AC2/AC1；executionRunner.test.js/executionRunnerReset.test.js（变量注入路径回归不变） | COVERED（见 concerns #1） |
+
+#### Slice 3 验证摘要
+
+- 业务测试：nestedExecutionConsolidated **4/4 绿**（slice 3 前为 1/4；AC2/AC3/AC1 三个红用例全部转绿）。
+- 回归批次 1（nestedExecution/subflowFailure/subflowIsolation/foreachCallflow/callFlowValidation）：**29/29 绿**。
+- 回归批次 2（executorSignature/nodeRegistry/setVariables/subflowNodeTypes）：**41/41 绿**。
+- 回归批次 3（executionRunner/executionRunnerReset/executionRunnerSubmit/debugZeroPersist/scheduleDirectCall）：**25/25 绿**。
+- 回归批次 4（artifacts/linkCapture/dailyDigest 迁移 seam）：**13/13 绿**。
+- 合计 112 用例全绿，0 失败。无需 rebuild（无原生模块变更，无 ERR_DLOPEN_FAILED）。
+
+#### Slice 3 concerns
+
+1. **executor 装配 seam 的 context.prompt 归一**：本 story 测试先例（executionRunner.test.js）约定注入 executor 经 `context.prompt` 读 prompt，但该先例靠 flow variables（`{{prompt}}` + `variables:{prompt}`）注入注册表；nestedExecutionConsolidated 的 fixture 用**字面 prompt**（parent/child），engine 只把替换后的 prompt 放在 `node.config.prompt`，context 无 prompt 键 → 注入 executor 的 `context.prompt` 恒为 undefined。为达成签核断言（子日志 message=child/parent），在 runner 装配 seam 把 `node.config.prompt`（引擎变量替换后）并入注入 executor 的 context。仅作用于 testAgentExecutor seam，生产路径零影响。请父代理裁决：若判定为测试 fixture 缺陷（test-gap），[test] 侧可选改为 `node.config.prompt` 读取并撤除该归一；当前实现满足契约且回归全绿。
+2. **任务清单列 subflowLatestVersion.test.js 不存在**：该「子 flow 最新版本」行为（子 flow 修改后父再次执行见新 prompt）位于 nestedExecution.test.js（AC5+，本次回归 29/29 内含），无独立测试文件，未遗漏覆盖。
+3. `writeAllowed` 为 live 求值而非启动时快照：初始实现按任务书字面（const 快照）导致 AC1 红（reset 后子完成写仍放行），改为写点逐个求值后 4/4 绿——与父 runOnce 检查点②/③语义一致（引擎运行期间的 reset 被拦截，行 INSERT 前落子行不受影响）。
