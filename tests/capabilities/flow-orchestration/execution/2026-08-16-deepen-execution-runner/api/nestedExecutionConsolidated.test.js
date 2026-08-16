@@ -42,11 +42,12 @@ async function createParentChildFlows(serverCtx) {
         { id: "n1", type: "trigger", config: {} },
         { id: "n2", type: "flowOutput", config: { outputVariables: [{ name: "out" }] } },
       ],
-      edges: [{ id: "e1", source: "n1", target: "n2" }],
+      edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
     }),
   });
 
-  // 父流程：trigger → callFlow → 结束；父也有同名 n1（撞名场景）
+  // 父流程：trigger(n1) → callFlow(n2) → 结束；父与子各有同名 n1（撞名场景
+  // 跨 flow，非同一 flow 内重复）
   const parent = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
     method: "POST",
     headers: JSON_HEADERS,
@@ -58,9 +59,9 @@ async function createParentChildFlows(serverCtx) {
     body: JSON.stringify({
       nodeList: [
         { id: "n1", type: "trigger", config: {} },
-        { id: "n1", type: "callFlow", config: { flowId: child.id, inputMapping: {}, outputMapping: {} } },
+        { id: "n2", type: "callFlow", config: { flowId: child.id, inputMapping: {}, outputMapping: {} } },
       ],
-      edges: [{ id: "e1", source: "n1", target: "n1" }],
+      edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
     }),
   });
 

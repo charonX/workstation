@@ -44,7 +44,11 @@ async function createProjectAndFlow(serverCtx) {
   await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
     method: "PATCH",
     headers: JSON_HEADERS,
-    body: JSON.stringify({ status: "published" }),
+    body: JSON.stringify({
+      nodeList: [{ id: "n1", type: "agent", config: { prompt: "{{prompt}}" } }],
+      edges: [],
+      status: "published",
+    }),
   });
   return { project, flow };
 }
@@ -108,10 +112,10 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
 
   it("AC4a: 队列串行——同项目前项完成才启动后项（并发 submit）", async () => {
     const order = [];
-    setAgentExecutorForTests(async ({ prompt }) => {
-      order.push(prompt);
+    setAgentExecutorForTests(async ({ context }) => {
+      order.push(context.prompt);
       await new Promise((r) => setTimeout(r, 50));
-      return { status: "success", output: prompt, nodeRecords: [], logs: [] };
+      return { status: "success", output: context.prompt, nodeRecords: [], logs: [] };
     });
     await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "A" } });
     await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "B" } });

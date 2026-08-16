@@ -41,7 +41,7 @@ async function createProjectAndFlows(serverCtx) {
         { id: "n1", type: "flowInput", config: { inputVariables: [] } },
         { id: "n2", type: "flowOutput", config: { outputVariables: [] } },
       ],
-      edges: [{ id: "e1", source: "n1", target: "n2" }],
+      edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
     }),
   });
 
@@ -59,7 +59,7 @@ async function createProjectAndFlows(serverCtx) {
         { id: "n1", type: "trigger", config: {} },
         { id: "n2", type: "callFlow", config: { flowId: child.id, inputMapping: {}, outputMapping: {} } },
       ],
-      edges: [{ id: "e1", source: "n1", target: "n2" }],
+      edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
     }),
   });
 

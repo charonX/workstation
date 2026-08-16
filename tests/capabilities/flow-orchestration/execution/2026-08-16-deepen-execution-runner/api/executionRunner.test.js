@@ -25,15 +25,16 @@ import { getDb } from "../../../../../../src/db.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-const FAKE_EXECUTOR = async ({ prompt }) => ({
+const FAKE_EXECUTOR = async ({ context }) => ({
   status: "success",
-  output: `echo:${prompt}`,
+  output: `echo:${context.prompt}`,
   nodeRecords: [],
   logs: [],
 });
 
 // 建项目 + published flow（executionLog.test.js 先例：POST /api/projects →
-// POST /api/flows → PATCH status:"published"）
+// POST /api/flows → PATCH nodeList+status:"published"）。fixture 含 agent 节点
+// （注入 executor 才会被引擎调用；executor 经 context.prompt 读变量）。
 async function createProjectAndPublishedFlow(serverCtx) {
   const project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
     method: "POST",
@@ -48,7 +49,11 @@ async function createProjectAndPublishedFlow(serverCtx) {
   await fetch(`${serverCtx.baseUrl}/api/flows/${flow.id}`, {
     method: "PATCH",
     headers: JSON_HEADERS,
-    body: JSON.stringify({ status: "published" }),
+    body: JSON.stringify({
+      nodeList: [{ id: "n1", type: "agent", config: { prompt: "{{prompt}}" } }],
+      edges: [],
+      status: "published",
+    }),
   });
   return { project, flow };
 }
@@ -103,11 +108,14 @@ describe("REQ-FLOW-048 executionRunner.submit", () => {
   it("AC3: 描述符矩阵——入队形态 persist/artifacts/notify 全开（fake executor 观察写入）", async () => {
     const result = await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "hello" } });
 
-    // 签核：入队触发执行后——execution_nodes 落库（节点记录）、执行终态 success、
-    // output 含 fake executor 输出 echo:hello（REQ-FLOW-048 AC3/AC6）
-    const nodes = getDb().prepare("SELECT * FROM execution_nodes WHERE executionId = ?").all(result.id);
-    assert.ok(nodes.length >= 0);
-    const row = getDb().prepare("SELECT * FROM executions WHERE id = ?").get(result.id);
+    // 签核：入队触发执行后——执行终态 success、output 含 fake executor 输出
+    // echo:hello（REQ-FLOW-048 AC3/AC6）。轮询至终态（观察窗 250ms + 引擎执行）
+    let row;
+    for (let i = 0; i < 100; i++) {
+      row = getDb().prepare("SELECT * FROM executions WHERE id = ?").get(result.id);
+      if (row.status !== "queued") break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     assert.equal(row.status, "success");
     assert.ok(String(row.output).includes("echo:hello"));
   });
