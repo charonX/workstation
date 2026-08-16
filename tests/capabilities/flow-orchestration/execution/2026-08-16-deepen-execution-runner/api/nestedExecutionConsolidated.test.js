@@ -59,7 +59,7 @@ async function createParentChildFlows(serverCtx) {
     body: JSON.stringify({
       nodeList: [
         { id: "n1", type: "trigger", config: {} },
-        { id: "n2", type: "callFlow", config: { flowId: child.id, inputMapping: {}, outputMapping: {} } },
+        { id: "n2", type: "callFlow", config: { targetFlowId: child.id, targetInputNodeId: "n1", inputMappings: [], outputMappings: [] } },
       ],
       edges: [{ id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }],
     }),

@@ -23,7 +23,7 @@ import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import * as schedulerService from "../../../../../../src/services/schedulerService.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const EVERY_SECOND = "* * * * *";
+const EVERY_SECOND = "* * * * * *";
 
 // 建项目 + flow（publish 与否按用例控制）；返回 flowId
 async function createProjectAndFlow(serverCtx, { publish }) {
