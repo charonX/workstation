@@ -9,7 +9,7 @@ intention: >-
   generation）互为补丁。一句话痛点：一次执行的生命周期知识散在三处，
   删除测试证明无属主，改动一次跨 N 处。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: ASSERTION-SIGNOFF # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -24,6 +24,9 @@ history:
   - {at: 2026-08-16, from: TECH-DESIGN, to: CRYSTALLIZE, note: "prd.md §10 定稿（10.1-10.7：模块边界/数据流/三接口契约+描述符表/11 项决策/风险回流点/安全性能可观测）；§5 移动块清空（四块全解决）；§8 schedule skip 契约与 §11.1 覆盖接缝（+queue 私有化、schedule skip 两 seam）反向同步。人确认后 /crystallize"}
   - {at: 2026-08-16, from: CRYSTALLIZE, to: TEST, note: "结晶 7 REQ（人确认）：REQ-FLOW-048~053（flow-orchestration/execution，三接口/触发归一/debug 零落库/嵌套收编/reset 竞态/seam 迁移）+ REQ-SCHEDULE-010（scheduling-execution/schedule，直调+skip 反应）；requirements-v1.hash=477d80d3；能力地图两行更新。待 /test-author"}
   - {at: 2026-08-16, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架 6 文件落盘（executionRunner/executionRunnerReset/executionRunnerSubmit/debugZeroPersist/nestedExecutionConsolidated/scheduleDirectCall），全 RED（seam 未就绪）；test-plan.md 列 7 个待签核断言点 + 既有测试迁移清单（executionQueue.test.js 删除、scheduleTriggers/nestedExecution 迁移、seam import 迁移）。待门 1 /signoff"}
+  - {at: 2026-08-16, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（人批量确认）：S1-S7 落签（signoff.md）；PRD §14 GAP 归类完成（§10 已 PASS）；6 文件全 RED 0 误绿；commit a355772 [test] assertion-signoff。解锁 BUILD——切片规划：①runner 模块核心（submit/runOnce/reset+内部队列）②入口接线（routes/imRouter/schedulerService 直调 + taskService 转发）③debug 描述符零落库 ④嵌套收编（日志/事件）⑤reset/server 接线 + 测试 seam 迁移"}
+  - {at: 2026-08-16, from: BUILD, to: QA, note: "BUILD 4 切片全 complete（切片计划 5→4：debug 接线并入 slice 2，因 runner 的 debug 描述符在 slice 1 已就位）：slice 1 runner 核心（2a227da + 797a4c9 refactor，12/12）、slice 2 入口接线（de75608 + 8e9b830 refactor，13/13 + 回归 56/56）、slice 3 嵌套收编（ef55131/d544ae6 + 83db522 refactor，4/4 + 全回归）、slice 4 seam 迁移（[test] 2d4d5d9 + [build] 31e2fd5 删 shim）。PRD 对齐三 slice 全 ALIGNED；三项裁决（catch re-throw 保留/scheduleTriggers 断言迁移/schedules.js 环破）+ seam 归一化撤除（裁决⑥）。**全量单元 891/891 绿**。待 /qa-runner（E2E 回归 + 证据收集）"}
+  - {at: 2026-08-16, from: QA, to: REFLECT, note: "QA 通过（qa-report.md）：单元 891/891 绿；E2E 16 文件 71 用例——首跑 69/2，2 例（artifactsTab 产物列表 / flowEditor 拖拽连线）重跑 11/11 全过，判 flaky 记录观察（疑 Electron 冷启动竞争；flowEditor 与本 story 无关）。基线含 v2 修订（9481499 撤除 250ms 观察窗，signoff v2 重签）。无 open bug → 门 2 /reflect：tech-design 5 项决策补 ADR-028 + 经验沉淀"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
