@@ -3,6 +3,15 @@
 > 状态：探索期
 > 故事 ID：`2026-08-16-deepen-execution-runner`
 > 最后更新：2026-08-16
+>
+> **v2 重裁决（2026-08-16，architecture-review #1 字面落实）**：撤除生产路径
+> 250ms 观察窗——深潜证伪原保留裁决的两条依据（①「UI 依赖排队态展示」：
+> `grep -rn "queued" src/renderer` 零命中，UI 仅泛化渲染 status；②「深队列
+> 与排队等待重叠、总墙钟不变」：executionQueue 每项目严格串行，睡眠占队头
+> 槽位，N 个执行累加 N×250ms 死时间）。观察窗的真实消费者只有测试轮询。
+> 裁决：描述符删 `observeQueued`，runOnce 零睡眠；queued 可观察性由真实
+> 排队语义承载（队头被占时后续执行稳定 queued + queuePosition≥2）。
+> 人拍板：「直接改吧」（2026-08-16，signoff.md v2 重签）。
 
 ---
 
@@ -31,7 +40,7 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 3. 作为开发者，我想要透过一个 seam 注入 executor/通道适配器，以便测试不再依赖
    模块级变量 + dynamic import。
 4. 作为调用方（HTTP / schedule / 通道），我想要提交执行的契约稳定（201 +
-   queuePosition、E-QUEUE-FULL 503、queued 瞬时可见），以便既有集成不改。
+   queuePosition、E-QUEUE-FULL 503、排队时 queued 可见），以便既有集成不改。
 
 ## 4. 稳定块（已稳定，可结晶为 REQ）
 
@@ -41,13 +50,13 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 | 2 | 触发入口归一（manual/schedule/channel → submit；schedule 直调去 eventBus） | 三入口已天然汇聚 createTask，直调已裁决（唯一订阅者） |
 | 3 | debug 描述符（persist:false 传播，全链路零落库；合成 parent 废止） | 孤儿行是实证缺陷，方向已拍板 |
 | 4 | 嵌套执行收编（generation 守卫覆盖、子日志归子行、事件补父子字段） | 已确认无契约测试锁定现状，方向已拍板 |
-| 5 | 契约保持（createTask/executeTask 转发、E-QUEUE-FULL、queuePosition、queued 观察窗） | 向后兼容是硬约束 |
+| 5 | 契约保持（createTask/executeTask 转发、E-QUEUE-FULL、queuePosition） | 向后兼容是硬约束 |
 | 6 | 测试 seam 迁入 runner（setAgentExecutorForTests/setChannelAdapterForTests） | 行为契约不变，仅 import 位置变 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
 > 全部已解决（/tech-design 深潜，2026-08-16）：
-> #1 观察窗时长 → 保持常量 250ms 不配置化（§10.5）；
+> #1 观察窗 → ~~保持常量 250ms~~ **v2 撤除**（深潜证伪保留依据，见文首 v2 注记）；
 > #2 executionQueue 文件组织 → 接口私有化 B1，文件保留（§10.2）；
 > #3 collectArtifacts 归属 → runner 全收（§10.2）；
 > #4 schedule 二次校验落点 → submit 内校验 + runOnce trigger=schedule 分支校验
@@ -60,7 +69,7 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
 | 1 | 手动触发：POST /api/executions | 201 `{id, executionId, queuePosition}`；行落 queued | 返回形状不变 |
-| 2 | 立即 GET /api/executions/:id | 稳定看到 status=queued（观察窗内） | 观察窗语义保留 |
+| 2 | 立即 GET /api/executions/:id | 队头空闲时可见 queued/running/终态任一（轮询容错）；队头被占时稳定见 status=queued + queuePosition≥2 | 排队语义承载可观察性（v2） |
 | 3 | schedule 到点（flow 已 published） | 直调 submit → 入队执行 → 完成 | 无 bus 一跳，行为等价 |
 | 4 | 调试运行 flow | runOnce 直跑，返回 status/output；无任何 execution 行落库 | 零落库 |
 | 5 | flow 内 callFlow 节点 | 子执行走 runOnce：子行落库、子日志写子行、事件带父子字段 | 守卫覆盖 + 归属正确 |
@@ -125,7 +134,7 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 
 | 模块 | 职责 | 是否新增 |
 |---|---|---|
-| ExecutionRunner | 队列槽位（内部持有，接口私有）+ generation + submit/runOnce/reset；**执行写入原语全收**（节点记录/完成态/日志/产物/终态通知/queued 结算/通道适配器解析）；executor 装配；观察窗 | 是 |
+| ExecutionRunner | 队列槽位（内部持有，接口私有）+ generation + submit/runOnce/reset；**执行写入原语全收**（节点记录/完成态/日志/产物/终态通知/queued 结算/通道适配器解析）；executor 装配 | 是 |
 | executionQueue（保留文件） | 每项目串行化 + 容量 50 + destroy——runner 内部使用，**不对外导出公开接口** | 否（接口私有化） |
 | taskService | 查询（getExecution/list 等）+ schedule CRUD（含 markScheduleInvalid）+ createTask/executeTask/clearExecutionQueue 兼容转发 | 否（瘦身） |
 | schedulerService | cron 触发**直调 runner.submit**（删 eventBus 一跳）；**skip 反应**（收到 `{skipped}` → 日志 + markScheduleInvalid） | 否（接线变化） |
@@ -139,7 +148,7 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 [imRouter] ───────┼─submit──> ┌────────────────────────────┐
 [schedulerService]─┘           │ ExecutionRunner            │
                                │  队列(generation 失效统一)  │
-[flows.js debug] ──runOnce──>  │  写入原语/守卫/观察窗/拼装   │
+[flows.js debug] ──runOnce──>  │  写入原语/守卫/拼装         │
 [callFlowExecutor] ──services bag（无 import）              │
                                └──────────┬─────────────────┘
                                           │ runOnce（出队回调）
@@ -156,11 +165,11 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 1. **触发**：5 个入口（manual/schedule/channel → submit；debug/subflow → runOnce）
 2. **submit 校验**：项目/flow 存在、schedule published（skip 分支）、容量（E-QUEUE-FULL）
 3. **submit 核心**：构建 execution 对象 → 落 queued 行 → 入队（绑定 runOnce +
-   descriptor{observeQueued:true}）→ 立即返回 `{id, executionId, queuePosition}`（无睡眠）
+   descriptor）→ 立即返回 `{id, executionId, queuePosition}`（无睡眠，v2：亦无观察窗）
 4. **skip 反应（schedule 路径）**：schedulerService 收到 `{skipped:true, reason,
    scheduleId}` → 日志 E-SCHED-FLOW-INVALID + taskService.markScheduleInvalid
-5. **runOnce 执行**：generation 快照 → 观察窗（仅 observeQueued=true，250ms）→
-   检查点①（失配→queued 结算→return）→ 迁移 queued→running → 拼装（executors /
+5. **runOnce 执行**：generation 快照 → 检查点①（失配→queued 结算→return）→
+   迁移 queued→running（出队后立即，v2 零睡眠）→ 拼装（executors /
    _channelManager shim / services.invokeSubflow 绑定自身 persist）→ 引擎 →
    检查点②（成功）→ 写入（nodes/logs/产物）；catch 检查点③；finally 检查点④
    门控终态通知
@@ -169,9 +178,12 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 7. **reset**：generation+1 → 队列 destroy → 有界等待（20ms 轮询 + 5s 上限，
    超时放弃——现状等价）→ resolve
 
-> 观察窗落点注记（tech-design 决议）：睡眠在 runOnce 出队启动时而非 submit
-> 返回前——250ms 必须在响应之后，调用方才能观察到 queued 保证；深队列下
-> 出队时睡与排队等待重叠，总墙钟不变。时长保持常量 250ms（不配置化，YAGNI）。
+> 观察窗撤除注记（v2 裁决，2026-08-16）：原 tech-design 决议「出队启动时睡 250ms
+> 供调用方观察 queued」被证伪后撤除——①UI 无任何 queued 消费（src/renderer
+> 零命中，泛化渲染 status）；②串行队列下睡眠占队头槽位，N 个执行累加 N×250ms
+> 死时间，「总墙钟不变」不成立；③submit 响应已带 queuePosition，排队位次不依赖
+> 行停留。撤除后 queued→running 在出队后立即迁移；reset 竞态由同步时序承载
+> （reset 先于出队微任务调用即命中检查点①，见 REQ-FLOW-052 AC2）。
 
 ### 10.4 接口契约
 
@@ -192,8 +204,8 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 |---|---|
 | 调用方 | 队列出队回调（runner 内部）/ flows.js（debug）/ services bag（subflow） |
 | 输入 | `(executionCtx, descriptor)` |
-| 描述符 | `{trigger, persist, artifacts, notify, observeQueued}`；subflow 附加 `{parentExecutionId, parentNodeId, depth, entryNodeId}` |
-| 各路径值 | 入队 `{trigger, persist:true, artifacts:true, notify:true, observeQueued:true}`；debug `{trigger:"debug", persist:false, artifacts:false, notify:false}`；subflow `{trigger:"subflow", persist:true, artifacts:false, notify:false, parent…}` |
+| 描述符 | `{trigger, persist, artifacts, notify}`；subflow 附加 `{parentExecutionId, parentNodeId, depth, entryNodeId}` |
+| 各路径值 | 入队 `{trigger, persist:true, artifacts:true, notify:true}`；debug `{trigger:"debug", persist:false, artifacts:false, notify:false}`；subflow `{trigger:"subflow", persist:true, artifacts:false, notify:false, parent…}` |
 | 输出 | 执行结果（status/output/nodeRecords/logs） |
 | 业务错误 | E-FLOW-MAX-DEPTH / E-SUBFLOW-NO-OUTPUT / 引擎错误（保持） |
 | 幂等性 | 否（一次运行一次） |
@@ -214,11 +226,9 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 | 收编范围 | 全收编 vs 只编排 | 双机制互为补丁，合一是深化本义 | 改动面大（server.js:441 与测试重置路径） |
 | schedule 一跳 | 直调 vs 保留 bus | 唯一订阅者 + 进程内单例，One adapter = hypothetical seam | 未来多消费者需重引 |
 | debug 语义 | 描述符 vs 独立路径 | 一条代码路径，差异显式 | persist 传播语义要测 |
-| 观察窗（落点） | 出队启动 vs submit 返回前 | 250ms 必须在响应后调用方可观察；深队列零额外延迟 | 契约依赖观察窗（测试轮询不依赖） |
-| 观察窗（时长） | 常量 250ms vs 配置化 | YAGNI；显式语义已足够 | 若 UI 需要可后配 |
+| 观察窗 | ~~出队启动睡 250ms~~ → **撤除（v2）** | 保留依据被证伪：UI 零消费 queued；串行队列下睡眠累加进墙钟（N×250ms），非零成本；queuePosition 已承载排队信息 | 测试轮询断言迁移为队头占用模式 |
 | reset | 有界等待 vs 立即返回 | 保证不写已重置 DB | 5s 上限下极端慢 run 可能超时 |
 | 写入原语归属 | runner 全收 vs taskService 保留 | 写入策略单一属主，删除测试通过 | 迁移面（~4 测试文件 import） |
-| 描述符 observeQueued | 显式字段 vs 隐式行状态 | 接口诚实、测试可断言「true 睡 false 不睡」 | 调用点需显式设置 |
 | 检查点语义 | 现状逐点等价 vs 简化/统一结算 | 竞态行为逐点相同；running 弃置由 recoverInterruptedExecutions 兜底 | 无（replace 策略） |
 | 队列接口 | 私有化（B1） vs 公开 | 结构保证「不经过 reset 无法失效」；删除测试不过公开接口 | 旧 executionQueue.test.js 替换 |
 | skip 反应归属 | schedule 路径 vs submit 内部 | 模块图无环（schedulerService → runner.submit 单向） | 日志落点移 schedulerService（契约正则断言保持） |
@@ -230,14 +240,16 @@ taskService 保留兼容转发。10 项决议已在 grilling 全部人拍板，�
 | 假设 | 如果错了会怎样 | 回流到 | 能否快速验证 |
 |---|---|---|---|
 | generation 快照语义在合并后保持等价 | 重置竞态重现 | TECH-DESIGN | 能（竞态测试） |
-| 观察窗是真实 API 契约 | 撤除会破坏 UI 排队态展示 | PRD（追加块或撤块） | 能（查 UI 消费） |
+| ~~观察窗是真实 API 契约~~（v2 已闭环） | ~~撤除会破坏 UI 排队态展示~~——已证伪：renderer 零 queued 消费，UI 泛化渲染 status | 已撤除（v2） | 已验证（grep src/renderer） |
 | 子日志归子行无下游依赖 | 执行详情 UI 依赖父行聚合 | PRD（追加块） | 能（回归 + UI 检查） |
 | skip 反应迁移到 schedulerService 后契约保持 | 日志格式/标记时机漂移 | TECH-DESIGN | 能（scheduleTriggers 回归） |
 | 模块图无环假设成立 | 后续新增依赖重引入环 | TECH-DESIGN | 能（实现期检查 import 方向） |
 
 ### 10.7 安全/性能/可观测性
 
-- 观察窗 250ms 从隐式睡眠变为 runOnce 启动处显式语义（成本可见可议；入队触发专属）
+- 观察窗 250ms 撤除（v2）：生产路径每次执行不再付固定睡眠税；串行队列深队列下
+  省 N×250ms 死时间；queued 可观察性由真实排队语义承载（队头占用时后续执行
+  稳定 queued + queuePosition≥2）
 - reset 竞态安全：queued 结算写有界等待保护；running 行弃置由
   recoverInterruptedExecutions 兜底（现状语义保持）
 - 描述符 persist:false 结构性保证 debug 零落库（含子树，孤儿行不再产生）

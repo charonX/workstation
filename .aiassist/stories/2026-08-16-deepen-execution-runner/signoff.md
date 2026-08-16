@@ -44,3 +44,33 @@ scheduleTriggers/nestedExecution/subflowFailure 断言迁移、seam import 迁�
 签核时 6 文件全 RED（executionRunner 模块 seam 未就绪 / 路由未切换 / 日志归属与
 事件字段未实现），0 例误绿（观察窗时序断言依赖 runner 实现后才可验证）。
 人工验收留在 REFLECT：无（全部验收标准可自动化）。
+
+---
+
+## Assertion v2 重签（2026-08-16，撤除观察窗）
+
+**缘起**：architecture-review-2026-08-16 #1 收益项「250ms sleep leaves prod path」
+字面落实。深潜证伪 v1 保留裁决的两条依据：
+
+1. 「撤除会破坏 UI 排队态展示」（prd.md §10.6）——`grep -rn "queued" src/renderer`
+   零命中；`ExecutionList.jsx` 泛化渲染 `ex.status`，无任何 queued 分支逻辑；
+   submit 响应已带 queuePosition。
+2. 「深队列下与排队等待重叠，总墙钟不变」（prd.md §10.3 注记）——executionQueue
+   每项目严格串行（`dequeueNext` 等 q[0] settle），睡眠占队头槽位，N 个执行累加
+   N×250ms 死时间；50 深上限 = 12.5s 纯睡眠。
+
+**人拍板**：「直接改吧」（2026-08-16 对话，撤除观察窗含 REQ 修订与测试迁移）。
+
+**v2 重签断言（覆盖 v1 S2 / S4 部分）**：
+
+- **S2' 零睡眠**：任何描述符下 runOnce 不在出队后插入固定延迟；submit 后
+  queued→running 立即迁移（时序上界 <250ms）；描述符删 `observeQueued` 字段。
+- **S4' reset 竞态（修订触发方式）**：submit 后同步调用 reset（先于出队微任务）
+  → 检查点①失配 → queued 行结算 error（QUEUE_DRAINED_REASON），收尾写先于
+  reset resolve；在飞 running 行弃置语义不变（recoverInterruptedExecutions 兜底）。
+- **S8 排队可观察性（新）**：队头被占时后续执行 GET 稳定见 status=queued 且
+  queuePosition≥2；队头空闲时立即 GET 可见 queued/running/终态任一（轮询容错）。
+- 跨 story 影响：2026-07-19-media-production-line `scheduleTriggers.test.js`
+  REQ-SCHEDULE-005 AC2 断言文本不变（status=queued），观察方式迁移为队头占用模式。
+
+其余 v1 断言（S1/S3/S5/S6/S7）不受影响，继续有效。

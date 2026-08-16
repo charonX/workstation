@@ -1,15 +1,16 @@
 # Requirements — ExecutionRunner 深化（一次执行的唯一入口）
 
 > 故事 ID：`2026-08-16-deepen-execution-runner`
-> 版本：v1
+> 版本：v2（2026-08-16 重签：撤除观察窗——REQ-FLOW-048 AC4 / REQ-FLOW-049 AC1 /
+> REQ-FLOW-052 AC2 修订；证据与裁决见 prd.md 文首 v2 注记与 §10.5）
 > 最后更新：2026-08-16
-> 来源：`prd.md` v0.1（§4 六稳定块，§10 技术方案已由 /tech-design 深潜定稿）
+> 来源：`prd.md` v0.1（§4 六稳定块，§10 技术方案已由 /tech-design 深潜定稿，v2 修订）
 > 移动块：无（§5 已清空，四块全解决）
 > UX 参照：N/A（纯内部架构重构，无用户界面；DESIGN/DOMAIN-MODEL 阶段跳过）
-> 技术事实：观察窗契约「createTask 后立即 GET 稳定见 queued」经 executeTask:596
-> 实证；queued 断言测试为轮询式不依赖睡眠本身；executionLog.test.js 实证；
-> markScheduleInvalid 与 schedule CRUD 同住 taskService（唯一带 scheduleId 的调用方
-> = schedulerService，测试经真实 scheduler 路径断言 skip）。
+> 技术事实（v2 修订）：原观察窗契约「createTask 后立即 GET 稳定见 queued」已撤除
+> ——UI 无 queued 消费（renderer 零命中），串行队列下睡眠累加进墙钟；queued 可观察性
+> 由队头占用承载。markScheduleInvalid 与 schedule CRUD 同住 taskService（唯一带
+> scheduleId 的调用方 = schedulerService，测试经真实 scheduler 路径断言 skip）。
 > ADR：ADR-028（grilling 10 项决议）+ tech-design 5 项新增决策（§10.5，REFLECT 时
 > 补充进 ADR-028）。
 > 测试目录：`tests/capabilities/flow-orchestration/execution/2026-08-16-deepen-execution-runner/`
@@ -23,15 +24,15 @@
 - 优先级 P0 / 必须 / cross-module / executionRunner（新增）+ executionQueue（接口私有化）+ taskService（转发瘦身）/ flow-orchestration / execution / 单元 + 集成
 - 接口契约：
   - `submit({projectId, flowId, trigger, variables, scheduleId?}) → {id, executionId, queuePosition}` 或 `{skipped:true, reason, scheduleId}`（trigger=schedule 且 flow 非 published）
-  - `runOnce(executionCtx, descriptor)`，descriptor = `{trigger, persist, artifacts, notify, observeQueued}`，subflow 附加 `{parentExecutionId, parentNodeId, depth, entryNodeId}`
+  - `runOnce(executionCtx, descriptor)`，descriptor = `{trigger, persist, artifacts, notify}`，subflow 附加 `{parentExecutionId, parentNodeId, depth, entryNodeId}`
   - `reset() → Promise`（generation+1 + 队列 destroy + 有界等待）
   - 错误：E-QUEUE-FULL（503 语义保持）/ project、flow 校验（400）/ E-FLOW-MAX-DEPTH / E-SUBFLOW-NO-OUTPUT / 引擎错误（保持）
 
 验收标准：
 1. submit 成功路径：落 queued 行 + 返回 `{id, executionId, queuePosition}` 三字段，形状与现状一致（单元：fake db + 假时钟）。
 2. 项目队列容量满 → submit 同步拒绝 E-QUEUE-FULL，不落行（单元）。
-3. runOnce 描述符矩阵：入队/debug/subflow 三形态走同一代码路径，行为按描述符分化——persist/artifacts/notify/observeQueued 各自生效（单元：注入 fake executor 断言节点记录/产物/通知按 flags 收放）。
-4. observeQueued=true：出队后、状态迁移前存在观察窗（假时钟断言 queued 保持 ≥250ms）；observeQueued=false（debug/subflow）：零睡眠（单元：假时钟）。
+3. runOnce 描述符矩阵：入队/debug/subflow 三形态走同一代码路径，行为按描述符分化——persist/artifacts/notify 各自生效（单元：注入 fake executor 断言节点记录/产物/通知按 flags 收放）。
+4. 零睡眠（v2 撤除观察窗）：任何描述符下 runOnce 不在出队后插入固定延迟——submit 后 queued→running 立即迁移（单元：submit 到 running 迁移耗时远小于旧观察窗 250ms，时序上界断言）；生产路径不存在按次执行的固定睡眠。
 5. trigger=schedule 的 runOnce 出队时二次 published 校验：执行时已非 published → 行标 error + 日志 E-SCHED-FLOW-INVALID（集成）。
 6. 写入原语全收：节点记录/完成态/日志/产物/终态通知由 runner 完成（集成：执行全链路落库断言；taskService 不再承载写入语义）。
 
@@ -41,7 +42,7 @@
 - 接口契约：HTTP 与通道入口行为面不变——POST /api/executions 201 `{id, executionId, queuePosition}`；容量满 503 E-QUEUE-FULL；taskService.createTask/executeTask/clearExecutionQueue 转发别名保持导出
 
 验收标准：
-1. POST /api/executions（manual）行为不变：201 + 三字段返回；立即 GET 见 status=queued（观察窗契约，集成）。
+1. POST /api/executions（manual）行为不变：201 + 三字段返回；排队可观察性（v2）：队头被占时后续执行 GET 稳定见 status=queued 且 queuePosition≥2（队头空闲时立即 GET 可见 queued/running/终态任一，调用方轮询容错）（集成）。
 2. 队列满经 HTTP → 503 + E-QUEUE-FULL（集成：既有断言迁移）。
 3. imRouter 通道路径：入队回执「收到，排队中（第 N 位）」queuePosition 语义不变（集成）。
 4. taskService.createTask/executeTask/clearExecutionQueue 转发别名保持导出且行为等价（集成：既有调用方与旧测试 import 迁移后断言不变）。
@@ -76,7 +77,7 @@
 
 验收标准：
 1. 失效单一机制：reset() 一次调用完成 generation+1 + destroy + 等待；taskService 不再持有独立队列实例与 generation 双写（单元：结构断言 + 行为断言）。
-2. 竞态结算：reset 时在飞 run 到达守卫点，queued 行结算为 error（QUEUE_DRAINED_REASON），收尾写先于 reset resolve（单元：在飞 run 与 reset 交错，晚写被拦截）。
+2. 竞态结算：reset 先于在飞 run 的守卫点执行时（v2：submit 后同步调用 reset，先于出队微任务），queued 行结算为 error（QUEUE_DRAINED_REASON），收尾写先于 reset resolve（单元：同步竞态，晚写被拦截）。
 3. running 行弃置语义保持：reset 不写已重置 DB，由 recoverInterruptedExecutions 兜底（集成：启动恢复回归）。
 4. 队列行为透过 runner 三接口可观察：同项目串行（前项完成才启动后项）/ 容量 50 / E-QUEUE-FULL / 排水（单元：并发 submit 断言——替换旧 executionQueue.test.js，不保留双份）。
 
