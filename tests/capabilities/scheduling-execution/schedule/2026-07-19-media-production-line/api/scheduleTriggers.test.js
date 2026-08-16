@@ -75,7 +75,7 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
     await stopServer(serverCtx);
   });
 
-  it("REQ-SCHEDULE-005 AC1: server 启动 loadAll 为全部 enabled schedule 注册 cron 任务（到点真实触发）", async () => {
+  it("REQ-SCHEDULE-005 AC1: server 启动 loadAll 为全部 enabled schedule 注册 cron 任务（到点直调创建执行）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
     await fetch(`${serverCtx.baseUrl}/api/schedules`, {
@@ -85,13 +85,13 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
     });
 
     await schedulerService.loadAll();
-    const { subscribeToScheduleTriggers } = await import("../../../../../../src/services/taskService.js");
-    subscribeToScheduleTriggers();
 
+    // REQ-SCHEDULE-010：到点直调 runner.submit（无 eventBus 一跳、无订阅）——可观察
+    // 结果 = schedule 触发执行行出现
     await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule");
   });
 
-  it("REQ-SCHEDULE-005 AC2: 到点 publish schedule:triggered，payload 为 {projectId, flowId, variables}", async () => {
+  it("REQ-SCHEDULE-005 AC2: 到点直调创建 execution，variables 注入（payload 语义迁移自 schedule:triggered 事件）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
     await fetch(`${serverCtx.baseUrl}/api/schedules`, {
@@ -100,18 +100,14 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND, variables: { topic: "AI" } })
     });
 
-    const payloads = [];
-    eventBus.subscribe("schedule:triggered", (payload) => payloads.push(payload));
     await schedulerService.loadAll();
 
-    await waitFor(() => payloads.length > 0, { timeoutMs: TICK_WAIT_MS, description: "schedule:triggered 事件" });
-    const payload = payloads[0];
-    assert.equal(payload.projectId, project.id);
-    assert.equal(payload.flowId, flow.id);
-    assert.deepEqual(payload.variables, { topic: "AI" });
+    const execution = await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule");
+    // 签核（迁移自旧 event payload 断言）：variables 经直调路径注入执行行
+    assert.equal(execution.variables.topic, "AI");
   });
 
-  it("REQ-SCHEDULE-005 AC2: 订阅者创建 execution（trigger=schedule，status=queued）", async () => {
+  it("REQ-SCHEDULE-005 AC2: 到点直调创建 execution（trigger=schedule，status=queued）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
     await fetch(`${serverCtx.baseUrl}/api/schedules`, {
@@ -120,8 +116,6 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND })
     });
 
-    const { subscribeToScheduleTriggers } = await import("../../../../../../src/services/taskService.js");
-    subscribeToScheduleTriggers();
     await schedulerService.loadAll();
 
     const execution = await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule");
@@ -130,7 +124,7 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
     assert.equal(execution.status, "queued");
   });
 
-  it("REQ-SCHEDULE-005 AC3: schedule CRUD 成功后同进程同步 node-cron 任务（不经 eventBus）", async () => {
+  it("REQ-SCHEDULE-005 AC3: schedule CRUD 成功后同进程同步 node-cron 任务（直调创建执行，无 loadAll）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
 
@@ -141,15 +135,18 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND })
     })).json();
 
-    const payloads = [];
-    eventBus.subscribe("schedule:triggered", (p) => payloads.push(p));
-    await waitFor(() => payloads.length > 0, { timeoutMs: TICK_WAIT_MS, description: "CRUD 后 cron 自动生效（无 loadAll）" });
+    await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule", {
+      description: "CRUD 后 cron 自动生效（无 loadAll）"
+    });
 
     // 删除后不再触发。
+    const countOfFlow = async () =>
+      (await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json())
+        .filter((e) => e.flowId === flow.id && e.trigger === "schedule").length;
     await fetch(`${serverCtx.baseUrl}/api/schedules/${schedule.id}`, { method: "DELETE" });
-    const countAfterDelete = payloads.length;
+    const countAfterDelete = await countOfFlow();
     await new Promise((resolve) => setTimeout(resolve, 2200));
-    assert.equal(payloads.length, countAfterDelete, "DELETE 后 cron 任务应同步注销");
+    assert.equal(await countOfFlow(), countAfterDelete, "DELETE 后 cron 任务应同步注销");
   });
 
   it("REQ-SCHEDULE-005 AC4: 到点时 flow 为 draft → 不建执行并记日志 E-SCHED-FLOW-INVALID", async () => {
@@ -161,8 +158,6 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND })
     });
 
-    const { subscribeToScheduleTriggers } = await import("../../../../../../src/services/taskService.js");
-    subscribeToScheduleTriggers();
     await schedulerService.loadAll();
 
     // 捕获日志输出，断言记日志码值（签核：全文统一 E-SCHED-FLOW-INVALID）。
@@ -195,7 +190,7 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
     assert.equal(res.status, 201, "manual 触发 draft flow 应被接受（使用已发布快照/draft 语义见契约）");
   });
 
-  it("REQ-SCHEDULE-005 AC5: server 未运行期间的到点不补偿", async () => {
+  it("REQ-SCHEDULE-005 AC5: server 未运行期间的到点不补偿（loadAll 宽限期抑制）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
     await fetch(`${serverCtx.baseUrl}/api/schedules`, {
@@ -204,13 +199,16 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND })
     });
 
-    const payloads = [];
-    eventBus.subscribe("schedule:triggered", (p) => payloads.push(p));
     await schedulerService.loadAll();
 
-    // loadAll 后立即观察：在第一个真实 tick 到达前不应有任何"补偿性"触发。
+    // loadAll 后立即观察：宽限期（LOAD_GRACE_MS=500）内不应有任何补偿性创建
+    // （直调路径的可观察结果 = 无执行行；旧 eventBus payload 断言为空真，迁移为实断言）
     await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.equal(payloads.length, 0, "loadAll 不应对停机期间错过的到点做补偿触发");
+    const list = await (await fetch(`${serverCtx.baseUrl}/api/executions`)).json();
+    assert.ok(
+      !list.some((e) => e.flowId === flow.id && e.trigger === "schedule"),
+      "loadAll 宽限期内不应创建补偿性执行"
+    );
   });
 
   it("REQ-SCHEDULE-006 AC1: schedules.variables JSON 列 CRUD 透传", async () => {
@@ -257,8 +255,7 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND, variables: { topic: "AI" } })
     });
 
-    const { subscribeToScheduleTriggers } = await import("../../../../../../src/services/taskService.js");
-    subscribeToScheduleTriggers();
+    // REQ-SCHEDULE-010：到点直调 runner.submit（无订阅）
     await schedulerService.loadAll();
 
     const execution = await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule");
@@ -267,12 +264,3 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
     assert.equal(variables?.topic, "AI", "schedule.variables 应注入 execution.variables");
   });
 });
-
-async function waitFor(condition, { timeoutMs = 4000, intervalMs = 150, description = "condition" } = {}) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  assert.fail(`timed out (${timeoutMs}ms) waiting for: ${description}`);
-}

@@ -28,12 +28,12 @@ function todayStr() {
 async function loadSeams(t) {
   const scheduler = await import("../../../../../../src/services/schedulerService.js").catch(() => null);
   assert.ok(scheduler?.loadAll, "seam 未就绪：schedulerService（REQ-COLL-001 触发源）");
-  const taskService = await import("../../../../../../src/services/taskService.js");
-  assert.equal(typeof taskService.setAgentExecutorForTests, "function",
-    "seam 未就绪：taskService.setAgentExecutorForTests（agent mock 注入）");
-  assert.equal(typeof taskService.setChannelAdapterForTests, "function",
-    "seam 未就绪：taskService.setChannelAdapterForTests（fake 飞书注入）");
-  return { scheduler, taskService };
+  const runner = await import("../../../../../../src/services/executionRunner.js");
+  assert.equal(typeof runner.setAgentExecutorForTests, "function",
+    "seam 未就绪：executionRunner.setAgentExecutorForTests（agent mock 注入，REQ-FLOW-053）");
+  assert.equal(typeof runner.setChannelAdapterForTests, "function",
+    "seam 未就绪：executionRunner.setChannelAdapterForTests（fake 飞书注入，REQ-FLOW-053）");
+  return { scheduler, runner };
 }
 
 describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
@@ -51,7 +51,7 @@ describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
 
     adapter = createMockChannelAdapter();
     await adapter.start({ credentials: {} });
-    seams.taskService.setChannelAdapterForTests(adapter);
+    seams.runner.setChannelAdapterForTests(adapter);
 
     project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
       method: "POST",
@@ -79,8 +79,8 @@ describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
   });
 
   afterEach(async () => {
-    try { seams.taskService.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
-    try { seams.taskService.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
+    try { seams.runner.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
+    try { seams.runner.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
     try { seams.scheduler.removeAll?.(); } catch { /* ignore */ }
     tmp.cleanup();
     await stopServer(serverCtx);
@@ -92,8 +92,7 @@ describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId: project.id, flowId: flow.id, cron: EVERY_SECOND, variables: { topic: TOPIC } })
     });
-    const { subscribeToScheduleTriggers } = await import("../../../../../../src/services/taskService.js");
-    subscribeToScheduleTriggers();
+    // REQ-SCHEDULE-010：schedule 到点直调 runner.submit（无 eventBus 一跳、无订阅）
     await seams.scheduler.loadAll();
   }
 
@@ -113,7 +112,7 @@ describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
     const dailyRel = `outputs/daily/${todayStr()}-ai-daily.md`;
     assert.match(dailyRel, /^outputs\/daily\/\d{4}-\d{2}-\d{2}-.+\.md$/, "日报路径应符合签核命名模式");
     const frontmatter = `---\ntopic: ${TOPIC}\nsources:\n  - https://news.ycombinator.com\ngeneratedAt: ${new Date().toISOString()}\n---\n`;
-    seams.taskService.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
+    seams.runner.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
       { relativePath: dailyRel, content: `${frontmatter}\n## 头条\n\n- [示例](https://news.ycombinator.com)\n` }
     ]));
     await armScheduleAndTick();
@@ -156,7 +155,7 @@ describe("REQ-COLL-001: 场景 A · 定时日报端到端", () => {
   });
 
   it("agent 执行失败（重试耗尽）→ 执行 error + 失败通知 + 无产物登记", async () => {
-    seams.taskService.setAgentExecutorForTests(createFailingAgentExecutor());
+    seams.runner.setAgentExecutorForTests(createFailingAgentExecutor());
     await armScheduleAndTick();
 
     const execution = await waitForExecution((e) => e.flowId === flow.id && e.trigger === "schedule",

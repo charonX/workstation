@@ -111,4 +111,18 @@ describe("REQ-FLOW-049 触发入口归一与契约保持", () => {
     serverCtx = await startServer();
     assert.ok(serverCtx.baseUrl);
   });
+
+  it("PRD §7 校验：缺 projectId → 400 Project is required（slice 4 补，删旧 executionQueue.test.js 前落）", async () => {
+    // 签核（PRD §7 / REQ-FLOW-049 submit 契约）：缺 projectId 同步拒绝 400
+    const res = await postJson(serverCtx.baseUrl, "/api/executions", { flowId, trigger: "manual", variables: {} });
+    assert.equal(res.status, 400);
+    assert.match(String(res.body.message ?? ""), /Project is required/);
+  });
+
+  it("PRD §7 校验：未知 flow → 400 Flow not found", async () => {
+    // 签核（PRD §7 / REQ-FLOW-049 submit 契约）：flow 不存在（非 schedule）→ 400
+    const res = await postJson(serverCtx.baseUrl, "/api/executions", { projectId, flowId: "no-such-flow", trigger: "manual", variables: {} });
+    assert.equal(res.status, 400);
+    assert.match(String(res.body.message ?? ""), /Flow not found/);
+  });
 });

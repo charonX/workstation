@@ -52,33 +52,33 @@ async function waitForTerminalStatus(baseUrl, executionId, { timeoutMs = 8000 } 
   assert.fail(`execution ${executionId} 未在 ${timeoutMs}ms 内到达终态`);
 }
 
-// seam：taskService 需提供 agent 执行器注入点（建议 setAgentExecutorForTests(executor|null)），
+// seam：runner 提供 agent 执行器注入点（REQ-FLOW-053）（建议 setAgentExecutorForTests(executor|null)），
 // 使集成测试可用 mock agent 替代真实 Claude（tech-design 测试 seams：agent mock）。
 async function requireAgentInjection() {
-  const taskService = await import("../../../../../../src/services/taskService.js");
+  const runner = await import("../../../../../../src/services/executionRunner.js");
   assert.equal(
-    typeof taskService.setAgentExecutorForTests,
+    typeof runner.setAgentExecutorForTests,
     "function",
-    "seam 未就绪：taskService.setAgentExecutorForTests 尚未实现（REQ-SCHEDULE-008/009 集成测试依赖）"
+    "seam 未就绪：executionRunner.setAgentExecutorForTests 未就绪（REQ-FLOW-053）（REQ-SCHEDULE-008/009 集成测试依赖）"
   );
-  return taskService;
+  return runner;
 }
 
-// seam：taskService 终态投递钩子需可注入 channelAdapter（建议 setChannelAdapterForTests(adapter|null)）。
+// seam：runner 终态投递钩子可注入 channelAdapter（REQ-FLOW-053）（建议 setChannelAdapterForTests(adapter|null)）。
 async function requireChannelInjection() {
-  const taskService = await import("../../../../../../src/services/taskService.js");
+  const runner = await import("../../../../../../src/services/executionRunner.js");
   assert.equal(
-    typeof taskService.setChannelAdapterForTests,
+    typeof runner.setChannelAdapterForTests,
     "function",
-    "seam 未就绪：taskService.setChannelAdapterForTests 尚未实现（REQ-SCHEDULE-009 依赖）"
+    "seam 未就绪：executionRunner.setChannelAdapterForTests 未就绪（REQ-FLOW-053）（REQ-SCHEDULE-009 依赖）"
   );
-  return taskService;
+  return runner;
 }
 
 describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   let serverCtx;
   let tmp;
-  let taskService;
+  let runner;
 
   beforeEach(async () => {
     serverCtx = await startServer();
@@ -86,19 +86,19 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   });
 
   afterEach(async () => {
-    if (taskService) {
-      try { taskService.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
-      try { taskService.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
-      taskService = undefined;
+    if (runner) {
+      try { runner.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
+      try { runner.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
+      runner = undefined;
     }
     tmp.cleanup();
     await stopServer(serverCtx);
   });
 
   it("REQ-SCHEDULE-008 AC1: 执行成功且产出文件时，artifacts 登记产物路径（真实 I/O）", async () => {
-    taskService = await requireAgentInjection();
+    runner = await requireAgentInjection();
     const relative = "outputs/daily/2026-07-19-ai-daily.md";
-    taskService.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
+    runner.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
       { relativePath: relative, content: "---\ntopic: AI\n---\n# daily\n" }
     ]));
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
@@ -123,8 +123,8 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   });
 
   it("REQ-SCHEDULE-008 AC2: 执行失败不登记半成品文件", async () => {
-    taskService = await requireAgentInjection();
-    taskService.setAgentExecutorForTests(createFailingAgentExecutor());
+    runner = await requireAgentInjection();
+    runner.setAgentExecutorForTests(createFailingAgentExecutor());
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
 
     const created = await (await fetch(`${serverCtx.baseUrl}/api/executions`, {
@@ -167,14 +167,14 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   it("REQ-SCHEDULE-009 AC1 / REQ-FLOW-032: channel 触发不再自动回复；由 feishuSend 节点控制", async () => {
     // v1.1 契约修订（REQ-FLOW-032）：channel 触发的 execution 终态**不**自动回复 IM 消息；
     // 最终回复由 flow 中的 feishuSend 显式节点负责。仅保留 imRouter 入队回执"收到，排队中"。
-    taskService = await requireAgentInjection();
+    runner = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
     await adapter.start({ credentials: { appId: "fake", appSecret: "fake" } });
-    taskService.setChannelAdapterForTests(adapter);
+    runner.setChannelAdapterForTests(adapter);
 
     const relative = "materials/2026-07-19-demo.md";
-    taskService.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
+    runner.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
       { relativePath: relative, content: "# saved\n" }
     ]));
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
@@ -194,12 +194,12 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   });
 
   it("REQ-SCHEDULE-009 AC2: 无 channelReply 时不投递", async () => {
-    taskService = await requireAgentInjection();
+    runner = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
     await adapter.start({ credentials: {} });
-    taskService.setChannelAdapterForTests(adapter);
-    taskService.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
+    runner.setChannelAdapterForTests(adapter);
+    runner.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
       { relativePath: "outputs/x.md", content: "x" }
     ]));
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
@@ -215,13 +215,13 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   });
 
   it("REQ-SCHEDULE-009 AC3: 投递失败不反转 execution 终态", async () => {
-    taskService = await requireAgentInjection();
+    runner = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
     await adapter.start({ credentials: {} });
     adapter.failNextSend(5);
-    taskService.setChannelAdapterForTests(adapter);
-    taskService.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
+    runner.setChannelAdapterForTests(adapter);
+    runner.setAgentExecutorForTests(createFileWritingAgentExecutor(tmp.dir, [
       { relativePath: "outputs/y.md", content: "y" }
     ]));
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
@@ -243,12 +243,12 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
 
   it("REQ-SCHEDULE-009 AC1 / REQ-FLOW-032: channel 触发失败执行也不再自动回复", async () => {
     // v1.1 契约修订：channel 触发不自动回复（成功/失败皆然）；失败通知走通知中心。
-    taskService = await requireAgentInjection();
+    runner = await requireAgentInjection();
     await requireChannelInjection();
     const adapter = createMockChannelAdapter();
     await adapter.start({ credentials: {} });
-    taskService.setChannelAdapterForTests(adapter);
-    taskService.setAgentExecutorForTests(createFailingAgentExecutor());
+    runner.setChannelAdapterForTests(adapter);
+    runner.setAgentExecutorForTests(createFailingAgentExecutor());
     const { project, flow } = await createProjectFlow(serverCtx.baseUrl, tmp.dir);
 
     const created = await (await fetch(`${serverCtx.baseUrl}/api/executions`, {
@@ -269,7 +269,7 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
   });
 
   it("REQ-SCHEDULE-009 AC4: agent 节点实现不参与消息发送（代码结构断言）", async () => {
-    // 结构约束：通道发送只发生在 taskService 终态钩子，agent 执行器不得引用通道层。
+    // 结构约束：通道发送只发生在 runner 终态钩子，agent 执行器不得引用通道层。
     const files = [
       "src/flowEngine/executors/agentExecutor.js",
       "src/flowEngine/agentAdapter.js",
@@ -279,7 +279,7 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
       const source = fs.readFileSync(file, "utf8");
       assert.ok(
         !/channelAdapter|feishu|larksuite/i.test(source),
-        `${file} 不应引用通道层（channelAdapter/feishu），消息发送是 taskService 终态钩子的职责`
+        `${file} 不应引用通道层（channelAdapter/feishu），消息发送是 runner 终态钩子的职责`
       );
     }
   });

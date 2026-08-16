@@ -8,7 +8,8 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
-import { setAgentExecutorForTests, purgeExpiredExecutions } from "../../../../../../src/services/taskService.js";
+import { setAgentExecutorForTests } from "../../../../../../src/services/executionRunner.js";
+import { purgeExpiredExecutions } from "../../../../../../src/services/taskService.js";
 import { getDb } from "../../../../../../src/db.js";
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

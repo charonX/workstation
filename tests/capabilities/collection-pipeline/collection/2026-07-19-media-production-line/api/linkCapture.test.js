@@ -23,12 +23,12 @@ async function loadSeams() {
   assert.ok(routerMod?.createImRouter, "seam 未就绪：imRouter（REQ-COLL-002 触发源）");
   const bindingMod = await import("../../../../../../src/services/channelBindingService.js").catch(() => null);
   assert.ok(bindingMod?.createBinding, "seam 未就绪：channelBindingService（REQ-COLL-002 路由查询）");
-  const taskService = await import("../../../../../../src/services/taskService.js");
-  assert.equal(typeof taskService.setAgentExecutorForTests, "function",
-    "seam 未就绪：taskService.setAgentExecutorForTests（agent mock 注入）");
-  assert.equal(typeof taskService.setChannelAdapterForTests, "function",
-    "seam 未就绪：taskService.setChannelAdapterForTests（fake 飞书注入）");
-  return { routerMod, bindingMod, taskService };
+  const runner = await import("../../../../../../src/services/executionRunner.js");
+  assert.equal(typeof runner.setAgentExecutorForTests, "function",
+    "seam 未就绪：executionRunner.setAgentExecutorForTests（agent mock 注入，REQ-FLOW-053）");
+  assert.equal(typeof runner.setChannelAdapterForTests, "function",
+    "seam 未就绪：executionRunner.setChannelAdapterForTests（fake 飞书注入，REQ-FLOW-053）");
+  return { routerMod, bindingMod, runner };
 }
 
 function todayStr() {
@@ -73,7 +73,7 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
 
     adapter = createMockChannelAdapter();
     await adapter.start({ credentials: {} });
-    seams.taskService.setChannelAdapterForTests(adapter);
+    seams.runner.setChannelAdapterForTests(adapter);
     seams.routerMod.createImRouter({ channelAdapter: adapter, baseUrl: serverCtx.baseUrl });
 
     project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
@@ -116,8 +116,8 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
   });
 
   afterEach(async () => {
-    try { seams.taskService.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
-    try { seams.taskService.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
+    try { seams.runner.setAgentExecutorForTests?.(null); } catch { /* ignore */ }
+    try { seams.runner.setChannelAdapterForTests?.(null); } catch { /* ignore */ }
     await contentServer.stop();
     tmp.cleanup();
     await stopServer(serverCtx);
@@ -136,7 +136,7 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
 
   it("URL 消息 → 排队回执 → 素材落盘 + 索引追加 → 完成回复 + 登记 + 通知", async () => {
     const articleUrl = contentServer.urlFor("/building-effective-agents");
-    seams.taskService.setAgentExecutorForTests(createLinkCaptureAgent(tmp.dir, {
+    seams.runner.setAgentExecutorForTests(createLinkCaptureAgent(tmp.dir, {
       slug: "building-effective-agents",
       title: "Building effective agents"
     }));
@@ -189,7 +189,7 @@ describe("REQ-COLL-002: 场景 B · 链接速存端到端", () => {
   it("抓取失败（fake 源 404）→ 无落盘、无索引追加；REQ-FLOW-032：终态自动回复已移除，仅 imRouter 入队回执", async () => {
     // v1.1 契约修订（REQ-FLOW-032）：channel 触发失败终态不再自动回复 IM 消息；
     // 最终回复由 flow 作者通过 feishuSend 节点显式控制。仅 imRouter 的"收到，排队中"回执保留。
-    seams.taskService.setAgentExecutorForTests(createFailingAgentExecutor("E-FETCH-FAILED: 目标链接返回 404"));
+    seams.runner.setAgentExecutorForTests(createFailingAgentExecutor("E-FETCH-FAILED: 目标链接返回 404"));
     const deadUrl = contentServer.urlFor("/missing-page");
 
     adapter.emitMessage({ messageId: "om_cap_404", chatId: "oc_1", senderId: "ou_1", text: `存 ${deadUrl}` });
