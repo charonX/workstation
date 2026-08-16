@@ -1,9 +1,28 @@
-// REQ-TRACE: 2026-08-12-pi-mcp-plugin/REQ-AGENT-083, 2026-08-12-pi-mcp-plugin/REQ-AGENT-084
-// REQ-VERSION: v1-hash:742cddf72b44df8cb71bb4b0cf6a8dae7a21d22df2b4c3788bdf3065208b848d
+// REQ-TRACE: 2026-08-12-pi-mcp-plugin/REQ-AGENT-083, 2026-08-12-pi-mcp-plugin/REQ-AGENT-084, 2026-08-12-pi-mcp-plugin/REQ-AGENT-087
+// REQ-VERSION: v1-hash:7051b638e8a78c81a06fdaa5c64aaf5a48f422c35401c11113f11a033386cc06
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: mcp-server
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false (BUG-013 req-gap 补全：IA 拆页 + AC7 工具探测；迁移用例语义不变)
+// ASSERTIONS-SIGNED: false (BUG-013 req-gap 补全：IA 拆页 + AC7 工具探测；迁移用例语义不变；
+//   BUG-014 req-gap 补全：REQ-087 AC10 默认权限区用例)
+
+// BUG-013（req-gap 就地补全，人确认 2026-08-16）：MCP 服务管理从「插件」页拆出——
+// 管理区独立导航项「MCP」（位于「技能」之下）+ 独立路由 #/mcp；
+// 并新增「配置后直连 server 拉取工具」能力（REQ-084 AC7）：行内「工具」按钮开
+// 工具清单弹窗（名称+描述），保存后自动连接拉取，连接失败弹窗内呈「连接失败」。
+//
+// BUG-014（req-gap 就地补全，人确认 2026-08-16，人拍板「默认层存 workstation DB、下拉
+// 选择为主」）：新增「默认权限」区（REQ-087 AC10）——用户级默认权限在 MCP 页编辑
+// （对所有项目生效，项目页为覆盖）；录入 = server 下拉（已配置清单）→ 探测拉工具
+// 下拉（含「* 全部工具」）→ 三态裁决；保留手填 glob 高级入口。新增锚点：
+//   [data-testid='mcp-perm-defaults']       默认权限区容器
+//   [data-testid='mcp-perm-row']            默认规则行（pattern = server:tool glob）
+//   [data-testid='mcp-perm-verdict']        行内三态切换（button[data-v]）
+//   [data-testid='mcp-perm-server-select']  server 下拉（已配置清单）
+//   [data-testid='mcp-perm-tool-select']    工具下拉（探测结果 + 「* 全部工具」）
+//   [data-testid='mcp-perm-new-verdict']    新规则三态（button[data-v]）
+//   [data-testid='mcp-perm-add-submit']     添加提交
+//   [data-testid='mcp-perm-freeform-input'] / [data-testid='mcp-perm-freeform-toggle']  手填 glob 高级入口
 
 // BUG-013（req-gap 就地补全，人确认 2026-08-16）：MCP 服务管理从「插件」页拆出——
 // 管理区独立导航项「MCP」（位于「技能」之下）+ 独立路由 #/mcp；
@@ -286,5 +305,57 @@ test.describe("REQ-AGENT-084 MCP 服务管理页（E2E，BUG-013 独立页）", 
     const modal = firstWindow.locator("[data-testid='mcp-tools-modal']");
     await expect(modal).toBeVisible({ timeout: 15000 });
     await expect(modal.locator("[data-testid='mcp-tools-table']")).toContainText("fixture_ping", { timeout: 15000 });
+  });
+
+  // ---------- BUG-014 新增（REQ-AGENT-087 AC10：默认权限区 + 选择器录入） ----------
+
+  const PERM_SECTION = "[data-testid='mcp-perm-defaults']";
+
+  test("AC10a：默认权限区可见（出厂零默认规则，添加区=选择器录入）", async () => {
+    await goToAdminRoute(firstWindow, MCP_ROUTE);
+    const section = firstWindow.locator(PERM_SECTION);
+    await expect(section).toBeVisible();
+    await expect(section.locator("[data-testid='mcp-perm-row']")).toHaveCount(0);
+    await expect(section.locator("[data-testid='mcp-perm-server-select']")).toBeVisible();
+    await expect(section.locator("[data-testid='mcp-perm-tool-select']")).toBeVisible();
+    await expect(section.locator("[data-testid='mcp-perm-add-submit']")).toBeVisible();
+    // 手填 glob 高级入口默认隐藏，切换后出现
+    await expect(section.locator("[data-testid='mcp-perm-freeform-input']")).toBeHidden();
+    await section.locator("[data-testid='mcp-perm-freeform-toggle']").click();
+    await expect(section.locator("[data-testid='mcp-perm-freeform-input']")).toBeVisible();
+  });
+
+  test("AC10b：server 下拉 → 探测工具下拉 → 添加默认规则且刷新持久", async () => {
+    await seedMcp(apiBaseUrl, {
+      name: "e2e-perm",
+      type: "stdio",
+      command: process.execPath,
+      args: [STDIO_FIXTURE_ABS],
+    });
+    await goToAdminRoute(firstWindow, MCP_ROUTE);
+    const section = firstWindow.locator(PERM_SECTION);
+    await expect(section).toBeVisible();
+
+    // server 下拉选中 → 探测拉工具（stdio spawn 握手放宽超时）
+    await section.locator("[data-testid='mcp-perm-server-select']").selectOption("e2e-perm");
+    const toolSelect = section.locator("[data-testid='mcp-perm-tool-select']");
+    await expect(toolSelect.locator("option", { hasText: "fixture_ping" })).toHaveCount(1, { timeout: 15000 });
+    await expect(toolSelect.locator("option", { hasText: "全部工具" })).toHaveCount(1);
+
+    // 选「*（全部工具）」+ allow → 添加
+    await toolSelect.selectOption("*");
+    await section.locator("[data-testid='mcp-perm-new-verdict'] [data-v='allow']").click();
+    await section.locator("[data-testid='mcp-perm-add-submit']").click();
+
+    const row = section.locator("[data-testid='mcp-perm-row']", { hasText: "e2e-perm:*" });
+    await expect(row).toBeVisible();
+    await expect(row.locator("[data-v='allow']")).toHaveClass(/active/);
+
+    // 真实刷新（整页 reload）后持久
+    await firstWindow.reload();
+    await goToAdminRoute(firstWindow, MCP_ROUTE);
+    const row2 = firstWindow.locator(`${PERM_SECTION} [data-testid='mcp-perm-row']`, { hasText: "e2e-perm:*" });
+    await expect(row2).toBeVisible();
+    await expect(row2.locator("[data-v='allow']")).toHaveClass(/active/);
   });
 });
