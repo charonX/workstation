@@ -237,20 +237,10 @@ export async function runOnce(executionCtx, descriptor = {}) {
   try {
     const executors = {};
     if (testAgentExecutor) {
-      // REQ-FLOW-051 AC2（测试 seam 装配归一）：注入的 agent executor 按本 story
-      // 测试先例经 context.prompt 读节点 prompt（executionRunner.test.js「executor
-      // 经 context.prompt 读变量」）。engine 只把变量替换后的 prompt 放在
-      // node.config.prompt（context 为扁平变量注册表，无 prompt 键）——runner 的
-      // executor 装配 seam 把替换后的 prompt 并入 context，使字面 prompt 节点
-      // （无 {{var}} 引用，如本 story parent/child 撞名 fixture）同样可经
-      // context.prompt 区分调用来源。仅作用于注入 seam；生产 agentExecutor 走
-      // node.config.prompt 路径，不受影响。
-      executors.agent = async (args) => {
-        const prompt = args.node?.config?.prompt;
-        return typeof prompt === "string"
-          ? testAgentExecutor({ ...args, context: { ...args.context, prompt } })
-          : testAgentExecutor(args);
-      };
+      // 测试 seam 直通（父代理裁决 2026-08-16）：注入 executor 与生产契约同源
+      // ——prompt 经 node.config.prompt 读取（claudeAgentAdapter 即读该键），
+      // runner 不做 context 并入归一化。slice 3 修订撤除 context.prompt 并入。
+      executors.agent = testAgentExecutor;
     }
 
     // REQ-FLOW-032: inject a channel-manager shim into execution variables so
