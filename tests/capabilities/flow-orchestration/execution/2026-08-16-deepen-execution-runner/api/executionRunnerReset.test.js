@@ -1,17 +1,18 @@
 // REQ-TRACE: 2026-08-16-deepen-execution-runner/REQ-FLOW-052
-// REQ-VERSION: v1-hash:477d80d3adeafd5681b9742b555cc7372f75d76d54fcc01e46c2c0c2ac86e9bd
+// REQ-VERSION: v2-hash:5ecf8049e27394bdb8cc0a844786af34d8f46fe38cb96a97145bebbf3831dc0b
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff)
+// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff；v2 重签：撤除观察窗)
 
 // REQ-FLOW-052：reset 单一失效机制 + 竞态语义。旧 executionQueue.test.js 的
 // 串行/容量/排水行为测试迁入本文件（透过 runner 三接口断言，不保留双份）。
 // seam：executionRunner.reset() 与 submit/runOnce；在飞 run 用挂起 executor 制造；
 // recoverInterruptedExecutions 随写入原语迁入 runner。
 //
-// 签核断言（2026-08-16 门 1）：queued 结算 error（QUEUE_DRAINED_REASON）；
-// running 弃置 + recoverInterruptedExecutions 兜底；串行 A→B；容量 50 第 51 拒。
+// 签核断言（2026-08-16 门 1；v2 重签 S4'）：queued 结算 error（QUEUE_DRAINED_REASON，
+// v2 同步竞态触发）；running 弃置 + recoverInterruptedExecutions 兜底；串行 A→B；
+// 容量 50 第 51 拒。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -28,6 +29,18 @@ function hangingExecutor({ release }) {
     await new Promise((resolve) => release.push(resolve));
     return { status: "success", output: "done", nodeRecords: [], logs: [] };
   };
+}
+
+// 闸门 executor：所有调用挂起在同一 promise 上，release() 一次放行全部——
+// 占住队头使队列确定性累积（替代已撤除的 250ms 观察窗，v2）。
+function gateExecutor() {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const executor = async () => {
+    await gate;
+    return { status: "success", output: "done", nodeRecords: [], logs: [] };
+  };
+  return { executor, release };
 }
 
 async function createProjectAndFlow(serverCtx) {
@@ -77,12 +90,12 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
     assert.ok(Date.now() - t0 < 2000);
   });
 
-  it("AC2: 竞态结算——观察窗内 reset，queued 行结算 error（QUEUE_DRAINED_REASON）", async () => {
-    // 签核：reset 发生在观察窗（250ms）内 → 检查点①失配 → queued 行收尾为
+  it("AC2: 竞态结算——reset 先于出队微任务执行，queued 行结算 error（QUEUE_DRAINED_REASON）", async () => {
+    // 签核（v2 S4'）：submit 同步落行后同步调用 reset——出队回调挂在微任务队列上
+    // 尚未执行，reset 先完成 generation+1 → runOnce 检查点①失配 → queued 行收尾为
     // error + 日志 QUEUE_DRAINED_REASON；reset resolve 时收尾写已完成
-    const result = await submit({ projectId, flowId, trigger: "manual", variables: {} });
-    // 等待 run 进入观察窗（提交后 ~100ms，仍在 250ms 窗口内）
-    await new Promise((r) => setTimeout(r, 100));
+    //（v2：无观察窗，竞态由同步时序承载——submit 与 reset 之间不出让微任务）
+    const result = submit({ projectId, flowId, trigger: "manual", variables: {} });
     await reset();
     const row = getDb().prepare("SELECT * FROM executions WHERE id = ?").get(result.id);
     assert.equal(row.status, "error");
@@ -95,8 +108,10 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
     const release = [];
     setAgentExecutorForTests(hangingExecutor({ release }));
     const result = await submit({ projectId, flowId, trigger: "manual", variables: {} });
-    // 等待 run 越过观察窗进入引擎（挂起中）
-    await new Promise((r) => setTimeout(r, 400));
+    // 等待 run 进入引擎（executor 被调用即挂起——v2 确定性等待，无观察窗）
+    while (release.length === 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
     const resetPromise = reset();
     release.forEach((resolve) => resolve());
     await resetPromise;
@@ -128,6 +143,9 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
   it("AC4b: 容量 50 + E-QUEUE-FULL（旧 executionQueue.test.js 行为迁入）", async () => {
     // 签核：第 51 个提交同步拒绝 E-QUEUE-FULL（与 REQ-FLOW-048 AC2 同源，
     // 本用例保留排水后行为：reset 后队列可重新接受）
+    // v2：无观察窗托底——闸门 executor 占住队头，队列确定性累积到 50
+    const { executor, release } = gateExecutor();
+    setAgentExecutorForTests(executor);
     let accepted = 0;
     let gotError = null;
     for (let i = 0; i < 60; i++) {
@@ -142,7 +160,9 @@ describe("REQ-FLOW-052 reset 单一失效机制与竞态", () => {
     assert.equal(accepted, 50);
     assert.equal(gotError.code, "E-QUEUE-FULL");
 
+    release(); // 先放行队头，reset 的有界等待才能收束
     await reset();
+    setAgentExecutorForTests(null); // 恢复 seam 缺省（模块级状态跨用例泄漏防护）
     const again = await submit({ projectId, flowId, trigger: "manual", variables: {} });
     assert.ok(again.executionId);
   });

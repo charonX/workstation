@@ -9,6 +9,11 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import * as eventBus from "../../../../../../src/services/eventBus.js";
+import { submit as runnerSubmit, setAgentExecutorForTests } from "../../../../../../src/services/executionRunner.js";
+
+// 闸门 executor：所有调用挂起在同一 promise 上，release() 一次放行全部——占住队头
+// 使后续执行确定性滞留 queued（execution-runner v2 撤除 250ms 观察窗后的观察模式：
+// queued 可观察性由真实排队语义承载，断言文本不变）。
 
 // 短周期 cron 注入：node-cron 六段表达式，每秒触发一次。
 const EVERY_SECOND = "* * * * * *";
@@ -110,6 +115,29 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
   it("REQ-SCHEDULE-005 AC2: 到点直调创建 execution（trigger=schedule，status=queued）", async () => {
     schedulerService = await loadSchedulerService();
     const { project, flow } = await createProjectAndFlow(serverCtx.baseUrl, { publish: true });
+
+    // execution-runner v2：250ms 观察窗已撤除，空队列上 queued→running 立即迁移，
+    // HTTP 轮询不再能稳定捕获 queued。断言文本不变（status=queued）——观察方式迁移
+    // 为队头占用模式：闸门 executor 挂起同项目手动执行占住队头，schedule 到点执行
+    // 确定性排队在后。
+    let releaseGate;
+    const gate = new Promise((r) => (releaseGate = r));
+    setAgentExecutorForTests(async () => {
+      await gate;
+      return { status: "success", output: "done", nodeRecords: [], logs: [] };
+    });
+    const blockerFlow = await (await fetch(`${serverCtx.baseUrl}/api/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Blocker Flow", projectId: project.id })
+    })).json();
+    await fetch(`${serverCtx.baseUrl}/api/flows/${blockerFlow.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeList: [{ id: "b1", type: "agent", config: { prompt: "block" } }], edges: [] })
+    });
+    runnerSubmit({ projectId: project.id, flowId: blockerFlow.id, trigger: "manual", variables: {} });
+
     await fetch(`${serverCtx.baseUrl}/api/schedules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -120,8 +148,11 @@ describe("REQ-SCHEDULE-005/006: 调度接通与 schedule 变量", () => {
 
     const execution = await waitForExecution(serverCtx.baseUrl, (e) => e.flowId === flow.id && e.trigger === "schedule");
     assert.equal(execution.trigger, "schedule");
-    // REQ-SCHEDULE-007 契约：createTask 入队后初始 status=queued（当前实现为 running，预期此处转绿于队列落地后）。
+    // REQ-SCHEDULE-007 契约：createTask 入队后初始 status=queued（队头被占时稳定可观察）。
     assert.equal(execution.status, "queued");
+
+    releaseGate(); // 放行队头排空队列，避免 afterEach stopServer 有界等待空转
+    setAgentExecutorForTests(null); // 恢复 seam 缺省（模块级状态跨用例泄漏防护）
   });
 
   it("REQ-SCHEDULE-005 AC3: schedule CRUD 成功后同进程同步 node-cron 任务（直调创建执行，无 loadAll）", async () => {

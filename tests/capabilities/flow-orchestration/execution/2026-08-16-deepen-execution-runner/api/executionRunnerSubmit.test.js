@@ -1,24 +1,38 @@
 // REQ-TRACE: 2026-08-16-deepen-execution-runner/REQ-FLOW-049
-// REQ-VERSION: v1-hash:477d80d3adeafd5681b9742b555cc7372f75d76d54fcc01e46c2c0c2ac86e9bd
+// REQ-VERSION: v2-hash:5ecf8049e27394bdb8cc0a844786af34d8f46fe38cb96a97145bebbf3831dc0b
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff)
+// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff；v2 重签：撤除观察窗)
 
 // REQ-FLOW-049：触发入口归一与契约保持——HTTP/通道入口直调 runner 后行为面不变；
 // taskService.createTask/executeTask/clearExecutionQueue 转发别名保持。
 // seam：startServer 全栈（executionLog.test.js 先例），HTTP 断言 + 模块别名断言。
 //
-// 签核断言（2026-08-16 门 1）：201 + 三字段且 id===executionId；立即 GET queued；
-// 503 E-QUEUE-FULL；转发别名保持导出。
+// 签核断言（2026-08-16 门 1；v2 重签 S8）：201 + 三字段且 id===executionId；队头
+// 被占时后续执行 GET 稳定见 queued + queuePosition≥2；503 E-QUEUE-FULL；转发别名
+// 保持导出。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
 import * as taskService from "../../../../../../src/services/taskService.js";
+import { setAgentExecutorForTests } from "../../../../../../src/services/executionRunner.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
+
+// 闸门 executor：所有调用挂起在同一 promise 上，release() 一次放行全部——
+// 占住队头使队列确定性累积（替代已撤除的 250ms 观察窗，v2）。
+function gateExecutor() {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const executor = async () => {
+    await gate;
+    return { status: "success", output: "done", nodeRecords: [], logs: [] };
+  };
+  return { executor, release };
+}
 
 async function postJson(baseUrl, urlPath, body) {
   const res = await fetch(`${baseUrl}${urlPath}`, {
@@ -51,7 +65,12 @@ describe("REQ-FLOW-049 触发入口归一与契约保持", () => {
     await fetch(`${serverCtx.baseUrl}/api/flows/${flowId}`, {
       method: "PATCH",
       headers: JSON_HEADERS,
-      body: JSON.stringify({ status: "published" }),
+      body: JSON.stringify({
+        // agent 节点：供闸门 executor 占住队头（v2 队头占用模式）
+        nodeList: [{ id: "n1", type: "agent", config: { prompt: "{{prompt}}" } }],
+        edges: [],
+        status: "published",
+      }),
     });
   });
 
@@ -59,7 +78,14 @@ describe("REQ-FLOW-049 触发入口归一与契约保持", () => {
     await stopServer(serverCtx);
   });
 
-  it("AC1: POST /api/executions（manual）201 + 三字段返回；立即 GET 见 queued（观察窗契约）", async () => {
+  it("AC1: POST /api/executions（manual）201 + 三字段返回；队头被占时后续执行 GET 稳定见 queued", async () => {
+    // v2 S8：无观察窗——queued 可观察性由真实排队语义承载。闸门 executor 占住
+    // 队头（第 1 个执行挂起在引擎内），第 2 个执行确定性滞留 queued
+    const { executor, release } = gateExecutor();
+    setAgentExecutorForTests(executor);
+    const first = await postJson(serverCtx.baseUrl, "/api/executions", { projectId, flowId, trigger: "manual", variables: {} });
+    assert.equal(first.status, 201);
+
     const res = await postJson(serverCtx.baseUrl, "/api/executions", { projectId, flowId, trigger: "manual", variables: {} });
 
     // 签核：status 201；body 含 id/executionId/queuePosition 且 id===executionId
@@ -69,12 +95,19 @@ describe("REQ-FLOW-049 触发入口归一与契约保持", () => {
     assert.equal(typeof res.body.queuePosition, "number");
 
     const detail = await (await fetch(`${serverCtx.baseUrl}/api/executions/${res.body.id}`)).json();
-    // 签核：立即 GET 稳定见 queued（观察窗 ≥250ms）
+    // 签核（v2 S8）：队头被占 → 稳定见 queued 且 queuePosition≥2
     assert.equal(detail.status, "queued");
+    assert.ok(res.body.queuePosition >= 2, `队头被占时 queuePosition 应 ≥2，实际 ${res.body.queuePosition}`);
+
+    release(); // 放行队头排空队列，避免 afterEach stopServer 有界等待空转
+    setAgentExecutorForTests(null); // 恢复 seam 缺省（模块级状态跨用例泄漏防护）
   });
 
   it("AC2: 队列满经 HTTP → 503 + E-QUEUE-FULL", async () => {
     // 签核：灌满项目队列（并发 POST）后第 51 个 status 503 且 body.error === "E-QUEUE-FULL"
+    // v2：无观察窗托底——闸门 executor 占住队头，队列确定性累积
+    const { executor, release } = gateExecutor();
+    setAgentExecutorForTests(executor);
     let last = null;
     for (let i = 0; i < 60; i++) {
       last = await postJson(serverCtx.baseUrl, "/api/executions", { projectId, flowId, trigger: "manual", variables: {} });
@@ -82,6 +115,9 @@ describe("REQ-FLOW-049 触发入口归一与契约保持", () => {
     }
     assert.equal(last.status, 503);
     assert.equal(last.body.error, "E-QUEUE-FULL");
+
+    release();
+    setAgentExecutorForTests(null);
   });
 
   it("AC3: 通道触发语义——trigger=channel 提交创建执行", async () => {

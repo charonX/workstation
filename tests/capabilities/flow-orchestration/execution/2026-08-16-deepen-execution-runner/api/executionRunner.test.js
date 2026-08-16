@@ -1,11 +1,11 @@
 // REQ-TRACE: 2026-08-16-deepen-execution-runner/REQ-FLOW-048, 2026-08-16-deepen-execution-runner/REQ-FLOW-053
-// REQ-VERSION: v1-hash:477d80d3adeafd5681b9742b555cc7372f75d76d54fcc01e46c2c0c2ac86e9bd
+// REQ-VERSION: v2-hash:5ecf8049e27394bdb8cc0a844786af34d8f46fe38cb96a97145bebbf3831dc0b
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff)
+// ASSERTIONS-SIGNED: true (2026-08-16 assertion signoff；v2 重签：撤除观察窗)
 
-// REQ-FLOW-048：ExecutionRunner 三接口（submit/runOnce/reset）+ 描述符矩阵 + 观察窗。
+// REQ-FLOW-048：ExecutionRunner 三接口（submit/runOnce/reset）+ 描述符矩阵 + 零睡眠（v2）。
 // 「如何运行一次执行」的知识收进一个模块——本文件直测 runner 的 public 接口
 // （submit/runOnce/reset/setAgentExecutorForTests 模块级导出），不测内部拼装顺序。
 // seam：executionRunner 模块（taskService 既有 setter 语义迁入）。
@@ -13,8 +13,9 @@
 // fixture：startServer 建项目 + published flow（HTTP），被测 seam = runner 直调；
 // 执行行断言经 getDb() 直查（executions 表在 data.db）。
 //
-// 签核断言（2026-08-16 门 1）：submit 三字段返回且 id===executionId；E-QUEUE-FULL
-// 同步拒绝；观察窗 ≥250ms；schedule 出队二次校验；写入原语全收；seam 注入生效。
+// 签核断言（2026-08-16 门 1；v2 重签 S2'）：submit 三字段返回且 id===executionId；
+// E-QUEUE-FULL 同步拒绝；零睡眠（queued→running 立即迁移，<250ms 上界）；schedule
+// 出队二次校验；写入原语全收；seam 注入生效。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -31,6 +32,18 @@ const FAKE_EXECUTOR = async ({ node }) => ({
   nodeRecords: [],
   logs: [],
 });
+
+// 闸门 executor：所有调用挂起在同一 promise 上，release() 一次放行全部——
+// 用于确定性地占住队头（串行队列单飞），替代已撤除的 250ms 观察窗（v2）。
+function gateExecutor() {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const executor = async () => {
+    await gate;
+    return { status: "success", output: "done", nodeRecords: [], logs: [] };
+  };
+  return { executor, release };
+}
 
 // 建项目 + published flow（executionLog.test.js 先例：POST /api/projects →
 // POST /api/flows → PATCH nodeList+status:"published"）。fixture 含 agent 节点
@@ -77,7 +90,9 @@ describe("REQ-FLOW-048 executionRunner.submit", () => {
   });
 
   it("AC1: submit 成功路径——落 queued 行 + 返回 {id, executionId, queuePosition} 三字段", async () => {
-    const result = await submit({ projectId, flowId, trigger: "manual", variables: {} });
+    // submit 是同步函数：同步调用 + 同步查库（不出让微任务，出队回调尚未执行）——
+    // 确定性观察落行的初始 queued 态（v2：无观察窗，await 会让出队微任务先迁移 running）
+    const result = submit({ projectId, flowId, trigger: "manual", variables: {} });
 
     // 签核：三字段存在且 id === executionId（REQ-FLOW-048 AC1）
     assert.equal(typeof result.id, "string");
@@ -89,6 +104,9 @@ describe("REQ-FLOW-048 executionRunner.submit", () => {
 
   it("AC2: 容量满——同步拒绝 E-QUEUE-FULL，不落行", async () => {
     // 签核：队列上限 50（REQ-FLOW-052 AC4 同源）；第 51 个同步拒绝
+    // v2：无观察窗托底——闸门 executor 占住队头，队列确定性累积
+    const { executor, release } = gateExecutor();
+    setAgentExecutorForTests(executor);
     let gotError = null;
     let accepted = 0;
     for (let i = 0; i < 60; i++) {
@@ -103,53 +121,62 @@ describe("REQ-FLOW-048 executionRunner.submit", () => {
     assert.equal(accepted, 50);
     assert.ok(gotError);
     assert.equal(gotError.code, "E-QUEUE-FULL");
+    release(); // 放行队头，避免 afterEach stopServer 的有界等待空转
+    setAgentExecutorForTests(FAKE_EXECUTOR); // 恢复共享 seam（模块级状态跨用例泄漏防护）
   });
 
   it("AC3: 描述符矩阵——入队形态 persist/artifacts/notify 全开（fake executor 观察写入）", async () => {
     const result = await submit({ projectId, flowId, trigger: "manual", variables: { prompt: "hello" } });
 
     // 签核：入队触发执行后——执行终态 success、output 含 fake executor 输出
-    // echo:hello（REQ-FLOW-048 AC3/AC6）。轮询至终态（观察窗 250ms + 引擎执行）
+    // echo:hello（REQ-FLOW-048 AC3/AC6）。轮询至终态（v2：零睡眠——迁移 running
+    // 立即发生，轮询须越过 running 直到终态）
     let row;
     for (let i = 0; i < 100; i++) {
       row = getDb().prepare("SELECT * FROM executions WHERE id = ?").get(result.id);
-      if (row.status !== "queued") break;
+      if (row.status !== "queued" && row.status !== "running") break;
       await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(row.status, "success");
     assert.ok(String(row.output).includes("echo:hello"));
   });
 
-  it("AC4: observeQueued=true 观察窗——出队后、状态迁移前 queued 保持 ≥250ms", async () => {
+  it("AC4: 零睡眠（v2 撤除观察窗）——submit 后 queued→running 立即迁移，时序上界 <250ms", async () => {
     const t0 = Date.now();
     const result = await submit({ projectId, flowId, trigger: "manual", variables: {} });
 
-    // 签核：提交后立即 queued（契约）；随后轮询至状态迁移，经过时长 ≥250ms（REQ-FLOW-048 AC4）
-    const immediate = getDb().prepare("SELECT status FROM executions WHERE id = ?").get(result.id);
-    assert.equal(immediate.status, "queued");
-
+    // 签核（v2 S2'）：任何描述符下无固定睡眠——行状态迁出 queued 的耗时远小于
+    // 旧观察窗 250ms（旧实现此断言必 ≥250ms 红；新实现毫秒级绿）。迁移目标态
+    // 可以是 running 或终态（快执行直接跑完），两者都证明无观察窗滞留。
     let elapsed = 0;
     let status = "queued";
     while (elapsed < 5000) {
       status = getDb().prepare("SELECT status FROM executions WHERE id = ?").get(result.id).status;
       if (status !== "queued") break;
-      await new Promise((r) => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 5));
       elapsed = Date.now() - t0;
     }
-    assert.ok(elapsed >= 250, `观察窗应 ≥250ms，实际 ${elapsed}ms`);
     assert.notEqual(status, "queued");
+    assert.ok(elapsed < 250, `零睡眠：queued 迁移应远快于旧观察窗 250ms，实际 ${elapsed}ms`);
   });
 
   it("AC5: trigger=schedule 出队二次校验——执行时非 published → 行标 error + 日志 E-SCHED-FLOW-INVALID", async () => {
     // 签核：排队期间 unpublish（PATCH status 回 draft）后放行执行 →
     // 终态 error 且 logs 含 E-SCHED-FLOW-INVALID（REQ-FLOW-048 AC5 / 010 双校验语义）
+    // v2：无观察窗托底——闸门 executor 占住队头，schedule 执行确定性滞留在 queued，
+    // unpublish 落定后才放行出队（二次校验必然读到 draft）
+    const { executor, release } = gateExecutor();
+    setAgentExecutorForTests(executor);
+    await submit({ projectId, flowId, trigger: "manual", variables: {} }); // 占住队头
     const result = await submit({ projectId, flowId, trigger: "schedule", variables: {}, scheduleId: "s1" });
     await fetch(`${serverCtx.baseUrl}/api/flows/${flowId}`, {
       method: "PATCH",
       headers: JSON_HEADERS,
       body: JSON.stringify({ status: "draft" }),
     });
-    // 等待执行收尾（观察窗 + 引擎后二次校验）
+    release(); // 放行：队头完成后 schedule 执行出队 → 二次校验命中 draft
+    setAgentExecutorForTests(FAKE_EXECUTOR); // 恢复共享 seam
+    // 等待执行收尾（队头放行 + 二次校验结算）
     await new Promise((r) => setTimeout(r, 800));
     const row = getDb().prepare("SELECT * FROM executions WHERE id = ?").get(result.id);
     assert.equal(row.status, "error");
@@ -179,9 +206,9 @@ describe("REQ-FLOW-048 executionRunner.runOnce（debug 描述符）", () => {
     await stopServer(serverCtx);
   });
 
-  it("AC3/AC4: debug 描述符——persist/artifacts/notify 全关、observeQueued 缺省不睡", async () => {
+  it("AC3/AC4: debug 描述符——persist/artifacts/notify 全关、零睡眠（v2）", async () => {
     // 签核：runOnce(debug 描述符) 不落 execution 行、无产物、无通知；
-    // 无观察窗（执行耗时不含 250ms——用行数断言零落库 + 时序粗略断言）
+    // 零睡眠（执行耗时不含固定延迟——用行数断言零落库 + 时序上界断言）
     // （REQ-FLOW-048 AC3 / REQ-FLOW-050 AC1）
     const before = getDb().prepare("SELECT COUNT(*) AS c FROM executions").get().c;
     const t0 = Date.now();
@@ -193,6 +220,6 @@ describe("REQ-FLOW-048 executionRunner.runOnce（debug 描述符）", () => {
     const after = getDb().prepare("SELECT COUNT(*) AS c FROM executions").get().c;
     assert.equal(after, before);
     assert.ok(result);
-    assert.ok(elapsed < 250, `debug 不走观察窗，实际 ${elapsed}ms`);
+    assert.ok(elapsed < 250, `debug 零睡眠（v2），实际 ${elapsed}ms`);
   });
 });
