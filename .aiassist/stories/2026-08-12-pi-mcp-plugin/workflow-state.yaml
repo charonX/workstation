@@ -8,7 +8,7 @@ intention: >-
 
 phase: BUG     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 13    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 14    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-12
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -36,6 +36,7 @@ history:
   - {at: 2026-08-15, from: BUG, to: BUG, note: "BUG-012（code-defect，人确认）：「配置了 MCP 也没启用，新会话桥 0 server」——UI 显示「1 个项目 ▸」+弹层 switch on 是假态：buildProjectMaps 在项目循环里调无参 listMcpServers()，拿全局开关冒充项目启用态（全局开→每个项目都显示 on）；用户点击实为反转写入 enabled:false，真实启用行永不落库 → effectiveConfig 恒空（活库实证 mcp_project_enablement 0 行）。桥/快照链本身无缺陷。修复（bac43ed [bugfix]，4 文件）：mcpService.list(projectId) COALESCE 子查询读真实启用态（无启用行缺省 false；无参保持全局语义）+ GET /api/mcp?project= 路由（对齐 plugins?project= 先例）+ renderer listMcpServers(projectId) + buildProjectMaps 带 proj.id。回归先红已锁（7b068a2 [test]：API 3 用例 mcpHttpProjectList + E2E 弹层初始 off→点击启用→刷新持久化）。E2E 13/13 绿；单元套件验证受并行会话 better-sqlite3 Electron ABI 重打包污染（18 fail 全为 ERR_DLOPEN_FAILED/E-DB-UNWRITABLE，非断言失败；mcpHttpProjectList 在污染前已绿）。环境注记：E2E 一轮 10 fail 为并行会话改文件触发 vite HMR 所致，静期重跑全绿。用户侧残留：重启应用后删 firecawl 重配 firecrawl → 「项目启用」弹层拨开 knowledge（现在会真实落库）→ knowledge 项目空间新开会话"}
 
   - {at: 2026-08-16, from: BUG, to: BUG, note: "BUG-013（req-gap 就地补全，人确认×2：拆导航 + 并入工具探测，行内按钮+弹窗）：①MCP 配置拆独立导航项「MCP」（技能之下、插件之上），②配置后直接连接拉取全部工具+描述在 MCP 页操作展示。就地补全（不退 phase）：REQ-083 IA 注记 + REQ-084 IA/工具探测注记+AC7（f59b6e8 [docs]，hash 重算顺带吸收 BUG-010 REQ-091 漂移）、UX 拆页 mcp-page.html + plugins-page 回归纯插件（0e8ad01 [ux]）、回归先红（29b08d1 [test]：API 4 用例 mcpProbeTools + E2E 迁移 7 用例至新路由 + 新增导航 1 + AC7 3）、fixture 路径修正（7716a9b [test]，ROOT 5→6 层对齐 mcpBridge 先例，RED 时 case1/2 误挂路径断言）、修复（24993c5 [bugfix] 9 文件，blast-radius 闸门人确认）：mcpService.probeTools（@modelcontextprotocol/client 直连 tools/list，10s 超时，bearer 同 effectiveConfig 解密路径不回显明文）+ GET /api/mcp/:name/tools + listMcpTools + Mcp.jsx 新页（表格+工具弹窗+保存后自动探测）+ Plugins.jsx 剥离 MCP + /mcp 路由 + nav-mcp + SDK 外联 main/worker bundle（BUG-002 同因）。绿：API 4/4、mcpPage E2E 11/11、pluginsPage E2E 6/6"}
+  - {at: 2026-08-16, from: BUG, to: BUG, note: "BUG-014（req-gap，人确认+拍板「默认层存 workstation DB、项目页保留为覆盖、下拉选择为主」）：MCP 权限手填 server:tool glob 看不到已绑定 server/工具；且项目页承载 mcp 权限怪异——数据模型缺「用户级默认层」（可写层只有项目覆盖；全局=出厂静态只读）。就地补全：REQ-087 默认层+选择器注记+AC8/9/10（b6c8d47 [docs]，hash 7051b638）、UX mcp-page 默认权限区 + permission-mcp-group 选择器化（bc60641 [ux]）、回归先红（eda387c [test]：API 6 用例 mcpPermissionDefaults 全红 404/seam 未就绪 + E2E AC10a/b + permissionMcpGroup 2b/2c 契约适配+AC10c；顺带收紧原 2b 虚设持久语义——无 seed 项目=local-only+hash 重导航不卸载组件，统一 seed demo 项目走真实 PUT 路径）、修复（7958af5 [bugfix] 12 文件，blast-radius 闸门人确认）：mcp_permission_defaults 表 + mcpPermissionDefaults.js（校验/rowid 保序读取/事务替换/merge 纯函数「*」首位 last-match-wins，轻依赖只 import db.js 进 worker 图）+ literal 路由 + 保留字 + worker 部署合并（失败回退静态拷贝）+ 视图合并（空默认层 no-op 保 REQ-AGENT-060 deepEqual）+ 共享 McpRulePicker（server 下拉→探测工具下拉，手填 glob 高级入口）+ 两页接线。绿：API 6/6、全量单元 867/867、E2E 17/17。环境注记：rebuild:electron 后须 rebuild:node 再跑单测（better-sqlite3 ABI 137/148 互斥）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
