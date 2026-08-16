@@ -4,6 +4,7 @@
 //
 //   GET    /api/mcp                               → mcpService.list()
 //   GET    /api/mcp?project=<id>                  → mcpService.list(projectId) 项目感知（BUG-012）
+//   GET    /api/mcp/:name/tools                   → mcpService.probeTools（BUG-013 AC7 工具探测）
 //   POST   /api/mcp                               → mcpService.create
 //   PUT    /api/mcp/:name                         → mcpService.update（BUG-008）
 //   DELETE /api/mcp/:name                         → mcpService.remove
@@ -50,6 +51,18 @@ export async function handleMcp(req, res, body, pathParts) {
   }
 
   const name = decodeParam(pathParts[0]);
+
+  // REQ-AGENT-084 AC7（BUG-013）：工具探测——直连 server 拉 tools/list（即连即断）。
+  if (pathParts.length === 2 && pathParts[1] === "tools" && req.method === "GET") {
+    try {
+      const tools = await getService().probeTools(name);
+      return ok(res, { tools });
+    } catch (err) {
+      // 对齐 PUT/DELETE 先例：不存在 → 404；连接失败等 → 业务错误 4xx。
+      if (err?.message?.includes("不存在")) return notFound(res, err.message);
+      return mapError(res, err);
+    }
+  }
 
   // REQ-AGENT-084 CRUD-U（BUG-008）：PUT 编辑 server（部分字段补丁；token 缺省=保留）。
   if (pathParts.length === 1 && req.method === "PUT") {

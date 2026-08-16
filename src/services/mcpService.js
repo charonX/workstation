@@ -22,6 +22,15 @@ import path from "node:path";
 import { getDb } from "../db.js";
 import { encryptSecret, decryptSecret } from "./secretStore.js";
 
+// REQ-AGENT-084 AC7（BUG-013）：工具探测走官方 MCP client SDK（@modelcontextprotocol/client，
+// pi-mcp-adapter 传递依赖）。main/worker bundle 均已 external（regex 含子路径），运行期从
+// node_modules / asar 加载——SDK 内部 spawn/fetch 不可内联（BUG-002 同因）。
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
+
+// 探测超时：即连即断的管理面操作，不给长窗口。
+const PROBE_TIMEOUT_MS = 10_000;
+
 function timestamp() {
   return new Date().toISOString();
 }
@@ -338,6 +347,58 @@ export function createMcpService() {
         servers[row.name] = toBridgeEntry(rowToServerRow(row), row.token_enc);
       }
       return { servers };
+    },
+
+    /**
+     * REQ-AGENT-084 AC7（BUG-013）：直连 server 拉取 tools/list（名称+描述）。
+     * 即连即断——不写库、不影响会话快照；连接/握手/超时任何失败 → 「连接失败：…」业务错误。
+     * bearer 走与 effectiveConfig 同一解密路径（toBridgeEntry）注入 Authorization 头，
+     * 解密值不出本函数、不进响应。
+     */
+    async probeTools(name) {
+      const d = db();
+      const row = d.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(name);
+      if (!row) throw new Error(`MCP server 不存在: ${name}`);
+      const server = rowToServerRow(row);
+      const bridge = toBridgeEntry(server, row.token_enc);
+
+      let transport;
+      if (server.type === "stdio") {
+        transport = new StdioClientTransport({
+          command: bridge.command,
+          args: bridge.args ?? [],
+          // 探测继承默认环境（PATH 等）+ 配置的 env——否则 npx 类命令找不到。
+          env: { ...getDefaultEnvironment(), ...(bridge.env ?? {}) },
+          stderr: "pipe",
+        });
+      } else {
+        const headers = { ...(bridge.headers ?? {}) };
+        if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
+        transport = new StreamableHTTPClientTransport(new URL(server.url), {
+          requestInit: { headers },
+        });
+      }
+
+      const client = new Client({ name: "opc-workstation-probe", version: "0.0.0" });
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`探测超时（${PROBE_TIMEOUT_MS / 1000}s）`)), PROBE_TIMEOUT_MS);
+      });
+      try {
+        const result = await Promise.race([
+          (async () => {
+            await client.connect(transport);
+            return await client.listTools();
+          })(),
+          timeout,
+        ]);
+        return (result.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" }));
+      } catch (err) {
+        throw new Error(`连接失败：${err?.message ?? String(err)}`);
+      } finally {
+        clearTimeout(timer);
+        await client.close().catch(() => {});
+      }
     },
   };
 }

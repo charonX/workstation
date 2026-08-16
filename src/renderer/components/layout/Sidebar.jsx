@@ -50,6 +50,8 @@ export default function Sidebar() {
         <div className="nav-group">
           <div className="nav-label">{t("nav.system")}</div>
           <SidebarNavLink to="/skills" testid="nav-skills">{t("nav.skills")}</SidebarNavLink>
+          {/* 管理区「MCP」导航项（BUG-013，REQ-AGENT-084 IA 注记：独立页 #/mcp，位于技能之下） */}
+          <SidebarNavLink to="/mcp" testid="nav-mcp">MCP</SidebarNavLink>
           {/* 管理区「插件」导航项（REQ-AGENT-083 E2E 路由 #/plugins，signoff D5） */}
           <SidebarNavLink to="/plugins" testid="nav-plugins">插件</SidebarNavLink>
           {/* 管理区左导八条目（REQ-AGENT-026 AC2）：既有七条目 + 补「通知」

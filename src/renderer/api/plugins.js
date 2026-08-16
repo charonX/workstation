@@ -32,6 +32,7 @@ export function setPluginProjectEnabled(name, projectId, enabled) {
 //   DELETE /api/mcp/:name                       → remove
 //   POST   /api/mcp/:name/global-enabled { enabled }          → 全局开关
 //   POST   /api/mcp/:name/project-enable { projectId, enabled } → 按项目启用
+//   GET    /api/mcp/:name/tools → probeTools（BUG-013 AC7：直连拉 tools/list，{ tools: [...] }）
 export function listMcpServers(projectId) {
   // BUG-012：带 projectId 时走项目感知清单（row.enabled = 该项目启用态）——
   // 对齐 listPlugins(projectId) 先例；无参保持全局开关语义。
@@ -62,4 +63,10 @@ export function setMcpProjectEnabled(name, projectId, enabled) {
     projectId,
     enabled: !!enabled,
   });
+}
+
+// BUG-013（REQ-AGENT-084 AC7）：工具探测——直连 server 拉 tools/list；
+// 连接失败时 get() 抛业务错误（message 含「连接失败」），调用方呈弹窗错误态。
+export function listMcpTools(name) {
+  return get(`/api/mcp/${encodeURIComponent(name)}/tools`);
 }

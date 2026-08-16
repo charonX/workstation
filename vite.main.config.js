@@ -64,6 +64,10 @@ export default defineConfig({
         // CJS dist 内部 require("async_hooks")，__toESM 包装后 AsyncLocalStorage 非构造器
         // （O.AsyncLocalStorage is not a constructor）。worker 配置已 external，主进程对齐。
         /^@anthropic-ai\/claude-agent-sdk(\/|$)/,
+        // BUG-013（REQ-AGENT-084 AC7）：mcpService.probeTools 直连 MCP server 走官方
+        // client SDK——内部 spawn/fetch，CJS 依赖链不可内联（BUG-002 同因），运行期
+        // 从 node_modules / asar 加载。regex 覆盖 ./stdio 子路径。
+        /^@modelcontextprotocol\/client(\/|$)/,
         /^node:/
       ]
     }

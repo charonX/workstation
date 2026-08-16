@@ -35,6 +35,9 @@ export default defineConfig({
         /^simple-git(\/|$)/,
         /^@larksuiteoapi\/node-sdk(\/|$)/,
         /^@anthropic-ai\/claude-agent-sdk(\/|$)/,
+        // BUG-013 同因对齐：@modelcontextprotocol/client 若进入 worker 图
+        // （mcpService 共享模块）不可内联——regex 覆盖 ./stdio 子路径。
+        /^@modelcontextprotocol\/client(\/|$)/,
         /^node:/
       ]
     }

@@ -1,18 +1,18 @@
 // src/renderer/pages/Plugins.jsx
-// 管理区「插件」页（REQ-AGENT-083 插件管理 UI + REQ-AGENT-084 MCP 表单 UI 面）。
+// 管理区「插件」页（REQ-AGENT-083 插件管理 UI）。
+// BUG-013（2026-08-16，req-gap 就地补全）：MCP server 管理拆出为独立页
+// src/renderer/pages/Mcp.jsx（#/mcp，导航项位于技能之下），本页只留扩展插件。
 //
-// UX 参照：ux/plugins-page.html（已定稿 2026-08-13）。结构契约以 data-testid 锚定：
+// UX 参照：ux/plugins-page.html（已定稿 2026-08-13；BUG-013 起只留扩展插件）。
+// 结构契约以 data-testid 锚定：
 //   [data-testid='plugins-page'] / plugin-add-button / plugin-add-modal /
 //   plugin-source-type / plugin-source-input / plugin-source-error /
 //   plugin-safety-note / plugin-row-<name> / plugin-row-error（.error-detail）/
 //   plugin-project-toggle（pill）→ plugin-project-pop（.pop-row .switch）/
-//   plugin-add-submit / plugin-remove-button / mcp-add-button / mcp-form-modal /
-//   mcp-name-input / mcp-type-seg / mcp-command-input / mcp-args-input /
-//   mcp-url-input / mcp-auth-seg / mcp-form-submit / mcp-row-<name> /
-//   mcp-global-toggle。
+//   plugin-add-submit / plugin-remove-button。
 //
-// 数据面：GET/POST /api/plugins、GET/POST/DELETE /api/mcp、POST
-// /api/plugins/:name/project-enable、POST /api/mcp/:name/{project-enable,global-enabled}。
+// 数据面：GET/POST /api/plugins、POST /api/plugins/:name/project-enable、
+// DELETE /api/plugins/:source。
 // 内置 pi-mcp-adapter 行由 HTTP 层合成（scope=global / builtin=true / 不可停用），
 // UI 直接渲染、不提供移除/停用。
 //
@@ -24,12 +24,6 @@ import {
   addPlugin,
   removePlugin,
   setPluginProjectEnabled,
-  listMcpServers,
-  addMcpServer,
-  updateMcpServer,
-  removeMcpServer,
-  setMcpGlobalEnabled,
-  setMcpProjectEnabled,
 } from "../api/plugins.js";
 import { getProjects } from "../api/projects.js";
 import "./Plugins.css";
@@ -50,33 +44,25 @@ const SOURCE_META = {
 
 export default function Plugins() {
   const [plugins, setPlugins] = useState([]);
-  const [mcpServers, setMcpServers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  // 项目启用映射：{ [name]: Set<projectId> }（插件/MCP 共用结构，按 type 分存）。
+  // 项目启用映射：{ [name]: Set<projectId> }。
   const [pluginProjectMap, setPluginProjectMap] = useState({});
-  const [mcpProjectMap, setMcpProjectMap] = useState({});
 
-  // 行内项目 popover 打开态（当前打开的插件/MCP 名）。
+  // 行内项目 popover 打开态 + fixed 视口定位（BUG-009：逃逸卡片 overflow 裁剪）。
   const [openPluginPop, setOpenPluginPop] = useState(null);
-  const [openMcpPop, setOpenMcpPop] = useState(null);
-  // BUG-009：popover 为 fixed 视口定位（CSS 见 Plugins.css），打开时按 pill 坐标定位；
-  // 点击弹层外关闭（对齐 UX 参照 plugins-page.html 的 document click-away）。
   const [popPos, setPopPos] = useState({ top: 0, left: 0 });
 
-  const togglePop = (kind, name) => (e) => {
-    const isOpen = (kind === "plugin" ? openPluginPop : openMcpPop) === name;
-    if (isOpen) {
+  const togglePop = (name) => (e) => {
+    if (openPluginPop === name) {
       setOpenPluginPop(null);
-      setOpenMcpPop(null);
       return;
     }
     const r = e.currentTarget.getBoundingClientRect();
     setPopPos({ top: r.bottom + 6, left: r.left });
-    setOpenPluginPop(kind === "plugin" ? name : null);
-    setOpenMcpPop(kind === "mcp" ? name : null);
+    setOpenPluginPop(name);
   };
 
   // 添加插件弹窗。
@@ -85,23 +71,6 @@ export default function Plugins() {
   const [pluginSource, setPluginSource] = useState("");
   const [pluginAddError, setPluginAddError] = useState(null);
   const [pluginAdding, setPluginAdding] = useState(false);
-
-  // 添加/编辑 MCP 弹窗（editingMcp 非空 = 编辑模式，REQ-084 CRUD-U，BUG-008）。
-  const [addMcpOpen, setAddMcpOpen] = useState(false);
-  const [editingMcp, setEditingMcp] = useState(null);
-  const [mcpForm, setMcpForm] = useState({
-    name: "",
-    type: "stdio",
-    command: "",
-    args: "",
-    env: "",
-    url: "",
-    auth: "none",
-    token: "",
-    headers: "",
-  });
-  const [mcpFormError, setMcpFormError] = useState(null);
-  const [mcpSaving, setMcpSaving] = useState(false);
 
   // 拉取项目清单（popover 行 + 项目启用计数）。
   const loadProjects = useCallback(async () => {
@@ -115,26 +84,15 @@ export default function Plugins() {
   }, []);
 
   // 对每个项目拉项目感知清单，构建 name → enabled project id 集合。
-  const buildProjectMaps = useCallback(async (projList) => {
+  const buildProjectMap = useCallback(async (projList) => {
     const pMap = {};
-    const mMap = {};
     for (const proj of projList) {
       try {
-        const [pRows, mRows] = await Promise.all([
-          listPlugins(proj.id),
-          // BUG-012：必须带 proj.id 走项目感知清单——无参拿到的是全局开关，
-          // 会拿全局开关冒充项目启用态（弹层假 on、真实启用行永不落库）。
-          listMcpServers(proj.id),
-        ]);
+        const pRows = await listPlugins(proj.id);
         for (const row of pRows ?? []) {
           if (row.builtin) continue;
           if (row.enabled) {
             (pMap[row.name] ??= new Set()).add(proj.id);
-          }
-        }
-        for (const row of mRows ?? []) {
-          if (row.enabled) {
-            (mMap[row.name] ??= new Set()).add(proj.id);
           }
         }
       } catch {
@@ -142,29 +100,21 @@ export default function Plugins() {
       }
     }
     setPluginProjectMap(pMap);
-    setMcpProjectMap(mMap);
   }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [pluginRows, mcpRows, projList] = await Promise.all([
-        listPlugins(),
-        listMcpServers(),
-        loadProjects(),
-      ]);
-      const pluginsArr = Array.isArray(pluginRows) ? pluginRows : [];
-      const mcpArr = Array.isArray(mcpRows) ? mcpRows : [];
-      setPlugins(pluginsArr);
-      setMcpServers(mcpArr);
-      await buildProjectMaps(projList);
+      const [pluginRows, projList] = await Promise.all([listPlugins(), loadProjects()]);
+      setPlugins(Array.isArray(pluginRows) ? pluginRows : []);
+      await buildProjectMap(projList);
     } catch (err) {
       setLoadError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
-  }, [loadProjects, buildProjectMaps]);
+  }, [loadProjects, buildProjectMap]);
 
   useEffect(() => {
     reload();
@@ -173,10 +123,7 @@ export default function Plugins() {
   // BUG-009：点击弹层外关闭 popover（对齐 UX 参照 click-away 行为）。
   useEffect(() => {
     const onDocClick = (e) => {
-      if (!e.target.closest(".toggle-cell")) {
-        setOpenPluginPop(null);
-        setOpenMcpPop(null);
-      }
+      if (!e.target.closest(".toggle-cell")) setOpenPluginPop(null);
     };
     document.addEventListener("click", onDocClick);
     return () => document.removeEventListener("click", onDocClick);
@@ -210,83 +157,6 @@ export default function Plugins() {
     }
   };
 
-  // ---------- 添加 MCP ----------
-  const openAddMcp = () => {
-    setEditingMcp(null);
-    setMcpForm({ name: "", type: "stdio", command: "", args: "", env: "", url: "", auth: "none", token: "", headers: "" });
-    setMcpFormError(null);
-    setAddMcpOpen(true);
-  };
-
-  // ---------- 编辑 MCP（BUG-008，REQ-084 CRUD-U） ----------
-  // 回填行数据；name 主键只读；token 永不回填（已签：API 不回显明文），留空 = 保留。
-  const openEditMcp = (server) => {
-    const kvLines = (obj) =>
-      obj && typeof obj === "object"
-        ? Object.entries(obj).map(([k, v]) => `${k}=${v}`).join("\n")
-        : "";
-    setEditingMcp(server);
-    setMcpForm({
-      name: server.name,
-      type: server.type,
-      command: server.command ?? "",
-      args: Array.isArray(server.args) ? server.args.join("\n") : "",
-      env: kvLines(server.env),
-      url: server.url ?? "",
-      auth: server.auth ?? "none",
-      token: "",
-      headers: kvLines(server.headers),
-    });
-    setMcpFormError(null);
-    setAddMcpOpen(true);
-  };
-
-  const handleMcpSave = async () => {
-    const body = {
-      type: mcpForm.type,
-    };
-    // 新增模式才送 name/enabled；编辑模式 name 是路径主键，enabled 开关不碰。
-    if (!editingMcp) {
-      body.name = mcpForm.name.trim();
-      body.enabled = true;
-    }
-    if (mcpForm.type === "stdio") {
-      body.command = mcpForm.command.trim();
-      body.args = mcpForm.args
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const env = parseKeyValueLines(mcpForm.env);
-      if (env !== null) body.env = env;
-    } else {
-      body.url = mcpForm.url.trim();
-      body.auth = mcpForm.auth;
-      // BUG-006：bearer token 加密存凭据库（服务端 secretStore），表单提交后不回显
-      // BUG-008：编辑模式 token 留空 = 保留原 token（不送字段），填写 = 轮换
-      if (mcpForm.auth === "bearer" && (!editingMcp || mcpForm.token.trim() !== "")) {
-        body.token = mcpForm.token.trim();
-      }
-      const headers = parseKeyValueLines(mcpForm.headers);
-      if (headers !== null) body.headers = headers;
-    }
-    setMcpSaving(true);
-    setMcpFormError(null);
-    try {
-      if (editingMcp) {
-        await updateMcpServer(editingMcp.name, body);
-      } else {
-        await addMcpServer(body);
-      }
-      setAddMcpOpen(false);
-      setEditingMcp(null);
-      await reload();
-    } catch (err) {
-      setMcpFormError(err?.message || String(err));
-    } finally {
-      setMcpSaving(false);
-    }
-  };
-
   // ---------- 项目启用 ----------
   const togglePluginProject = async (name, projectId) => {
     const enabled = !(pluginProjectMap[name]?.has(projectId) ?? false);
@@ -306,33 +176,6 @@ export default function Plugins() {
     }
   };
 
-  const toggleMcpProject = async (name, projectId) => {
-    const enabled = !(mcpProjectMap[name]?.has(projectId) ?? false);
-    try {
-      await setMcpProjectEnabled(name, projectId, enabled);
-      setMcpProjectMap((prev) => {
-        const next = { ...prev };
-        const set = new Set(prev[name] ?? []);
-        if (enabled) set.add(projectId);
-        else set.delete(projectId);
-        if (set.size === 0) delete next[name];
-        else next[name] = set;
-        return next;
-      });
-    } catch {
-      // 静默失败。
-    }
-  };
-
-  const toggleMcpGlobal = async (server) => {
-    try {
-      await setMcpGlobalEnabled(server.name, !server.enabled);
-      await reload();
-    } catch {
-      // 静默失败。
-    }
-  };
-
   // ---------- 移除 ----------
   const handleRemovePlugin = async (p) => {
     try {
@@ -343,24 +186,14 @@ export default function Plugins() {
     }
   };
 
-  const handleRemoveMcp = async (server) => {
-    try {
-      await removeMcpServer(server.name);
-      await reload();
-    } catch {
-      // 静默失败。
-    }
-  };
-
   const pluginCount = (name) => pluginProjectMap[name]?.size ?? 0;
-  const mcpCount = (name) => mcpProjectMap[name]?.size ?? 0;
 
   return (
     <div className="page plugins-page" data-testid="plugins-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">插件</h1>
-          <div className="page-sub">PI agent 扩展与 MCP 服务 · 集中安装，按项目启用</div>
+          <div className="page-sub">PI agent 扩展 · 集中安装，按项目启用</div>
         </div>
         <button className="btn btn-primary" data-testid="plugin-add-button" onClick={openAddPlugin}>
           添加插件
@@ -375,12 +208,8 @@ export default function Plugins() {
 
       {loading && <p className="loading-text">加载中…</p>}
 
-      {/* ============ ① 扩展插件清单 ============ */}
+      {/* ============ 扩展插件清单 ============ */}
       <div className="plugin-section section">
-        <div className="section-head">
-          <span className="section-title">扩展插件</span>
-          <span className="section-desc">npm / git / 本地路径 · 真相 = pi 全局设置</span>
-        </div>
         <table className="plugin-table" data-testid="plugin-table">
           <thead>
             <tr>
@@ -445,7 +274,7 @@ export default function Plugins() {
                           type="button"
                           className={`toggle-pill${count > 0 ? " on" : ""}`}
                           data-testid="plugin-project-toggle"
-                          onClick={togglePop("plugin", p.name)}
+                          onClick={togglePop(p.name)}
                         >
                           {count > 0 ? `${count} 个项目 ▸` : "未启用 ▸"}
                         </button>
@@ -481,75 +310,6 @@ export default function Plugins() {
                 </tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ============ ② MCP 服务清单 ============ */}
-      <div className="plugin-section section">
-        <div className="section-head">
-          <span className="section-title">MCP 服务</span>
-          <span className="section-desc">配置存 workstation · 新会话生效 · 调用全程过权限面</span>
-          <button className="btn btn-secondary" data-testid="mcp-add-button" onClick={openAddMcp}>
-            添加 MCP 服务
-          </button>
-        </div>
-        <table className="plugin-table" data-testid="mcp-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>类型</th>
-              <th>端点</th>
-              <th>全局开关</th>
-              <th>项目启用</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {mcpServers.map((s) => (
-              <tr key={s.name} data-testid={`mcp-row-${s.name}`} className="plugin-row">
-                <td className="name-cell">{s.name}</td>
-                <td><span className={`badge badge-${s.type === "http" ? "git" : "local"}`}>{s.type}</span></td>
-                <td className="mono">{endpointText(s)}</td>
-                <td>
-                  <span
-                    className={`switch${s.enabled ? " on" : ""}`}
-                    data-testid="mcp-global-toggle"
-                    onClick={() => toggleMcpGlobal(s)}
-                  />
-                </td>
-                <td className="toggle-cell">
-                  <button
-                    type="button"
-                    className={`toggle-pill${mcpCount(s.name) > 0 ? " on" : ""}`}
-                    data-testid="mcp-project-toggle"
-                    onClick={togglePop("mcp", s.name)}
-                  >
-                    {mcpCount(s.name) > 0 ? `${mcpCount(s.name)} 个项目 ▸` : "未启用 ▸"}
-                  </button>
-                  {openMcpPop === s.name && (
-                    <div className="toggle-pop open" data-testid="mcp-project-pop" style={popPos}>
-                      <div className="pop-title">按项目启用</div>
-                      {projects.map((proj) => (
-                        <div key={proj.id} className="pop-row" onClick={() => toggleMcpProject(s.name, proj.id)}>
-                          <span className="proj">{proj.name}</span>
-                          <span className={`switch${mcpProjectMap[s.name]?.has(proj.id) ? " on" : ""}`} />
-                        </div>
-                      ))}
-                      {projects.length === 0 && <div className="pop-title">无项目</div>}
-                    </div>
-                  )}
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <button type="button" className="btn-tertiary" data-testid="mcp-edit-button" onClick={() => openEditMcp(s)}>
-                    编辑
-                  </button>
-                  <button type="button" className="btn-tertiary danger" onClick={() => handleRemoveMcp(s)}>
-                    删除
-                  </button>
-                </td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>
@@ -615,184 +375,6 @@ export default function Plugins() {
           </div>
         </div>
       )}
-
-      {/* ============ 添加/编辑 MCP 服务弹窗（stdio / http 类型切换） ============ */}
-      {addMcpOpen && (
-        <div className="modal-overlay" data-testid="mcp-form-modal" onClick={() => setAddMcpOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h2 className="modal-title">{editingMcp ? "编辑 MCP 服务" : "添加 MCP 服务"}</h2>
-              <button type="button" className="icon-btn" onClick={() => setAddMcpOpen(false)} aria-label="close">✕</button>
-            </div>
-            <div className="modal-body">
-              <div className="field">
-                <label>名称（库内唯一）</label>
-                <input
-                  data-testid="mcp-name-input"
-                  placeholder="local-db"
-                  value={mcpForm.name}
-                  disabled={!!editingMcp}
-                  onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>连接类型</label>
-                <div className="seg" data-testid="mcp-type-seg">
-                  <button
-                    type="button"
-                    className={mcpForm.type === "stdio" ? "active" : ""}
-                    data-type="stdio"
-                    onClick={() => setMcpForm({ ...mcpForm, type: "stdio", command: "", args: "", env: "" })}
-                  >
-                    stdio（本地命令）
-                  </button>
-                  <button
-                    type="button"
-                    className={mcpForm.type === "http" ? "active" : ""}
-                    data-type="http"
-                    onClick={() => setMcpForm({ ...mcpForm, type: "http", url: "", headers: "" })}
-                  >
-                    HTTP（远程服务）
-                  </button>
-                </div>
-              </div>
-
-              {mcpForm.type === "stdio" && (
-                <>
-                  <div className="field">
-                    <label>启动命令</label>
-                    <input
-                      data-testid="mcp-command-input"
-                      className="mono"
-                      placeholder="npx"
-                      value={mcpForm.command}
-                      onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>参数（每行一个）</label>
-                    <textarea
-                      data-testid="mcp-args-input"
-                      className="mono"
-                      rows="2"
-                      placeholder="-y\n@modelcontextprotocol/server-sqlite"
-                      value={mcpForm.args}
-                      onChange={(e) => setMcpForm({ ...mcpForm, args: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>环境变量（KEY=VALUE，每行一条）</label>
-                    <textarea
-                      data-testid="mcp-env-input"
-                      className="mono"
-                      rows="2"
-                      placeholder="DB_PATH=./data/app.db"
-                      value={mcpForm.env}
-                      onChange={(e) => setMcpForm({ ...mcpForm, env: e.target.value })}
-                    />
-                  </div>
-                </>
-              )}
-
-              {mcpForm.type === "http" && (
-                <>
-                  <div className={`field${mcpFormError ? " invalid" : ""}`}>
-                    <label>服务 URL</label>
-                    <input
-                      data-testid="mcp-url-input"
-                      className="mono"
-                      placeholder="https://example.com/mcp"
-                      value={mcpForm.url}
-                      onChange={(e) => {
-                        setMcpForm({ ...mcpForm, url: e.target.value });
-                        setMcpFormError(null);
-                      }}
-                    />
-                    <span className="err">{mcpFormError}</span>
-                  </div>
-                  <div className="field">
-                    <label>认证</label>
-                    <div className="seg" data-testid="mcp-auth-seg">
-                      {["none", "bearer", "oauth"].map((a) => (
-                        <button
-                          key={a}
-                          type="button"
-                          className={mcpForm.auth === a ? "active" : ""}
-                          onClick={() => setMcpForm({ ...mcpForm, auth: a })}
-                        >
-                          {a === "none" ? "无" : a === "bearer" ? "Bearer Token" : "OAuth"}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="hint">Bearer token 加密存系统凭据库（不明文落库）；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
-                  </div>
-                  {mcpForm.auth === "bearer" && (
-                    <div className="field">
-                      <label>Bearer Token</label>
-                      <input
-                        data-testid="mcp-token-input"
-                        type="password"
-                        className="mono"
-                        placeholder={editingMcp ? "留空 = 保持原 token 不变；填写 = 轮换" : "粘贴 token，保存后不再回显"}
-                        value={mcpForm.token}
-                        onChange={(e) => setMcpForm({ ...mcpForm, token: e.target.value })}
-                      />
-                      <span className="hint">加密存储于系统凭据库（macOS Keychain）；保存/列表均不回显明文</span>
-                    </div>
-                  )}
-                  <div className="field">
-                    <label>请求头（KEY=VALUE，每行一条，可选）</label>
-                    <textarea
-                      data-testid="mcp-headers-input"
-                      className="mono"
-                      rows="2"
-                      placeholder="X-Team-Id=core"
-                      value={mcpForm.headers}
-                      onChange={(e) => setMcpForm({ ...mcpForm, headers: e.target.value })}
-                    />
-                  </div>
-                </>
-              )}
-
-              {mcpFormError && mcpForm.type === "stdio" && (
-                <div className="form-error" style={{ color: "var(--ch-error)", fontSize: "var(--ch-text-xs)" }}>
-                  {mcpFormError}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-ghost" onClick={() => setAddMcpOpen(false)}>取消</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                data-testid="mcp-form-submit"
-                onClick={handleMcpSave}
-                disabled={mcpSaving}
-              >
-                {mcpSaving ? "保存中…" : "保存"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-// KEY=VALUE 多行解析：非法行 → null（交给服务端校验报错）。
-function parseKeyValueLines(text) {
-  const obj = {};
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    const idx = line.indexOf("=");
-    if (idx <= 0) return null;
-    obj[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-  }
-  return obj;
-}
-
-function endpointText(s) {
-  if (s.type === "http") return s.url ? `${s.url}${s.auth && s.auth !== "none" ? ` · ${s.auth}` : ""}` : "—";
-  return [s.command, ...(Array.isArray(s.args) ? s.args : [])].filter(Boolean).join(" ");
 }
