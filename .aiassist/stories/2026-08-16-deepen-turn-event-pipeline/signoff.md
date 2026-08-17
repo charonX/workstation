@@ -97,3 +97,19 @@ agentModelResolveLocal / agentDialogue（REQ-AGENT-111 AC5）。
   后重新交叉验证一致（含新增 touch 时机与块 4 锚点）；无 TODO 占位；无快照。
 - 升级点：B1 撤销为 v1 升级点的推翻性修订（人拍板 2026-08-17）；其余 v2 修订为
   事实修正。signer = **AI**（v2 修订全部人拍板后自动签核）。
+
+---
+
+## Assertion v3 补签（2026-08-17，slice 2 接口补全）
+
+**缘起**：slice 2（worker.js 接线）需要 sdkStats 写入接口——§10.4 接口 4「存/取/清」
+闭环缺写入端。补全 `recordSdkEvent(sessionKey, type)`（实例接口第 8 个；prd §10.4
+接口 4b + requirements REQ-106 接口契约同步，人确认 2026-08-17）。
+
+- requirements.md v3 哈希 `ca25405beeb7fa4d05153f0ace4169ca21d3d09dbaa7bc601c000d36c2eea11b`
+  （requirements-v3.hash，v2 哈希文件删除）。
+- 4 测试文件 REQ-VERSION 同步 v3-hash；断言零变化（recordSdkEvent 无新锁定断言——
+  sdkStats 空对象语义不变）。
+- 附加 test-gap 修正：resetDropQueue ready 监听移到 start 之前（v2 重写笔误，人确认
+  test-gap 分类 2026-08-17）。
+- signer = **AI**（v3 变更人确认后自动补签）。
