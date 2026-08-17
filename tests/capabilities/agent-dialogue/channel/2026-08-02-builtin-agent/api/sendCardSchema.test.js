@@ -26,6 +26,11 @@
 // （PATCH settings）必须按调用顺序落地飞书。修复前两者是 fire-and-forget 独立 HTTP
 // 调用，finalize 抢在在途尾部更新之前到达 → streaming_mode 关闭 → 尾部更新被拒 →
 // 卡片冻结在半途（生产实锤：226 次更新全派发、finalize 成功、卡片仅显示前缀）。
+//
+// BUG-012（code-defect）回归：串行化（BUG-011）引入排队追账——每个 delta 更新都
+// 支付一次 HTTP 往返，后台早已跑完而卡片还在逐条落地。H4 契约 content 是全量累计
+// 文本：排队中的旧更新已被后来者完整覆盖，出队时应跳过（零信息丢失），仅最新更新
+// 与 finalize 实际落地；finalize 永不合并、顺序保证不弱化。
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -243,6 +248,62 @@ describe("BUG-011 回归：同卡更新/定型按序落地，finalize 不抢跑�
   });
 });
 
+// —— BUG-012 层 1：同卡排队更新合并（mock global.fetch，PUT 挂起可控）——
+describe("BUG-012 回归：同卡排队更新合并，不为每个 delta 支付一次往返（REQ-AGENT-019 标准 1）", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("在途更新未落地时新更新入队 → 被覆盖的旧更新跳过 HTTP，仅最新更新与 finalize 落地（修复前红：逐条落地）", async () => {
+    const wireOrder = [];
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    global.fetch = async (url, init) => {
+      const urlStr = String(url);
+      if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: "fake-tenant-token", expire: 7200 }), { status: 200 });
+      }
+      if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards") && urlStr.endsWith("/settings")) {
+        wireOrder.push("finalize");
+        return new Response(JSON.stringify({ code: 0, msg: "success", data: {} }), { status: 200 });
+      }
+      if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards") && urlStr.includes("/elements/")) {
+        const body = init?.body ? JSON.parse(init.body) : {};
+        wireOrder.push(`update:${body.sequence}`);
+        await gate; // 模拟 HTTP 在途：所有更新挂起，队列确定性积压
+        return new Response(JSON.stringify({ code: 0, msg: "success", data: {} }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${urlStr}`);
+    };
+
+    const create = await loadAdapter();
+    const adapter = create({
+      domain: "https://open.feishu.cn",
+      credentials: { appId: "cli_test00000000000001", appSecret: "secret" },
+    });
+    await adapter.start();
+
+    const p1 = adapter.updateCardStream({ cardId: "card_x", content: "第一段", sequence: 1 });
+    const p2 = adapter.updateCardStream({ cardId: "card_x", content: "第一段第二段", sequence: 2 });
+    const p3 = adapter.updateCardStream({ cardId: "card_x", content: "第一段第二段第三段", sequence: 3 });
+    const p4 = adapter.finalizeCard({ cardId: "card_x", summary: "摘要", sequence: 4 });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(wireOrder, ["update:1"], "仅首个更新在途，其余排队");
+
+    release();
+    await Promise.all([p1, p2, p3, p4]);
+    // 签核（BUG-012 人拍板）：seq2 的 content 已被 seq3 全量覆盖 → 跳过 HTTP；
+    // 最终卡片内容 = seq3 全量文本，零信息丢失；finalize 永不合并、仍在最后。
+    assert.deepEqual(wireOrder, ["update:1", "update:3", "finalize"], "被覆盖的 seq2 应跳过 HTTP（content 全量累计，零信息丢失），finalize 在最后");
+  });
+});
+
 // —— 层 2：cardRenderer.buildStreamingCard 构造的卡片 JSON 内部结构 ——
 // adapter fake 捕获 cardJson（对齐 cardStream.test.js 的 createCardAdapterFake 模式）。
 function createCardAdapterFake() {
@@ -285,7 +346,9 @@ describe("BUG-006 层 2：buildStreamingCard 构造的卡片 JSON 符合官方 s
     assert.equal(typeof sc.print_frequency_ms, "object", "print_frequency_ms 应为分端 object（官方 schema）");
     assert.equal(sc.print_frequency_ms.default, 70, "print_frequency_ms.default = 70");
     assert.equal(typeof sc.print_step, "object", "print_step 应为分端 object（官方 schema）");
-    assert.equal(sc.print_step.default, 1, "print_step.default = 1");
+    // BUG-012 重签（人拍板 2026-08-17）：print_step 1→10——70ms/1 字符 ≈ 14 字符/秒，
+    // 长回复内容到齐后仍打字机几十秒；提速后约 143 字符/秒（500 字 ~3.5s）。
+    assert.equal(sc.print_step.default, 10, "print_step.default = 10（BUG-012 重签：打字机提速）");
   });
 
   it("可流式更新的元素用 element_id 标识（修复前红：非官方字段 id）", async () => {
