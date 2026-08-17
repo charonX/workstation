@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-109
-// REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
+// REQ-VERSION: v3-hash:ca25405beeb7fa4d05153f0ace4169ca21d3d09dbaa7bc601c000d36c2eea11b
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -79,9 +79,11 @@ describe("REQ-AGENT-109 AC4 reset 语义保持（worker 集成，v2）", () => {
   });
 
   it("AC4：流式中 reset → prompt1 按序完成 + 会话重建后新 prompt 正常（注册表清理接入无回归）", async () => {
-    await svc.start();
     const ready = [];
+    // ready 监听必须在 start 之前挂（start() 内部用 once 消费首个 ready，
+    // 之后挂监听永不触发——workerWiring 同 seam 先例；test-gap 修正 2026-08-17）。
     svc.on("ready", () => ready.push(Date.now()));
+    await svc.start();
     await waitUntil(() => ready.length === 1, { label: "worker ready" });
 
     const key = "ui:copilot:reset-keep";
