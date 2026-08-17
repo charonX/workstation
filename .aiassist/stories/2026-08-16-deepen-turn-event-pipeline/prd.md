@@ -50,7 +50,7 @@ spawn-only、零导出、零 import）。事件形状/转发顺序/abort 语义/
 | 3 | 256KB 截断单真源 + 主进程行为修复：limitSize（worker 强实现）为唯一真源；agentService enforceSizeLimit 删除、3 个调用点（emitErrorEvent / inMemory runTurn / 子进程消息回传）改 import；MAX_IPC_BYTES 常量单源 | 需求洞察 Q2 人拍板「修」 |
 | 4 | worker.js 接线保持：spawn-only 零导出零 import；forwardEvent 调用点迁入管线入口；handlePrompt 经管线接口读 lastReply/诊断计数；淘汰/重置 handler 改用 clearSessionState；行为契约不变 | 需求洞察 Q4 澄清 + 硬约束（打包/启动链路） |
 
-## 5. 移动块（还在动，暂不入 REQ）
+## 5. 移动块（已全部解决，2026-08-17 /tech-design 深潜；历史留痕）
 
 > 全部已解决（/tech-design 深潜，2026-08-17）：
 > #1 注册表 API → registerSessionScopedMap(map) + registerSessionCleanup(fn) +
@@ -80,7 +80,7 @@ spawn-only、零导出、零 import）。事件形状/转发顺序/abort 语义/
 
 | 触发条件 | 分支结果 | 对应错误状态 |
 |---|---|---|
-| 未知 sessionKey | 静默 no-op（消息乱序容忍，保持现状） | —（正常态） |
+| 未知 sessionKey | 事件照常计数/转发/延迟收尾/出站；仅生命周期活动刷新为 no-op（review B3 实证：forwardEvent 无 key 守卫，消息乱序容忍=事件不丢失） | —（正常态，保持现状） |
 | 超限且无载体（非 content/delta/input/output） | { type, truncated:true } 兜底 | 截断降级（保持现状） |
 | usage 缺失（兜底路径） | meta 仅 durationMs | —（正常态，renderer 显示「-」） |
 | FAUX usage 空/0 | tokensIn/Out 按值原样带（0 → renderer 显示「-」） | —（正常态） |
@@ -98,6 +98,7 @@ spawn-only、零导出、零 import）。事件形状/转发顺序/abort 语义/
 | 2 | clearSessionState(key)（淘汰/重置触发） | 注册表内全部登记 Map 无该 key——含 toolContexts / sessionQueues / sessionModes / judgeModels / lastReplies / turnEventCounts / sdkEventCounts / turnStartedAt / pendingTextEnds | handleSessionEvicted 语义 + 修泄漏（interview 确认） |
 | 3 | tool_execution_end 携带 input=300KB 字符串 | 保 toolCallId/name/status/isError；input 截断；truncated:true；序列化 ≤ 262144 | worker.js:524-538（REQ-AGENT-055 加法扩展） |
 | 3 | text_end 携带 content=300KB 字符串 | content 截断 + truncated:true；序列化 ≤ 262144 | worker.js:518-520（MAX_IPC_BYTES = 256×1024 = 262144） |
+| 4 | spawn 全链路：prompt → session-event 出站 text_delta×N + text_end（带 meta.durationMs）+ prompt-result reply 非空且含本轮文本 | 事件顺序 delta…end；reply = 本轮文本（连续两轮不串轮） | workerWiring seam（既有 REQ-AGENT-006/028/057/091 契约） |
 
 ## 7. 表单与输入验证（Form / Input Validation）
 
@@ -124,7 +125,7 @@ spawn-only、零导出、零 import）。事件形状/转发顺序/abort 语义/
 | 淘汰时 pending 未冲刷 | evict 先于 message_end | 定时器 clear 不补发 | 无悬挂、无幽灵事件 | 状态随 clearSessionState 清 |
 | 未知 sessionKey | 消息乱序 | 静默 no-op | 保持现状 | 无 |
 | 主进程兜底超限 | 子进程事件仍超限 | limitSize 截断 | 保契约字段（不再整条降级） | 无 |
-| reset 时排队操作 | reset 到达前已入队未出队 | 随 clearSessionState 丢弃 + worker 回 prompt-result `ok:false {code:"E-AGENT-RESET", reason:"会话已重置，排队中的消息已取消"}`（test-author 升级点人拍板 1）；**不发 session-error** | 排队中的 prompt 不再执行、调用方收到明确回执 | 无（重置语义 = 清空重来；主进程 pendingPrompts 无超时兜底——不回执会永久悬挂） |
+| reset 时排队操作 | reset 到达前已入队未出队 | **场景不存在**（review B1 实证：全局串行队列——reset-session 排在在途 prompt 之后处理，prompt 必然先完成；「排队丢弃 + E-AGENT-RESET 回执」契约已撤销） | 在途/先到 prompt 按序完成；reset 后新 prompt 走既有 E-AGENT-NO-SESSION（直至新 session-config 重建） | 无（现状语义保持） |
 
 ## 9. 复杂度分级
 
@@ -148,7 +149,7 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 
 | 模块 | 职责 | 是否新增 |
 |---|---|---|
-| turnEventPipeline（工厂 createTurnEventPipeline） | 事件转发/映射/截断/延迟收尾/abort 合成 + 回合状态 Map + 会话状态注册表；import 无副作用，注入 {send, log, setTimeout, clearTimeout, now}；导出 limitSize + MAX_IPC_BYTES | 是 |
+| turnEventPipeline（工厂 createTurnEventPipeline） | 事件转发/映射/截断/延迟收尾/abort 合成 + 回合状态 Map + 会话状态注册表；import 无副作用，注入 {send, log, touch, setTimeout, clearTimeout, now}；导出 limitSize + MAX_IPC_BYTES | 是 |
 | worker.js | 瘦身：IPC 收发 + 会话装配 + lifecycle 接线 + 权限/FAUX/序列队列；副作用（dispose/send/log）保留；evict/reset handler 改调 clearSessionState | 否（瘦身） |
 | agentService.js | enforceSizeLimit 删除 → 3 调用点（emitErrorEvent / inMemory runTurn / 子进程消息回传）import limitSize | 否（接线） |
 | sessionLifecycle.js | 不动（onEvict 回调仍由 worker 侧注入，回调体改调 clearSessionState） | 否 |
@@ -171,7 +172,10 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 3. **延迟队列**：text_end 入 pendingTextEnds（armed 5s 兜底定时器，unref）；message_end
    到达 → flush（usage 完备 → meta 三字段）。
 4. **abort 合成**：message_end stopReason=aborted 且无 pending → 合成 text_end 入队后冲刷。
-5. **映射与出站**：mapToContractEvent（契约形态透传）→ limitSize → send。
+5. **映射与出站**：mapToContractEvent（契约形态透传）→ 事件实际映射出站时调用
+   注入 touch(sessionKey)（恒 clearPending:false 语义由注入方承担——review B2：
+   缺失会导致长回合 TTL 淘汰悬崖或组冷却双热回归，REQ-AGENT-037 M1）→ limitSize
+   → send。
 6. **清理**：evict/reset → clearSessionState(key)（先 dispose 后清，顺序保持现状）；
    prompt 开始 → beginTurn(key)（幂等清诊断计数）；prompt-result →
    takeTurnDiagnostics(key)（取出即删）+ takeLastReply(key)（读取不删）。
@@ -186,9 +190,9 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 | 被调用方 | turnEventPipeline 实例 |
 | 输入 | sessionKey 字符串；PI SDK 事件（message_update / message_end / tool_execution_* / …） |
 | 输出 | 无（副作用：计数/延迟队列/出站 send） |
-| 业务错误 | 未知 sessionKey → 静默 no-op（保持现状） |
+| 业务错误 | 未知 sessionKey → 事件照常计数/转发/延迟收尾/出站；仅注入 touch 由注入方内部 no-op（review B3：消息乱序容忍 = 事件不丢失，保持现状） |
 | 系统错误 | 无（send 失败由注入方兜底） |
-| 副作用 | send session-event；计数更新；延迟队列维护 |
+| 副作用 | 出站前调注入 touch(sessionKey)（仅当事件实际映射出站时；恒 clearPending:false）；send session-event；计数更新；延迟队列维护 |
 | 幂等性 | 否（按事件语义逐条处理） |
 
 **样例（golden values）**：
@@ -205,22 +209,35 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 |---|---|
 | 调用方 | worker handlePrompt（enqueue 后、LLM 调用前） |
 | 输入/输出 | sessionKey → 无 |
+| 业务错误 | 无 |
+| 系统错误 | 无 |
 | 语义 | 幂等清 turnEventCounts/sdkEventCounts（人拍板 B：失败轮残留不混轮） |
 | 副作用 | 两计数 Map 清空 |
+| 幂等性 | 是 |
 
 #### 接口 3：takeLastReply(sessionKey) → string \| undefined
 
 | 项目 | 说明 |
 |---|---|
 | 调用方 | worker handlePrompt（prompt-result 组装） |
+| 输入/输出 | sessionKey → string \| undefined |
+| 业务错误 | 无（无值 = undefined） |
+| 系统错误 | 无 |
 | 语义 | 读取不删（现状）；evict/reset 由 clearSessionState 清 |
+| 副作用 | 无 |
+| 幂等性 | 是（纯读取） |
 
 #### 接口 4：takeTurnDiagnostics(sessionKey) → { turnStats: {delta, end, tool}, sdkStats }
 
 | 项目 | 说明 |
 |---|---|
 | 调用方 | worker handlePrompt（prompt-result 日志） |
-| 语义 | 取出即删（两计数 Map；缺省 {delta:0,end:0,tool:0} / {}） |
+| 输入/输出 | sessionKey → { turnStats: {delta, end, tool}, sdkStats } |
+| 业务错误 | 无（缺省 {delta:0,end:0,tool:0} / {}） |
+| 系统错误 | 无 |
+| 语义 | 取出即删（两计数 Map；人拍板 B） |
+| 副作用 | 两计数 Map 清空 |
+| 幂等性 | 否（取出即删，二次调用返回空） |
 
 #### 接口 5：registerSessionScopedMap(map) / registerSessionCleanup(fn)
 
@@ -236,7 +253,9 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 |---|---|
 | 调用方 | worker handleSessionEvicted / handleResetSession |
 | 语义 | 遍历全部登记项：map.delete(key) + cleanup fn(key)；keySecrets / confirmAcks / permissionDecisions 不登记（保留语义） |
-| 副作用 | reset 场景含 sessionQueues 丢弃（人拍板 A）+ 被丢弃排队 fn 回 prompt-result `ok:false {code:"E-AGENT-RESET"}`（人拍板 1，§8 记录）；不发 session-error |
+| 副作用（evict 调用） | 清全部登记项；不发回执（排队/流式会话本就淘汰豁免，sessionLifecycle F2/E1） |
+| 副作用（reset 调用） | 清全部登记项（含计数泄漏修复）；**无排队丢弃语义**（review B1 实证全局串行队列——reset-session 排在在途 prompt 之后，队列恒空；E-AGENT-RESET 回执契约已撤销） |
+| 幂等性 | 是 |
 
 #### 接口 7：limitSize(event) → event（导出常量 MAX_IPC_BYTES = 262144）
 
@@ -273,6 +292,8 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 | reset 清队列无既有断言锁定 | 黑盒回归红 → 契约修订或回退该点 | TECH-DESIGN | 能（grep + 黑盒回归） |
 | 双入口 import 无打包冲突 | vite bundle / 主进程 import 冲突 | TECH-DESIGN | 能（已实证：模块零外部依赖；构建验证） |
 | 弱降级无断言锁定 | 受影响断言修订走签核 | ASSERTION-SIGNOFF | 能（已实证 grep 零命中） |
+| **touch 保真（review B2）**：管线在事件实际出站时调注入 touch（clearPending:false） | 长回合 TTL 淘汰悬崖（lastActiveAt 停回合起点）或组冷却双热回归（M1）——黑盒 idle 测试未必命中长回合 | TECH-DESIGN | 能（单元 touch spy + 长回合黑盒） |
+| **E-AGENT-RESET 机制缺口（review B1）**：全局串行队列下排队丢弃场景不存在 | 契约死行 + 测试不可构造 | ASSERTION-SIGNOFF | 能（已实证：已撤销契约，见 §8/§10.4 接口 6） |
 
 ### 10.7 安全/性能/可观测性
 
@@ -311,7 +332,9 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 - sessionLifecycle.js 本体不动（只改 worker 侧 onEvict 回调体）。
 - keySecrets / confirmAcks / permissionDecisions 保留语义不动（不登记注册表）。
 - auto-judge / 权限层 / FAUX seams / 序列队列 / stats 推送不碰。
-- worker.js 不增加任何导出 / import 面（保持 spawn-only）。
+- worker.js **不增加导出**；新增 import 仅限 src/agent/ 内部模块（同 sessionLifecycle
+  先例，review 修订——「零 import」字面不可满足：worker 必须 import 管线才能接线），
+  不新增外部依赖。
 
 ## 13. 补充说明
 
@@ -331,8 +354,8 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 |---|---|---|
 | 操作流 | PASS | §6.1 四稳定块各有 happy path；§6.2 分支与异常 6 条 |
 | 输入验证 | PASS | §7 无用户输入（显式 N/A + 理由）；§7.1 跨字段规则 2 条 |
-| 错误状态 | PASS | §8 八行（超限三载体 / 兜底 / abort / 淘汰 / 未知 key / 主进程兜底） |
-| 预期值锚点 | PASS | §6.3 每稳定块 ≥1 条具体值锚点（含字面值：262144 / 5000ms / 计数 {2,1,1} / meta 字段） |
+| 错误状态 | PASS | §8 九行（超限三载体 / 兜底 / abort / 淘汰 / 未知 key / 主进程兜底 / reset 排队场景不存在行） |
+| 预期值锚点 | PASS | §6.3 每稳定块 ≥1 条具体值锚点（含字面值：262144 / 5000ms / 计数 {2,1,1} / meta 字段 / 块 4 spawn 全链锚点，review 修订补录） |
 | 复杂度分级 | complex | §9 六维理由 |
 | 技术方案（§10） | PASS | complex：§10.1-10.7 完整（/tech-design 深潜定稿，2026-08-17） |
 
@@ -346,3 +369,4 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 |---|---|---|---|
 | v0.1 | 2026-08-17 | 初稿（需求洞察确认方向 A；四稳定块 / 四移动块 / complex） | AI + 人 |
 | v0.2 | 2026-08-17 | /tech-design 深潜定稿 §10（六接口契约 + 注册表 + 两项人拍板决议 A/B）；§5 移动块清空；ADR-029 落盘 | AI + 人 |
+| v0.3 | 2026-08-17 | /review 全链修订（4 IMPORTANT + 16 警告全处理）：B1 撤销 E-AGENT-RESET（全局串行队列实证排队丢弃场景不存在）；B2 补 touch 注入钩子；B3 未知 key 照常转发修正；B4 REQ-111 AC2 text_start 表述修正；§6.3 补块 4 锚点；§10.4 接口 2/3/4/6 四要素补全、接口 6 按调用方分行；§10.6 风险表补两行；§12 零 import 修正；§5 标题/§14 计数/意图行数同步 | AI + 人 |

@@ -81,3 +81,23 @@ worker.js（1854 行、spawn-only 不可 import 的进程入口）内一回合�
   （text_end 加 meta/计数），改断言面大，无生产价值。
 - **模块级单例而非工厂**：被否决：工厂同 sessionLifecycle 先例，测试独立实例隔离
   状态。
+
+## 补充（2026-08-17 /review 修订）
+
+1. **撤销 E-AGENT-RESET 回执契约**（决策 3 后半段）：原「reset 丢弃排队 fn 回
+   E-AGENT-RESET 失败回执」基于错误模型——实证 worker IPC 为全局串行队列
+   （messageQueue.enqueue + handleMessage await，worker.js:1663-1697），reset-session
+   排在在途 prompt 之后处理，会话队列深度恒 ≤1，「排队中被丢弃的 prompt」场景
+   不存在，回执永不触发。裁决：撤销契约行，reset 语义保持现状（在途/先到按序
+   完成；reset 后新 prompt 走既有 E-AGENT-NO-SESSION）。注册表统一清理与计数泄漏
+   修复不受影响。
+2. **补 touch 注入钩子**（决策 1 注入集）：注入集 {send, log, touch, setTimeout,
+   clearTimeout, now}——touch 仅当事件实际映射出站时调用，恒 clearPending:false
+   由注入方承担（forwardEvent 现状 worker.js:707；缺失 → 长回合 TTL 淘汰悬崖 /
+   组冷却双热回归 REQ-AGENT-037 M1）。
+3. **未知 key 语义澄清**（决策 7 邻接）：事件对未知 sessionKey 照常计数/转发/延迟
+   收尾/出站（消息乱序容忍 = 事件不丢失），仅注入 touch 由注入方内部 no-op——
+   非「整事件静默丢弃」。
+4. **决策 6 澄清**：worker.js 保持「不增加导出」；新增 import 仅限 src/agent/ 内部
+   模块（同 sessionLifecycle 先例，worker 必须 import 管线才能接线），不新增外部
+   依赖——「零 import」字面不可满足（prd §12 同改）。
