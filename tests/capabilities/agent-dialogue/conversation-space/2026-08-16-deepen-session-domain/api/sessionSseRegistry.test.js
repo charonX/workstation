@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-session-domain/REQ-AGENT-115
-// REQ-VERSION: v1-hash:370f51eb4d13d39db48c284dfa2857d2ceaa603138023afb94c94325fbd4c245
+// REQ-VERSION: v2-hash:77f0f186fe65139c162d3db19364b93827432d5424fd502d067f24df71cbb28c
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // EXPECTED-TRACE: prd.md §10.4 注册表三方法契约（实例隔离/幂等 no-op 矩阵/订阅生命周期/detach 自清理）；§6.3 块4 SSE 锚点
@@ -218,6 +218,13 @@ describe("REQ-AGENT-115 createSubscription 生命周期", () => {
     resClose.emit("close");
     assert.equal(resClose.ended, true);
     assert.doesNotThrow(() => subClose.detach(), "重复 detach 安全");
+
+    // res error → detach（close 与 error 是两个独立注册点，
+    // 现状 agentSessions.js:860-861 分别注册，缺一即泄漏）
+    const resErr = createResStub();
+    reg.createSubscription(resErr, "ui:copilot:k8e");
+    resErr.emit("error");
+    assert.equal(resErr.ended, true, "res error 事件同样触发 detach");
 
     // 挂起中的 sub detach → 挂起集自移除（后续 attachPending 不再捞到它）
     const resPend = createResStub();

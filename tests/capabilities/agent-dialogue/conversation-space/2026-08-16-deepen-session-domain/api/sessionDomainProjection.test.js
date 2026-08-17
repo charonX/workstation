@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-session-domain/REQ-AGENT-113
-// REQ-VERSION: v1-hash:370f51eb4d13d39db48c284dfa2857d2ceaa603138023afb94c94325fbd4c245
+// REQ-VERSION: v2-hash:77f0f186fe65139c162d3db19364b93827432d5424fd502d067f24df71cbb28c
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // EXPECTED-TRACE: prd.md §6.3 块2 投影/分页锚点（golden 行/工具不落历史/图片标记/降级/limit 归一化/before 游标）
@@ -61,7 +61,7 @@ describe("REQ-AGENT-113 历史投影（sessionDomain 直测）", () => {
     ]);
   });
 
-  it("AC2 工具不落历史：toolResult 行与空文本 assistant 行剔除", async () => {
+  it("AC2 工具不落历史：toolResult 行、空文本 assistant 行与空文本 user 行剔除", async () => {
     const domain = await loadDomain();
     const lines = [
       msgLine("u1", "user", [{ type: "text", text: "看一下目录" }], "2026-08-01T10:00:01Z"),
@@ -70,7 +70,10 @@ describe("REQ-AGENT-113 历史投影（sessionDomain 直测）", () => {
         { type: "toolCall", name: "bash" },
       ], "2026-08-01T10:00:02Z"),
       msgLine("t1", "toolResult", [{ type: "text", text: "total 152 ..." }], "2026-08-01T10:00:03Z"),
-      msgLine("a2", "assistant", [{ type: "text", text: "目录里有这些文件。" }], "2026-08-01T10:00:04Z"),
+      // v2 补：空文本行（text 段 trim 后为空）user/assistant 均剔除（REQ-113 AC2）
+      msgLine("u2", "user", [{ type: "text", text: "   " }], "2026-08-01T10:00:04Z"),
+      msgLine("a3", "assistant", [{ type: "text", text: "  " }], "2026-08-01T10:00:05Z"),
+      msgLine("a2", "assistant", [{ type: "text", text: "目录里有这些文件。" }], "2026-08-01T10:00:06Z"),
     ];
     fs.writeFileSync(sessionFile, lines.join("\n") + "\n", "utf8");
 

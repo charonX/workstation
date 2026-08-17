@@ -1,8 +1,8 @@
 // REQ-TRACE: 2026-08-16-deepen-session-domain/REQ-AGENT-117
-// REQ-VERSION: v1-hash:370f51eb4d13d39db48c284dfa2857d2ceaa603138023afb94c94325fbd4c245
+// REQ-VERSION: v2-hash:77f0f186fe65139c162d3db19364b93827432d5424fd502d067f24df71cbb28c
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
-// EXPECTED-TRACE: prd.md §10.2 模块关系图（依赖方向）+ REQ-117 契约（re-export 最小面/瘦身 ≤350 行）
+// EXPECTED-TRACE: prd.md §10.2 模块关系图（依赖方向）+ REQ-117 契约（re-export 最小面/瘦身 ≤650 行）
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
@@ -14,7 +14,8 @@
 //      attachPendingSseSubs（反向 import 消亡——领域函数只从 services 层取）；
 //   ③ 路由兼容面：文件存在 + 仅 re-export projectMessagesFromJsonl
 //      （测试唯一实际使用名，historyToolFilter 直调契约）；
-//   ④ 路由瘦身实证：≤350 行（评审目标 ~300，上限含注释余量）。
+//   ④ 路由瘦身实证：≤650 行（目标 ~600——v2 修订：review 算术复核搬走
+//      ~300-330 行后留存 ~600，v1 的 ~300/≤350 不可行，人拍板重定）。
 // HTTP/SSE 行为字节级不变（AC4）与无消息桥断言（AC3）由既有 10 测试文件承载。
 //
 // seam：源码静态断言 + 路由模块动态 import。
@@ -47,8 +48,10 @@ describe("REQ-AGENT-117 依赖方向回正（静态断言）", () => {
 
   it("AC1 server.js 不得从路由 import 领域函数", () => {
     const source = fs.readFileSync(SERVER_FILE, "utf8");
-    const m = /import\s*\{([^}]*)\}\s*from\s*["']\.\/routes\/agentSessions\.js["']/.exec(source);
-    const names = m ? m[1] : "";
+    // 全量匹配所有从 agentSessions 路由的具名 import（exec 只取首个匹配会漏
+    // 后续 import 语句；specifier 不硬编码 "./" 前缀，防改写逃逸）
+    const importRe = /import\s*\{([^}]*)\}\s*from\s*["'][^"']*routes\/agentSessions\.js["']/g;
+    const names = [...source.matchAll(importRe)].map((m) => m[1]).join(",");
 
     // EXPECTED-TRACE: prd.md §10.2——不存在 server.js → route 内部函数
     assert.ok(!/\bbuildSessionConfig\b/.test(names), "server.js 不得从路由 import buildSessionConfig");
@@ -58,6 +61,10 @@ describe("REQ-AGENT-117 依赖方向回正（静态断言）", () => {
     assert.ok(
       /from\s*["'][^"']*services\/sessionDomain\.js["']/.test(source),
       "server.js 应 import services/sessionDomain.js"
+    );
+    assert.ok(
+      /from\s*["'][^"']*services\/sessionSseRegistry\.js["']/.test(source),
+      "server.js 应 import services/sessionSseRegistry.js"
     );
   });
 
@@ -74,9 +81,12 @@ describe("REQ-AGENT-117 依赖方向回正（静态断言）", () => {
     assert.equal(typeof mod.handleAgentLastMode, "function");
   });
 
-  it("AC5 路由瘦身实证：≤350 行", () => {
-    const lines = fs.readFileSync(ROUTE_FILE, "utf8").split("\n").length;
-    // EXPECTED-TRACE: REQ-117 AC5——评审目标 ~300 行，上限 350 含注释余量
-    assert.ok(lines <= 350, `路由应瘦身为纯转发（≤350 行），实际 ${lines} 行`);
+  it("AC5 路由瘦身实证：≤650 行", () => {
+    const text = fs.readFileSync(ROUTE_FILE, "utf8");
+    // 与 wc -l 口径一致：末尾换行不多计一行（split("\n") 对尾换行多算 1）
+    const lines = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+    // EXPECTED-TRACE: REQ-117 AC5——目标 ~600 行，上限 650 含注释余量
+    // （v2：review 算术复核搬走 ~300-330 行后留存 ~600，人拍板重定）
+    assert.ok(lines <= 650, `路由应瘦身为纯转发（≤650 行），实际 ${lines} 行`);
   });
 });

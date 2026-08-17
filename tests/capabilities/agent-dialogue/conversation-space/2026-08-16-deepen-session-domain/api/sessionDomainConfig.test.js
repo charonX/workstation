@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-session-domain/REQ-AGENT-112
-// REQ-VERSION: v1-hash:370f51eb4d13d39db48c284dfa2857d2ceaa603138023afb94c94325fbd4c245
+// REQ-VERSION: v2-hash:77f0f186fe65139c162d3db19364b93827432d5424fd502d067f24df71cbb28c
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // EXPECTED-TRACE: prd.md §6.3 块1 config 锚点（无参→默认组合；行值优先/NULL/条目已删三态）；§10.4 domain 纯函数组契约
@@ -46,14 +46,17 @@ const PROVIDERS = [
 
 describe("REQ-AGENT-112 buildSessionConfig 搬迁保行为", () => {
   let workdir;
+  let savedConfigDir;
 
   beforeEach(() => {
+    savedConfigDir = process.env.OPC_WORKSTATION_CONFIG_DIR;
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "session-domain-cfg-"));
     process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
   });
 
   afterEach(() => {
-    delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+    if (savedConfigDir === undefined) delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+    else process.env.OPC_WORKSTATION_CONFIG_DIR = savedConfigDir;
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 

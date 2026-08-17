@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-session-domain/REQ-AGENT-116
-// REQ-VERSION: v1-hash:370f51eb4d13d39db48c284dfa2857d2ceaa603138023afb94c94325fbd4c245
+// REQ-VERSION: v2-hash:77f0f186fe65139c162d3db19364b93827432d5424fd502d067f24df71cbb28c
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // EXPECTED-TRACE: prd.md §6.3 块5 附件锚点（E-ATTACH-* 四规则字面值/阈值 10 个与 10MB）+ §7.1 短路顺序
