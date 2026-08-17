@@ -122,3 +122,18 @@ v1 签核两处失实由 /review 实证并被本签核认领更正：
 signer = **AI**（两项阻塞修复均已经人拍板的方向机械落地，无新升级点）。
 BUILD 解锁条件恢复：34 断言契约锁定，既有测试零改动硬约束不变。
 
+---
+
+## Assertion v2 追加补签（2026-08-17，BUILD Slice 1 期 test-gap 就地补测）
+
+- **触发**：Slice 1 PRD 对齐子代理发现缺口——REQ-114 AC4 的 none 四成因枚举
+  （非项目空间/项目已删/localPath 空/DB 异常）直测只钉了前两个；人拍板
+  「就地补测 + signoff 追加重签」。
+- **补测内容**（sessionDomainKeys.test.js +1 用例 2 断言）：localPath 空串 →
+  `{state:"none"}`；DB 异常（DB_PATH 指向目录，getDb 必抛）→ catch → `{state:"none"}`。
+- **expected trace**：两断言 expected 均机械推导自 REQ-114 AC4 原文枚举（规格锚点
+  已含四成因，无需新锚点）；触发方式确定性（目录建库必抛 SQLITE_CANTOPEN）。
+- **自检**：REQ-VERSION 不变（requirements.md 零改动，hash 仍为 77f0f186）；
+  补测后 sessionDomainKeys 7/7 绿；本 story 用例总数 34 → 35。
+- signer = **AI**（无升级点）。
+
