@@ -20,8 +20,8 @@
 // 实现纪律：
 // - 事件处理同步（序列/状态推进即时可见），adapter 调用 fire-and-forget：
 //   sendCard 异步返回 cardId 后回填流状态；更新立即派发（cardId 未知时携带
-//   undefined——真实 adapter 对缺失 cardId 的更新跳过，content 为全量累计文本，
-//   跳过不丢内容；cardId 回填后后续更新携带真实 card_id）。
+//   undefined——真实 adapter 对缺失 cardId 的更新跳过；回填时补发一次全量累计
+//   内容（BUG-010：短回合正文不停在首 delta），后续更新携带真实 card_id）。
 // - 卡片更新失败重试（E-CHANNEL-SEND 语义，重试 ≤ retries）：同步抛出（sync
 //   adapter）与 promise 拒绝（async adapter）两条路径均重试；耗尽 → warnings 告警，
 //   不阻断执行/流式状态推进（REQ-AGENT-020 标准 4）。
@@ -210,6 +210,19 @@ export function createCardRenderer({
           // 重置）→ 旧轮 sendCard 回填不写进新轮，防跨轮串卡（cardId 张冠李戴）。
           if (current && current === state) {
             current.cardId = r?.cardId;
+            // BUG-010：竞态窗口内容补发——回填前的 updateCardStream 携带 undefined
+            // cardId 被真实 adapter 跳过（feishuChannelAdapter.js:389）；只补 finalize
+            // 不补内容会把卡片正文冻结在首 delta（短回合实锤：「确实」「需要我」截断）。
+            // 回填后以真实 cardId 补发一次全量累计内容（H4：content 全量、sequence
+            // 严格递增——补发占一个 sequence；finalize 在其后续接）。
+            if (current.cardId && current.sequence > 0) {
+              current.sequence += 1;
+              updateCardWithRetry({
+                cardId: current.cardId,
+                content: capContent(current.text),
+                sequence: current.sequence,
+              });
+            }
             // 定型早于回填到达（text_end/completed 在 sendCard 完成前，BUG-004）→ 补发。
             if (current.pendingFinalize) finalizeStreamCard(current);
           }
