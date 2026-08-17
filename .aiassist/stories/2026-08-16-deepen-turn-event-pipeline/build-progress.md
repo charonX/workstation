@@ -13,7 +13,7 @@
 
 ## 切片进度
 
-### Slice 1 完成（2026-08-17，commit `0778a80`）
+### Slice 1 完成（2026-08-17，commit `5f4518e`）
 
 **产物**：`src/agent/turnEventPipeline.js`（新建，~370 行）——`createTurnEventPipeline({ send, log, touch, setTimeout, clearTimeout, now })` 工厂 + 7 实例接口（onSessionEvent / beginTurn / takeLastReply / takeTurnDiagnostics / registerSessionScopedMap / registerSessionCleanup / clearSessionState）+ 模块导出 `limitSize` / `MAX_IPC_BYTES = 262144`；import 无副作用（模块顶层零注入调用、零定时器）。worker.js / agentService.js 未动（slice 2/3）。行为语义与 worker.js forwardEvent/mapToContractEvent/limitSize/pendingTextEnds/abort 合成逐行对应（契约由既有 REQ-AGENT-006/009/012/035/055/057/091 锁定）。
 
