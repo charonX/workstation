@@ -172,7 +172,15 @@ attachPendingSseSubs」两处更新指向 services/sessionSseRegistry.js。
 | REQ-115 AC6 / §6.3 块4 | 挂起→挂接全链路：events 先于首条消息 → 挂起登记 → POST 建句柄 → 下一轮回流起收流 | handleGetEvents registerPending + handlePostMessage attachPending | 既有 sessionEvents（REQ-AGENT-028 标准 5 语义，全量回归绿） | COVERED |
 | §10.4 context 袋契约 | getSseRegistry 注入 + 未接线 fail-fast | server.js :542 袋追加；agentSessions.js sseRegistryOf | 集成：全量回归（生产 server 恒提供，fail-fast 分支测试/headless 自建 context 才可达） | COVERED |
 
-**Slice 3: complete**
+**Slice 3: complete（ee7756a，tests green 35/35 + 全量 960/960，PRD alignment ALIGNED）**
+- 父代理独立验证：commit 恰好 3 文件（路由/server.js/本文件），零测试改动零他人
+  物件卷入；35/35 与全量 960/960 亲跑复现；路由实测 644 行 ≤650。
+- PRD 对齐子代理：13/13 函数机器核验逐字节 IDENTICAL；attach-or-pend 塌缩四态
+  推演等价（唯一可观察差异方向为愈合——陈旧挂起 sub 提前挂接，严格少丢事件，
+  §10.4 契约面内）；dependencyDirection AC1 正向断言真实满足非凑断言；零缺口。
+- Slice 3: refactor pass done（ee7756a..7be15bb，tests green 35/35 + 全量 960/960
+  亲跑复现，no rollback）——handlePostMessage 双传参塌缩（本 slice 自引入冗余，
+  模块私有函数非契约面）。遗留观察见下节（留 /review --cover=code）。
 
 Refactor 一轮（2026-08-18）：`handlePostMessage` 塌缩双传参——本切片加 context
 第六参后，getAgentService 单传与 context 袋重复（同一袋拆两份），改为仅传
