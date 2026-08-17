@@ -239,6 +239,19 @@ worker.js 保持 spawn-only 零导出；清理语义统一（reset 清队列，�
 | 副作用 | 两计数 Map 清空 |
 | 幂等性 | 否（取出即删，二次调用返回空） |
 
+**配套写入接口（slice 2 补全，§10.4 接口 4 隐含的存/取/清闭环）**：
+
+#### 接口 4b：recordSdkEvent(sessionKey, type)
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | worker agentSession.subscribe 回调（SDK 事件到达计数，BUG-002 诊断 4；筛选条件保持：agent_start / agent_end / turn_start / turn_end / message_update） |
+| 输入/输出 | sessionKey, type → 无 |
+| 语义 | 累加 `sdkEventCounts[type]`；生命周期与 sdkStats 一致——beginTurn / takeTurnDiagnostics（取出即删）/ clearSessionState 清 |
+| 业务错误 | 无 |
+| 副作用 | 计数 Map 累加 |
+| 幂等性 | 否（逐次累加） |
+
 #### 接口 5：registerSessionScopedMap(map) / registerSessionCleanup(fn)
 
 | 项目 | 说明 |

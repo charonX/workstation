@@ -1,6 +1,6 @@
 # 测试计划 — 回合事件管线深化（turnEventPipeline）
 
-> 2026-08-17 · /test-author（v2 修订 2026-08-17 /review 后同步）· REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
+> 2026-08-17 · /test-author（v2 修订 /review 后；v3 修订 2026-08-17 slice 2 recordSdkEvent 接口补全）· REQ-VERSION: v3-hash:ca25405beeb7fa4d05153f0ace4169ca21d3d09dbaa7bc601c000d36c2eea11b
 
 ## Seam 总览
 

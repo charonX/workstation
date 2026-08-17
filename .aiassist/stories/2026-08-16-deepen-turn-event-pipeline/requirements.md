@@ -1,7 +1,7 @@
 # Requirements — 回合事件管线深化（turnEventPipeline）
 
 > 故事 ID：`2026-08-16-deepen-turn-event-pipeline`
-> 版本：v2（2026-08-17 /review 修订）
+> 版本：v3（2026-08-17 slice 2 接口补全）
 > 最后更新：2026-08-17
 > 来源：`prd.md` v0.3（§4 四稳定块；§10 技术方案 /tech-design 定稿 + /review 修订）
 > 移动块：无（§5 已清空，四块全解决）
@@ -27,6 +27,8 @@
   - 实例接口：`onSessionEvent(sessionKey, ev)` / `beginTurn(sessionKey)` /
     `takeLastReply(sessionKey) → string | undefined` /
     `takeTurnDiagnostics(sessionKey) → { turnStats: {delta, end, tool}, sdkStats }` /
+    `recordSdkEvent(sessionKey, type)`（v3 补全：sdkStats 写入接口——§10.4 接口 4
+    存/取/清闭环，worker subscribe 调用，条件筛选保持现状）/
     `registerSessionScopedMap(map)` / `registerSessionCleanup(fn)` / `clearSessionState(sessionKey)`
   - **touch(sessionKey)**：注入钩子（review B2）——仅当事件实际映射出站时调用；
     恒 clearPending:false 语义由注入方（worker lifecycle.touch）承担
