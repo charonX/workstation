@@ -329,7 +329,9 @@ export function createCardRenderer({
       const cardJson = buildStreamingCard(content ?? delta ?? "", {
         summary: "[生成中...]",
         printFrequencyMs: 70,
-        printStep: 1,
+        // BUG-012（人拍板重签）：print_step 1→10——70ms/1 字符 ≈ 14 字符/秒，
+        // 长回复内容到齐后仍打字机几十秒；提速后约 143 字符/秒。
+        printStep: 10,
       });
       stream = {
         sessionKey,

@@ -163,14 +163,26 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
   // 更新全部被拒，卡片冻结在半途；并发在途更新乱序到达还会触发 300317 sequence
   // 错误。串行化后三者一并消除（请求频率也自然降到串行水位）。
   // 上一棒无论成败都放行下一棒（失败经 sendWithRetry 耗尽后由调用方重试/告警）；
-  // 本棒的 promise 原样回传调用方，链上另存 catch 过的尾巴防未处理拒绝。
+  // 本棒的 promise 原样回传调用方，链上另存 catch 过的尾巴防未处理拒绝；
+  // 队列排空后自清（长会话 cardId 不累积）。
   const cardChains = new Map();
   function enqueueCardOp(cardId, operation) {
     const prev = cardChains.get(cardId) ?? Promise.resolve();
     const run = prev.then(operation, operation);
-    cardChains.set(cardId, run.catch(() => {}));
+    const tail = run.catch(() => {});
+    cardChains.set(cardId, tail);
+    tail.then(() => {
+      if (cardChains.get(cardId) === tail) cardChains.delete(cardId);
+    });
     return run;
   }
+
+  // 排队更新合并（BUG-012，code-defect）：H4 契约 content = 全量累计文本——排队中
+  // 的旧更新已被后来者完整覆盖，出队时若同卡已有更新的排队更新，跳过本次 HTTP
+  // （零信息丢失）。修复前串行链为每个 delta 支付一次往返（226 次更新 = 226 个
+  // 串行 RTT：后台早已跑完，卡片还在追账逐字输出）。finalize 不合并、顺序保证
+  // （BUG-011）不弱化；在途 HTTP 无法撤回，仅跳过未出队的。
+  const pendingCardUpdates = new Map(); // cardId → marker（同卡最新一次未出队更新）
 
   function mapInboundMessage(eventData) {
     // EventDispatcher.parse() spreads v2 schema event.header and event.event
@@ -412,11 +424,18 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
         throw channelSendError("sequence 必须为正整数且严格递增（H4，错误码 300317）");
       }
       const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/elements/${encodeURIComponent(elementId)}/content`;
-      return enqueueCardOp(cardId, () =>
-        sendWithRetry(async () =>
+      // BUG-012 合并：入队即把同卡旧排队更新标记作废；出队时作废者跳过 HTTP。
+      const marker = { stale: false };
+      const prevPending = pendingCardUpdates.get(cardId);
+      if (prevPending) prevPending.stale = true;
+      pendingCardUpdates.set(cardId, marker);
+      return enqueueCardOp(cardId, () => {
+        if (marker.stale) return { ok: true, skipped: true, coalesced: true };
+        pendingCardUpdates.delete(cardId);
+        return sendWithRetry(async () =>
           putJson(url, { content, sequence, uuid: randomUUID() }, authorizationHeader())
-        )
-      );
+        );
+      });
     },
 
     /**
