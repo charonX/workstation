@@ -7,7 +7,7 @@ intention: >-
   server.js 反向 import 其内部函数，SSE 注册表由三层之外的三处外部驱动。
   一句话痛点：会话领域逻辑住在路由层，依赖方向倒置，seam 泄漏到调用者。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: ASSERTION-SIGNOFF       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -15,6 +15,12 @@ created: 2026-08-16
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #4，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html）"}
+  - {at: 2026-08-17, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：一轮 frontier 五项 GUESS 全部人确认——五块全搬 / SSE 注册表 per-instance 注入 / 路由 re-export 保测试面 / 本 story 不动 store 接口先行于 db-per-path-cache / 六条成功标准；方向 A 拍板"}
+  - {at: 2026-08-17, from: PRD, to: DESIGN, note: "PRD v0.1 落盘（§4 六稳定块 / §5 两移动块待 tech-design / §9 complex；§6.3 锚点全部取自现行代码快照）。UX 面 N/A（纯内部架构重构），DESIGN/DOMAIN-MODEL 可跳过；complex 需 /tech-design 深潜补全 §10（注册表实例形态 + 逐函数搬迁清单）"}
+  - {at: 2026-08-17, from: DESIGN, to: TECH-DESIGN, note: "UX 面 N/A（无用户界面）、DOMAIN-MODEL N/A（无新领域术语）跳过；/tech-design 深潜四问逐题人拍板：①注册表工厂实例+context袋注入+createSseSubscription收编 ②逐函数搬迁清单（34函数+6常量，三边界判定）③三方法契约+admission留路由+re-export收缩为1名（事实核查：测试实际只用 projectMessagesFromJsonl）④纯/有状态两文件拆分。ADR-030 落盘"}
+  - {at: 2026-08-17, from: TECH-DESIGN, to: CRYSTALLIZE, note: "prd.md §10 定稿（10.1-10.7：模块边界/数据流/注册表三方法+domain纯函数组+context袋契约/六项决策/风险回流点/安全性能可观测）；§5 移动块清空；§4 块6 与 §11.1 反向同步（re-export 1名 + 依赖方向静态 seam）。待人确认后 /story 进自动链结晶"}
+  - {at: 2026-08-17, from: CRYSTALLIZE, to: TEST, note: "结晶 6 REQ：REQ-AGENT-112~117（config 装配/投影分页/key 解析+gitState/SSE 注册表 per-instance/附件规则/依赖方向回正+路由瘦身）；编号避让 turn-event-pipeline 已占的 106~111（同日结晶）；requirements-v1.hash=370f51eb；能力地图 conversation-space (session-domain) 行追加。无升级点。自动链续跑 /test-author"}
+  - {at: 2026-08-17, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：6 测试文件全 RED（seam 未就绪门），0 TODO:HUMAN ASSERTION；test-plan.md 落盘（REQ→测试映射 + 既有测试承载矩阵）；3 个待确认点登记交 /signoff（REQ-112 AC1b 无 providers 边界值 / REQ-114 AC4 正分支覆盖分配 / REQ-117 AC5 行数上限 350）。自动链续跑 /signoff"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
