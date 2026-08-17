@@ -275,8 +275,16 @@ export function createCardRenderer({
       stream = undefined;
     }
 
-    // 卡片已定型（流式结束 / 已降级）：停止一切更新（REQ-AGENT-019 标准 2）。
-    if (stream?.final) return;
+    // 卡片已定型后的文本事件 = 回合边界（BUG-009）：stream_start 每条用户消息只宣告
+    // 一次（imRouter 路由层），而 worker 的 text_end 每 LLM 回合一次——带工具调用的
+    // 运行有 2+ 文本段。已定型后再来文本事件 = 新回合开始 → 重置流状态开新卡（每回合
+    // 一张回复卡，对齐桌面端 routes/agentSessions.js 每回合补发 text_start 的先例）；
+    // 迟到的非文本事件（error 等）仍丢弃（REQ-AGENT-019 标准 2：定型后停止更新）。
+    if (stream?.final) {
+      if (type !== "text_delta" && type !== "text_end") return;
+      streams.delete(sessionKey);
+      stream = undefined;
+    }
 
     // 流式窗口 10 分钟自动关闭（H4）→ 降级普通文本消息 + /status 提示
     // （E-CARD-STREAM-CLOSED，签核决策 19 / REQ-AGENT-019 标准 3）；降级一次后定型。
