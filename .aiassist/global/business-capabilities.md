@@ -108,6 +108,7 @@
 | settings (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/settings/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-090~092, 099~102, 104（2026-08-14 验收） | `providerModelConfig.test.js`（090/092/099/104）, `catalog.test.js`（100）, `testConnection.test.js`（103）+ E2E `settingsProviders.test.cjs`（091/101/103 标准 7）：多 provider 列表/迁移/动态模型拉取全族化/catalog 端点/test-connection 协议族派生（ADR-026/027） |
 | conversation-space (conversation-toolbar-ext) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-conversation-toolbar-ext/api/`, `.../e2e/` | REQ-AGENT-093~098, 105（2026-08-14 验收） | `providerSwitch.test.js`（093/095）, `autoJudgeDefaultModel.test.js`（096）, `imageAttachment.test.js`（097）, `statusBarContext.test.js`（105）+ E2E `modelSelector.test.cjs`（094）, `imageAttachmentUi.test.cjs`（098/102）：会话级切换/模型选择器/懒恢复重装/auto 默认 judge/图片附件/视觉判定 catalog 化/上下文百分比两位小数（ADR-026） |
 | conversation-space (pi-mcp-plugin) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-091（2026-08-16 验收；含 BUG-011 用户气泡链接） | api `sessionStop.test.js`（4 用例：HTTP 202 受理/idle no-op/停止后再发）+ E2E `assistantStop.test.cjs`（停止键/流式收尾/立即可再发）、`userBubbleLink.test.cjs`（BUG-011 链接色继承） |
+| conversation-space (turn-event-pipeline) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-16-deepen-turn-event-pipeline/api/` | REQ-AGENT-106~111（2026-08-17 结晶） | `turnEventPipeline/limitSizeSingleSource/resetDropQueue/workerWiring.test.js`：回合事件管线工厂模块（转发/延迟收尾/abort 合成/注册表统一清理/截断单源，ADR-029） |
 
 ### plugin-management
 > PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）。（2026-08-12-pi-mcp-plugin 登记）
@@ -147,5 +148,5 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 8 | 2026-08-16 |
-| agent-dialogue | 5 | 362 | 2026-08-16 |
+| agent-dialogue | 6 | 362 | 2026-08-17 |
 | plugin-management | 2 | 82 | 2026-08-16 |
