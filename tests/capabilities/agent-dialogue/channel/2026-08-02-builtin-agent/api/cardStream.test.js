@@ -11,6 +11,10 @@
 // 内容终更（PUT elements/content），从未调更新配置接口（PUT cards/:id/settings）关闭 streaming_mode +
 // 更新 summary → 飞书会话列表永远卡初始 summary「[生成中...]」（REQ-AGENT-019 标准 2「卡片定型」
 // 飞书侧未落地；H4 spike：建议手动 card.settings 关 streaming_mode）。回归 Prove-It，修复前应红。
+// BUG-TRACE: BUG-009（2026-08-02-builtin-agent 计数，code-defect）——worker 的 text_end 是
+// 每 LLM 回合一次（PI assistantMessageEvent 逐回合映射），cardRenderer 却把 text_end 当「整条
+// 回复结束」：首个 text_end 即定型并置 final，工具调用后第二段（回合 2）的 text_delta/text_end
+// 撞 final 守卫全部丢弃 → 飞书只收到第一段（2026-08-16 生产实锤）。回归 Prove-It，修复前应红。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -387,5 +391,49 @@ describe("BUG-004 回归（code-defect）：卡片定型关闭 streaming_mode，
     await flushMicrotasks(); // sendCard 回填 → 应补发定型
     assert.equal(adapter.calls.finalizeCard.length, 1, "cardId 回填后应补发定型（竞态窗口不失定型）");
     assert.equal(adapter.calls.finalizeCard[0].cardId, "card_1", "补发定型应携带真实 cardId");
+  });
+});
+
+describe("BUG-009 回归：一条消息多个文本段（工具调用分段）逐段开卡", () => {
+  // 根因：stream_start 由 imRouter 每条用户消息宣告一次，而 worker 的 text_end 每 LLM
+  // 回合一次——带工具调用的运行有 2+ 回合。cardRenderer 在首个 text_end 即定型置 final，
+  // 回合 2 的文本事件全部被 final 守卫丢弃（生产实锤：飞书只收到第一段
+  // 「我来帮你查询一下当前的项目列表。」）。桌面端同型先例：routes/agentSessions.js
+  // 每回合首个文本事件前补发 text_start（裁决 11，每回合开新气泡）。契约对齐：
+  // 已定型后再来文本事件 → 开新卡（每回合一张回复卡）。修复前应红（sendCard 仅 1 次）。
+  it("回合 2 文本段到达已定型会话 → 开新卡、内容不丢、两卡各自定型", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    const sk = "feishu:oc_1";
+    // 一条用户消息（imRouter 只宣告一次 stream_start）→ 回合 1 文本段
+    renderer.handleStreamEvent({ sessionKey: sk, type: "stream_start" });
+    renderer.handleStreamEvent({ sessionKey: sk, type: "text_delta", delta: "我来帮你查询一下当前的项目列表。" });
+    await flushMicrotasks(); // card_1 回填
+    renderer.handleStreamEvent({ sessionKey: sk, type: "text_end", content: "我来帮你查询一下当前的项目列表。" });
+    await flushMicrotasks(); // card_1 定型
+    // 工具调用（tool_execution_* 不经 handleStreamEvent）→ 回合 2 文本段
+    renderer.handleStreamEvent({ sessionKey: sk, type: "text_delta", delta: "查询结果：当前项目列表为空。" });
+    await flushMicrotasks(); // 应开 card_2 并回填
+    renderer.handleStreamEvent({ sessionKey: sk, type: "text_end", content: "查询结果：当前项目列表为空。" });
+    await flushMicrotasks(); // card_2 定型
+
+    assert.equal(adapter.calls.sendCard.length, 2, "回合 2 文本段应开新卡（修复前被 final 守卫丢弃，sendCard 仅 1 次）");
+    const card2Updates = adapter.calls.updateCardStream.filter((u) => u.cardId === "card_2");
+    assert.ok(
+      card2Updates.some((u) => String(u.content).includes("查询结果")),
+      "回合 2 内容应更新到第二张卡（H4：content 全量累计）"
+    );
+    assert.equal(adapter.calls.finalizeCard.length, 2, "两张卡应各自定型");
+    assert.equal(adapter.calls.finalizeCard[1].cardId, "card_2", "第二次定型应指向回合 2 卡片");
+    assert.ok(
+      JSON.stringify(adapter.calls.finalizeCard[1].summary).includes("查询结果"),
+      "第二卡 summary 应为回合 2 正文摘要"
+    );
+    const card1Updates = adapter.calls.updateCardStream.filter((u) => u.cardId === "card_1");
+    assert.ok(
+      !card1Updates.some((u) => String(u.content).includes("查询结果")),
+      "第一卡定型后不应被回合 2 内容污染"
+    );
   });
 });
