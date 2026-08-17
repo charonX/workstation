@@ -10,6 +10,9 @@ intention: >-
   删除测试证明无属主，改动一次跨 N 处。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
 phase: REFLECT    # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+status: completed  # 已完成；spec 降级为历史记录（逻辑真值看代码，意图真值看全局文档）
+completed: true
+completed_at: 2026-08-17
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16

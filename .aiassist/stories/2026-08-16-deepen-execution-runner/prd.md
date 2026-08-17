@@ -1,8 +1,8 @@
 # ExecutionRunner 深化——一次执行的唯一入口
 
-> 状态：探索期
+> 状态：**已完结（历史记录）**——逻辑真值看代码，意图真值看 ADR-028 / business-capabilities.md / CONTEXT.md；回流判断可查本 spec（含初衷）。
 > 故事 ID：`2026-08-16-deepen-execution-runner`
-> 最后更新：2026-08-16
+> 最后更新：2026-08-17
 >
 > **v2 重裁决（2026-08-16，architecture-review #1 字面落实）**：撤除生产路径
 > 250ms 观察窗——深潜证伪原保留裁决的两条依据（①「UI 依赖排队态展示」：

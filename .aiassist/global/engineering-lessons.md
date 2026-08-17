@@ -456,3 +456,24 @@
 
 - **现象**：门 1 签核的页面锚点（插件页承载 MCP、#/workspace 权限区块）在 BUG 循环中连续三次被推翻——初衷与数据模型未变，只是信息架构调整。
 - **结论**：IA/入口锚点演进 ≠ 回流（初衷未推翻）。固定动作链：REQ 注记（锚点废止声明）+ hash 重算 → UX 原型同步改 + preview 重生成 → E2E 重锚新路径（断言语义不变）+ 旧入口缺失回归 → 实现。三连复用同一链路，成本递减。
+
+## 时序契约的保留依据必须在实现前用消费方证据证伪/证实（2026-08-17，execution-runner v2）
+
+- **现象**：250ms queued 观察窗的保留依据是「API 契约可能被 UI 依赖」——v2 深潜发现 renderer 零 queued 消费（UI 泛化渲染 status），「可能依赖」证伪；且串行队列下睡眠占队头槽位，N×250ms 累加进墙钟（「总墙钟不变」不成立）。
+- **结论**：涉及生产路径时序成本（睡眠/延迟/轮询）的契约，保留依据必须是**消费方证据**（grep renderer 消费点、事件订阅者清单），不是「可能有依赖」的推测。review 收益项字面落实前先证伪保留依据。
+- **顺带模式**：时序敏感断言的可观察性——睡眠撤除后，用「闸门 executor 队头占用」制造确定性排队窗口，替代时间窗等待（零睡眠可观察性，见 STANDARDS）。
+
+## 测试 seam 契约应与生产契约同源（2026-08-17，execution-runner slice 3）
+
+- **现象**：注入的 fake executor 经 `context.prompt` 读 prompt，而生产 claudeAgentAdapter 读 `node.config.prompt`——实现方为迁就测试在 runner 装配 seam 加了 context 并入归一化，PRD 对齐审查后撤除。
+- **结论**：测试注入 seam 的参数契约 = 生产 adapter 的调用契约（fake 与真实实现读同一字段）。为测试加归一化层 = 测试面与生产面分叉，是隐式耦合。
+
+## executionQueue.destroy() 的 length 洞（预存缺陷，2026-08-17 记录）
+
+- **现象**：对已清空的 project 数组执行 `q.length = 1` 会在数组中留洞，`pendingCount()` 永久计 1 → drain 有界等待空转满 5s（旧 taskService 路径同受害，executionLog.test.js 全文件 11.3s 即此因）。
+- **处置**：runner.reset() 以 `pendingCount() > 0` 守卫跳过空队列 destroy（语义等价）；destroy 本体修复留待后续 bug。
+
+## 模块图无环的强制手段（2026-08-17，execution-runner slice 2）
+
+- **现象**：skip 反应（markScheduleInvalid）原设计在 runner.submit 内 → runner↔taskService 成环；cron 校验在 taskService → taskService→schedulerService 成环。
+- **处置**：skip 反应归唯一带 scheduleId 的调用方（schedulerService 触发路径）；cron 校验移路由。**结论**：跨模块依赖成环时，把「专属反应」归到唯一调用方，而不是在共享模块里加 import。

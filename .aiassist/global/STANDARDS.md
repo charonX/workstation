@@ -111,3 +111,12 @@
 ## 测试注入缝（2026-08-12，2026-08-11-pi-agent-modes）
 
 - 真实模型调用在测试中不可行——用**可编程判定注入缝**（构造函数注入 decide 函数）驱动全路径；验证引擎系统级行为（如 envelope 强制）用「jiti 加载第三方源码直接断言」，不依赖我们的实现。
+
+## 执行生命周期与测试可观察性（2026-08-17，2026-08-16-deepen-execution-runner /reflect）
+
+- **一次执行的生命周期知识单点化**：submit（入队触发唯一入口）/ runOnce（直跑执行器，描述符参数化）/ reset（单一失效机制）三接口收进一个模块（ExecutionRunner，ADR-028）；生产路径禁止在 executeTask/createTask 等外围函数里重新拼装运行选项。
+- **失效机制单一**：执行上下文重置只能经 reset（generation+1 + 队列 destroy + 有界等待）；禁止在模块外直接 destroy 队列或自行维护 generation。
+- **时序契约用消费方证据**：生产路径的睡眠/延迟/轮询成本（如观察窗）必须能被消费方证据支撑；renderer/订阅者零消费 → 撤除（v2 先例）。
+- **零睡眠可观察性**：需要确定性时序的测试用「闸门 executor 队头占用」制造排队窗口，不用时间窗等待；竞态测试用「submit/reset 间不出让微任务」的同步时序触发。
+- **测试 seam 契约 = 生产契约**：fake executor / fake adapter 的入参读取与生产实现同源（如 prompt 一律读 node.config.prompt）；禁止为测试 seam 加生产路径没有的归一化。
+- **子执行写入归父守卫**：嵌套执行（subflow）的持久化写点纳入父 runOnce 的 generation 快照；reset 中途子写全跳过，子行由启动恢复兜底。子日志写子 execution 行，不冒泡父行。
