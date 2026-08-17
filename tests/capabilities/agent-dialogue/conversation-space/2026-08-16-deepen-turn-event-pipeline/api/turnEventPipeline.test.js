@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-106, REQ-AGENT-107, REQ-AGENT-108, REQ-AGENT-109
-// REQ-VERSION: v3-hash:ca25405beeb7fa4d05153f0ace4169ca21d3d09dbaa7bc601c000d36c2eea11b
+// REQ-VERSION: v4-hash:437b549f0dedfb99f9d116bc37781c6b17d6fbc4ddf572c2e5d95d9dc43c08ac
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -96,18 +96,19 @@ describe("REQ-AGENT-106 turnEventPipeline 工厂模块——可 import 无副作
     assert.equal(typeof pipelineMod.limitSize, "function", "应导出 limitSize");
   });
 
-  it("AC2：工厂返回完整接口集（7 实例成员均为函数）+ import 无副作用直接断言（零定时器/零出站）", () => {
+  it("AC2：工厂返回完整接口集（8 实例成员均为函数）+ import 无副作用直接断言（零定时器/零出站）", () => {
     const { pipe, clock, sends } = makeHarness();
     for (const name of [
       "onSessionEvent",
       "beginTurn",
       "takeLastReply",
       "takeTurnDiagnostics",
+      "recordSdkEvent",
       "registerSessionScopedMap",
       "registerSessionCleanup",
       "clearSessionState",
     ]) {
-      assert.equal(typeof pipe[name], "function", `实例应提供 ${name}()（§10.4 接口 1-6）`);
+      assert.equal(typeof pipe[name], "function", `实例应提供 ${name}()（§10.4 接口 1-6，v4 补 recordSdkEvent）`);
     }
     // AC1 无副作用子句显式化（review 修订）：工厂构造后无激活定时器、无出站。
     assert.equal(clock.pendingCount(), 0, "工厂构造不应 arm 任何定时器");
@@ -209,6 +210,29 @@ describe("REQ-AGENT-107 事件转发与延迟 text_end（含计数与清时机�
     const again = pipe.takeTurnDiagnostics(key);
     assert.deepEqual(again.turnStats, { delta: 0, end: 0, tool: 0 }, "取出即删——再取应为空");
     pipe.beginTurn(key); // 幂等：已空时再清不抛
+  });
+
+  it("AC4b（v4 补，slice 2 PRD 对齐 missing-test）：recordSdkEvent 累加 + beginTurn 清 + clearSessionState 清", () => {
+    const { pipe } = makeHarness();
+    const key = "k1";
+    // 存：subscribe 条件类型逐次累加（§10.4 接口 4b）
+    pipe.recordSdkEvent(key, "message_update");
+    pipe.recordSdkEvent(key, "message_update");
+    pipe.recordSdkEvent(key, "turn_start");
+    let diag = pipe.takeTurnDiagnostics(key);
+    // EXPECTED-TRACE: prd.md §10.4 接口 4b（recordSdkEvent 累加 sdkEventCounts[type]）
+    assert.deepEqual(diag.sdkStats, { message_update: 2, turn_start: 1 }, "sdkStats 应累加各类型计数");
+    assert.equal(diag.sdkStats.message_update, 2, "同类型应逐次累加");
+    // 取出即删：再取为空
+    assert.deepEqual(pipe.takeTurnDiagnostics(key).sdkStats, {}, "取出即删——再取 sdkStats 应为空");
+    // beginTurn 清
+    pipe.recordSdkEvent(key, "agent_start");
+    pipe.beginTurn(key);
+    assert.deepEqual(pipe.takeTurnDiagnostics(key).sdkStats, {}, "beginTurn 应清 sdkEventCounts");
+    // clearSessionState 清
+    pipe.recordSdkEvent(key, "agent_end");
+    pipe.clearSessionState(key);
+    assert.deepEqual(pipe.takeTurnDiagnostics(key).sdkStats, {}, "clearSessionState 应清 sdkEventCounts");
   });
 
   it("AC6：未知 sessionKey → 事件照常转发出站、touch 被调用（仅注入方内部 no-op，review B3）", () => {

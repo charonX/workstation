@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-111
-// REQ-VERSION: v3-hash:ca25405beeb7fa4d05153f0ace4169ca21d3d09dbaa7bc601c000d36c2eea11b
+// REQ-VERSION: v4-hash:437b549f0dedfb99f9d116bc37781c6b17d6fbc4ddf572c2e5d95d9dc43c08ac
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
