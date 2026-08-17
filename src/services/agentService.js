@@ -54,7 +54,7 @@ import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
 import { createMcpService } from "./mcpService.js";
-import { limitSize, MAX_IPC_BYTES } from "../agent/turnEventPipeline.js";
+import { limitSize } from "../agent/turnEventPipeline.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 // 常量定义迁至 settingsService（REQ-AGENT-090 存量迁移与回退兜底同源，避免两处
