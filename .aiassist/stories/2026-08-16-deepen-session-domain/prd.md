@@ -13,8 +13,10 @@
 ## 1. 问题陈述
 
 928 行的路由模块 `agentSessions.js` 承载会话领域逻辑（历史投影/分页/spaceKey
-解析/SSE 订阅注册表/附件规则/config 装配），`server.js` 反向 import 其 4 个内部
-函数才能复用，SSE 注册表（模块级 `pendingSseSubs` Map）被三层之外的三处外部
+解析/SSE 订阅注册表/附件规则/config 装配），`server.js` 反向 import 其 2 个领域
+函数（`buildSessionConfig`/`attachPendingSseSubs`）才能复用（另 2 个 import 名是
+handler，属 server→route 正常分层），SSE 注册表（模块级 `pendingSseSubs` Map）
+被三层之外的三处外部
 驱动（server.js 确认回调、server.js 懒解析接线、路由 handlePostMessage）。开发者
 改会话语义要在路由文件里翻找，投影/分页/key 解析只能透 HTTP 端到端打——一句话
 痛点：**会话领域逻辑住在路由层，依赖方向倒置，seam 泄漏到调用者**。
@@ -24,7 +26,7 @@
 新建 session-domain 模块，把五块会话领域职责收进一个家：config 装配、历史投影
 +分页、spaceKey 解析、SSE 订阅注册表（per-instance，由 server.js 持有注入）、
 附件规则。server.js 改为只 import domain 模块（依赖方向回正）；路由瘦成纯转发
-（~300 行），仅 re-export `projectMessagesFromJsonl` 保既有测试导入面零改动
+（~600 行），仅 re-export `projectMessagesFromJsonl` 保既有测试导入面零改动
 （tech-design 事实核查：既有测试实际仅直用此 1 名）。行为字节级不变——纯结构搬迁。
 
 ## 3. 用户故事
@@ -48,16 +50,17 @@
 | 3 | spaceKey 解析搬迁（`uiGroupPrefixFor`/`projectIdOf`/`newUiSpaceKeyFor`），获得直接单测 | ADR-016 语法的纯函数，无争议 |
 | 4 | SSE 订阅注册表收编为 per-instance：`createSseSubscription` + 挂起注册表 + `attachPendingSseSubs` 随实例走（`createSseSubscriptionRegistry()` 工厂实例，三方法：`createSubscription`/`registerPending`/`attachPending`），三处驱动点改为注入（server.js 持实例直调 ×2 + 路由 context 袋 `getSseRegistry`） | 访谈 Q2 + tech-design #1/#3 拍板（评审 "registry travels with instance" 字面落实） |
 | 5 | 附件规则搬迁（`attachmentsError` + `IMAGE_MIME_TYPES`/`MAX_ATTACHMENTS`/`MAX_ATTACHMENT_BYTES` 三常量） | 纯校验函数，随 domain 走 |
-| 6 | server.js 依赖方向回正 + 路由 re-export 保测试面：路由保留两个 handler（`handleAgentSessions`/`handleAgentLastMode`）+ **仅 re-export `projectMessagesFromJsonl`**（测试唯一实际使用的导出名——tech-design 事实核查：8/10 测试文件只做 seam 存在性门，1 个直调投影函数，1 个静态读源码断言）；server.js 从 domain/registry 模块 import 领域函数 | 访谈 Q3 拍板 + tech-design 事实纠正（re-export 面 4→1）；execution-runner「兼容转发保旧契约」先例；既有测试文件零改动是硬约束 |
+| 6 | server.js 依赖方向回正 + 路由 re-export 保测试面：路由保留两个 handler（`handleAgentSessions`/`handleAgentLastMode`）+ **仅 re-export `projectMessagesFromJsonl`**（测试唯一实际使用的导出名——tech-design 事实核查：动态 import 路由的 8 个测试文件中 6 个纯 seam 存在性门，historyToolFilter 兼直调投影函数，feishuReadonly 兼静态读源码断言）；server.js 从 domain/registry 模块 import 领域函数 | 访谈 Q3 拍板 + tech-design 事实纠正（re-export 面 4→1）；execution-runner「兼容转发保旧契约」先例；既有测试文件零改动是硬约束 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
 > 全部已解决（/tech-design 深潜，2026-08-17，四问逐题拍板）：
 > #1 注册表形态 → `createSseSubscriptionRegistry()` 工厂实例 + context 袋注入，
 >    `createSseSubscription` 收编为实例方法 `createSubscription`（§10.2/§10.4）；
-> #2 逐函数搬迁清单 → 34 函数 + 6 常量全量分类定稿（§10.2），三边界判定：
->    `gitStateForSpace` 搬（会话元数据投影）、列表拼装五函数留（单端点 presentation）、
->    `messageTextError` 留（HTTP 输入校验）。
+> #2 逐函数搬迁清单 → 41 顶层函数 + 6 常量全量分类定稿（§10.2，2026-08-17
+>    review 复核修正计数——原述「34」未含全部 handleXxx 与 web 杂务），三边界判定：
+>    `gitStateForSpace` 搬（会话元数据投影）、列表拼装五函数留（HTTP presentation
+>    编排就近路由）、`messageTextError` 留（HTTP 输入校验）。
 > 当前无移动块。
 
 ## 6. 用户操作流（Operation Flows）
@@ -145,7 +148,7 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 维度 | 取值/说明 |
 |---|---|
 | 复杂度 | **complex** |
-| 判断理由 | 触碰 3 个模块（路由 / 新 domain 模块 / server.js）+ 10 个既有测试文件的导入面约束；SSE 注册表 per-instance 化涉及实例生命周期与三个注入点设计（非平凡接线决策）；契约保持面大（SSE 帧序列、HTTP 形状、4 个导出名）；需要 tech-design 深潜注册表 API 形态与逐函数搬迁清单 |
+| 判断理由 | 触碰 3 个模块（路由 / 新 domain 模块 / server.js）+ 10 个既有测试文件的导入面约束；SSE 注册表 per-instance 化涉及实例生命周期与三个注入点设计（非平凡接线决策）；契约保持面大（SSE 帧序列、HTTP 形状、server.js 反向 import 的 4 名中 2 领域函数 + 2 handler）；需要 tech-design 深潜注册表 API 形态与逐函数搬迁清单 |
 
 - 结晶路径：`PRD → TECH-DESIGN → CRYSTALLIZE`（§10 由 /tech-design 深潜补全）。
 
@@ -158,17 +161,18 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 
 ### 10.1 设计目标
 
-会话领域知识收进两个内聚模块（纯函数 domain + 有状态 SSE 注册表），依赖方向
-回正（server.js → domain/registry、route → domain/registry），注册表随 server
-实例走，路由瘦成纯转发——HTTP/SSE 行为字节级不变，依赖方向静态可验。
+会话领域知识收进两个内聚模块（无内部可变状态的 domain 函数组 + 有状态 SSE
+注册表），依赖方向回正（server.js → domain/registry、route → domain/registry），
+注册表随 server 实例走，路由瘦成纯转发（~600 行）——HTTP/SSE 行为字节级不变，
+依赖方向静态可验。
 
 ### 10.2 模块与边界
 
 | 模块 | 职责 | 是否新增 |
 |---|---|---|
-| `src/services/sessionDomain.js` | **纯函数域**（零状态零连接）：`buildSessionConfig`+`DEFAULT_PROVIDER`；`uiGroupPrefixFor`/`projectIdOf`/`newUiSpaceKeyFor`+`PROJECT_PREFIX_RE`；`projectMessagesFromJsonl`/`partText`/`normalizeLimit`/`paginateMessages`；`attachmentsError`+`IMAGE_MIME_TYPES`/`MAX_ATTACHMENTS`/`MAX_ATTACHMENT_BYTES`；`gitStateForSpace`（边界判定①：会话元数据投影，与 key 解析同源） | 是 |
+| `src/services/sessionDomain.js` | **领域函数域**（无内部可变状态、不持有连接；含只读 I/O——读 JSONL/DB/settings）：`buildSessionConfig`+`DEFAULT_PROVIDER`；`uiGroupPrefixFor`/`projectIdOf`/`newUiSpaceKeyFor`+`PROJECT_PREFIX_RE`；`projectMessagesFromJsonl`/`partText`/`normalizeLimit`/`paginateMessages`；`attachmentsError`+`IMAGE_MIME_TYPES`/`MAX_ATTACHMENTS`/`MAX_ATTACHMENT_BYTES`；`gitStateForSpace`（边界判定①：会话元数据投影，与 key 解析同源） | 是 |
 | `src/services/sessionSseRegistry.js` | **有状态域**：`createSseSubscriptionRegistry()` 工厂 → 实例三方法 `createSubscription(res, spaceKey)`（收编现 `createSseSubscription`：事件转发/轮次边界 text_start 宣告/15s 心跳/confirmation-pending 过滤/detach 自清理）、`registerPending(spaceKey, sub)`、`attachPending(spaceKey, svc)`（收编现 `attachPendingSseSubs`+`peekSession`，内部持有挂起 Map） | 是 |
-| `src/http/routes/agentSessions.js` | HTTP 转发层（~928 → ~300 行）：两个导出 handler + 全部 `handleXxx` 端点函数 + admission 编排（`handleGetEvents` 的 404/writeHead/首帧推送/attach-or-pend 五行编排）+ 列表拼装五函数（边界判定②留）+ `messageTextError`+`MAX_MESSAGE_CHARS`（边界判定③留）+ context 袋适配与 web 杂务（`decodeParam`/`sendJson`/`sendError`/`ok`/`validationError`/`notFound` 等）；**仅 re-export `projectMessagesFromJsonl`** | 否（瘦身） |
+| `src/http/routes/agentSessions.js` | HTTP 转发层（~928 → ~600 行，上限 650 含注释余量——review 算术复核：搬走 ~300-330 行后留存 ~600，原 ~300 目标不可行，2026-08-17 人拍板重定阈值）：两个导出 handler + 全部 `handleXxx` 端点函数 + admission 编排（`handleGetEvents` 的 404/writeHead/首帧推送/attach-or-pend 五行编排）+ 列表拼装五函数（`listSessions`/`loadProjectNameMap`/`loadSpaceMetaMap`/`isOrphanSpace`/`projectExists`——边界判定②留：HTTP presentation 编排就近路由；`isOrphanSpace` 亦被 `handlePostMessage` 复用、「孤儿会话禁止发送」领域规则编码在内，`projectExists` 被 `handleCreateSession` 复用）+ `messageTextError`+`MAX_MESSAGE_CHARS`（边界判定③留）+ context 袋适配与 web 杂务（`decodeParam`/`sendJson`/`sendError`/`ok`/`validationError`/`notFound`/`resolveAgentService`/`resolveModeService`/`peekAgentService`/`getSessionRowOrError`/`mapProviderError`/`parsePaginationQuery`/`createUiRow`）；**仅 re-export `projectMessagesFromJsonl`** | 否（瘦身） |
 | `src/http/server.js` | import 改向：领域函数从 `sessionDomain.js`、注册表从 `sessionSseRegistry.js`；持有 registry 实例（`server._opcSseRegistry` 惰性工厂同型），两处驱动点（确认回调回投 :217-226、懒解析接线 :369）直调实例方法；context 袋新增 `getSseRegistry` 注入路由；handler 仍从路由 import（server → route 为正常分层） | 否（接线变化） |
 | sessionStore / settingsService / agentService / eventBus | 无变化（本 story 不动 DB 访问方式与服务接口；registry 模块 import eventBus 的 `subscribe` 随 `createSseSubscription` 一同迁入） | 否 |
 
@@ -240,10 +244,12 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 调用方 | 路由 `handleGetEvents`（admission 编排内） |
 | 输入 | `res`（已 writeHead 的 SSE 响应流）、`spaceKey` |
 | 输出 | sub `{pushFrame(event), attach(session), detach()}` |
+| 业务错误 | 无 |
+| 系统错误 | 无（res 写失败 → 自 detach，不上播） |
 | 副作用 | 起 15s 心跳注释帧；订阅 eventBus `confirmation-pending`（按 spaceKey 过滤转发，sessionKey 不出帧）；res close/error/写失败 → 自 detach |
 | 幂等性 | 否（每连接一个 sub） |
 
-**样例（golden values）**：行为锚点 = 现状逐字节保持——首帧 `data: {"type":"session-git",...}`、心跳 `": keep-alive"` 注释帧 15s、轮次首文本事件前补 `text_start`、单帧 ≤256KB（源头 enforceSizeLimit 保证，本层不二次截断）。既有 sessionEvents 测试为契约载体。
+**样例（golden values）**：行为锚点 = 现状逐字节保持——首帧 `data: {"type":"session-git",...}`、心跳 `": keep-alive"` 注释帧 15s、轮次首文本事件前补 `text_start`、单帧 ≤256KB（源头截断单真源 = ADR-029 turnEventPipeline.limitSize，本层不二次截断）。既有 sessionEvents 测试为契约载体。
 
 #### 接口名称：registry.registerPending
 
@@ -252,6 +258,8 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 调用方 | 路由 `handleGetEvents`（无既有句柄分支） |
 | 输入 | `spaceKey`、`sub` |
 | 输出 | undefined |
+| 业务错误 | 无 |
+| 系统错误 | 无 |
 | 副作用 | 登记进实例挂起 Map；sub.detach 时自移除（现状语义保持） |
 | 幂等性 | 同 sub 重复登记被 Set 去重 |
 
@@ -262,10 +270,12 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 调用方 | server.js 确认回调回投、server.js 懒解析接线、路由 handlePostMessage |
 | 输入 | `spaceKey`、`svc`（agentService） |
 | 输出 | undefined |
+| 业务错误 | 无 |
+| 系统错误 | 无（svc 未接线/句柄未创建 → no-op） |
 | 副作用 | 有挂起且 `svc.getSession(spaceKey)` 返回既有句柄（不同步惰性创建，ADR-009）→ 逐个 `sub.attach(session)` 并删除该 key 挂起集；任一无 → no-op |
 | 幂等性 | 是（无条件调用安全，现状语义保持） |
 
-#### 接口名称：domain 纯函数组（sessionDomain.js 导出）
+#### 接口名称：domain 领域函数组（sessionDomain.js 导出）
 
 | 项目 | 说明 |
 |---|---|
@@ -281,6 +291,7 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 变更 | context 袋新增 `getSseRegistry: () => registry`（与 `getSessionStore`/`getAgentService` 惰性工厂同型） |
 | 消费方 | 路由 `handlePostMessage`（attachPending）、`handleGetEvents`（createSubscription/registerPending） |
 | 兼容性 | 既有四项不变；生产 server 必提供新项（同其他工厂项的接线纪律） |
+| 未接线语义 | `getSseRegistry` 缺失 → 调用点抛带明确信息的 Error（`getSseRegistry 未接线`）——fail-fast，接线纪律为硬前提（review I3 修订：原契约未规定缺失行为，TypeError 裸崩不可接受；生产 server 恒提供，此分支仅在测试/headless 自建 context 时可达） |
 
 ### 10.5 关键决策
 
@@ -356,7 +367,7 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 操作流 | PASS | §6.1 六条 happy path + §6.2 分支异常，覆盖六个稳定块 |
 | 输入验证 | PASS | §7 无表单声明 + 接口级规则锚定（含有效/无效例子，§6.3） |
 | 错误状态 | PASS | §8 七场景全为现状保全项 |
-| 预期值锚点 | PASS | §6.3 每稳定块 ≥2 条字面值锚点，全部取自现行代码快照 |
+| 预期值锚点 | PASS | 块 1/2/3/5 在 §6.3 ≥2 条字面值锚点；块 4（SSE golden）/块 6（依赖方向静态 seam）锚点分布于 §10.4/§11.1；全部取自现行代码快照（review 修正原「每块 ≥2 条」字面声明） |
 | 复杂度分级 | complex | §9 |
 | 技术方案（§10） | PASS | complex：§10.1-10.7 已由 /tech-design 深潜补全（四问拍板，2026-08-17） |
 
@@ -367,3 +378,5 @@ decode（`decodeParam`：decodeURIComponent 失败回落原值）语义不变。
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v0.1 | 2026-08-17 | 初稿（访谈五项 GUESS 全确认，方向 A） | AI + 人 |
+| v0.2 | 2026-08-17 | tech-design 定稿（§10.1-10.7 / ADR-030，四问逐题拍板）+ §5 移动块清空 + §4 块6/§11.1 re-export 1 名反向同步 | AI + 人 |
+| v0.3 | 2026-08-17 | signoff 就地补（§2 re-export 1 名更正 + §6.3 空 providers 锚点行）+ **review 修订**（FAIL 两项阻塞消解：路由行数目标 ~300→~600/阈值 ≤650 人拍板；gitState 正分支改直测承载 人拍板；§1「2 领域函数」措辞、函数清单 41 点名、「纯函数」标签修正、context 袋未接线语义 fail-fast、§10.4 错误行补齐 + 改引 ADR-029 单真源、§14 锚点声明修正） | AI + 人 |

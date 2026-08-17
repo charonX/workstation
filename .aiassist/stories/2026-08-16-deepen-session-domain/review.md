@@ -100,10 +100,8 @@
 
 ## 审查人决策记录
 
-<!-- 人填写：是否接受本 review 结论，以及理由。 -->
+**决策**：有条件接受（2026-08-17）
 
-**决策**：接受 / 有条件接受 / 不接受
+**理由**：两条 CRITICAL 均成立且修复方向已拍板——① tech C1 行数目标：重定阈值为 ≤650（推荐选项，~600 纯转发相对 928 已是实质改善，不扩大搬迁范围）；② test C1 gitState 正分支：补直测正分支（推荐选项，DB_PATH 临时库 seed + 真实临时 git 仓承载）。8 项 IMPORTANT 与可机验的 SUGGESTION 随修复轮一并处理。
 
-**理由**：
-
-**下一步动作**：
+**下一步动作**：修复轮执行（prd/ADR/REQ v2/测试修订）→ assertion-signoff v2 重签 → 回 BUILD。已完成：requirements v2（hash 77f0f186）、6 测试文件修订（34 断言 33 RED）、signoff.md Assertion v2 节。

@@ -27,7 +27,8 @@
 
 ## 决策
 
-1. **新建 `src/services/sessionDomain.js`（纯函数域，零状态零连接）**：收编
+1. **新建 `src/services/sessionDomain.js`（领域函数域：无内部可变状态、不持有
+   连接；含只读 I/O——读 JSONL/DB/settings）**：收编
    config 装配、历史投影/分页、空间 key 解析、附件规则、`gitStateForSpace`
    （会话元数据投影）。函数签名与语义逐字节保持（PRD §6.3 锚点为 golden values）。
 2. **新建 `src/services/sessionSseRegistry.js`（有状态域）**：
@@ -41,11 +42,13 @@
    实例走，同进程多实例隔离。
 3. **纯/有状态两文件拆分**（而非单文件）：与 sessionStore/confirmationService
    粒度一致；execution-runner runner+queue 先例；纯函数单测不加载 SSE 机制。
-4. **路由瘦身为纯转发（~928 → ~300 行）**：保留两个导出 handler、端点函数、
-   admission 编排（404/writeHead/session-git 首帧/attach-or-pend 五行编排——
-   HTTP 关切留路由）、列表拼装五函数（单端点 presentation）、`messageTextError`
-   （HTTP 输入校验）、web 杂务；**仅 re-export `projectMessagesFromJsonl`**
-   （测试唯一实际使用名，最小兼容面）。
+4. **路由瘦身为纯转发（~928 → ~600 行，上限 650 含注释余量）**：保留两个导出
+   handler、端点函数、admission 编排（404/writeHead/session-git 首帧/attach-or-pend
+   五行编排——HTTP 关切留路由）、列表拼装五函数（HTTP presentation 编排就近）、
+   `messageTextError`（HTTP 输入校验）、web 杂务；**仅 re-export
+   `projectMessagesFromJsonl`**（测试唯一实际使用名，最小兼容面）。
+   （2026-08-17 review 算术复核：搬走 ~300-330 行后留存 ~600，原 ~300 目标
+   不可行——除非把端点组再拆出路由，超出本 story 边界；人拍板重定阈值 ≤650。）
 5. **server.js 依赖方向回正**：领域函数从 domain/registry 模块 import；
    handler 仍从路由 import（server → route 为正常分层）。
 6. **依赖方向静态可验**：新增静态 seam 测试（读源码断言 import 方向：
@@ -59,7 +62,7 @@
 
 - 投影/分页/key 解析/附件规则获得直接单测 seam；registry 三方法可实例级单测
   （stub svc/res，真实 eventBus）。
-- 路由文件 ~300 行纯转发，读代码的人一眼看到端点表。
+- 路由文件 ~600 行纯转发，读代码的人一眼看到端点表。
 - 既有测试零改动全绿是硬约束（兼容面 = 文件存在 + `projectMessagesFromJsonl`
   re-export + HTTP 行为）。
 - 同进程多 server 实例的 SSE 挂起状态不再共享——测试隔离改善；若有测试隐性
@@ -79,10 +82,12 @@
 
 ## 相关文件
 
-- `src/http/routes/agentSessions.js`（928 → ~300 行瘦身）
+- `src/http/routes/agentSessions.js`（928 → ~600 行瘦身）
 - `src/http/server.js`（import 改向 + registry 实例持有 + context 袋扩展）
 - `src/services/sessionDomain.js`（新增）
 - `src/services/sessionSseRegistry.js`（新增）
 - PRD：`.aiassist/stories/2026-08-16-deepen-session-domain/prd.md` §10
 - 关联：ADR-009（events 连接不惰性启动 agent）、ADR-016（ui 空间 key 语法）、
-  ADR-026（会话模型配置解析单点）、ADR-028（execution-runner 同批深化先例）
+  ADR-026（会话模型配置解析单点）、ADR-028（execution-runner 同批深化先例）、
+  ADR-029（turnEventPipeline 同批深化——createSubscription「不二次截断」正依赖
+  其 256KB limitSize 单真源决策；注册表统一清理模式同源）
