@@ -71,3 +71,21 @@
 | 主进程兜底超限保契约字段（§6.3-6 锚点：300KB 工具事件保四字段、序列化 ≤ 262144） | limitSize 工具数据载体分支（shrinkToolCarrier 迭代收紧，slice 1） | limitSizeSingleSource REQ-110 AC4/AC4b（单元）+ AC6（主进程侧集成实证） | COVERED |
 | MAX_IPC_BYTES 常量单源（§10.4 接口 7；REQ-106 AC3 锚点 262144） | 本地常量删除；单源 = turnEventPipeline 导出（agentService import 引用） | limitSizeSingleSource（`pipelineMod.MAX_IPC_BYTES === 262144` 断言） | COVERED |
 | 保持 agentService.js 其它一切不动（§12 范围外；不留手重构） | diff 仅 3 处（import + 删除 + 3 调用点改名），30 行净减 | api 全套 30/30 无回归 | COVERED |
+
+### Slice 3 完成（2026-08-17，`d92f23e` [build] + `df18752` [docs] + `1da6157` [refactor]）
+
+- PRD 对齐：ALIGNED（单源零残留、3 调用点一个不漏、AC6 转绿实证）
+- refactor：`1da6157`（移除死绑定 MAX_IPC_BYTES import，1 行；父代理复验 30/30）
+- 验证：limitSizeSingleSource 8/8、api 全套 30/30（AC6 修复后最后一个红消失）
+
+### BUILD 完成汇总（2026-08-17）
+
+| Slice | commit（build） | commit（refactor） | 验证 |
+|---|---|---|---|
+| 1 管线模块 | 5f4518e | 7415cb9 | 单元 22/22 + limitSize 单元 6/6 |
+| 2 worker 接线 | 27d5c9d | 6992614a | spawn 5/5 + 回归 20/20 + slice1 回归 |
+| 3 agentService 单源 | d92f23e | 1da6157 | 30/30 全绿 |
+
+- test-gap 修正 ×3（人确认分类）：REQ-109 AC3 计数 3→2（ef48774）/ resetDropQueue ready 监听（49d33cf）/ recordSdkEvent 单元覆盖 + AC2 计数 7→8（7d58ac2，v4）
+- 契约版本：v1→v2（review B1-B4）→v3（recordSdkEvent 接口补全）→v4（AC2 计数修正）；当前 v4 哈希 437b549f
+- 全量回归：npm run test:unit（结果见 QA 报告）
