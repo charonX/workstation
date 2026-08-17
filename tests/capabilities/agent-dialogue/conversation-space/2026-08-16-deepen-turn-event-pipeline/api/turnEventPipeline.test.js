@@ -322,6 +322,9 @@ describe("REQ-AGENT-109 会话状态注册表统一清理（单元面 AC1-3；AC
     const diag = pipe.takeTurnDiagnostics(key);
     assert.deepEqual(diag.turnStats, { delta: 0, end: 0, tool: 0 }, "clear 后计数应为空");
     clock.advance(5000);
-    assert.equal(sends.filter((m) => m.type === "session-event").length, 3, "clear 后无补发事件（无幽灵 text_end）");
+    // test-gap 修正（2026-08-17，人确认分类）：出站计数 3→2——delta 即时 1 条 +
+    // message_end 冲刷 1 条（text_end 延迟语义，AC1/AC2/AC4 自证），clear 后推进
+    // 5s 无幽灵事件（若定时器未清会补发 → 计数变 3）。
+    assert.equal(sends.filter((m) => m.type === "session-event").length, 2, "clear 后无补发事件（无幽灵 text_end）");
   });
 });
