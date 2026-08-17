@@ -54,6 +54,7 @@ import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
 import { createMcpService } from "./mcpService.js";
+import { limitSize, MAX_IPC_BYTES } from "../agent/turnEventPipeline.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
 // 常量定义迁至 settingsService（REQ-AGENT-090 存量迁移与回退兜底同源，避免两处
@@ -62,8 +63,8 @@ import { createMcpService } from "./mcpService.js";
 // BUG-004（code-defect）教训保留：默认模型必须真实存在于 pi 运行时目录。
 export { DEFAULT_MODELS };
 
-// 单条 IPC 消息上限（签核决策 15：≤ 256KB）。
-const MAX_IPC_BYTES = 256 * 1024;
+// 单条 IPC 消息上限（签核决策 15：≤ 256KB）由 turnEventPipeline 导出
+// （MAX_IPC_BYTES = 262144，ADR-029 截断单真源——本文件不再持有本地常量）。
 
 // 心跳看门狗（REQ-AGENT-005 标准 2：心跳超时或 exit → 重启）。
 const HEARTBEAT_INTERVAL_MS = 2000;
@@ -224,29 +225,16 @@ function persistFallbackRow(store, spaceKey, cfg) {
   }
 }
 
-// 单条 session-event ≤ 256KB：超限截断文本载体 + truncated 标记（REQ-AGENT-006 标准 5）。
-function enforceSizeLimit(event) {
-  const size = JSON.stringify(event).length;
-  if (size <= MAX_IPC_BYTES) return event;
-  const out = { ...event };
-  if (typeof out.content === "string") {
-    out.content = out.content.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
-  } else if (typeof out.delta === "string") {
-    out.delta = out.delta.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
-  } else {
-    return { type: event.type, truncated: true };
-  }
-  return out;
-}
+// 单条 session-event ≤ 256KB 由 turnEventPipeline 导出的 limitSize 承担（ADR-029
+// 截断单真源——本文件不再持有本地 enforceSizeLimit；工具数据载体分支为新增强行为，
+// REQ-AGENT-055：超限不再整条降级丢契约字段）。
 
 // 结构化错误事件（REQ-AGENT-007 标准 3：用户可展示文案与内部错误码区分）。
 // 内存版内核与子进程 session-error 回执共用；status 缺省 → 事件不带该字段。
 function emitErrorEvent(session, { code, reason, status, userMessage }) {
   session.emit(
     "session-event",
-    enforceSizeLimit({
+    limitSize({
       type: "error",
       code,
       reason,
@@ -343,7 +331,7 @@ function createInMemoryAgentService(options = {}) {
       }
       for (const ev of result) {
         if (ev.type === "text_end" && typeof ev.content === "string") finalText = ev.content;
-        session.emit("session-event", enforceSizeLimit(ev));
+        session.emit("session-event", limitSize(ev));
       }
       break;
     }
@@ -960,7 +948,7 @@ function createProcessAgentService(options = {}) {
       }
       case "session-event": {
         const session = sessions.get(msg.sessionKey);
-        if (session) session.emit("session-event", enforceSizeLimit(msg.event));
+        if (session) session.emit("session-event", limitSize(msg.event));
         break;
       }
       case "session-error": {
