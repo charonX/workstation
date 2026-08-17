@@ -1,0 +1,21 @@
+{
+  "workflow_version": "0.24.0",
+  "bootstrap_at": "2026-08-17",
+  "template_files": {
+    ".aiassist/global/CONTEXT.md": "4681c53b56ed8de91d2245043d1f9ac7eeb194b6d8a95701552783aebc60bff2",
+    ".aiassist/global/business-capabilities.md": "cde7cec05567eed52fc226c2124acdc316514a4734f36f2ba869ef2c57afd8d7",
+    ".aiassist/global/adr/README.md": "0ca3a71a6b9225e888074bb4c33472825f8ae5b518326c3247accbbd69f9d512",
+    ".aiassist/global/architecture.md": "29023e95d3e1ff4a34b54e32e8d0f81fbc8e890fa2a14036201b613ae96130ad",
+    ".aiassist/global/codegraph.json": "15b090eb904ab0d0f606e70bf78f4dc2c2e7d73a82e69d8b2893874b6f624ad8",
+    ".aiassist/global/issue-tracker.json": "fb0eb4cf045a25aefd397da483239d0bc90469ab5220744f33b48a1579c626d8",
+    ".aiassist/global/STANDARDS.md": "7222f899f1e29ed84eafe31732bd43b57115e3dcc8321b13bb1d3d4352344b33",
+    ".aiassist/global/checklists/testing.md": "3e0814215783bff7aa7bb8ea63d28185734bcdc0adb05766ab45fc9c058a854d",
+    ".aiassist/global/checklists/security.md": "b7ee6d8eb7286535954cdf0cab9ba68bea47ac5da7824b27082c8b91386e3cc2",
+    ".aiassist/global/checklists/performance.md": "21737a15047d194dcb5e328b7a6323f4ec8ad27df801f9390a0e3688b872e454",
+    ".aiassist/global/checklists/accessibility.md": "b722bfc6ebda96930abb3c12772362564c0a23c24985d2683d7beb51eac75259",
+    ".aiassist/global/checklists/observability.md": "1ff2d95e5c81de24d9070308921f3d67e5c892aac3f4e0c40cf3ed488d4b5e04",
+    ".aiassist/hooks/pre-commit": "fa1d99a45f4aa96f09d7c5df7b37730e6e9f17035f0de629e4b217da0c54c866",
+    ".aiassist/hooks/commit-msg": "59a7f3300590d93608fc72e78a13cd458c9248cf2afada2f26ffe5bf130e53d3",
+    ".github/workflows/contract-gate.yml": "70fe4c3bd9151675128fb28773de4af8ba24bf8498bf9e6c6834b5d74f70c93f"
+  }
+}

@@ -2,11 +2,12 @@
 
 项目初始化中。
 
+<!-- loop-workflow:begin -->
 ## 循环工作流
 
 > **如果你是为本项目工作的 AI Agent，先读这一段。**
 >
-> 本项目使用 `loop-workflow` 工作流。你的核心约束是：**人持有断言，AI 持有实现；人对代码只读，AI 对业务测试只读。** 不要直接修改 `.aiassist/stories/<id>/signoff.md` 之外的契约文档，不要在 BUILD 阶段改测试，不要把实现细节暴露进业务测试。不确定时，用 `/story` 查看当前 phase，或用 AskUserQuestion 问用户。
+> 本项目使用 `loop-workflow` 工作流。你的核心约束是：**人定规格锚点（PRD/design 的 expected 值），AI 从锚点推导断言并持有实现；人对代码只读，AI 对业务测试只读。** 不要直接修改 `.aiassist/stories/<id>/signoff.md` 之外的契约文档，不要在 BUILD 阶段改测试，不要把实现细节暴露进业务测试。不确定时，用 `/story` 查看当前 phase，或用 AskUserQuestion 问用户。
 
 ### 可用 skill
 
@@ -20,30 +21,33 @@
 | `/tech-design` | 对抗式技术方案深潜（仅 complex story），写入 `prd.md` §10 | 用户 |
 | `/design` | 设计阶段统一入口：建/更新设计系统、导入设计源、迭代 HTML UX 原型 | 用户 |
 | `/bug` | 在当前 story 内单 bug 人机协同处理：诊断根因 -> 分类（人确认）-> 修/补测试/就地补全/关闭；支持从 GitHub/GitLab issue 拉取 | 用户 |
-| `/review` | 手动审查 PRD/技术方案/代码（建议新会话）；`--stage=code --mode=panel` 启用 specialist 子代理并行审查 | 用户 |
-| `/signoff` | 门 1：签高风险断言（初衷/跨模块契约/expected 值/安全边界），把契约交给 AI | 用户 |
+| `/review` | 手动审查（建议新会话）；按 cover 层并行 specialist 审查 PRD/技术方案/REQ/测试/代码，汇总 `review.md` | 用户 |
+| `/signoff` | 门 1：断言签核默认 AI 全量自检（expected 值 trace 到 PRD 锚点）；升级点停下问人，把契约交给 AI | 模型（自动链） |
 | `/reflect` | 最终验收确认 + 捕获经验教训并更新全局知识、`adr/`、`checklists/` | 用户 |
 | `/research` | 针对技术/API/库问题做带引用的调研 | 用户 |
 | `/design-handoff` | 从已批准 UX 生成开发交接包 | 用户 |
 | `/sync-refs` | 同步参考项目并吸收上游变更 | 用户 |
+| `/improve-codebase-architecture` | 扫描既有代码库找架构深化机会，产出 HTML 报告并轮询收敛（独立工具，不绑定 story） | 用户 |
+| `/wizard` | 生成交互式 bash wizard 引导人工步骤（凭据/CI secrets/第三方后台，独立工具） | 用户 |
 | `/crystallize` | 把 PRD 稳定块转成 REQ-ID；每个 REQ 至少一个自动化测试；缺口对话确认归类不阻断 | 模型 |
 | `/test-author` | 从 REQ 生成业务测试骨架；前端需求必须生成组件/浏览器结构行为测试；浏览器 E2E 默认 Playwright | 模型 |
 | `/tdd` | 内层实现纪律：RED -> GREEN 写单元测试驱动代码 | 模型 |
 | `/implementer` | 针对已签核测试实现代码；默认子代理实现切片，父代理调度验证；内部用 `/tdd` RED -> GREEN；每个 slice 绿后由 refactor subagent 做一轮安全重构 | 模型 |
 | `/qa-runner` | 运行 E2E（Playwright）、回归、收集证据；失败时建议 `/bug`；浏览器项目在 E2E 通过后可选调用 `/browser-verify` | 模型 |
 | `/browser-verify` | 用 Chrome DevTools MCP 做运行时浏览器验证（Console/DOM/Network/A11y/截图/性能） | 模型 |
+| `/resolving-merge-conflicts` | 解决进行中的 git merge/rebase 冲突（独立工具） | 模型 |
 
 ### 两个循环与门
 
 ```
 外层循环（人控制）
-  THINK -> PRD -> DESIGN -> DOMAIN-MODEL -> TECH-DESIGN -> CRYSTALLIZE -> TEST
+  THINK -> PRD -> DESIGN -> DOMAIN-MODEL -> TECH-DESIGN ->（自动链）CRYSTALLIZE -> TEST
                                                    │
-                                            门 1: ASSERTION-SIGNOFF
+                                            门 1: ASSERTION-SIGNOFF（AI 自检 + 升级点）
                                                    │
                                                    ▼
 内层循环（agent 控制）
-  BUILD -> QA  （测试不绿就自修，不许改断言）
+  BUILD -> QA  （测试不绿就自修，不许改已锁定断言）
     ↑    │
     └────┘ 有缺陷 -> BUG ──────┘
                                                    │
@@ -53,7 +57,7 @@
                                          门 2: REFLECT（最终验收 + 知识沉淀）
 ```
 
-- **门 1 `/signoff --stage=assertion`**：人在实现前签核高风险断言（初衷、跨模块契约、expected 值、安全边界），其余 AI 自检。**不签不准 BUILD。**
+- **门 1 `/signoff --stage=assertion`**：断言签核默认 AI 全量自检（expected 值交叉验证 trace 到 PRD 锚点），升级点（初衷漂移、契约歧义、expected 推导不出、安全边界、范围决策）停下问人。**签核前不准 BUILD。**
 - **门 2 `/reflect`**：QA 全绿、bug 处理结束后，人做最终验收确认并沉淀经验。**不接受不合并。**
 
 ### 产物目录
@@ -104,9 +108,9 @@
 
 ### 核心规则
 
-1. **真理向下流**：PRD -> REQ -> 测试 -> 代码。代码永远不是真理来源。
+1. **真理向下流（构建期）**：story 内 PRD -> REQ -> 测试 -> 代码，spec 是权威，代码不是真理来源。**story 完成后**：代码是逻辑真值（当前行为），意图真值归全局文档（adr/、business-capabilities.md、CONTEXT.md），已完成 story 的 spec 是历史记录，不作为权威引用。
 2. **错误向上回**：在受影响的最高层修复；永远不要因为测试或规格错了就直接改代码。
-3. **断言归人**：AI 写测试脚手架；人签 expected 值。
+3. **规格锚点归人**：AI 写测试脚手架，expected 值从 PRD 锚点（§6.3/§7/§10.4）机械推导并标注 `EXPECTED-TRACE`；推导不出的升级给人。
 4. **实现者对测试只读**：任何触及业务测试文件的代码差异都会让本轮作废。
 5. **`/signoff --stage=assertion` 阻塞 BUILD；`/reflect` 阻塞合并**。
 6. **没有 REQ-ID 就没有测试；没有自动化测试的 REQ 不能进入 BUILD**：每个测试文件必须声明：
@@ -162,13 +166,26 @@
 /bootstrap-workflow
 ```
 
-### 更新 skill
+### 升级现有项目
 
-当 `loop-workflow` 插件更新后，重新安装：
+`loop-workflow` 插件更新后，**首选运行 `/bootstrap-workflow`**——检测到已存在 `.aiassist/` 时进入**升级模式**：自动刷新 pristine 模板文件、替换本附录、修复 CI 已知问题；customized 文件（如 `/reflect` 定制过的 checklists）保留并列出待手动合并。
+
+以下手动步骤作为**无插件 / 回退**方式：
+
+1. **重拷 skills**（插件机制已覆盖则跳过）：
 
 ```bash
 rm -rf .claude/skills/*
 cp -R <workflow-path>/skills/productivity/* .claude/skills/
 cp -R <workflow-path>/skills/engineering/* .claude/skills/
 cp -R <workflow-path>/skills/maintenance/* .claude/skills/
+cp -R <workflow-path>/skills/tools/* .claude/skills/
 ```
+
+2. **替换本附录**：用新版 `project-claude-appendix.md.template` 内容替换本附录段（`<!-- loop-workflow:begin/end -->` 之间）。
+3. **修 CI 契约门文件名**（如有 `.github/workflows/contract-gate.yml`）：`assertion-signoff.md` → `signoff.md`。
+4. **新 story 自动生效**：story 级模板在 workflow 内，新 story 创建时自动用新版；已存在 story 保持原样（live 或历史记录），不迁移。
+5. **全局 checklists 谨慎合并**（可选）：`.aiassist/global/checklists/*` 可能被 `/reflect` 定制过，勿整体覆盖。
+
+**验证**：`.claude/skills/` 与新版一致；本附录含"规格锚点归人 / 门 1 AI 自检 / 双真值"；CI 检查 `signoff.md`；新开一个 story 能跑通。
+<!-- loop-workflow:end -->
