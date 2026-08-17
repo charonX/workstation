@@ -37,7 +37,7 @@
 
 验收标准：
 1. import 无副作用：加载模块后注入的 send spy 零调用、无激活定时器（单元：直接 import + spy 注入）。
-2. 工厂返回完整接口集：上述 7 个实例成员 + 2 个模块导出均为函数/常量（单元）。
+2. 工厂返回完整接口集：上述 8 个实例成员 + 2 个模块导出均为函数/常量（单元；v4 修订：v3 补 recordSdkEvent 后计数 7→8）。
 3. `MAX_IPC_BYTES === 262144`（单元；§10.4-7 锚点）。
 4. send 注入可用：onSessionEvent 触发转发 → spy 收到 `{type:"session-event", sessionKey, event}`（单元）。
 
