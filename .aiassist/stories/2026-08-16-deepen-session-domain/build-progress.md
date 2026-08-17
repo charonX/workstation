@@ -101,4 +101,75 @@ REQ 验收映射：REQ-AGENT-115 AC1/AC2/AC3/AC4 COVERED（单元直测 7/7）�
 AC5/AC6（三处驱动点接线 + 挂起→挂接 HTTP 全链路）→ Slice 3（既有
 sessionEvents/assistantConfirm 零改动回归即证）。
 
-**Slice 2: complete**
+**Slice 2: complete（689ba56，tests green 7/7，PRD alignment ALIGNED）**
+- 父代理独立验证：commit 仅 2 文件（新模块 + 本文件），零测试改动；7/7 亲跑复现。
+- PRD 对齐子代理：机械 diff 证实四函数体逐字节一致（唯二授权差异），实例隔离
+  直接证据在位；3 条观察（Set 去重/无 getSession 分支无独立用例、ASSERTIONS-SIGNED
+  统一现状）非缺口，留 /review。
+- Slice 2: refactor pass done（NO_CHANGES_NEEDED——与 Slice 1 同结论：逐字节搬运
+  slice 无安全重构面；3 项观察——Map 访问三处重复/HEARTBEAT_MS 每闭包声明/前向引用
+  注释——留 Slice 3 后或 /review --cover=code）。
+
+### Slice 3（2026-08-17，REQ-AGENT-117 + REQ-112 AC4/REQ-115 AC5-AC6 集成半）—— 路由瘦身 + server.js 依赖方向回正
+
+**路由瘦身**（`src/http/routes/agentSessions.js` 928 → **644 行**，wc -l 口径，
+≤650 硬上限达成）：旧副本全删——DEFAULT_PROVIDER/PROJECT_PREFIX_RE/IMAGE_MIME_TYPES/
+MAX_ATTACHMENTS/MAX_ATTACHMENT_BYTES 五常量；attachmentsError/uiGroupPrefixFor/
+projectIdOf/newUiSpaceKeyFor/projectMessagesFromJsonl/partText/normalizeLimit/
+paginateMessages/gitStateForSpace/pendingSseSubs/attachPendingSseSubs/peekSession/
+createSseSubscription/buildSessionConfig 十四函数。import 改向 sessionDomain.js
+（8 名：attachmentsError/buildSessionConfig/gitStateForSpace/newUiSpaceKeyFor/
+normalizeLimit/paginateMessages/projectIdOf/projectMessagesFromJsonl）；fs/path/
+subscribe/readGitBranch/pathUtils 五个仅被删函数使用的 import 移除（grep 逐个
+核验去留）。re-export 兼容面 1 名 `export { projectMessagesFromJsonl };` 保留
+（historyToolFilter 直调契约，REQ-117 AC2）。
+
+**handler 消费接线**（行为逐字节等价，唯一授权结构性改写点 = ADR-030 决策 4
+attach-or-pend 塌缩）：
+- `handlePostMessage`：签名加 context 第六参；`attachPendingSseSubs(spaceKey, svc)`
+  → `sseRegistryOf(context).attachPending(spaceKey, svc)`。
+- `handleGetEvents`：admission 编排（404/writeHead/flushHeaders/session-git 首帧）
+  留路由；订阅生命周期全经 registry——`createSubscription(res, spaceKey)` +
+  `registerPending(spaceKey, sub)` + `attachPending(spaceKey, peekAgentService(context))`
+  组合塌缩原「有句柄直接 attach / 无句柄挂起登记」两分支（有句柄 → attachPending
+  即挂接并清挂起集；无句柄 → no-op 留挂起——与原两分支逐态等价：svc null /
+  getSession null / 有句柄三态映射一致，detach 自清理路径不变）。
+- 新增 `sseRegistryOf(context)` fail-fast 取位（§10.4 未接线语义：抛
+  `Error("getSseRegistry 未接线")`）。
+
+**server.js 改向**（654 → 664 行，+10）：:26 import 拆为仅两 handler；
+新增 `services/sessionDomain.js`（buildSessionConfig）与
+`services/sessionSseRegistry.js`（createSseSubscriptionRegistry）两 import；
+registry 实例持有 = `_opcSseRegistryFactory` 惰性工厂同型家族（getSseRegistry
+闭包 + server 引用暴露，位置紧随 _opcSessionStoreFactory）；确认回调回投
+`attachPendingSseSubs(sessionKey, svc)` → `getSseRegistry().attachPending(...)`
+（buildSessionConfig 调用 :217 不动，import 改向后同名同语义）；onSessionCreated
+懒解析接线 `typeof === "function"` 守卫去除（模块 import 恒真 + registry 方法
+必然存在），直调 `getSseRegistry().attachPending(spaceKey, svc)`；context 袋
+（:542 区域 handleAgentSessions 袋）追加 `getSseRegistry: () =>
+server._opcSseRegistryFactory?.()`。注释引用「routes/agentSessions.
+attachPendingSseSubs」两处更新指向 services/sessionSseRegistry.js。
+
+**验证**：
+- dependencyDirection.test.js 4/4 转绿（AC1 双断言 + AC2 兼容面 + AC5 行数）。
+- 本 story 六直测文件 35/35 全绿。
+- 全量回归（`npm run test:unit`，含 rebuild:node）：**960 tests / 960 pass /
+  0 fail**（/tmp/slice3-full.log 末尾 ℹ 行）——停机条件 34 fail → ≤1 fail 达成
+  且更优：兄弟 story turn-event-pipeline 那 1 条 RED 已由并行会话同期修绿，
+  本切片零回归。
+
+#### PRD → 代码可追溯性
+
+| REQ / 锚点 | 内容 | 实现位置 | 测试载体 | 状态 |
+|---|---|---|---|---|
+| REQ-117 AC1 / §10.2 模块关系图 | 新模块不 import routes/；server.js 不从路由 import 领域函数 + 正向 import sessionDomain/sessionSseRegistry | server.js :26-28 import 面；sessionDomain.js/sessionSseRegistry.js import 面零 routes/ | dependencyDirection AC1 ×2 静态断言 | COVERED |
+| REQ-117 AC2 / §10.4 re-export 契约 | 路由存在 + 仅 re-export projectMessagesFromJsonl | agentSessions.js `export { projectMessagesFromJsonl };` | dependencyDirection AC2 + historyToolFilter 直调（全量回归绿） | COVERED |
+| REQ-117 AC3 | 路由源码无 sendCard/channelManager/cardRenderer | 瘦身后 grep 0 命中 | feishuReadonly 静态断言（全量回归绿） | COVERED |
+| REQ-117 AC4 / §6.1 全表 | HTTP/SSE 行为字节级不变 | handler 转发路径仅消费改向；唯一结构改写 = attach-or-pend 塌缩（ADR-030 授权） | 既有测试全量零改动全绿（960/960） | COVERED |
+| REQ-117 AC5 | 路由 ≤650 行（目标 ~600） | 实测 644 行 | dependencyDirection AC5 | COVERED |
+| REQ-112 AC4 | server.js 确认回调回投改从 sessionDomain import，「稍后处理」建句柄行为不变 | server.js notifyResult：buildSessionConfig import 自 sessionDomain.js | assistantConfirm E2E（全量回归绿） | COVERED |
+| REQ-115 AC5 | 三处驱动点接线：server.js ×2 直调实例 attachPending；路由 handlePostMessage 经 context.getSseRegistry() | server.js notifyResult + onSessionCreated；agentSessions.js handlePostMessage | sessionEvents/assistantConfirm/sessionMessage（全量回归绿） | COVERED |
+| REQ-115 AC6 / §6.3 块4 | 挂起→挂接全链路：events 先于首条消息 → 挂起登记 → POST 建句柄 → 下一轮回流起收流 | handleGetEvents registerPending + handlePostMessage attachPending | 既有 sessionEvents（REQ-AGENT-028 标准 5 语义，全量回归绿） | COVERED |
+| §10.4 context 袋契约 | getSseRegistry 注入 + 未接线 fail-fast | server.js :542 袋追加；agentSessions.js sseRegistryOf | 集成：全量回归（生产 server 恒提供，fail-fast 分支测试/headless 自建 context 才可达） | COVERED |
+
+**Slice 3: complete**

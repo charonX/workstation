@@ -23,7 +23,7 @@ import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
-import { handleAgentSessions, buildSessionConfig, attachPendingSseSubs, handleAgentLastMode } from "./routes/agentSessions.js";
+import { handleAgentSessions, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
 import { createImRouter } from "../services/channels/imRouter.js";
 import * as channelManager from "../services/channelManager.js";
@@ -34,6 +34,8 @@ import { createCardRenderer } from "../services/cardRenderer.js";
 import { createConfirmationService } from "../services/confirmationService.js";
 import { createPermissionBridge } from "../services/permissionBridge.js";
 import { createModeService } from "../services/modeService.js";
+import { buildSessionConfig } from "../services/sessionDomain.js";
+import { createSseSubscriptionRegistry } from "../services/sessionSseRegistry.js";
 import { executeToolCommand } from "../agent/toolAdapter.js";
 
 const activeServers = new Set();
@@ -183,6 +185,15 @@ export function startServer(options = {}) {
       // Slice 1（REQ-AGENT-027）：会话 REST 端点（/api/agent/sessions）惰性工厂
       // 暴露——handleRequest 经 server 引用取路由实例（与确认服务同型接线）。
       server._opcSessionStoreFactory = getSessionStore;
+      // ADR-030（REQ-AGENT-115）：SSE 订阅注册表 per-instance——随本 server 实例走
+      //（模块级全局消亡），惰性工厂同型接线。三处驱动点：确认回调回投（notifyResult）/
+      // 懒解析接线（onSessionCreated）/ 路由 context 袋 getSseRegistry。
+      let serverSseRegistry = null;
+      const getSseRegistry = () => {
+        if (!serverSseRegistry) serverSseRegistry = createSseSubscriptionRegistry();
+        return serverSseRegistry;
+      };
+      server._opcSseRegistryFactory = getSseRegistry;
       // Slice 8：确认服务（REQ-AGENT-016，b 解耦）——惰性创建（ADR-009：首次
       // confirm-request / 确认回调才开库）。挂起队列与 agent_sessions 同库
       // （tech-design 模块图：SQLite：agent_sessions / agent_confirmations）。
@@ -209,8 +220,8 @@ export function startServer(options = {}) {
               // 该空间建句柄（provider/key 与 handlePostMessage 同源构建），再注入
               // 结果——保证确认回调的结果经 SSE 流式回投可达（assistantConfirm E2E）。
               // 注：句柄可能已存在（getAgentService 启动时按 agent_sessions 水合既有
-              // 行——hydration 不挂接订阅），故 attachPendingSseSubs 无条件执行
-              // （无挂起订阅时为 no-op）。
+              // 行——hydration 不挂接订阅），故 attachPending 无条件执行
+              // （无挂起订阅时为 no-op，见 services/sessionSseRegistry.js）。
               if (!svc.getSession(sessionKey)) {
                 // Slice 2（REQ-AGENT-093/095，ADR-026）：按 agent_sessions 行装配
                 //（行值优先；NULL → 默认组合）——与会话消息路径同源。
@@ -223,7 +234,7 @@ export function startServer(options = {}) {
                   identity: cfg.identity,
                 });
               }
-              attachPendingSseSubs(sessionKey, svc);
+              getSseRegistry().attachPending(sessionKey, svc);
               svc.notifyResult(sessionKey, result);
             },
             sendCard: (payload) => channelManager.sendCard("feishu", payload),
@@ -363,12 +374,10 @@ export function startServer(options = {}) {
           // 启动/句柄未创建时，events 连接处于挂起注册表（此前仅 UI 发送路径
           // handlePostMessage 补挂接，飞书入站消息路径漏挂 → 新消息 SSE 增量不达 UI）。
           // 此刻 agent 服务已启动（routeToAgent 已 await 工厂），异步补挂接幂等
-          // （无挂起订阅时为 no-op，见 routes/agentSessions.attachPendingSseSubs）。
-          if (typeof attachPendingSseSubs === "function") {
-            getAgentService()
-              .then((svc) => attachPendingSseSubs(spaceKey, svc))
-              .catch(() => undefined);
-          }
+          // （无挂起订阅时为 no-op，见 services/sessionSseRegistry.js attachPending）。
+          getAgentService()
+            .then((svc) => getSseRegistry().attachPending(spaceKey, svc))
+            .catch(() => undefined);
           if (typeof session.onExecutionResult !== "function") {
             session.onExecutionResult = (result) => {
               const summaryPrompt = `请用不超过 200 字总结本次执行结果，直接输出总结：${JSON.stringify(result ?? {})}`;
@@ -550,6 +559,9 @@ async function handleRequest(req, res, server) {
           // agentService 注入同一实例——模式状态与 lastMode 持久化单点；会话
           // 未创建时直接走单例，创建后经 agentService setSessionMode 下发 IPC）。
           getModeService: () => server._opcModeServiceFactory?.(),
+          // ADR-030（REQ-AGENT-115）：SSE 订阅注册表注入（per-instance，随本 server
+          // 实例走）——handlePostMessage/handleGetEvents 经此消费挂起登记与补挂接。
+          getSseRegistry: () => server._opcSseRegistryFactory?.(),
         });
       }
       // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，

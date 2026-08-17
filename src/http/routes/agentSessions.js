@@ -65,18 +65,30 @@
 // 子序列严格有序 + 拼接一致；允许辅助事件交错）、12（300KB 明确越界 → 400，精确
 // 边界不额外断言）、16（孤儿组 projectName = null）、17（条目字段集
 // title/lastActiveAt/sessionRef + spaceKey；组内 lastActiveAt 倒序）。
+//
+// ADR-030（story 2026-08-16-deepen-session-domain）：会话领域逻辑已收编
+// services/sessionDomain.js（config 装配/投影分页/key 解析/附件规则/gitState）与
+// services/sessionSseRegistry.js（SSE 订阅注册表 per-instance）——本文件 = HTTP
+// 转发层 + admission 编排；仅 re-export projectMessagesFromJsonl 保既有测试导入面。
 
-import fs from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../db.js";
 import * as settingsService from "../../services/settingsService.js";
-import { subscribe } from "../../services/eventBus.js";
-import { readGitBranch } from "../../services/gitBranch.js";
-import { expandTilde, realpathBestEffort } from "../../services/pathUtils.js";
 import { AGENT_MODES } from "../../services/modeService.js";
+import {
+  attachmentsError,
+  buildSessionConfig,
+  gitStateForSpace,
+  newUiSpaceKeyFor,
+  normalizeLimit,
+  paginateMessages,
+  projectIdOf,
+  projectMessagesFromJsonl,
+} from "../../services/sessionDomain.js";
 
-const DEFAULT_PROVIDER = "deepseek";
+// re-export 兼容面 1 名（REQ-AGENT-117 AC2 / ADR-030 决策 4）：historyToolFilter
+// 既有测试动态 import 本模块直调此函数；其余领域导出名一律经 services 层取。
+export { projectMessagesFromJsonl };
 
 // 输入上限（signoff 裁决 12）：300KB 明确越界 → 400（sessionMessage.test.js 超限用例）。
 // 单位与 enforceSizeLimit 统一为「字符」：agentService 按 JSON.stringify(event).length
@@ -86,145 +98,10 @@ const DEFAULT_PROVIDER = "deepseek";
 // 此处仅越界兜底。
 const MAX_MESSAGE_CHARS = 256 * 1024;
 
-// 图片附件（REQ-AGENT-097 / PRD B6、§10.4 接口 4）：POST messages 扩展
-// {text, attachments:[{name, size, mimeType, kind:"image", path}]}（≤10）。
-// 白名单 = PRD §7（jpeg/png/gif/webp/bmp/heic/heif，SVG 拒收）；单图 ≤10MB
-// （API 硬边界，§7 E10）；path 存在性路由层校验（§10.4 接口 4；worker 侧读取
-// 失败——存在但不可读（权限/TCC）——另有 E8 attachment-error 事件，见 worker）。
-// 字节零转发：路由层只校验元数据，不读文件内容（字节不出 worker，§10.1）。
-const IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "image/bmp",
-  "image/heic",
-  "image/heif",
-]);
-const MAX_ATTACHMENTS = 10;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-
-// 附件校验（signoff 新契约点 E-ATTACH-TYPE/COUNT/SIZE/PATH；校验顺序 = 类型白名单
-// → 数量 → 大小 → path 存在性——四步按序短路，first-fail 语义）。合法 →
-// undefined；非法 → { code, message }。
-function attachmentsError(attachments) {
-  if (attachments.some((att) => typeof att?.mimeType !== "string" || !IMAGE_MIME_TYPES.has(att.mimeType))) {
-    return { code: "E-ATTACH-TYPE", message: "仅支持图片（jpeg/png/gif/webp/bmp/heic/heif）" };
-  }
-  if (attachments.length > MAX_ATTACHMENTS) {
-    return { code: "E-ATTACH-COUNT", message: `每条消息最多附加 ${MAX_ATTACHMENTS} 个文件` };
-  }
-  if (attachments.some((att) => typeof att?.size !== "number" || att.size > MAX_ATTACHMENT_BYTES)) {
-    return { code: "E-ATTACH-SIZE", message: "图片过大（单图 ≤10MB）" };
-  }
-  if (attachments.some((att) => typeof att?.path !== "string" || !fs.existsSync(att.path))) {
-    return { code: "E-ATTACH-PATH", message: "文件不存在" };
-  }
-  return undefined;
-}
-
-// —— 空间 key 纯函数（ADR-016 语法；Slice 2 分组列表复用）——
-// ui:project:<pid>:<sid> 的前缀/pid 解析共用同一模式（ui:copilot 无 pid 段）。
-const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
-
-// 从既有 ui:* 空间 key 解析分组前缀：ui:copilot:* → "ui:copilot:"；
-// ui:project:<pid>:* → "ui:project:<pid>:"；非 ui 空间 → undefined。
-export function uiGroupPrefixFor(spaceKey) {
-  const key = String(spaceKey ?? "");
-  if (key.startsWith("ui:copilot:")) return "ui:copilot:";
-  const m = PROJECT_PREFIX_RE.exec(key);
-  return m ? m[0] : undefined;
-}
-
-// ui:project:<pid>:<sid> → <pid>；其他空间 key → undefined。
-function projectIdOf(spaceKey) {
-  const m = PROJECT_PREFIX_RE.exec(String(spaceKey ?? ""));
-  return m ? m[1] : undefined;
-}
-
-// UI 空间 reset 新 key：同分组前缀 + 新 sessionId（F4：不触发世代机制）。
-export function newUiSpaceKeyFor(spaceKey) {
-  const prefix = uiGroupPrefixFor(spaceKey);
-  return prefix ? `${prefix}${randomUUID()}` : undefined;
-}
-
-// —— JSONL 历史投影（B1：平台侧不复制全文，运行时真相 = PI JSONL）——
-// 兼容两种 message 行形态（同构）：PI SessionManager 与平台内存内核轻量记录
-// 均写 { type:"message", id, timestamp, message: { role, content } }——
-// content 为文本段数组（{type:"text",text}）或纯字符串。非 message 行（session 头/
-// 事件/compaction 等）跳过；单行损坏跳过（不阻断其余历史）；文件缺失 → 空数组。
-export function projectMessagesFromJsonl(sessionRef) {
-  let raw;
-  try {
-    raw = fs.readFileSync(sessionRef, "utf8");
-  } catch {
-    return [];
-  }
-  const messages = [];
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (entry?.type !== "message" || !entry.message || typeof entry.message.role !== "string") continue;
-    // BUG-009：工具不落历史（REQ-AGENT-054 / PRD B8「工具块仅实时呈现不落历史」）。
-    // 修复前：role:"toolResult" 行原样投影 → 原始工具输出以纯文本气泡漏进历史
-    // （生产实锤 2026-08-10：重开会话后 bash ls 输出/project_list JSON 裸露）；
-    // 只含 thinking/toolCall（无 text 段）的 assistant 行投影为空文本气泡。
-    // 历史 = 对话文本：只投影 user/assistant，且空文本行（纯工具调用载体）剔除。
-    const role = entry.message.role;
-    if (role !== "user" && role !== "assistant") continue;
-    const content = entry.message.content;
-    let text = "";
-    if (typeof content === "string") {
-      text = content;
-    } else if (Array.isArray(content)) {
-      text = content.map(partText).join("");
-    }
-    if (text.trim() === "") continue;
-    messages.push({
-      messageId: String(entry.id ?? ""),
-      role,
-      createdAt: typeof entry.timestamp === "string" ? entry.timestamp : "",
-      text,
-    });
-  }
-  return messages;
-}
-
-// 文本段归一化：纯字符串原样；{ type:"text", text } 取 text；image 块 → 附件名
-// 标记（REQ-AGENT-097：历史投影含附件名，如 [图片: tiny.png]——base64 数据不投影）；
-// 其余 → ""。
-function partText(part) {
-  if (typeof part === "string") return part;
-  if (typeof part?.text === "string") return part.text;
-  if (part?.type === "image") {
-    return typeof part?.name === "string" && part.name !== "" ? `[图片: ${part.name}]` : "[图片]";
-  }
-  return "";
-}
-
-// limit 归一化（signoff 裁决 5）：0/负数/NaN/非整数 → 默认 100。
-function normalizeLimit(limit) {
-  return Number.isInteger(limit) && limit > 0 ? limit : 100;
-}
-
-// 历史分页窗口（REQ-AGENT-029 标准 4 / signoff 裁决 5）：默认取最新 limit 条、
-// 数组时间升序返回（JSONL 顺序即时间序，调用方保证）；before 游标 = messageId，
-// 返回严格早于游标的窗口；游标不在数组中 → 视为无游标（最新窗口）；limit 非法
-// （0/负数/NaN/非数字）→ 默认 100。
-export function paginateMessages(messages, { limit = 100, before } = {}) {
-  const size = normalizeLimit(limit);
-  let window = messages;
-  if (typeof before === "string" && before !== "") {
-    const idx = messages.findIndex((m) => m.messageId === before);
-    if (idx !== -1) window = messages.slice(0, idx);
-  }
-  return window.slice(-size);
-}
+// 附件规则（attachmentsError + IMAGE_MIME_TYPES/MAX_ATTACHMENTS/MAX_ATTACHMENT_BYTES）、
+// 空间 key 解析（uiGroupPrefixFor/projectIdOf/newUiSpaceKeyFor + PROJECT_PREFIX_RE）、
+// 历史投影/分页（projectMessagesFromJsonl/partText/normalizeLimit/paginateMessages）
+// 已逐字节收编 services/sessionDomain.js（ADR-030 决策 1）——本文件经 import 消费。
 
 // —— HTTP 分发（server.js resource="agent"、subPath[0]="sessions" 挂接）——
 
@@ -249,7 +126,7 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
   if (tail.length === 1 && tail[0] === "messages") {
     if (req.method === "GET") return handleGetMessages(req, res, spaceKey, store);
-    if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, getAgentService);
+    if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, getAgentService, context);
     return notFound(res);
   }
 
@@ -449,7 +326,7 @@ function isOrphanSpace(spaceKey) {
 // E-ATTACH-* 先于文本——signoff 新契约点；文本空/超限）→ 404（会话不存在）→
 // 403（只读空间属性，先于 409，裁决 2）→ 409（孤儿空间，空间属性先于 agent
 // 配置）→ 409（agent 未配置）。
-async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
+async function handlePostMessage(res, spaceKey, body, store, getAgentService, context) {
   // 附件（REQ-AGENT-097）：可选数组；存在时先于文本校验（纯图片消息允许空文本，
   // 附件错误码优先——imageAttachment.test.js 契约）。
   const attachments = Array.isArray(body?.attachments) && body.attachments.length > 0 ? body.attachments : undefined;
@@ -484,7 +361,8 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService) {
     identity: config.identity,
   });
   // SSE 挂起订阅挂接（会话句柄此刻已存在；此前打开的 events 连接从本轮回流事件起收流）。
-  attachPendingSseSubs(spaceKey, svc);
+  // ADR-030：注册表 per-instance，经 context 袋 getSseRegistry 注入（prd §10.4）。
+  sseRegistryOf(context).attachPending(spaceKey, svc);
   try {
     await svc.prompt(spaceKey, text, attachments);
   } catch {
@@ -693,62 +571,24 @@ export function handleAgentLastMode(req, res, body, context = {}) {
 
 // —— SSE 事件流（GET .../events，REQ-AGENT-028 标准 2/5/6，D4 流式 = SSE）——
 
-// Slice 8（REQ-AGENT-056/058）：会话 git 分支状态（主进程读取——项目目录边界一致，
-// 与图片白名单/项目空间装配同源）。项目空间 → projects.localPath → readGitBranch
-// （branch/detached/none 三态 + worktree）；通用/飞书/孤儿（项目已删）→ none。
-// 每次 SSE 连接建立（会话打开/切换/重连）补推当前态——SSE 只推增量不回溯，路由层
-// 补推保证 renderer 打开会话即达（不依赖 worker 存活与 createSession 推送时机）。
-function gitStateForSpace(spaceKey) {
-  const pid = projectIdOf(spaceKey);
-  if (!pid) return { state: "none" };
-  let localPath = "";
-  try {
-    const row = getDb().prepare("SELECT localPath FROM projects WHERE id = ?").get(pid);
-    localPath = typeof row?.localPath === "string" ? row.localPath : "";
-  } catch {
-    return { state: "none" };
-  }
-  if (localPath === "") return { state: "none" };
-  return readGitBranch(realpathBestEffort(path.resolve(expandTilde(localPath))));
+// SSE 注册表取位（ADR-030 §10.4 context 袋契约）：server.js 注入（_opcSseRegistryFactory
+// 惰性工厂同型）；未接线 → fail-fast 抛错（生产 server 恒提供，此分支仅在
+// 测试/headless 自建 context 时可达）。
+function sseRegistryOf(context) {
+  if (typeof context?.getSseRegistry !== "function") throw new Error("getSseRegistry 未接线");
+  return context.getSseRegistry();
 }
 
-// 挂起订阅注册表：spaceKey → Set<sub>。events 连接先于首条消息打开时，agentService
-// 会话句柄尚不存在（句柄由 handlePostMessage 的 createSession 创建）——先挂起，
-// 句柄创建后经 attachPendingSseSubs 补挂接。sub.detach 时自行从注册表移除。
-const pendingSseSubs = new Map();
-
-// 会话句柄创建后挂接挂起订阅（handlePostMessage 在 createSession 之后调用）：
-// 事件从下一轮起持续收流（SSE 只推增量、不做事件回溯，F2）。spaceKey 无挂起
-// 订阅时为 no-op（常态路径）。导出供 server.js 接线复用（确认回调建句柄后
-// 同型挂接——assistantConfirm「稍后处理」场景的流式回投）。
-export function attachPendingSseSubs(spaceKey, svc) {
-  const subs = pendingSseSubs.get(spaceKey);
-  if (!subs || subs.size === 0) return;
-  const session = peekSession(svc, spaceKey);
-  if (!session) return;
-  for (const sub of subs) sub.attach(session); // attach 不增删本集合 → 直接迭代
-  pendingSseSubs.delete(spaceKey);
-}
-
-// 会话句柄窥探（挂起订阅挂接 / events 既有句柄直接挂接共用）：服务未接线或句柄
-// 未创建 → null。getSession 为同步返回既有句柄，不触发惰性创建（ADR-009：打开
-// events 连接不启动 agent 子进程）。
-function peekSession(svc, spaceKey) {
-  return svc?.getSession ? svc.getSession(spaceKey) : null;
-}
-
-// GET .../events → SSE 流（text/event-stream；实现用 Node 原生 http：
-// writeHead + flushHeaders 首包即达 + write 逐帧推送）：
-// - 事件 = 会话句柄 "session-event" 原样转发（不增删字段；≤256KB 截断契约由
-//   agentService 源头 enforceSizeLimit 保证，本层不二次截断——confirmation-pending
-//   等非文本事件无 content/delta 载体，二次截断会丢字段）；
-// - 轮次边界 text_start 由本层宣告（imRouter stream_start 同型先例：worker 未映射
-//   PI turn_start/turn_end，边界由触发层宣告）：每轮首个文本事件（text_delta /
-//   text_end）前补发 text_start，text_end 后重置——UI 渲染层据此开新气泡；
-// - 心跳 = 15s 注释帧（": keep-alive"，裁决 11 允许辅助事件交错；测试客户端解析
-//   跳过空 data 帧）；
-// - 客户端断开（res close/error）→ 摘除监听 + 清心跳，服务不崩；重连可再建
-//   （REQ-AGENT-028 标准 5 端点侧语义）；会话不存在 → 404（tech-design 契约表）。
+// GET .../events → SSE 流（text/event-stream；Node 原生 http：writeHead +
+// flushHeaders 首包即达 + write 逐帧推送）。admission 编排留路由（ADR-030 决策 4）：
+// 404 检查 → writeHead/flushHeaders → registry.createSubscription → session-git 首帧
+// 补推（Slice 8 REQ-AGENT-058：SSE 只推增量不回溯，连接建立即达，不依赖 worker 存活）
+// → registerPending + attachPending 组合塌缩「有句柄直接挂接 / 无句柄挂起登记」两分支
+//（有句柄 → attachPending 即挂接并清挂起集；无句柄 → no-op，留挂起集等首条消息建句柄
+// 后补挂接——ADR-030 授权的本 story 唯一结构性改写点）。peekAgentService 同步窥探，
+// 不触发惰性启动（ADR-009：打开 events 连接不启动 agent 子进程）；会话不存在 → 404。
+// 订阅生命周期（事件转发/轮次边界 text_start 宣告/15s 心跳/confirmation-pending 过滤/
+// 断开清理）逐字节收编于 services/sessionSseRegistry.js（端点契约见该模块头注释）。
 function handleGetEvents(res, spaceKey, store, context) {
   const row = store.get(spaceKey);
   if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
@@ -760,140 +600,16 @@ function handleGetEvents(res, spaceKey, store, context) {
   });
   res.flushHeaders(); // 首包立即送达（fetch 依赖头部先到达才 resolve）
 
-  const sub = createSseSubscription(res, spaceKey);
+  const registry = sseRegistryOf(context);
+  const sub = registry.createSubscription(res, spaceKey);
 
-  // Slice 8（REQ-AGENT-058）：git 分支状态随会话打开/切换推送（SSE 连接建立即达；
-  // renderer 切会话 = 新连接 → 即时收到；不依赖 worker 存活——打开会话未发消息时
-  // 也可见，056 标准 3/6）。幂等：与 agentService createSession 推送同源同形。
+  // session-git 首帧补推（REQ-AGENT-058；幂等：与 agentService createSession 推送同源同形）。
   sub.pushFrame({ type: "session-git", ...gitStateForSpace(spaceKey) });
 
-  // 既有句柄直接挂接（重连/续流场景：会话已存在，事件不丢）；否则挂起等待
-  // 首条消息创建句柄。peekAgentService 同步窥探（未创建 → null），不触发惰性
-  // 启动（ADR-009：打开 events 连接不启动 agent 子进程）。
-  const svc = peekAgentService(context);
-  const existing = peekSession(svc, spaceKey);
-  if (existing) {
-    sub.attach(existing);
-  } else {
-    let subs = pendingSseSubs.get(spaceKey);
-    if (!subs) {
-      subs = new Set();
-      pendingSseSubs.set(spaceKey, subs);
-    }
-    subs.add(sub);
-  }
-}
-
-// SSE 订阅构造（挂起/挂接两用）：连接状态 + 事件转发 + 轮次边界宣告 + 心跳 +
-// 断开清理收敛一处；对调用方仅暴露 attach/detach 两个动作。行为语义见
-// handleGetEvents 头注释（端点契约）。
-function createSseSubscription(res, spaceKey) {
-  const HEARTBEAT_MS = 15 * 1000;
-  let session = null;
-  let attached = false;
-  let detached = false;
-  let textStarted = false; // 当前轮次是否已宣告 text_start（text_end 后重置）
-  let heartbeat = null;
-
-  const writeFrame = (event) => {
-    try {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    } catch {
-      sub.detach(); // 写失败（连接已死）→ 摘除，服务不崩
-    }
-  };
-
-  // Slice 4（REQ-AGENT-030）：confirmation-pending 事件通道——confirmationService
-  // 对 ui:* 空间新建挂起行发布（eventBus，按空间前缀分流），本连接按 spaceKey
-  // 过滤转发（字段 = 裁决 11：confirmId/operation/description；sessionKey 仅订阅
-  // 侧过滤用，不出现在事件帧）。与 handle 事件互不干扰（confirmation-pending
-  // 非文本事件，不参与轮次边界宣告）；SSE 只推增量（事件发布时连接不在 → 丢失，
-  // 渲染层以 GET /api/agent/confirmations 全量对齐——F3「卡片留历史」数据源）。
-  const unsubscribePending = subscribe("confirmation-pending", (payload) => {
-    if (detached || !payload || payload.sessionKey !== spaceKey) return;
-    const { sessionKey: _sessionKey, ...pending } = payload;
-    writeFrame({ type: "confirmation-pending", ...pending });
-  });
-
-  const onEvent = (ev) => {
-    if (detached || !ev || typeof ev.type !== "string") return;
-    if (ev.type === "text_start") {
-      textStarted = true;
-    } else if (!textStarted && (ev.type === "text_delta" || ev.type === "text_end")) {
-      // 轮次边界宣告：首个文本事件前补发 text_start（裁决 11 子序列头）。
-      textStarted = true;
-      writeFrame({ type: "text_start" });
-    }
-    if (ev.type === "text_end") textStarted = false; // 轮次结束，下一轮重新宣告
-    writeFrame(ev);
-  };
-
-  const sub = {
-    attach(s) {
-      if (detached) return;
-      session = s;
-      attached = true;
-      session.on("session-event", onEvent);
-    },
-    // Slice 8（REQ-AGENT-058）：路由层补推帧（git 分支状态随连接建立推送；
-    // 写失败 → detach，与心跳同一容错语义）。
-    pushFrame: (ev) => writeFrame(ev),
-    detach() {
-      if (detached) return;
-      detached = true;
-      unsubscribePending(); // 摘除 confirmation-pending 订阅（eventBus 回调先查 detached，幂等）
-      if (heartbeat) clearInterval(heartbeat);
-      if (attached && session) session.off("session-event", onEvent);
-      const subs = pendingSseSubs.get(spaceKey);
-      if (subs) {
-        subs.delete(sub);
-        if (subs.size === 0) pendingSseSubs.delete(spaceKey);
-      }
-      try {
-        res.end();
-      } catch {
-        // 响应已结束/已销毁：忽略。
-      }
-    },
-  };
-
-  res.on("close", () => sub.detach());
-  res.on("error", () => sub.detach());
-  heartbeat = setInterval(() => {
-    if (detached) return;
-    try {
-      res.write(": keep-alive\n\n");
-    } catch {
-      sub.detach();
-    }
-  }, HEARTBEAT_MS);
-  heartbeat.unref?.(); // 心跳不阻塞进程退出（node --test 生命周期）
-
-  return sub;
-}
-
-// —— 会话配置（provider/key/identity，一次性注入语义，key 明文不落盘）——
-// 导出供 server.js 接线复用（确认回调回投时会话句柄缺失需按空间建句柄——
-// 与 handlePostMessage 同源构建，避免双源漂移）。
-// REQ-AGENT-090 形态升级后：settings.agent 为 providers 数组 + defaultModel 指针。
-// Slice 2（REQ-AGENT-093/095，ADR-026）：按 agent_sessions 行读取 provider/model
-// 装配（行值优先；NULL → 默认组合；条目已删 → 回落默认 E12）——与 agentService
-// 水合/懒恢复同源（settingsService.resolveSessionModelConfig 单点解析）。无参调用
-//（旧接线/无行）→ 默认组合（行为不变）。
-export function buildSessionConfig(spaceKey, store) {
-  let row;
-  if (typeof spaceKey === "string" && spaceKey !== "" && store?.get) {
-    row = store.get(spaceKey);
-  }
-  const resolved = settingsService.resolveSessionModelConfig(row?.provider, row?.model);
-  const provider =
-    typeof resolved.provider === "string" && resolved.provider !== "" ? resolved.provider : DEFAULT_PROVIDER;
-  return {
-    provider,
-    model: resolved.model,
-    apiKey: settingsService.entryApiKey(resolved.entry),
-    identity: resolved.identity,
-  };
+  // 挂起登记 + 既有句柄补挂接（重连/续流场景：会话已存在 → attachPending 即挂接，
+  // 事件不丢；否则留挂起集等首条消息建句柄）。
+  registry.registerPending(spaceKey, sub);
+  registry.attachPending(spaceKey, peekAgentService(context));
 }
 
 function decodeParam(value) {
