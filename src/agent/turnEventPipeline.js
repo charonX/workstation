@@ -40,31 +40,39 @@ const PENDING_TEXT_END_FALLBACK_MS = 5000;
 // 截断单真源（ADR-029 决策 5，人拍板 Q2）：worker 强实现成为唯一实现，主进程
 // agentService 三调用点（emitErrorEvent / inMemory runTurn / 子进程消息回传）
 // import 本函数。
+// 文本载体截断（content/delta 共用）：slice 到 MAX_IPC_BYTES − 256 预算内 + truncated 标记。
+function truncateTextCarrier(out, carrier) {
+  out[carrier] = out[carrier].slice(0, MAX_IPC_BYTES - 256);
+  out.truncated = true;
+}
+
+// 工具事件数据载体截断（input=PI args / output=PI result）：迭代收紧保证出站 JSON
+// 恒 ≤ MAX_IPC_BYTES。JSON 序列化转义（引号/控制字符 → \uXXXX）可能使截断后仍超限
+// （旧主进程 enforceSizeLimit 对 tool 事件无数据载体分支，超限会整条降级丢契约字段）。
+function shrinkToolCarrier(out, carrier) {
+  const value = out[carrier];
+  let text = typeof value === "string" ? value : JSON.stringify(value);
+  while (JSON.stringify({ ...out, [carrier]: text }).length > MAX_IPC_BYTES && text.length > 1) {
+    text = text.slice(0, Math.floor(text.length / 2));
+  }
+  out[carrier] = text;
+  out.truncated = true;
+}
+
 export function limitSize(event) {
   const size = JSON.stringify(event).length;
   if (size <= MAX_IPC_BYTES) return event;
   const out = { ...event };
   if (typeof out.content === "string") {
-    out.content = out.content.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
+    truncateTextCarrier(out, "content");
   } else if (typeof out.delta === "string") {
-    out.delta = out.delta.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
+    truncateTextCarrier(out, "delta");
   } else if (out.input !== undefined || out.output !== undefined) {
     // 工具事件数据载体（input=PI args / output=PI result）超限 → 文本化截断 +
     // truncated 标记（renderer 以文本展示输出，ToolCallBlock 语义一致），保留
     // 契约字段 toolCallId/name/status/isError——不整条降级为 {type, truncated}
-    // （否则渲染层无法关联工具块）。JSON 序列化转义（引号/控制字符 → \uXXXX）
-    // 可能使截断后仍超限（旧主进程 enforceSizeLimit 对 tool 事件无数据载体分支，
-    // 超限会整条降级丢契约字段）→ 迭代收紧保证出站 JSON 恒 ≤ MAX_IPC_BYTES。
-    const carrier = out.input !== undefined ? "input" : "output";
-    const value = out[carrier];
-    let text = typeof value === "string" ? value : JSON.stringify(value);
-    while (JSON.stringify({ ...out, [carrier]: text }).length > MAX_IPC_BYTES && text.length > 1) {
-      text = text.slice(0, Math.floor(text.length / 2));
-    }
-    out[carrier] = text;
-    out.truncated = true;
+    // （否则渲染层无法关联工具块）。
+    shrinkToolCarrier(out, out.input !== undefined ? "input" : "output");
   } else {
     return { type: event.type, truncated: true };
   }
@@ -180,22 +188,27 @@ export function createTurnEventPipeline({
   registerSessionScopedMap(pendingTextEnds);
   registerSessionCleanup(clearPendingTextEnds); // 定时器 clear 必须先于 map.delete
 
-  function clearPendingTextEnds(sessionKey) {
+  // 取出该会话 pending text_end 列表并做清理（清定时器 + 删表项）——clearPendingTextEnds
+  // 与 flushPendingTextEnds 共用，免两份手抄「清定时器 + map.delete」。
+  function drainPendingTextEnds(sessionKey) {
     const list = pendingTextEnds.get(sessionKey);
-    if (!list) return;
-    for (const pending of list) clearTimeout(pending.timer);
+    if (!list) return [];
     pendingTextEnds.delete(sessionKey);
+    for (const pending of list) clearTimeout(pending.timer);
+    return list;
+  }
+
+  function clearPendingTextEnds(sessionKey) {
+    drainPendingTextEnds(sessionKey); // 定时器 clear + 表项删除；无出站
   }
 
   // 冲刷该会话的 pending text_end（正常路径 = message_end 到达；兜底 = 定时器超时）。
   // usage 缺失（兜底路径）→ meta 仅 durationMs（renderer 显示「-」）。
   function flushPendingTextEnds(sessionKey, usage) {
-    const list = pendingTextEnds.get(sessionKey);
-    if (!list || list.length === 0) return;
-    pendingTextEnds.delete(sessionKey);
+    const list = drainPendingTextEnds(sessionKey);
+    if (list.length === 0) return;
     turnStartedAt.delete(sessionKey);
     for (const pending of list) {
-      clearTimeout(pending.timer);
       const meta = {};
       if (pending.startedAt !== undefined) meta.durationMs = Math.max(0, now() - pending.startedAt);
       if (usage?.input !== undefined) meta.tokensIn = usage.input;
@@ -207,57 +220,73 @@ export function createTurnEventPipeline({
     }
   }
 
+  // BUG-002 诊断（2026-08-09）：事件计数（text_delta/text_end/tool_execution）——
+  // prompt-result 日志实锤「LLM 生成了但事件链断」vs「模型空转无输出」。
+  function countTurnEvent(sessionKey, ev) {
+    const mappedType = ev?.assistantMessageEvent?.type ?? ev?.type;
+    if (mappedType !== "text_delta" && mappedType !== "text_end" && !(mappedType ?? "").startsWith("tool_execution")) {
+      return;
+    }
+    const c = turnEventCounts.get(sessionKey) ?? { delta: 0, end: 0, tool: 0 };
+    if (mappedType === "text_delta") c.delta += 1;
+    else if (mappedType === "text_end") c.end += 1;
+    else c.tool += 1;
+    turnEventCounts.set(sessionKey, c);
+  }
+
+  // 消息元数据（REQ-AGENT-057）：回合起点记录 + text_end 延迟转发（message_end
+  // 冲刷时统一转发，事件顺序与既有契约一致——text_delta 后 text_end）。
+  // 返回 true 表示 text_end 已入延迟队列（本分支不转发、不 touch）。
+  function maybeDelayTextEnd(sessionKey, ev) {
+    if (ev?.type !== "message_update" || !ev.assistantMessageEvent) return false;
+    const a = ev.assistantMessageEvent;
+    if ((a.type === "text_start" || a.type === "text_delta") && !turnStartedAt.has(sessionKey)) {
+      turnStartedAt.set(sessionKey, now());
+    }
+    if (a.type !== "text_end") return false;
+    const timer = setTimeout(() => flushPendingTextEnds(sessionKey, undefined), PENDING_TEXT_END_FALLBACK_MS);
+    timer.unref?.(); // 注入时钟返回数字 id 时（fake clock）可选链跳过
+    const list = pendingTextEnds.get(sessionKey) ?? [];
+    list.push({ content: a.content, startedAt: turnStartedAt.get(sessionKey), timer });
+    pendingTextEnds.set(sessionKey, list);
+    return true;
+  }
+
+  // message_end 处理：abort 合成（REQ-AGENT-091，BUG-010）+ 冲刷（usage 完备 → meta 三字段）。
+  function handleMessageEnd(sessionKey, ev) {
+    const msg = ev.message;
+    const hasPending = (pendingTextEnds.get(sessionKey) ?? []).length > 0;
+    if (msg?.stopReason === "aborted" && !hasPending) {
+      // abort 中断（stopReason=aborted）时流被掐断、SDK 不发 text_end → 若本轮
+      // text_end 缺失则合成收尾（content = 中断消息已生成文本——「已生成保留」语义），
+      // 否则 lastReplies 无值（prompt-result 丢 reply）且 UI streaming 永不复位
+      // （text_end 是回合收尾的唯一权威信号）。正常路径（text_end 已到、pending 非空）
+      // 不受影响——不合成。
+      const content = (msg.content ?? [])
+        .filter((c) => c?.type === "text")
+        .map((c) => c.text ?? "")
+        .join("");
+      const list = pendingTextEnds.get(sessionKey) ?? [];
+      list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer: undefined });
+      pendingTextEnds.set(sessionKey, list);
+      log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
+    }
+    // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
+    flushPendingTextEnds(sessionKey, ev.message?.usage);
+  }
+
   // 接口 1：onSessionEvent(sessionKey, ev)（forwardEvent 本体，worker.js:651 搬移）。
   // 输入 = PI SDK 事件形态（message_update{assistantMessageEvent} / message_end
   // {message} / tool_execution_*（toolName 字段））；未知 sessionKey 无守卫——
   // 事件照常计数/转发/延迟收尾/出站（review B3：消息乱序容忍 = 事件不丢失）。
+  // 阶段顺序（契约锁定）：计数 → text_end 延迟（提前 return）→ message_end 冲刷
+  // （提前 return）→ 映射出站（touch + limitSize + send）。
   function onSessionEvent(sessionKey, ev) {
-    // BUG-002 诊断（2026-08-09）：事件计数（text_delta/text_end/tool_execution）——
-    // prompt-result 日志实锤「LLM 生成了但事件链断」vs「模型空转无输出」。
-    const mappedType = ev?.assistantMessageEvent?.type ?? ev?.type;
-    if (mappedType === "text_delta" || mappedType === "text_end" || (mappedType ?? "").startsWith("tool_execution")) {
-      const c = turnEventCounts.get(sessionKey) ?? { delta: 0, end: 0, tool: 0 };
-      if (mappedType === "text_delta") c.delta += 1;
-      else if (mappedType === "text_end") c.end += 1;
-      else c.tool += 1;
-      turnEventCounts.set(sessionKey, c);
-    }
-    // 消息元数据（REQ-AGENT-057）：回合起点记录 + text_end 延迟转发（message_end
-    // 冲刷时统一转发，事件顺序与既有契约一致——text_delta 后 text_end）。
-    if (ev?.type === "message_update" && ev.assistantMessageEvent) {
-      const a = ev.assistantMessageEvent;
-      if ((a.type === "text_start" || a.type === "text_delta") && !turnStartedAt.has(sessionKey)) {
-        turnStartedAt.set(sessionKey, now());
-      }
-      if (a.type === "text_end") {
-        const timer = setTimeout(() => flushPendingTextEnds(sessionKey, undefined), PENDING_TEXT_END_FALLBACK_MS);
-        timer.unref?.(); // 注入时钟返回数字 id 时（fake clock）可选链跳过
-        const list = pendingTextEnds.get(sessionKey) ?? [];
-        list.push({ content: a.content, startedAt: turnStartedAt.get(sessionKey), timer });
-        pendingTextEnds.set(sessionKey, list);
-        return; // 不在此处转发（message_end 冲刷时统一转发）——延迟分支不 touch
-      }
-    }
+    countTurnEvent(sessionKey, ev);
+    if (maybeDelayTextEnd(sessionKey, ev)) return; // 延迟分支不转发、不 touch
     if (ev?.type === "message_end") {
-      // REQ-AGENT-091（BUG-010）：abort 中断（stopReason=aborted）时流被掐断、SDK 不发
-      // text_end → 若本轮 text_end 缺失则合成收尾（content = 中断消息已生成文本——
-      // 「已生成保留」语义），否则 lastReplies 无值（prompt-result 丢 reply）且 UI
-      // streaming 永不复位（text_end 是回合收尾的唯一权威信号）。正常路径（text_end
-      // 已到、pending 非空）不受影响——不合成。
-      const msg = ev.message;
-      const hasPending = (pendingTextEnds.get(sessionKey) ?? []).length > 0;
-      if (msg?.stopReason === "aborted" && !hasPending) {
-        const content = (msg.content ?? [])
-          .filter((c) => c?.type === "text")
-          .map((c) => c.text ?? "")
-          .join("");
-        const list = pendingTextEnds.get(sessionKey) ?? [];
-        list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer: undefined });
-        pendingTextEnds.set(sessionKey, list);
-        log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
-      }
-      // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
-      flushPendingTextEnds(sessionKey, ev.message?.usage);
+      handleMessageEnd(sessionKey, ev);
+      return; // message_end 不映射出站（mapToContractEvent 对 message_end 恒 null）
     }
     const mapped = mapToContractEvent(ev);
     if (!mapped) return;
@@ -266,7 +295,9 @@ export function createTurnEventPipeline({
     // 不清组冷却延迟淘汰标记（M1）；未知 sessionKey 照常调用（review B3：no-op
     // 由注入方内部承担）。
     touch(sessionKey);
-    if (mapped.type === "text_end") lastReplies.set(sessionKey, mapped.content);
+    // 注：mapped 恒为 text_delta / tool_execution_*——message_update 的 text_end 在
+    // maybeDelayTextEnd 已入延迟队列并 return，不落本段；lastReplies 只由
+    // flushPendingTextEnds 冲刷时更新（含 abort 合成路径）。
     send({ type: "session-event", sessionKey, event: limitSize(mapped) });
   }
 
@@ -286,10 +317,11 @@ export function createTurnEventPipeline({
   // 接口 4：takeTurnDiagnostics(sessionKey) → { turnStats: {delta, end, tool},
   // sdkStats }——取出即删（两计数 Map；人拍板 B）。缺省 {delta:0,end:0,tool:0} / {}。
   function takeTurnDiagnostics(sessionKey) {
+    const counts = turnEventCounts.get(sessionKey);
     const turnStats = {
-      delta: turnEventCounts.get(sessionKey)?.delta ?? 0,
-      end: turnEventCounts.get(sessionKey)?.end ?? 0,
-      tool: turnEventCounts.get(sessionKey)?.tool ?? 0,
+      delta: counts?.delta ?? 0,
+      end: counts?.end ?? 0,
+      tool: counts?.tool ?? 0,
     };
     turnEventCounts.delete(sessionKey);
     const sdkStats = sdkEventCounts.get(sessionKey) ?? {};
