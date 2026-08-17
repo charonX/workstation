@@ -9,7 +9,7 @@ intention: >-
 
 phase: BUG           # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 11    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 12    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
 completed: true
 completed_at: 2026-08-05
@@ -42,6 +42,7 @@ history:
   - {at: 2026-08-16, from: REFLECT, to: BUG, note: "BUG-009（code-defect，人拍板）：cardRenderer 把回合边界当消息边界——首个 text_end 即定型置 final，工具调用后第二段回复被 final 守卫丢弃（飞书只收到第一段）。回归测试先红（cardStream BUG-009 用例），修复方向：已定型后再来文本事件开新卡（每回合一卡，对齐桌面端 text_start 先例）"}
   - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-010（code-defect，人拍板）：sendCard 竞态窗口内容丢失——回填前更新携带 undefined cardId 被真实 adapter 跳过，回填只补 finalize 不补全量内容 → 短回合卡片正文冻结在首 delta（生产实锤「确实」「需要我」截断卡）。回归先红（cardStream BUG-010 用例），修复=回填时补发全量累计内容更新（H4 sequence 递增）。另：T3 中途裂开现象证据不足未立案，待复现日志"}
   - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-011（code-defect，人拍板）：同卡流式更新/定型 fire-and-forget 无顺序保证——finalize（PATCH settings）抢在在途尾部更新（PUT elements/content）之前落地 → streaming_mode 关闭 → 尾部更新被拒 → 卡片冻结半途（生产实锤：226 更新全派发、finalize 成功、卡片仅前缀）；失败经 recordWarning 静默、生产零日志。回归先红（sendCardSchema 挂起 PUT 断言 finalize 不派发），修复=adapter 按 cardId 串行化（每卡 promise 链，乱序 300317 一并消除）+ 更新耗尽补 console.error。全量 894/894"}
+  - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-012（code-defect，人拍板）：BUG-011 串行化引入排队追账——每个 delta 更新一次串行 RTT，后台跑完卡片仍逐字追 1-2 分钟；叠加 print_step=1/70ms 打字机。修复：同卡排队更新合并（content 全量累计，被覆盖者跳过 HTTP 零信息丢失；finalize 不合并、顺序保证不弱化）+ 链排空自清 + print_step 1→10（重签 2 条断言）。回归先红（wireOrder 实锤 seq2 落地）后绿；全量 895/895"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
