@@ -21,6 +21,11 @@
 // 必须符合 CardKit 更新配置接口 schema——PUT /cardkit/v1/cards/:card_id/settings，
 // settings 为 JSON 字符串（{ config: { streaming_mode: false, summary: { content } } }），
 // 带 sequence/uuid。修复前红（adapter 无 finalizeCard 方法）。
+//
+// BUG-011（code-defect）回归：同一张卡片的流式更新（PUT elements/content）与定型
+// （PATCH settings）必须按调用顺序落地飞书。修复前两者是 fire-and-forget 独立 HTTP
+// 调用，finalize 抢在在途尾部更新之前到达 → streaming_mode 关闭 → 尾部更新被拒 →
+// 卡片冻结在半途（生产实锤：226 次更新全派发、finalize 成功、卡片仅显示前缀）。
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -182,6 +187,59 @@ describe("BUG-004 层 1：finalizeCard 请求体符合 CardKit 更新配置接�
     assert.equal(settings.config?.summary?.content, "执行列表", "summary 应换为正文摘要");
     assert.equal(rec.body.sequence, 3, "应携带流式序号（H4 严格递增）");
     assert.equal(typeof rec.body.uuid, "string", "应携带幂等 uuid");
+  });
+});
+
+// —— BUG-011 层 1：同卡更新/定型的落地顺序（mock global.fetch，PUT 挂起可控）——
+describe("BUG-011 回归：同卡更新/定型按序落地，finalize 不抢跑在途更新（REQ-AGENT-019 标准 1/2）", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("在途 updateCardStream 未落地前，finalizeCard 不得发出 PATCH settings（修复前红：finalize 立即派发）", async () => {
+    const wireOrder = [];
+    let releaseUpdate;
+    const updateGate = new Promise((resolve) => {
+      releaseUpdate = resolve;
+    });
+    global.fetch = async (url, init) => {
+      const urlStr = String(url);
+      if (urlStr.includes("open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: "fake-tenant-token", expire: 7200 }), { status: 200 });
+      }
+      if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards") && urlStr.endsWith("/settings")) {
+        wireOrder.push("finalize");
+        return new Response(JSON.stringify({ code: 0, msg: "success", data: {} }), { status: 200 });
+      }
+      if (urlStr.includes("open.feishu.cn/open-apis/cardkit/v1/cards") && urlStr.includes("/elements/")) {
+        wireOrder.push("update");
+        await updateGate; // 模拟 HTTP 在途：更新未落地
+        return new Response(JSON.stringify({ code: 0, msg: "success", data: {} }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${urlStr}`);
+    };
+
+    const create = await loadAdapter();
+    const adapter = create({
+      domain: "https://open.feishu.cn",
+      credentials: { appId: "cli_test00000000000001", appSecret: "secret" },
+    });
+    await adapter.start();
+
+    const updatePromise = adapter.updateCardStream({ cardId: "card_x", content: "累计文本", sequence: 1 });
+    const finalizePromise = adapter.finalizeCard({ cardId: "card_x", summary: "摘要", sequence: 2 });
+
+    // 让两个调用的首个 fetch 都有机会发出（修复前 finalize 立即发出 PATCH → 红）。
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(wireOrder, ["update"], "在途更新未落地前 finalize 不得发出（否则 streaming_mode 先关、尾部更新被拒）");
+
+    releaseUpdate();
+    await updatePromise;
+    await finalizePromise;
+    assert.deepEqual(wireOrder, ["update", "finalize"], "定型须在末尾内容更新落地后发出");
   });
 });
 
