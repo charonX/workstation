@@ -106,6 +106,23 @@ describe("REQ-AGENT-114 gitStateForSpace 元数据投影（none 路径）", () =
     assert.deepEqual(domain.gitStateForSpace("ui:project:no-such-project:s1"), { state: "none" });
   });
 
+  it("AC4 localPath 空 / DB 异常 → {state:'none'}（none 四成因补全，PRD 对齐子代理缺口 1）", async () => {
+    const domain = await loadDomain();
+
+    // EXPECTED-TRACE: REQ-AGENT-114 AC4——行存在但 localPath 空串 → none
+    getDb()
+      .prepare("INSERT INTO projects (id, name, sourceType, localPath, updatedAt) VALUES (?, ?, ?, ?, ?)")
+      .run("p-nopath", "fixture", "local", "", "2026-08-17T00:00:00Z");
+    assert.deepEqual(domain.gitStateForSpace("ui:project:p-nopath:s1"), { state: "none" });
+
+    // EXPECTED-TRACE: REQ-AGENT-114 AC4——DB 异常（getDb 抛错）→ catch → none。
+    // DB_PATH 指向一个目录：better-sqlite3 无法以目录建库，getDb 必抛（确定性触发）。
+    closeDb();
+    process.env.DB_PATH = fs.mkdtempSync(path.join(workdir, "not-a-db-"));
+    assert.deepEqual(domain.gitStateForSpace("ui:project:p-git:s1"), { state: "none" });
+    closeDb();
+  });
+
   it("AC4 正分支直测：项目空间 + 真实 git 仓 → branch / detached（DB 读取路径钉住）", async () => {
     const domain = await loadDomain();
 
