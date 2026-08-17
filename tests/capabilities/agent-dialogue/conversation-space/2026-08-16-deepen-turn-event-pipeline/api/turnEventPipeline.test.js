@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-106, REQ-AGENT-107, REQ-AGENT-108, REQ-AGENT-109
-// REQ-VERSION: v1-hash:7452c3c1c3d87fbfbce1d33a1060f811bbbf6456984d222633b25df084b46856
+// REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -70,14 +70,19 @@ function makeHarness() {
   const clock = makeFakeClock();
   const sends = [];
   const logs = [];
+  const touches = [];
   const pipe = pipelineMod.createTurnEventPipeline({
     send: (m) => sends.push(m),
     log: (m) => logs.push(m),
+    // touch 注入钩子（review B2）：仅当事件实际映射出站时调用；恒 clearPending:false
+    // 语义由注入方（worker lifecycle.touch）承担——本文件断言「调用时机」，no-op
+    // 语义属注入方（sessionLifecycle 直测覆盖）。
+    touch: (key) => touches.push(key),
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
     now: clock.now,
   });
-  return { pipe, clock, sends, logs };
+  return { pipe, clock, sends, logs, touches };
 }
 
 const outbound = (sends, key) => sends.filter((m) => m.type === "session-event" && m.sessionKey === key);
@@ -91,8 +96,8 @@ describe("REQ-AGENT-106 turnEventPipeline 工厂模块——可 import 无副作
     assert.equal(typeof pipelineMod.limitSize, "function", "应导出 limitSize");
   });
 
-  it("AC2：工厂返回完整接口集（7 实例成员均为函数）", () => {
-    const { pipe } = makeHarness();
+  it("AC2：工厂返回完整接口集（7 实例成员均为函数）+ import 无副作用直接断言（零定时器/零出站）", () => {
+    const { pipe, clock, sends } = makeHarness();
     for (const name of [
       "onSessionEvent",
       "beginTurn",
@@ -104,6 +109,9 @@ describe("REQ-AGENT-106 turnEventPipeline 工厂模块——可 import 无副作
     ]) {
       assert.equal(typeof pipe[name], "function", `实例应提供 ${name}()（§10.4 接口 1-6）`);
     }
+    // AC1 无副作用子句显式化（review 修订）：工厂构造后无激活定时器、无出站。
+    assert.equal(clock.pendingCount(), 0, "工厂构造不应 arm 任何定时器");
+    assert.equal(sends.length, 0, "工厂构造不应有任何出站");
   });
 
   it("AC4：注入 send 可用——转发事件经 send 出站 {type:'session-event', sessionKey, event}", () => {
@@ -203,10 +211,27 @@ describe("REQ-AGENT-107 事件转发与延迟 text_end（含计数与清时机�
     pipe.beginTurn(key); // 幂等：已空时再清不抛
   });
 
-  it("AC6：未知 sessionKey → 静默 no-op（send 零调用、不抛）", () => {
-    const { pipe, sends } = makeHarness();
+  it("AC6：未知 sessionKey → 事件照常转发出站、touch 被调用（仅注入方内部 no-op，review B3）", () => {
+    const { pipe, sends, touches } = makeHarness();
     assert.doesNotThrow(() => pipe.onSessionEvent("ghost-key", evDelta("x")));
-    assert.equal(sends.length, 0, "未知 key 不应有任何出站");
+    const out = outbound(sends, "ghost-key");
+    assert.equal(out.length, 1, "未知 key 的事件应照常出站（消息乱序容忍 = 事件不丢失）");
+    assert.deepEqual(out[0].event, { type: "text_delta", delta: "x" }, "事件形状不变");
+    assert.deepEqual(touches, ["ghost-key"], "touch 应被调用（no-op 由注入方承担）");
+  });
+
+  it("B2：touch 调用时机——事件实际映射出站时调；延迟 text_end 分支/message_end 不调", () => {
+    const { pipe, touches } = makeHarness();
+    const key = "k1";
+    // 出站事件（text_delta）→ touch
+    pipe.onSessionEvent(key, evDelta("a"));
+    assert.deepEqual(touches, [key], "text_delta 出站应触发 touch");
+    // text_end 到达（延迟分支，不入出站）→ 不 touch
+    pipe.onSessionEvent(key, evTextEnd("内容"));
+    assert.deepEqual(touches, [key], "text_end 延迟分支不应触发 touch");
+    // message_end（映射为 null）→ 不 touch
+    pipe.onSessionEvent(key, evMessageEnd({ usage: {} }));
+    assert.deepEqual(touches, [key], "message_end 不应触发 touch");
   });
 });
 

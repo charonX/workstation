@@ -1,25 +1,31 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-109
-// REQ-VERSION: v1-hash:7452c3c1c3d87fbfbce1d33a1060f811bbbf6456984d222633b25df084b46856
+// REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-// REQ-AGENT-109 AC4：reset 丢排队操作（人拍板 A）+ E-AGENT-RESET 失败回执（人拍板 1）。
+// REQ-AGENT-109 AC4（v2，review B1 撤销 E-AGENT-RESET）：reset 语义保持。
+//
+// 实证背景（review B1，2026-08-17）：worker IPC 为**全局串行队列**
+// （messageQueue.enqueue(() => handleMessage(msg))，worker.js:1663-1697；prompt 与
+// reset-session 都走此队，仅 ping/confirm-ack/permission-decision/stop-session 带外）
+// → reset-session 永远排在在途 prompt 之后处理，会话队列深度恒 ≤1——「排队中、
+// 未开始的 prompt 被 reset 丢弃」场景**不存在**，E-AGENT-RESET 回执契约已撤销。
+//
+// 本测试断言 reset 语义保持 + 注册表 reset 清理（clearSessionState 接入
+// handleResetSession）后会话流无回归：
+//   ① prompt1 流式中 store.reset(key) → prompt1 照常按序完成（reset 不掐断在途
+//      生成——串行队列保证 reset-session 排在 prompt 之后处理）；
+//   ② reset 后会话重建（新 session-config）→ 后续 prompt 正常。
+// 注册表 reset 清理的单元面（清计数/toolContexts/sessionQueues 等登记项）由
+// turnEventPipeline.test.js AC1-3 覆盖。
 //
 // seam：真实 worker（createAgentService，NODE_ENV=test 自动 FAUX）+ 显式 sessionStore
 //   （createSessionStore，dbPath/sessionDir 隔离）——store.reset(key) 走生产路径：
-//   sessionStore.reset → agentService handleReset → IPC reset-session → worker
-//   handleResetSession → clearSessionState（sessionQueues 登记项删除）→ 排队中的
-//   prompt 收 prompt-result {ok:false, error:{code:"E-AGENT-RESET"}}。
-//
-// 实证背景（test-author）：worker enqueueSession 的 promise 链不因 Map delete 取消
-//   （回调照跑）→ 被丢弃的排队 fn 必须显式回执；主进程 pendingPrompts 无超时兜底，
-//   不回执 = 永久悬挂。E-AGENT-RESET 语义：不发 session-error（取消不是会话错误）。
-//
-// 时序：IPC FIFO 保证 prompt2 先于 reset-session 到达 worker（排队 → 再清）。
-//   FAUX TPS 调慢（OPC_AGENT_FAUX_TPS）制造 prompt1 流式窗口（sessionStop.test.js
-//   同款 seam，先例 2026-08-12-pi-mcp-plugin）。
+//   sessionStore.reset → agentService handleReset → IPC reset-session（同队列按序）
+//   → worker handleResetSession → clearSessionState → 新 session-config 重建。
+//   FAUX TPS 调慢制造「流式中 reset」窗口（sessionStop.test.js 同款 seam 先例）。
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -41,18 +47,18 @@ async function waitUntil(predicate, { timeout = 10000, interval = 100, label = "
 }
 
 // 长探针：FAUX 回声 = system prompt + 消息序列化（探针文本进回声）——撑出秒级
-// 流式窗口（sessionStop.test.js PROBE 同型；TPS=60 → ~700 字符 ≈ 12s，留足窗口）。
-const LONG_PROBE = `重置排队探针。${"长上下文填充段。".repeat(40)}`;
-const QUEUED_MARK = "QUEUED-AFTER-RESET-探针文本";
+// 流式窗口（sessionStop.test.js PROBE 同型；TPS=60 → ~700 字符 ≈ 12s）。
+const LONG_PROBE = `重置保持探针。${"长上下文填充段。".repeat(40)}`;
+const AFTER_RESET_MARK = "AFTER-RESET-重建探针文本";
 
-describe("REQ-AGENT-109 AC4 reset 丢排队操作 + E-AGENT-RESET 回执（worker 集成）", () => {
+describe("REQ-AGENT-109 AC4 reset 语义保持（worker 集成，v2）", () => {
   let workdir;
   let svc;
   let store;
 
   beforeEach(() => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-reset-drop-"));
-    process.env.OPC_AGENT_FAUX_TPS = "60"; // 慢速流式制造排队窗口
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-reset-keep-"));
+    process.env.OPC_AGENT_FAUX_TPS = "60"; // 慢速流式制造「流式中 reset」窗口
     assert.ok(agentMod, "seam 未就绪：src/services/agentService.js");
     assert.ok(storeMod, "seam 未就绪：src/services/sessionStore.js");
     store = storeMod.createSessionStore({
@@ -72,13 +78,13 @@ describe("REQ-AGENT-109 AC4 reset 丢排队操作 + E-AGENT-RESET 回执（worke
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("AC4：prompt1 流式中 reset → prompt2（排队中）收 E-AGENT-RESET 失败回执、无 LLM 事件、无 session-error", async () => {
+  it("AC4：流式中 reset → prompt1 按序完成 + 会话重建后新 prompt 正常（注册表清理接入无回归）", async () => {
     await svc.start();
     const ready = [];
     svc.on("ready", () => ready.push(Date.now()));
     await waitUntil(() => ready.length === 1, { label: "worker ready" });
 
-    const key = "ui:copilot:reset-drop";
+    const key = "ui:copilot:reset-keep";
     const events = [];
     const session = await svc.createSession({ spaceKey: key, provider: "deepseek", apiKey: "sk-1" });
     session.on("session-event", (e) => events.push(e));
@@ -87,31 +93,24 @@ describe("REQ-AGENT-109 AC4 reset 丢排队操作 + E-AGENT-RESET 回执（worke
     const p1 = svc.prompt(key, LONG_PROBE);
     await waitUntil(() => events.some((e) => e.type === "text_delta"), { label: "prompt1 流式开始" });
 
-    // prompt2：同空间排队（prompt1 占队列）
-    const p2 = svc.prompt(key, QUEUED_MARK);
-    await sleep(300); // p2 的 IPC 已发出（FIFO：先于下面 reset 到达 worker）
-
-    // 生产重置路径：store.reset（feishu /reset 命令同款，REQ-AGENT-010）
+    // 流式中走生产重置路径（store.reset = feishu /reset 命令同款，REQ-AGENT-010）
     store.reset(key);
 
-    // prompt2 应收明确失败回执（resolve 非 reject——事件即结果语义，REQ-AGENT-007 标准 1）
-    const r2 = await p2;
-    // EXPECTED-TRACE: prd.md §8 reset 行（ok:false + code E-AGENT-RESET + reason「会话已重置，排队中的消息已取消」）
-    assert.equal(r2.ok, false, `排队中的 prompt 应收到失败回执: ${JSON.stringify(r2)}`);
-    assert.equal(r2.error?.code, "E-AGENT-RESET", "回执 code 应为 E-AGENT-RESET");
-    assert.match(r2.error?.reason ?? "", /已重置/, "回执 reason 应含「已重置」");
+    // ① prompt1 按序完成（reset-session 在全局串行队列中排在 prompt1 之后——
+    //   不掐断在途生成；E-AGENT-RESET 已撤销，无取消回执）
+    const r1 = await Promise.race([
+      p1,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("prompt1 未在限期内收尾（reset 不应阻塞在途生成）")), 20000)),
+    ]);
+    assert.equal(r1?.ok, true, `prompt1 应照常完成: ${JSON.stringify(r1)}`);
+    assert.ok(r1.reply.includes("重置保持探针"), "prompt1 回声应含其文本（按序完整执行）");
 
-    // prompt2 无任何 LLM 事件（FAUX 回声含用户文本——事件流不应出现其文本）
-    const text = events
-      .filter((e) => e.type === "text_delta" || e.type === "text_end")
-      .map((e) => e.delta ?? e.content ?? "")
-      .join("");
-    assert.ok(!text.includes(QUEUED_MARK), "排队中的 prompt2 不应产生任何 LLM 事件（其文本不应出现在事件流）");
+    // ② reset 后会话重建（新 session-config）→ 后续 prompt 正常
+    const r2 = await svc.prompt(key, AFTER_RESET_MARK);
+    assert.equal(r2?.ok, true, `reset 后新 prompt 应正常: ${JSON.stringify(r2)}`);
+    assert.ok(r2.reply.includes(AFTER_RESET_MARK), "重建后回声应含所发用户消息");
 
-    // 不发 session-error（取消不是会话错误）
-    assert.ok(!events.some((e) => e.type === "error"), "reset 丢弃不应发 session-error 事件");
-
-    // prompt1 终态不悬挂（有回执；内容可能被 dispose 截断，不断言 reply 值）
-    await p1;
+    // 事件流无错误事件（reset 语义保持 = 无取消/session-error 噪音）
+    assert.ok(!events.some((e) => e.type === "error"), "reset 保持语义下不应产生 session-error 事件");
   });
 });

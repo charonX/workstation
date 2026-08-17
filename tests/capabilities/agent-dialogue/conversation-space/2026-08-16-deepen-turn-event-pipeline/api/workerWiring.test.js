@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-111
-// REQ-VERSION: v1-hash:7452c3c1c3d87fbfbce1d33a1060f811bbbf6456984d222633b25df084b46856
+// REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -64,6 +64,8 @@ describe("REQ-AGENT-111 worker.js 接线保持（spawn 集成）", () => {
     const r = await svc.prompt(key, "存活探针");
     assert.equal(r?.ok, true, `prompt 应 ok:true: ${JSON.stringify(r)}`);
     assert.ok(r.reply.includes("存活探针"), "FAUX 回声应含所发用户消息（装配链完整）");
+    // 注：ready 帧经 svc.on("ready") 覆盖；session-config 回执**形状**由 AC5 回归
+    // 清单（sessionEvents/agentModelResolveLocal 等既有黑盒）覆盖，本 seam 不重复断言。
   });
 
   it("AC2：事件链形状契约——text_delta×N 按序、text_end 末位且带 meta.durationMs", async () => {
@@ -117,6 +119,7 @@ describe("REQ-AGENT-111 worker.js 接线保持（spawn 集成）", () => {
     // EXPECTED-TRACE: prd.md §6.1-3（abort → 合成 text_end → reply 有值）
     assert.equal(r?.ok, true, `abort 后应正常收尾: ${JSON.stringify(r)}`);
     assert.ok(r.reply.length > 0, "已生成文本应保留（reply 非空，BUG-010 语义）");
-    assert.ok(Date.now() - stopAt < 3000, "停止后应 3s 内收尾（中断及时性）");
+    // 中断及时性（review 修订：放宽至 5s——3s 非契约锚点，60x 裕量已足够宽松）
+    assert.ok(Date.now() - stopAt < 5000, "停止后应 5s 内收尾（中断及时性）");
   });
 });

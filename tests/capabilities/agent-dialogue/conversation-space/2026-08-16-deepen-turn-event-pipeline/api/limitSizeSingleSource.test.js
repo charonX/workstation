@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-turn-event-pipeline/REQ-AGENT-110
-// REQ-VERSION: v1-hash:7452c3c1c3d87fbfbce1d33a1060f811bbbf6456984d222633b25df084b46856
+// REQ-VERSION: v2-hash:ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // TEST-AUTHOR: agent
@@ -46,10 +46,11 @@ function loadLimitSize() {
 describe("REQ-AGENT-110 256KB 截断单真源——limitSize 四分支直测（单元）", () => {
   const limitSize = loadLimitSize();
 
-  it("AC1：≤ 262144 原样返回（无 truncated）", () => {
+  it("AC1：≤ 262144 原样返回（行为等价即可，review 修订：不约束引用同一性）", () => {
     const ev = textEndOf("小文本");
     const out = limitSize(ev);
-    assert.equal(out, ev, "小事件应原样返回（同一引用，不拷贝）");
+    // EXPECTED-TRACE: prd.md §10.4 接口 7（≤ 原样返回——契约承诺行为语义不承诺引用）
+    assert.deepEqual(out, ev, "小事件应原样返回（形状相等）");
     assert.equal(out.truncated, undefined, "不应有 truncated 字段");
   });
 
@@ -113,7 +114,7 @@ describe("REQ-AGENT-110 截断单真源——agentService 出口行为（集成�
     await svc.prompt("feishu:oc_1", "触发超限工具事件");
     assert.equal(events.length, 1, "应出站 1 条 session-event");
     const ev = events[0];
-    // EXPECTED-TRACE: prd.md §6.3-6（主进程修复实证：不再 {type, truncated} 整条降级）
+    // EXPECTED-TRACE: prd.md §6.3-6 + §8（主进程兜底超限）+ §10.5（截断取强，人拍板 Q2）
     assert.equal(ev.type, "tool_execution_end");
     assert.equal(ev.name, "settings get", "name 保留（旧 enforceSizeLimit 会丢）");
     assert.equal(ev.status, "completed", "status 保留");
