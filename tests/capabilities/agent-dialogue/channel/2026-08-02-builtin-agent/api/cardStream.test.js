@@ -15,6 +15,10 @@
 // 每 LLM 回合一次（PI assistantMessageEvent 逐回合映射），cardRenderer 却把 text_end 当「整条
 // 回复结束」：首个 text_end 即定型并置 final，工具调用后第二段（回合 2）的 text_delta/text_end
 // 撞 final 守卫全部丢弃 → 飞书只收到第一段（2026-08-16 生产实锤）。回归 Prove-It，修复前应红。
+// BUG-TRACE: BUG-010（2026-08-02-builtin-agent 计数，code-defect）——sendCard 竞态窗口内容
+// 丢失：回填前 updateCardStream 携带 undefined cardId 被真实 adapter 跳过，回填只补发 finalize
+// 不补发全量内容 → 短于 sendCard 往返的回合卡片正文冻结在首 delta（2026-08-17 生产实锤：
+// 「确实」「需要我」截断卡）。回归 Prove-It，修复前应红。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -398,6 +402,31 @@ describe("BUG-004 回归（code-defect）：卡片定型关闭 streaming_mode，
     await flushMicrotasks(); // sendCard 回填 → 应补发定型
     assert.equal(adapter.calls.finalizeCard.length, 1, "cardId 回填后应补发定型（竞态窗口不失定型）");
     assert.equal(adapter.calls.finalizeCard[0].cardId, "card_1", "补发定型应携带真实 cardId");
+  });
+
+  it("BUG-010 竞态：整个流式短于 sendCard 窗口 → 回填后补发全量内容更新（正文不停在首 delta）", async () => {
+    const createCardRenderer = await loadCardRenderer();
+    const adapter = createCardAdapterFake();
+    const renderer = createCardRenderer({ adapter });
+    // 不 flush：sendCard 微任务未结算，整个流式（多个 delta + text_end）在竞态窗口内
+    // 完成（生产实锤 2026-08-17：DeepSeek 快回合 0.59s 短于 sendCard 往返，飞书卡片
+    // 正文只剩首 delta「确实」「需要我」）。窗口内 updateCardStream 携带 undefined
+    // cardId ——真实 adapter 跳过（feishuChannelAdapter.js:389）→ 回填时必须以真实
+    // cardId 补发全量累计内容，否则正文永远冻结在首 delta（回复不完整，
+    // REQ-AGENT-019 标准 1）。修复前应红（回填只补 finalize 不补内容）。
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "确实" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "有！统计数据里显示平台上有 1 个项目。" });
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "确实有！统计数据里显示平台上有 1 个项目。" });
+    await flushMicrotasks(); // sendCard 回填 → 应补发全量内容更新 + 定型
+    const landed = adapter.calls.updateCardStream.filter((u) => u.cardId === "card_1");
+    assert.ok(
+      landed.some((u) => String(u.content).includes("统计数据")),
+      "回填后应以真实 cardId 补发全量累计内容（修复前卡片正文停在首 delta「确实」）"
+    );
+    const catchUp = landed.at(-1);
+    const fin = adapter.calls.finalizeCard[0];
+    assert.ok(fin, "回填后应补发定型（BUG-004 既有契约保持）");
+    assert.ok(fin.sequence > catchUp.sequence, "定型 sequence 应接续在补发内容更新之后（H4 严格递增）");
   });
 });
 
