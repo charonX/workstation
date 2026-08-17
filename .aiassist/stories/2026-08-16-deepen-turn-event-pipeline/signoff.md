@@ -57,3 +57,43 @@ agentModelResolveLocal / agentDialogue（REQ-AGENT-111 AC5）。
 签核时 4 文件全 RED（turnEventPipeline 模块 seam 未就绪——import 即失败；其余
 依赖该模块导出），0 例误绿。signer = **AI**（无升级点遗留，E-AGENT-RESET 已人拍板）。
 人工验收留在 REFLECT：无（全部验收标准可自动化）。
+
+---
+
+## Assertion v2 重签（2026-08-17，/review 全链修订）
+
+**缘起**：/review（panel：prd/tech/req/test 四 specialist）4 项 IMPORTANT + 16 警告全处理。
+
+### v2 修订内容（人拍板 2026-08-17）
+
+1. **B1 撤销 E-AGENT-RESET 契约**（tech F2）：实证 worker IPC 为全局串行队列
+   （messageQueue.enqueue + handleMessage await，worker.js:1663-1697）——reset-session
+   排在在途 prompt 之后处理，会话队列深度恒 ≤1，「排队丢弃」场景不存在；v1 升级点
+   基于错误模型（当时未实证全局队列 await 语义）。处置：§8/§10.4 接口 6 契约行删除，
+   REQ-109 AC4 重写为「reset 语义保持」（流式中 reset 不掐断在途生成 + 会话重建健康），
+   resetDropQueue.test.js 重写。注册表统一清理 + 计数泄漏修复不受影响。
+2. **B2 补 touch 注入钩子**（tech F1）：管线注入集 {send, log, **touch**, setTimeout,
+   clearTimeout, now}——仅当事件实际映射出站时调用，恒 clearPending:false 由注入方
+   承担（缺失 → 长回合 TTL 淘汰悬崖 / 组冷却双热回归，REQ-AGENT-037 M1）；单元测试
+   补 touch spy 时机断言。
+3. **B3 未知 key 语义修正**（tech F3）：事件照常计数/转发/延迟收尾/出站，仅 touch
+   no-op（消息乱序容忍 = 事件不丢失）；REQ-107 AC6 + 单元测试重写。
+4. **B4 REQ-111 AC2 表述修正**（req）：text_start 非 worker 契约流事件（SSE 层按
+   裁决 11 合成，既有 REQ-AGENT-028 测试锁定）；AC2 改为 text_delta×N → text_end。
+5. **警告项 16 条全处理**：§6.3 补块 4 锚点行；§5 标题；§14 计数 8→9；intention 行数
+   1835→1854；§12 零 import 修正；§10.4 接口 2/3/4/6 四要素补全 + 接口 6 按调用方
+   分行；§10.6 风险表补两行；REQ-106 标注修正；REQ-110 调用点 248→249；
+   limitSize AC1 改 deepEqual；AC6 EXPECTED-TRACE 补引；AC1 无副作用直接断言；
+   workerWiring AC4 3s→5s；AC1 注释声明 config 形状由 AC5 覆盖；resetDropQueue
+   p1 有界等待。
+
+### v2 签核状态
+
+- requirements.md v2 哈希 `ce30bc5a5b38a48fb78ab31fd56d388918e59094597535cdedd97028604f5d15`
+  （requirements-v2.hash，v1 哈希文件删除）。
+- 4 测试文件头部 REQ-VERSION 同步为 v2-hash；断言随修订更新（未知 key/touch/AC4），
+  其余断言不变。
+- AI 自检复查：REQ-AGENT-106~111 全覆盖保持；EXPECTED-TRACE 锚点随 prd v0.3 修订
+  后重新交叉验证一致（含新增 touch 时机与块 4 锚点）；无 TODO 占位；无快照。
+- 升级点：B1 撤销为 v1 升级点的推翻性修订（人拍板 2026-08-17）；其余 v2 修订为
+  事实修正。signer = **AI**（v2 修订全部人拍板后自动签核）。
