@@ -22,6 +22,9 @@ history:
   - {at: 2026-08-17, from: CRYSTALLIZE, to: TEST, note: "结晶 6 REQ：REQ-AGENT-112~117（config 装配/投影分页/key 解析+gitState/SSE 注册表 per-instance/附件规则/依赖方向回正+路由瘦身）；编号避让 turn-event-pipeline 已占的 106~111（同日结晶）；requirements-v1.hash=370f51eb；能力地图 conversation-space (session-domain) 行追加。无升级点。自动链续跑 /test-author"}
   - {at: 2026-08-17, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：6 测试文件全 RED（seam 未就绪门），0 TODO:HUMAN ASSERTION；test-plan.md 落盘（REQ→测试映射 + 既有测试承载矩阵）；3 个待确认点登记交 /signoff（REQ-112 AC1b 无 providers 边界值 / REQ-114 AC4 正分支覆盖分配 / REQ-117 AC5 行数上限 350）。自动链续跑 /signoff"}
   - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——6 REQ 全覆盖/头部六行核验/EXPECTED-TRACE 逐条交叉验证一致/0 TODO/0 快照/边界错误全覆盖；3 待确认项收敛（空 providers 锚点就地补 §6.3、gitState 正分支覆盖=tech-design 既有授权、≤350 行锚定 REQ-117 AC5）；顺手就地补 §2 re-export 1 名过期表述。33 断言 32 RED + 1 双向不变量绿，0 误绿"}
+  - {at: 2026-08-17, from: BUILD, to: TEST, note: "/review（panel 全链）FAIL 回流修复：tech C1 行数算术不可行（928-搬走~300-330=留存~600，≤350 必红）+ test C1 gitState 正分支承载声明失实（既有测试零 session-git 断言，门 1 签核前提被证伪，signoff 已认领更正）。人拍板：≤650 重定阈值 + 补直测正分支。非归档重做——初衷与方案不变，两处数字/事实性错误局部纠错"}
+  - {at: 2026-08-17, from: TEST, to: ASSERTION-SIGNOFF, note: "修复轮落地：prd v0.3 + ADR-030 修订（≤650/事实修正批）；requirements v2（hash 77f0f186，v1 删——REQ-112 AC1 措辞+空 providers golden、REQ-113 normalizeLimit+空文本行、REQ-114 删幻影 worktree+AC4 直测、REQ-116 AC4 载体更正 imageAttachment、REQ-117 AC4 全量表述+AC5 ≤650）；6 测试文件修订（+1 gitState 正分支用例、error 分支、静态断言加固、env 保存恢复+closeDb、REQ-VERSION 全更 v2）；test-plan v2；business-capabilities 行同步"}
+  - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 重签通过（signoff.md Assertion v2，signer=AI）：v2 变更集 8 项全部 trace 到人拍板锚点/实证；34 断言 33 RED + 1 双向不变量绿（实测全 RED 均为 seam 未就绪门）；无新升级点。BUILD 重新解锁"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
