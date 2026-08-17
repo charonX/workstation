@@ -7,7 +7,7 @@ intention: >-
   server.js 反向 import 其内部函数，SSE 注册表由三层之外的三处外部驱动。
   一句话痛点：会话领域逻辑住在路由层，依赖方向倒置，seam 泄漏到调用者。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: ASSERTION-SIGNOFF       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -21,6 +21,7 @@ history:
   - {at: 2026-08-17, from: TECH-DESIGN, to: CRYSTALLIZE, note: "prd.md §10 定稿（10.1-10.7：模块边界/数据流/注册表三方法+domain纯函数组+context袋契约/六项决策/风险回流点/安全性能可观测）；§5 移动块清空；§4 块6 与 §11.1 反向同步（re-export 1名 + 依赖方向静态 seam）。待人确认后 /story 进自动链结晶"}
   - {at: 2026-08-17, from: CRYSTALLIZE, to: TEST, note: "结晶 6 REQ：REQ-AGENT-112~117（config 装配/投影分页/key 解析+gitState/SSE 注册表 per-instance/附件规则/依赖方向回正+路由瘦身）；编号避让 turn-event-pipeline 已占的 106~111（同日结晶）；requirements-v1.hash=370f51eb；能力地图 conversation-space (session-domain) 行追加。无升级点。自动链续跑 /test-author"}
   - {at: 2026-08-17, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：6 测试文件全 RED（seam 未就绪门），0 TODO:HUMAN ASSERTION；test-plan.md 落盘（REQ→测试映射 + 既有测试承载矩阵）；3 个待确认点登记交 /signoff（REQ-112 AC1b 无 providers 边界值 / REQ-114 AC4 正分支覆盖分配 / REQ-117 AC5 行数上限 350）。自动链续跑 /signoff"}
+  - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——6 REQ 全覆盖/头部六行核验/EXPECTED-TRACE 逐条交叉验证一致/0 TODO/0 快照/边界错误全覆盖；3 待确认项收敛（空 providers 锚点就地补 §6.3、gitState 正分支覆盖=tech-design 既有授权、≤350 行锚定 REQ-117 AC5）；顺手就地补 §2 re-export 1 名过期表述。33 断言 32 RED + 1 双向不变量绿，0 误绿"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
