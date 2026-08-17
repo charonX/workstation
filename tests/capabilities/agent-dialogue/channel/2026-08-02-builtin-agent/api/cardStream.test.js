@@ -143,11 +143,18 @@ describe("REQ-AGENT-019 回复卡片流式", () => {
     const adapter = createCardAdapterFake();
     const renderer = createCardRenderer({ adapter });
     renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "部分" });
+    await flushMicrotasks(); // cardId 回填（后续更新指向 card_1 可辨别）
     renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_end", content: "部分内容" });
-    const updatesAfterEnd = adapter.calls.updateCardStream.length;
-    // 流式结束 → 卡片定型（停止更新，REQ-AGENT-019 标准 2）。
-    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "不应再出现" });
-    assert.equal(adapter.calls.updateCardStream.length, updatesAfterEnd, "流式结束卡片定型，应停止更新");
+    const updatesOnCard1 = () =>
+      adapter.calls.updateCardStream.filter((u) => u.cardId === "card_1").length;
+    const beforeExtra = updatesOnCard1();
+    // 流式结束 → 卡片定型：旧卡停止更新（REQ-AGENT-019 标准 2）。
+    // BUG-009 重签（人拍板 2026-08-16）：text_end 是回合边界而非消息边界——定型后再来
+    // 文本事件 = 新回合开新卡，旧卡不再收更新（原断言「后续 delta 零更新」即 BUG-009
+    // 的缺陷场景本身，已随修复裁决改写）。
+    renderer.handleStreamEvent({ sessionKey: "feishu:oc_1", type: "text_delta", delta: "后续回合增量" });
+    assert.equal(updatesOnCard1(), beforeExtra, "卡片定型后旧卡应停止更新");
+    assert.equal(adapter.calls.sendCard.length, 2, "后续文本段应开新卡（BUG-009：回合边界 ≠ 消息边界）");
 
     // 流式错误 → 卡片标注失败状态。
     const adapter2 = createCardAdapterFake();
