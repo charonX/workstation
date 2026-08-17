@@ -238,6 +238,15 @@ export function createCardRenderer({
   // 同步失败（sync adapter）→ 同步重试 + 同步告警；异步失败（async adapter，
   // 真实 HTTP 路径）→ 异步重试 + 异步告警。重试耗尽 → E-CHANNEL-SEND 告警
   // （不阻断流式/执行状态推进）。
+  // BUG-011：耗尽须生产可见——流式更新失败曾只进 warnings 数组、生产零日志，
+  // 飞书侧大面积拒绝（卡片冻结半途）在日志里完全无痕，诊断盲区。
+  function onUpdateFailure(payload, err) {
+    recordWarning(err?.message ?? String(err));
+    if (process.env.NODE_ENV !== "test") {
+      console.error(`[cardRenderer] 卡片更新失败（重试耗尽） cardId=${payload.cardId ?? ""} sequence=${payload.sequence ?? ""}:`, err?.message ?? String(err));
+    }
+  }
+
   function updateCardWithRetry(payload) {
     let attempts = 0;
     const attempt = () => {
@@ -250,7 +259,7 @@ export function createCardRenderer({
             () => ({ ok: true }),
             (err) => {
               if (attempts <= retries) return attempt();
-              recordWarning(err?.message ?? String(err));
+              onUpdateFailure(payload, err);
               return { ok: false, error: err };
             }
           );
@@ -260,7 +269,7 @@ export function createCardRenderer({
       } catch (err) {
         // sync adapter：同步重试。
         if (attempts <= retries) return attempt();
-        recordWarning(err?.message ?? String(err));
+        onUpdateFailure(payload, err);
         return { ok: false, error: err };
       }
     };

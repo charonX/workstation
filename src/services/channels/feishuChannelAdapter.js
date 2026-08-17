@@ -157,6 +157,21 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     throw err;
   }
 
+  // 每卡片串行链（BUG-011，code-defect）：同一张卡的流式更新/定型按调用顺序排队
+  // 落地——修复前各调用是 fire-and-forget 独立 HTTP，finalize（PATCH settings）可
+  // 抢在在途尾部更新（PUT elements/content）之前到达：streaming_mode 一关，尾部
+  // 更新全部被拒，卡片冻结在半途；并发在途更新乱序到达还会触发 300317 sequence
+  // 错误。串行化后三者一并消除（请求频率也自然降到串行水位）。
+  // 上一棒无论成败都放行下一棒（失败经 sendWithRetry 耗尽后由调用方重试/告警）；
+  // 本棒的 promise 原样回传调用方，链上另存 catch 过的尾巴防未处理拒绝。
+  const cardChains = new Map();
+  function enqueueCardOp(cardId, operation) {
+    const prev = cardChains.get(cardId) ?? Promise.resolve();
+    const run = prev.then(operation, operation);
+    cardChains.set(cardId, run.catch(() => {}));
+    return run;
+  }
+
   function mapInboundMessage(eventData) {
     // EventDispatcher.parse() spreads v2 schema event.header and event.event
     // to the top level (node-sdk EventDispatcher.parse line 93585), so message
@@ -397,8 +412,10 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
         throw channelSendError("sequence 必须为正整数且严格递增（H4，错误码 300317）");
       }
       const url = `${baseUrl}/open-apis/cardkit/v1/cards/${encodeURIComponent(cardId)}/elements/${encodeURIComponent(elementId)}/content`;
-      return sendWithRetry(async () =>
-        putJson(url, { content, sequence, uuid: randomUUID() }, authorizationHeader())
+      return enqueueCardOp(cardId, () =>
+        sendWithRetry(async () =>
+          putJson(url, { content, sequence, uuid: randomUUID() }, authorizationHeader())
+        )
       );
     },
 
@@ -427,8 +444,10 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
       // 诊断（BUG-005）：定型请求可见——对齐 BUG-006 sendCard 诊断模式，生产联调定位用。
       log.info(`[feishuChannelAdapter] finalizeCard cardId=${cardId} sequence=${sequence}`);
       log.info(`[feishuChannelAdapter] finalizeCard body前300=${JSON.stringify(body).slice(0, 300)}`);
-      const result = await sendWithRetry(async () =>
-        patchJson(url, body, authorizationHeader())
+      const result = await enqueueCardOp(cardId, () =>
+        sendWithRetry(async () =>
+          patchJson(url, body, authorizationHeader())
+        )
       );
       log.info(`[feishuChannelAdapter] finalizeCard 成功 cardId=${cardId}`);
       return result;
