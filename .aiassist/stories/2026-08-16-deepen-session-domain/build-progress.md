@@ -173,3 +173,12 @@ attachPendingSseSubs」两处更新指向 services/sessionSseRegistry.js。
 | §10.4 context 袋契约 | getSseRegistry 注入 + 未接线 fail-fast | server.js :542 袋追加；agentSessions.js sseRegistryOf | 集成：全量回归（生产 server 恒提供，fail-fast 分支测试/headless 自建 context 才可达） | COVERED |
 
 **Slice 3: complete**
+
+Refactor 一轮（2026-08-18）：`handlePostMessage` 塌缩双传参——本切片加 context
+第六参后，getAgentService 单传与 context 袋重复（同一袋拆两份），改为仅传
+context、函数内 `resolveAgentService(context?.getAgentService)` 取位（模块私有
+函数，非契约面；行为逐字节等价）。六直测 35/35 绿；全量回归 960/960 pass /
+0 fail。遗留观察（留 /review --cover=code）：server.js notifyResult 上方
+「会话句柄缺失…」注释块 verbatim 重复两段（本切片前已存在，非本 slice diff 引入，
+范围锁不动）；sessionSseRegistry.js Map 访问三处重复 / HEARTBEAT_MS 提升常量
+两轮前已记录，范围锁不含该文件。

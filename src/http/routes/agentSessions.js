@@ -106,7 +106,7 @@ const MAX_MESSAGE_CHARS = 256 * 1024;
 // —— HTTP 分发（server.js resource="agent"、subPath[0]="sessions" 挂接）——
 
 export async function handleAgentSessions(req, res, body, subPath = [], context = {}) {
-  const { getSessionStore, getAgentService } = context;
+  const { getSessionStore } = context;
   const store = getSessionStore?.();
   if (!store) return notFound(res);
 
@@ -126,7 +126,7 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
   if (tail.length === 1 && tail[0] === "messages") {
     if (req.method === "GET") return handleGetMessages(req, res, spaceKey, store);
-    if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, getAgentService, context);
+    if (req.method === "POST") return handlePostMessage(res, spaceKey, body ?? {}, store, context);
     return notFound(res);
   }
 
@@ -326,7 +326,7 @@ function isOrphanSpace(spaceKey) {
 // E-ATTACH-* 先于文本——signoff 新契约点；文本空/超限）→ 404（会话不存在）→
 // 403（只读空间属性，先于 409，裁决 2）→ 409（孤儿空间，空间属性先于 agent
 // 配置）→ 409（agent 未配置）。
-async function handlePostMessage(res, spaceKey, body, store, getAgentService, context) {
+async function handlePostMessage(res, spaceKey, body, store, context) {
   // 附件（REQ-AGENT-097）：可选数组；存在时先于文本校验（纯图片消息允许空文本，
   // 附件错误码优先——imageAttachment.test.js 契约）。
   const attachments = Array.isArray(body?.attachments) && body.attachments.length > 0 ? body.attachments : undefined;
@@ -351,7 +351,7 @@ async function handlePostMessage(res, spaceKey, body, store, getAgentService, co
     // （ADR-009：配置校验前置）。
     return sendError(res, 409, "E-AGENT-CONFIG", "agent 未配置，请先在设置中配置模型与 API key");
   }
-  const svc = await resolveAgentService(getAgentService);
+  const svc = await resolveAgentService(context?.getAgentService);
   if (!svc) return notFound(res);
   svc.createSession({
     spaceKey,
