@@ -90,6 +90,10 @@ function getSessionMode(sessionKey) {
 }
 const AGENT_MODES_SET = new Set(["strict", "standard", "auto"]);
 
+// BUG-002 诊断 4 计数筛选（§10.4 接口 4b：agent_start / agent_end / turn_start /
+// turn_end / message_update——subscribe 回调仅对命中类型调 recordSdkEvent）。
+const SDK_COUNTED_EVENT_TYPES = new Set(["agent_start", "agent_end", "turn_start", "turn_end", "message_update"]);
+
 // —— Slice 3（REQ-AGENT-096，B5）：auto judge 独立 modelObj 数据面 ——
 // defaultJudge（session-config 携带 / judge-config IPC 广播热更新）→ 每会话独立的
 // judge modelObj（judgeModels 表：sessionKey → { provider, model, modelObj }）。
@@ -1150,9 +1154,7 @@ async function createSessionEntry(msg) {
     //（区分「SDK 层未产生事件」vs「worker 过滤丢弃」）。计数写入管线
     //（recordSdkEvent——sdkEventCounts 归管线存/取/清，slice 2 接线）。
     const t = ev?.type ?? ev?.assistantMessageEvent?.type ?? "?";
-    if (t === "agent_start" || t === "agent_end" || t === "turn_start" || t === "turn_end" || t === "message_update") {
-      turnPipeline.recordSdkEvent(sessionKey, t);
-    }
+    if (SDK_COUNTED_EVENT_TYPES.has(t)) turnPipeline.recordSdkEvent(sessionKey, t);
     turnPipeline.onSessionEvent(sessionKey, ev);
   });
   // 经生命周期模块注册（tech-design 接口 1）：覆盖注册（懒恢复/重建）清 tombstone，
@@ -1291,6 +1293,21 @@ function readAttachmentImages(attachments, sessionKey, id) {
   return images;
 }
 
+// —— SDK 消息读取 helpers（handlePrompt 诊断块共用）——
+// agentSession.messages 是诊断数据面（读取可能抛——调用方 try/catch 兜底，stderr
+// 红线不崩）；lastErrorText 提取「消息可转述错误」公共形态（errorMessage 优先、
+// 文本段兜底——LLM error 感知与末条消息诊断共用同一表达式，避免两份抄写漂移）。
+function sessionMessages(entry) {
+  return entry.agentSession.messages ?? [];
+}
+function lastMessageOf(entry) {
+  const msgs = sessionMessages(entry);
+  return msgs[msgs.length - 1];
+}
+function lastErrorText(msg) {
+  return msg?.errorMessage || (msg?.content ?? []).find((c) => c.type === "text")?.text;
+}
+
 async function handlePrompt(msg) {
   const { id, sessionKey, text } = msg;
   const entry = lifecycle.get(sessionKey);
@@ -1351,7 +1368,7 @@ async function handlePrompt(msg) {
       // BUG-002 诊断 3（2026-08-09）：上下文状态（消息数/末条类型）——区分
       // 「恢复上下文异常导致模型空转」vs「provider 空返回」。
       try {
-        const msgs = entry.agentSession.messages ?? [];
+        const msgs = sessionMessages(entry);
         const last = msgs[msgs.length - 1];
         log(`上下文诊断 session=${sessionKey} 消息数=${msgs.length} 末条=${last ? `${last.role}:${(last.content ?? []).map((c) => c.type).join(",")}` : "无"}`);
       } catch (err) {
@@ -1370,10 +1387,9 @@ async function handlePrompt(msg) {
       //（E-AGENT-LLM-FAIL，renderer 可见错误，不再静默）。
       let llmError = null;
       try {
-        const msgs = entry.agentSession.messages ?? [];
-        const last = msgs[msgs.length - 1];
+        const last = lastMessageOf(entry);
         if (last?.stopReason === "error") {
-          llmError = last.errorMessage || (last.content ?? []).find((c) => c.type === "text")?.text || "LLM 调用失败（无错误详情）";
+          llmError = lastErrorText(last) || "LLM 调用失败（无错误详情）";
         }
       } catch (err) {
         log(`error 检查失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
@@ -1381,16 +1397,14 @@ async function handlePrompt(msg) {
       if (llmError) {
         const error = { code: "E-AGENT-LLM-FAIL", reason: llmError };
         log(`prompt 失败（LLM error 消息）session=${sessionKey} code=${error.code} reason=${String(llmError).slice(0, 200)}`);
-        send({ type: "session-error", sessionKey, ...error, userMessage: `LLM 调用失败：${llmError}` });
-        send({ type: "prompt-result", id, sessionKey, ok: false, error });
+        sendPromptError(id, sessionKey, error, `LLM 调用失败：${llmError}`);
         return;
       }
       // BUG-002 诊断 5（2026-08-09）：LLM 调用后读 SDK 末条消息（error 消息的
       // errorMessage）——直接暴露请求失败原因（401/404/网络/参数——SDK 吞错）。
       try {
-        const msgs = entry.agentSession.messages ?? [];
-        const last = msgs[msgs.length - 1];
-        const lastErr = last?.errorMessage || (last?.content ?? []).find((c) => c.type === "text")?.text;
+        const last = lastMessageOf(entry);
+        const lastErr = lastErrorText(last);
         log(`末条消息 session=${sessionKey} role=${last?.role} stopReason=${last?.stopReason ?? "-"} err=${lastErr ? String(lastErr).slice(0, 200) : "无"}`);
       } catch (err) {
         log(`末条消息读取失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
@@ -1412,8 +1426,7 @@ async function handlePrompt(msg) {
       const reason = err?.message ?? String(err);
       const error = { code: "E-AGENT-LLM-FAIL", reason };
       log(`prompt 失败 session=${sessionKey} code=${error.code}`);
-      send({ type: "session-error", sessionKey, ...error, userMessage: `LLM 调用失败：${reason}` });
-      send({ type: "prompt-result", id, sessionKey, ok: false, error });
+      sendPromptError(id, sessionKey, error, `LLM 调用失败：${reason}`);
     } finally {
       entry.streaming = false; // 流结束：回归可淘汰集合（TTL/LRU 候选；组冷却延迟即淘汰）
     }

@@ -221,6 +221,16 @@ export function createTurnEventPipeline({
     }
   }
 
+  // 入延迟队列：pendingTextEnds 登记（text_end 延迟转发与 abort 合成两条路径共用
+  // 同一「取列表-推-回写」形状，不再手抄两份）。startedAt 取回合起点（无则
+  // undefined——meta 仅 durationMs）；timer 由调用方 arm（正常路径 5s 兜底；
+  // abort 合成无定时器）。
+  function enqueuePendingTextEnd(sessionKey, content, timer) {
+    const list = pendingTextEnds.get(sessionKey) ?? [];
+    list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer });
+    pendingTextEnds.set(sessionKey, list);
+  }
+
   // BUG-002 诊断（2026-08-09）：事件计数（text_delta/text_end/tool_execution）——
   // prompt-result 日志实锤「LLM 生成了但事件链断」vs「模型空转无输出」。
   function countTurnEvent(sessionKey, ev) {
@@ -247,9 +257,7 @@ export function createTurnEventPipeline({
     if (a.type !== "text_end") return false;
     const timer = setTimeout(() => flushPendingTextEnds(sessionKey, undefined), PENDING_TEXT_END_FALLBACK_MS);
     timer.unref?.(); // 注入时钟返回数字 id 时（fake clock）可选链跳过
-    const list = pendingTextEnds.get(sessionKey) ?? [];
-    list.push({ content: a.content, startedAt: turnStartedAt.get(sessionKey), timer });
-    pendingTextEnds.set(sessionKey, list);
+    enqueuePendingTextEnd(sessionKey, a.content, timer);
     return true;
   }
 
@@ -267,9 +275,7 @@ export function createTurnEventPipeline({
         .filter((c) => c?.type === "text")
         .map((c) => c.text ?? "")
         .join("");
-      const list = pendingTextEnds.get(sessionKey) ?? [];
-      list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer: undefined });
-      pendingTextEnds.set(sessionKey, list);
+      enqueuePendingTextEnd(sessionKey, content, undefined);
       log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
     }
     // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
