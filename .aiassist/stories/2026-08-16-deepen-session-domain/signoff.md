@@ -71,3 +71,54 @@ uiConfirmation/cardStream/richRender（REQ-117 AC4 回归面）。
 「路由兼容面」——该断言是双向不变量（搬迁前后都必须成立），非误绿。
 signer = **AI**（无升级点遗留——三待确认项两项可机械推导已就地补锚点、
 一项既有授权）。人工验收留在 REFLECT：diff 审读（逐字节搬运纪律），无纯审美项。
+
+---
+
+## Assertion v2（门 1 重签，2026-08-17，review FAIL 修复轮后）
+
+### 前提更正（签核责任认领）
+
+v1 签核两处失实由 /review 实证并被本签核认领更正：
+
+1. **「REQ-114 AC4 正分支由既有 sessionEvents 的 session-git 首帧断言承载」失实**：
+   全仓 grep `session-git` 在既有测试零命中（review.md 复核证据节）——sessionEvents
+   全部用例只过滤断言 text_* 帧。v1 升级点结果第 2 行「tech-design 已授权 seam 最简」
+   的结论基于此失实前提，该授权无效。v2 处置：正分支改由 sessionDomainKeys.test.js
+   直测承载（DB_PATH 临时库 seed projects 行 + 真实临时 git 仓，断言
+   `{state:"branch", branch}` / `{state:"detached"}`），**人拍板 2026-08-17**。
+2. **「REQ-117 AC5 行数 ≤350」算术不可行**：review 复核——现文件 928 行，按 §10.2
+   清单搬走 ~300-330 行后留存 ~600，≤350 距目标差 200+ 行，BUILD 必红。v2 处置：
+   三处同源重定 ≤650（prd.md §10.2 + REQ-117 AC5 + dependencyDirection.test.js
+   AC5），**人拍板 2026-08-17**。
+
+### v2 变更集（requirements v1 → v2，hash 370f51eb → 77f0f186）
+
+| 变更 | 内容 | 溯源 |
+|---|---|---|
+| REQ-112 AC1 措辞修正 | 「provider 非空回落」→「provider 为空 → 回落 DEFAULT_PROVIDER」+ 空 providers golden 四字段落 AC | req-review IMPORTANT |
+| REQ-112 AC3 | 代码审查（无持久化写）挪 REFLECT 人工确认，AC 只留可机验字段断言 | req-review SUGGESTION |
+| REQ-113 | 契约补 normalizeLimit 导出；AC2 补空文本行剔除（user/assistant 均生效） | req-review SUGGESTION ×2 |
+| REQ-114 | 契约删幻影字段 `worktree?`（readGitBranch 从不返回）；AC4 正分支改直测 | req-review IMPORTANT + test C1（人拍板） |
+| REQ-116 AC4 | 回归载体更正 sessionMessage → imageAttachment.test.js:188-222 | req-review IMPORTANT |
+| REQ-117 AC4 | 回归清单枚举改「既有测试全量零改动全绿」（v1 清单含不消费 HTTP 面的 cardStream 且漏真实消费方） | req-review SUGGESTION |
+| REQ-117 AC5 | 行数 ≤350 → ≤650（目标 ~600） | tech C1（人拍板） |
+| 测试加固 | gitState 正分支直测（新增 1 用例）；AC4 补 res error 分支（close/error 两个独立注册点）；AC2 投影补空文本 user/assistant 行；依赖方向静态断言加固（matchAll 全量匹配 + specifier 不硬编码 + registry 正向断言）；行数口径对齐 wc -l；env 保存/恢复 + closeDb | test-review SUGGESTION 批 |
+
+### v2 自检
+
+- [x] 6 REQ 全覆盖不变；34 断言（+1 gitState 正分支）33 RED + 1 双向不变量绿
+      （实测 `node --test`：全部 RED 均为 seam 未就绪门，非语法/装配错误）
+- [x] 6 文件 REQ-VERSION 全部更新为 v2-hash:77f0f186（机械核验）
+- [x] v2 新增 expected 值 trace：gitState 正分支 `{state:"branch"/"detached"}` →
+      §6.3 块6 + REQ-AGENT-058 既有契约 + readGitBranch 现行返回形状（gitBranch.js
+      实证：branch/detached/none 三态，无 worktree）；空文本剔除 → REQ-113 AC2 +
+      现行代码 agentSessions.js:187 `if (text.trim() === "") continue;`（user/
+      assistant 均生效，实证）；≤650 → REQ-117 AC5 v2（人拍板锚点）
+- [x] 无 `TODO: HUMAN ASSERTION`；无快照；边界覆盖扩大（error 触发、空文本双角色）
+- [x] capability/entity 不变；business-capabilities.md 行同步修订（≤350 → ≤650）
+
+### 签核状态（v2）
+
+signer = **AI**（两项阻塞修复均已经人拍板的方向机械落地，无新升级点）。
+BUILD 解锁条件恢复：34 断言契约锁定，既有测试零改动硬约束不变。
+
