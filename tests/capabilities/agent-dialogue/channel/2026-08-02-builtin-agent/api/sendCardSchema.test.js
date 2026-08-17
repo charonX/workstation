@@ -294,13 +294,16 @@ describe("BUG-012 回归：同卡排队更新合并，不为每个 delta 支付�
 
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
-    assert.deepEqual(wireOrder, ["update:1"], "仅首个更新在途，其余排队");
+    // 修正（合并语义比初版断言更强）：串行链首棒在微任务起跑，而四个调用同步入队——
+    // seq1/seq2 出队前已被 seq3 作废，唯一在途的是最新更新 seq3（content 全量累计，
+    // 零信息丢失）；finalize 排在链尾不得发出。
+    assert.deepEqual(wireOrder, ["update:3"], "排队中仅最新更新在途，finalize 不得抢跑");
 
     release();
     await Promise.all([p1, p2, p3, p4]);
-    // 签核（BUG-012 人拍板）：seq2 的 content 已被 seq3 全量覆盖 → 跳过 HTTP；
+    // 签核（BUG-012 人拍板）：seq1/seq2 的 content 已被 seq3 全量覆盖 → 跳过 HTTP；
     // 最终卡片内容 = seq3 全量文本，零信息丢失；finalize 永不合并、仍在最后。
-    assert.deepEqual(wireOrder, ["update:1", "update:3", "finalize"], "被覆盖的 seq2 应跳过 HTTP（content 全量累计，零信息丢失），finalize 在最后");
+    assert.deepEqual(wireOrder, ["update:3", "finalize"], "被覆盖的旧更新应跳过 HTTP（content 全量累计，零信息丢失），finalize 在最后");
   });
 });
 
