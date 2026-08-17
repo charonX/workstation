@@ -151,7 +151,8 @@ export function createTurnEventPipeline({
   // prompt-result 日志实锤事件链完整性；清时机人拍板 B（beginTurn 幂等清 + 取出即删）。
   const turnEventCounts = new Map(); // sessionKey → { delta, end, tool }
   // BUG-002 诊断 4（2026-08-09）：SDK 层事件到达计数（agent_start/end、turn_start/end、
-  // message_update）——由 worker 侧 subscribe 维护（本模块只存/取/清）。
+  // message_update）——由 worker 侧 subscribe 回调经 recordSdkEvent 写入（本模块
+  // 存/取/清；§10.4 接口 4 sdkStats 的写入接口补全，slice 2 接线）。
   const sdkEventCounts = new Map(); // sessionKey → { agent_start?, agent_end?, ... }
   // —— Slice 8（REQ-AGENT-057）：消息元数据（B10 数据面，接口 6）——
   // text_end 转发加 `meta { durationMs, tokensIn, tokensOut }`：
@@ -301,6 +302,15 @@ export function createTurnEventPipeline({
     send({ type: "session-event", sessionKey, event: limitSize(mapped) });
   }
 
+  // BUG-002 诊断 4 写入接口（slice 2 补全）：SDK 层事件到达计数——worker subscribe
+  // 回调对 agent_start/agent_end/turn_start/turn_end/message_update 调用本接口
+  // （t = 事件类型；条件筛选由调用方保持，与 worker 现状一致）。
+  function recordSdkEvent(sessionKey, type) {
+    const c = sdkEventCounts.get(sessionKey) ?? {};
+    c[type] = (c[type] ?? 0) + 1;
+    sdkEventCounts.set(sessionKey, c);
+  }
+
   // 接口 2：beginTurn(sessionKey)——prompt 开始前幂等清两诊断计数（人拍板 B：
   // 失败轮残留不混轮；幂等：已空时再清不抛）。
   function beginTurn(sessionKey) {
@@ -339,6 +349,7 @@ export function createTurnEventPipeline({
 
   return {
     onSessionEvent,
+    recordSdkEvent,
     beginTurn,
     takeLastReply,
     takeTurnDiagnostics,

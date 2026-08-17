@@ -35,8 +35,9 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, contentText } from "@earendil-works/pi-ai";
-import { createSessionToolSurface, toPiToolName, getOriginalToolName } from "./toolAdapter.js";
+import { createSessionToolSurface, toPiToolName } from "./toolAdapter.js";
 import { createSessionLifecycle, DEFAULT_SWEEP_INTERVAL_MS } from "./sessionLifecycle.js";
+import { createTurnEventPipeline } from "./turnEventPipeline.js";
 import { classifyBashToolCall } from "../services/permissionPolicy.js";
 import { listMcpPermissionDefaults, mergeMcpDefaultsIntoPolicy } from "../services/mcpPermissionDefaults.js";
 import { createAutoJudgeLink } from "./autoJudgeLink.js";
@@ -59,9 +60,8 @@ if (process.env.OPC_AGENT_SERVER_BASE_URL) {
   setServerBaseUrlOverride(process.env.OPC_AGENT_SERVER_BASE_URL);
 }
 
-// 单条 IPC 消息上限（签核决策 15：≤ 256KB，先行约束来自飞书文本消息 150KB 上限）。
-const MAX_IPC_BYTES = 256 * 1024;
-
+// 单条 IPC 消息上限（签核决策 15：≤ 256KB）由 turnEventPipeline 导出
+// （MAX_IPC_BYTES=262144，ADR-029 截断单真源）——worker 不再持有。
 fs.mkdirSync(sessionDir, { recursive: true });
 fs.mkdirSync(agentHome, { recursive: true });
 
@@ -505,236 +505,21 @@ function send(msg) {
   process.stdout.write(`${JSON.stringify(msg)}\n`);
 }
 
-// 单条事件 ≤ 256KB：超限截断文本载体 + truncated 标记（REQ-AGENT-006 标准 5）。
-// 加法扩展（REQ-AGENT-055）：tool_execution 事件数据载体（input=PI args /
-// output=PI result）同样按「截断数据载体、保留契约字段」语义处理——对象载体
-// JSON 字符串化后截断（renderer 以文本展示输出，ToolCallBlock 语义一致），
-// 不再整条降级为 { type, truncated }（否则 toolCallId/name/status/isError 全丢，
-// 渲染层无法关联工具块）。
-function limitSize(event) {
-  const size = JSON.stringify(event).length;
-  if (size <= MAX_IPC_BYTES) return event;
-  const out = { ...event };
-  if (typeof out.content === "string") {
-    out.content = out.content.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
-  } else if (typeof out.delta === "string") {
-    out.delta = out.delta.slice(0, MAX_IPC_BYTES - 256);
-    out.truncated = true;
-  } else if (out.input !== undefined || out.output !== undefined) {
-    // 工具事件数据载体（input=PI args / output=PI result）超限 → 文本化截断 +
-    // truncated 标记（renderer 以文本展示输出，ToolCallBlock 语义一致），保留
-    // 契约字段 toolCallId/name/status/isError——不整条降级为 {type, truncated}
-    // （否则渲染层无法关联工具块）。JSON 序列化转义（引号/控制字符 → \uXXXX）
-    // 可能使截断后仍超限（主进程 enforceSizeLimit 对 tool 事件无数据载体分支，
-    // 超限会整条降级丢契约字段）→ 迭代收紧保证出站 JSON 恒 ≤ MAX_IPC_BYTES。
-    const carrier = out.input !== undefined ? "input" : "output";
-    const value = out[carrier];
-    let text = typeof value === "string" ? value : JSON.stringify(value);
-    while (JSON.stringify({ ...out, [carrier]: text }).length > MAX_IPC_BYTES && text.length > 1) {
-      text = text.slice(0, Math.floor(text.length / 2));
-    }
-    out[carrier] = text;
-    out.truncated = true;
-  } else {
-    return { type: event.type, truncated: true };
-  }
-  return out;
-}
-
-// PI 事件 → 签核事件契约（session-event：text_delta/text_end/tool_execution_*）。
-// 工具面适配器事件（REQ-AGENT-012：tool_execution_start/end/error，含 name/status）
-// 已是契约形态 → 直接透传；PI 原生事件（toolName 字段）走下方映射。
-// 透传分支实证（REQ-AGENT-055）：到达本函数、带 name 字段的 tool_execution_* 事件
-// 仅有 toolAdapter 的 tool_execution_error（worker 只从 toolSurface 转发 error——
-// adapter 的 start/end 不经 onEvent 转发；PI 原生事件恒为 toolName 字段不落本分支），
-// 且 adapter 事件不含 args/result → 无字段可补，透传原样（BUG-006 起 error 携带
-// toolCallId——渲染层精确归块；无 id 的旧形态保持回退关联，I-2 的 isError 处理在
-// end 上）。
-function mapToContractEvent(ev) {
-  if (
-    typeof ev?.type === "string" &&
-    ev.type.startsWith("tool_execution") &&
-    typeof ev.name === "string"
-  ) {
-    return ev;
-  }
-  switch (ev.type) {
-    case "message_update": {
-      const a = ev.assistantMessageEvent;
-      if (!a) return null;
-      if (a.type === "text_delta") return { type: "text_delta", delta: a.delta };
-      if (a.type === "text_end") return { type: "text_end", content: a.content };
-      return null;
-    }
-    case "tool_execution_start":
-      // 加法扩展（REQ-AGENT-055，review I-1）：start 补 input = PI 原生 args
-      // （实证：pi-agent-core agent-loop.js tool_execution_start 恒含
-      // args = toolCall.arguments；缺失时 undefined）。
-      return {
-        type: "tool_execution_start",
-        name: getOriginalToolName(ev.toolName),
-        status: "running",
-        toolCallId: ev.toolCallId,
-        input: ev.args,
-      };
-    case "tool_execution_end":
-      // 加法扩展（REQ-AGENT-055）：end 补 output = PI 原生 result（ToolResult
-      // 子集完整透传，256KB 上限由 limitSize 按数据载体截断）+ isError = PI
-      // 布尔透传（实证：emitToolExecutionEnd 恒含 result/isError，成功 false/
-      // 失败 true——不再丢弃，I-2 依赖）。超限截断见 limitSize。
-      return {
-        type: "tool_execution_end",
-        name: getOriginalToolName(ev.toolName),
-        status: "completed",
-        toolCallId: ev.toolCallId,
-        output: ev.result,
-        isError: ev.isError,
-      };
-    default:
-      return null;
-  }
-}
-
-// 每会话最近一轮回复最终文本（text_end.content）——prompt-result 回传主进程，
-// 供调用方拿到本轮回复文本（REQ-AGENT-006/009 断言用）。
-const lastReplies = new Map(); // sessionKey → 最近一轮 text_end.content
-// BUG-002 诊断（2026-08-09）：每轮事件计数（text_delta/text_end/tool_execution）——
-// prompt-result 日志实锤事件链完整性；随轮次清理（prompt-result 后 delete）。
-const turnEventCounts = new Map(); // sessionKey → { delta, end, tool }
-// BUG-002 诊断 4（2026-08-09）：SDK 层事件到达计数（agent_start/end、turn_start/end、
-// message_update）——prompt-result 日志实锤「SDK 未产生事件」vs「worker 过滤丢弃」。
-const sdkEventCounts = new Map(); // sessionKey → { agent_start?, agent_end?, ... }
-
-// —— Slice 8（REQ-AGENT-057）：消息元数据（B10 数据面，接口 6）——
-// text_end 转发加 `meta { durationMs, tokensIn, tokensOut }`：
-// - durationMs：回合起点 = PI assistantMessageEvent 的 text_start（缺失形态兜底
-//   首个 text_delta）记录时间戳，text_end 时按起止计算；
-// - tokensIn/Out：从 message_end 的 assistant message usage 读取（research 实证：
-//   AssistantMessage.usage 必填——pi-ai/types.d.ts:297；但流式 text_end 的 partial
-//   上 output 可能未填充最终值（anthropic-messages.js：message_delta 的最终 usage
-//   在最后一个 content_block_stop 之后））→ text_end **延迟到 message_end 后转发**
-//   （usage 完备；事件顺序不变——message_end 紧随 text_end 同轮内到达）；
-// - FAUX usage 空/0 → tokensIn/Out 按值原样带（0 → renderer 显示「-」，057 标准 4）；
-// - 兜底定时器：message_end 缺失（异常中断）→ 超时照发（仅 durationMs，不悬挂）。
-const turnStartedAt = new Map(); // sessionKey → 回合起点时间戳
-const pendingTextEnds = new Map(); // sessionKey → Array<{ content, startedAt, timer }>
-const PENDING_TEXT_END_FALLBACK_MS = 5000;
-
-function clearPendingTextEnds(sessionKey) {
-  const list = pendingTextEnds.get(sessionKey);
-  if (!list) return;
-  for (const pending of list) clearTimeout(pending.timer);
-  pendingTextEnds.delete(sessionKey);
-}
-
-// 冲刷该会话的 pending text_end（正常路径 = message_end 到达；兜底 = 定时器超时）。
-// usage 缺失（兜底路径）→ meta 仅 durationMs（renderer 显示「-」）。
-function flushPendingTextEnds(sessionKey, usage) {
-  const list = pendingTextEnds.get(sessionKey);
-  if (!list || list.length === 0) return;
-  pendingTextEnds.delete(sessionKey);
-  turnStartedAt.delete(sessionKey);
-  for (const pending of list) {
-    clearTimeout(pending.timer);
-    const meta = {};
-    if (pending.startedAt !== undefined) meta.durationMs = Math.max(0, Date.now() - pending.startedAt);
-    if (usage?.input !== undefined) meta.tokensIn = usage.input;
-    if (usage?.output !== undefined) meta.tokensOut = usage.output;
-    const event = { type: "text_end", content: pending.content };
-    if (Object.keys(meta).length > 0) event.meta = meta;
-    lastReplies.set(sessionKey, event.content);
-    send({ type: "session-event", sessionKey, event: limitSize(event) });
-  }
-}
-
-function forwardEvent(sessionKey, ev) {
-  // BUG-002 诊断（2026-08-09）：事件计数（text_delta/text_end/tool_execution）——
-  // prompt-result 日志实锤「LLM 生成了但事件链断」vs「模型空转无输出」。
-  const mappedType = ev?.assistantMessageEvent?.type ?? ev?.type;
-  if (mappedType === "text_delta" || mappedType === "text_end" || (mappedType ?? "").startsWith("tool_execution")) {
-    const c = turnEventCounts.get(sessionKey) ?? { delta: 0, end: 0, tool: 0 };
-    if (mappedType === "text_delta") c.delta += 1;
-    else if (mappedType === "text_end") c.end += 1;
-    else c.tool += 1;
-    turnEventCounts.set(sessionKey, c);
-  }
-  // 消息元数据（REQ-AGENT-057）：回合起点记录 + text_end 延迟转发（message_end
-  // 冲刷时统一转发，事件顺序与既有契约一致——text_delta 后 text_end）。
-  if (ev?.type === "message_update" && ev.assistantMessageEvent) {
-    const a = ev.assistantMessageEvent;
-    if ((a.type === "text_start" || a.type === "text_delta") && !turnStartedAt.has(sessionKey)) {
-      turnStartedAt.set(sessionKey, Date.now());
-    }
-    if (a.type === "text_end") {
-      const timer = setTimeout(() => flushPendingTextEnds(sessionKey, undefined), PENDING_TEXT_END_FALLBACK_MS);
-      timer.unref?.();
-      const list = pendingTextEnds.get(sessionKey) ?? [];
-      list.push({ content: a.content, startedAt: turnStartedAt.get(sessionKey), timer });
-      pendingTextEnds.set(sessionKey, list);
-      return; // 不在此处转发（message_end 冲刷时统一转发）
-    }
-  }
-  if (ev?.type === "message_end") {
-    // REQ-AGENT-091（BUG-010）：abort 中断（stopReason=aborted）时流被掐断、SDK 不发
-    // text_end → 若本轮 text_end 缺失则合成收尾（content = 中断消息已生成文本——
-    // 「已生成保留」语义），否则 lastReplies 无值（prompt-result 丢 reply）且 UI
-    // streaming 永不复位（text_end 是回合收尾的唯一权威信号）。正常路径（text_end
-    // 已到、pending 非空）不受影响。
-    const msg = ev.message;
-    const hasPending = (pendingTextEnds.get(sessionKey) ?? []).length > 0;
-    if (msg?.stopReason === "aborted" && !hasPending) {
-      const content = (msg.content ?? [])
-        .filter((c) => c?.type === "text")
-        .map((c) => c.text ?? "")
-        .join("");
-      const list = pendingTextEnds.get(sessionKey) ?? [];
-      list.push({ content, startedAt: turnStartedAt.get(sessionKey), timer: undefined });
-      pendingTextEnds.set(sessionKey, list);
-      log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
-    }
-    // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
-    flushPendingTextEnds(sessionKey, ev.message?.usage);
-  }
-  const mapped = mapToContractEvent(ev);
-  if (!mapped) return;
-  // 流式/工具事件 = 会话自身活动（REQ-AGENT-035 标准 1）：刷新 lastActiveAt。
-  // clearPending:false（PRD 对齐修复 M1）：会话自身事件不清组冷却的延迟淘汰标记
-  // ——pending 窗口内流式 touch 若清掉标记，流结束不再淘汰，组内双热并存（违反
-  // F3 恒 ≤1 与 REQ-AGENT-037 标准 3）；「用户回来了」才由 handlePrompt/session-config
-  // 的 touch（默认 clearPending=true）清除。
-  // 未知 sessionKey → 模块内静默 no-op（消息乱序容忍，接口 1 业务错误行）。
-  lifecycle.touch(sessionKey, { clearPending: false });
-  if (mapped.type === "text_end") lastReplies.set(sessionKey, mapped.content);
-  send({ type: "session-event", sessionKey, event: limitSize(mapped) });
-}
-
 // 会话生命周期（REQ-AGENT-035/036/037/039；tech-design 接口 1）：
 // - 三触发淘汰调度：TTL 1h / LRU 50 / 同组单活，sweep 每 60s；流式/队列豁免
 //   （F2/E1：进行中的回复不掐断；流结束回归候选集合）；
-// - onEvict：淘汰副作用回调——dispose + 辅助 Map×3（toolContexts/sessionQueues/
-//   lastReplies）清理 + 发 session-evicted IPC（接口 2，{ type:"session-evicted",
+// - onEvict：淘汰副作用回调——dispose + turnPipeline.clearSessionState（装配态
+//   4 Map 登记 + 回合态自登记，注册表一条路径清全部——ADR-029 决策 2，修两份
+//   手抄清单抄岔）+ 发 session-evicted IPC（接口 2，{ type:"session-evicted",
 //   sessionKey }；主进程丢句柄、store 行保留、keySecrets 保留——Slice 3 接主进程侧）；
 // - tombstone 由模块内部记录（tombstonedKeys；接口 3 判别依据，Slice 3 接 evicted
 //   重投）；keySecrets 不动（keyRef 级共享缓存，035 标准 2）；confirmAcks/
 //   permissionDecisions 不随淘汰清理（035 标准 7，随 30s/10min 超时兜底释放）。
-// 淘汰副作用（onEvict 回调，worker 侧）：dispose + 辅助 Map×3（toolContexts/
-// sessionQueues/lastReplies）清理 + 发 session-evicted IPC（接口 2）。
+// 淘汰副作用（onEvict 回调，worker 侧）：dispose + clearSessionState + 发
+// session-evicted IPC（接口 2）。
 function handleSessionEvicted(key, entry, reason) {
   if (entry) disposeSession(entry);
-  toolContexts.delete(key);
-  sessionQueues.delete(key);
-  lastReplies.delete(key);
-  // Slice 3（REQ-AGENT-070 标准 4）：会话模式随淘汰清理（模式是会话级状态——
-  // 懒恢复经 session-config 重新注入主进程当前模式）。
-  sessionModes.delete(key);
-  // Slice 3（REQ-AGENT-096，B5）：judge 数据面随淘汰清理（judge 是会话级装配——
-  // 懒恢复经 session-config 重新注入最新 defaultJudge）。
-  judgeModels.delete(key);
-  // Slice 8（REQ-AGENT-057）：消息元数据状态随淘汰清理（pending text_end 不悬挂——
-  // 定时器已 clear，不再对已淘汰会话补发 text_end）。
-  turnStartedAt.delete(key);
-  clearPendingTextEnds(key);
+  turnPipeline.clearSessionState(key);
   send({ type: "session-evicted", sessionKey: key });
   // BUG-002 诊断（2026-08-09）：淘汰日志带来源与 entry 状态——区分
   // sweep-ttl / sweep-pending / lru / group-cool 四触发，定位误淘汰。
@@ -747,6 +532,25 @@ const lifecycle = createSessionLifecycle({
   onWarn: (m) => log(m), // E5（LRU 让位）/E1（流式中豁免延迟）诊断生产可见（PRD 对齐修复 M2）
   onEvict: handleSessionEvicted,
 });
+
+// 回合事件管线（ADR-029；story 2026-08-16-deepen-turn-event-pipeline slice 2）：
+// 转发/映射/截断/延迟收尾/abort 合成/回合状态 Map 收进模块；worker 只留 IPC +
+// 装配 + lifecycle 接线。touch 注入：仅当事件实际映射出站时由管线调用；
+// clearPending:false 语义保持（流式事件不清组冷却延迟淘汰标记——REQ-AGENT-037
+// M1，review B2）。
+const turnPipeline = createTurnEventPipeline({
+  send,
+  log,
+  touch: (sessionKey) => lifecycle.touch(sessionKey, { clearPending: false }),
+  setTimeout,
+  clearTimeout,
+  now: Date.now,
+});
+// 装配态 Map 登记（worker 持有、管线统一清理——淘汰/重置一条路径，修手抄清单抄岔）。
+turnPipeline.registerSessionScopedMap(toolContexts);
+turnPipeline.registerSessionScopedMap(sessionQueues);
+turnPipeline.registerSessionScopedMap(sessionModes);
+turnPipeline.registerSessionScopedMap(judgeModels);
 
 // sweep 周期（signoff 裁决 2：60s 语义）；unref：不阻塞进程退出。
 const sweepTimer = setInterval(() => {
@@ -1295,7 +1099,7 @@ async function createSessionEntry(msg) {
         }),
   });
   toolSurface.onEvent((ev) => {
-    if (ev.type === "tool_execution_error") forwardEvent(sessionKey, ev);
+    if (ev.type === "tool_execution_error") turnPipeline.onSessionEvent(sessionKey, ev);
   });
 
   const { session: agentSession } = await createAgentSession({
@@ -1343,14 +1147,13 @@ async function createSessionEntry(msg) {
   };
   agentSession.subscribe((ev) => {
     // BUG-002 诊断 4（2026-08-09）：SDK 事件到达观测——subscribe 是否收到事件
-    //（区分「SDK 层未产生事件」vs「worker 过滤丢弃」）。
+    //（区分「SDK 层未产生事件」vs「worker 过滤丢弃」）。计数写入管线
+    //（recordSdkEvent——sdkEventCounts 归管线存/取/清，slice 2 接线）。
     const t = ev?.type ?? ev?.assistantMessageEvent?.type ?? "?";
     if (t === "agent_start" || t === "agent_end" || t === "turn_start" || t === "turn_end" || t === "message_update") {
-      const c = sdkEventCounts.get(sessionKey) ?? {};
-      c[t] = (c[t] ?? 0) + 1;
-      sdkEventCounts.set(sessionKey, c);
+      turnPipeline.recordSdkEvent(sessionKey, t);
     }
-    forwardEvent(sessionKey, ev);
+    turnPipeline.onSessionEvent(sessionKey, ev);
   });
   // 经生命周期模块注册（tech-design 接口 1）：覆盖注册（懒恢复/重建）清 tombstone，
   // 并刷新活跃时间；LRU 上限由模块在注册时执行（REQ-AGENT-036）。
@@ -1515,6 +1318,7 @@ async function handlePrompt(msg) {
   await enqueueSession(sessionKey, async () => {
     entry.queued = false;
     entry.streaming = true; // 流式保护（F2/E1：进行中的回复不掐断）
+    turnPipeline.beginTurn(sessionKey); // 幂等清两诊断计数（人拍板 B：失败轮残留不混轮）
     try {
       // FAUX 测试 seam（H3）：每轮排队一个确定性响应。可编程工具调用注入缝
       // （REQ-AGENT-043/044，OPC_FAUX_TOOL_SEQUENCE）：序列未耗尽 → 本轮 FAUX
@@ -1591,14 +1395,11 @@ async function handlePrompt(msg) {
       } catch (err) {
         log(`末条消息读取失败 session=${sessionKey} err=${err?.message ?? String(err)}`);
       }
-      const reply = lastReplies.get(sessionKey);
+      const reply = turnPipeline.takeLastReply(sessionKey);
       // BUG-002 诊断（2026-08-09）：reply 有无 + 本轮事件计数——实锤「LLM 生成了
-      // 但事件链断」vs「模型空转无输出」。
-      const turnStats = { delta: turnEventCounts.get(sessionKey)?.delta ?? 0, end: turnEventCounts.get(sessionKey)?.end ?? 0, tool: turnEventCounts.get(sessionKey)?.tool ?? 0 };
-      turnEventCounts.delete(sessionKey);
-      const sdkStats = sdkEventCounts.get(sessionKey) ?? {};
-      sdkEventCounts.delete(sessionKey);
-      log(`prompt-result session=${sessionKey} id=${id} reply=${reply !== undefined ? "有" : "无"} 事件=${JSON.stringify(turnStats)} sdk事件=${JSON.stringify(sdkStats)}`);
+      // 但事件链断」vs「模型空转无输出」。诊断计数经管线接口取出即删（人拍板 B）。
+      const diag = turnPipeline.takeTurnDiagnostics(sessionKey);
+      log(`prompt-result session=${sessionKey} id=${id} reply=${reply !== undefined ? "有" : "无"} 事件=${JSON.stringify(diag.turnStats)} sdk事件=${JSON.stringify(diag.sdkStats)}`);
       send({
         type: "prompt-result",
         id,
@@ -1705,16 +1506,11 @@ async function handleResetSession(msg) {
   if (entry) {
     await disposeSession(entry);
     lifecycle.remove(msg.sessionKey);
-    lastReplies.delete(msg.sessionKey);
-    // Slice 8（REQ-AGENT-057）：消息元数据状态随 reset 清理（pending text_end 不悬挂）。
-    turnStartedAt.delete(msg.sessionKey);
-    clearPendingTextEnds(msg.sessionKey);
-    // Slice 3（REQ-AGENT-070）：会话模式随 reset 清理（重开会话 → 主进程新
-    // session-config 注入当前模式）。
-    sessionModes.delete(msg.sessionKey);
-    // Slice 3（REQ-AGENT-096，B5）：judge 数据面随 reset 清理（重开会话 →
-    // session-config 重新注入最新 defaultJudge）。
-    judgeModels.delete(msg.sessionKey);
+    // 注册表统一清理（ADR-029 决策 2/3，人拍板 A）：清全部登记 Map——装配态
+    // （toolContexts/sessionQueues/sessionModes/judgeModels）+ 回合态（lastReplies/
+    // 计数/turnStartedAt/pendingTextEnds，pending 定时器经 cleanup 钩子先 clear）。
+    // 修重置版手抄清单抄岔（漏 toolContexts/sessionQueues）与计数泄漏。
+    turnPipeline.clearSessionState(msg.sessionKey);
     log(`reset-session session=${msg.sessionKey}`);
   }
 }
