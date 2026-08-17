@@ -113,3 +113,16 @@ agentModelResolveLocal / agentDialogue（REQ-AGENT-111 AC5）。
 - 附加 test-gap 修正：resetDropQueue ready 监听移到 start 之前（v2 重写笔误，人确认
   test-gap 分类 2026-08-17）。
 - signer = **AI**（v3 变更人确认后自动补签）。
+
+---
+
+## Assertion v4 补签（2026-08-17，slice 2 PRD 对齐 missing-test）
+
+**缘起**：slice 2 PRD 对齐子代理发现 recordSdkEvent 零自动化断言（实现正确、测试缺失——
+REQ-107 AC4 只断言 sdkStats 空读）+ REQ-106 AC2 实例成员计数 7→8 文档漂移。
+
+- requirements.md v4 哈希 `437b549f0dedfb99f9d116bc37781c6b17d6fbc4ddf572c2e5d95d9dc43c08ac`
+  （requirements-v4.hash，v3 删）。
+- 新增 AC4b 单元用例：recordSdkEvent 累加（message_update×2 + turn_start → {2,1}）、
+  取出即删、beginTurn 清、clearSessionState 清；AC2 清单补 recordSdkEvent（8 成员）。
+- turnEventPipeline.test.js 17/17 绿。signer = **AI**（v4 变更后自动补签）。
