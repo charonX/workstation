@@ -18,6 +18,13 @@ export default function Skills() {
 
   const skillCount = groups.reduce((sum, g) => sum + g.skills.length, 0);
 
+  // Reset transient action feedback so each action renders a fresh success/error/log state.
+  function clearActionFeedback() {
+    setActionError(null);
+    setActionSuccess(null);
+    setUpdateLog(null);
+  }
+
   function handleRequestDelete(slug) {
     setPendingDeleteSlug(slug);
     setConfirmOpen(true);
@@ -29,9 +36,7 @@ export default function Skills() {
     setConfirmOpen(false);
     setPendingDeleteSlug(null);
     setBusySlug(slug);
-    setActionError(null);
-    setActionSuccess(null);
-    setUpdateLog(null);
+    clearActionFeedback();
     try {
       await removeSource(slug);
     } catch (err) {
@@ -43,9 +48,7 @@ export default function Skills() {
 
   async function handleUpdate(slug) {
     setBusySlug(slug);
-    setActionError(null);
-    setActionSuccess(null);
-    setUpdateLog(null);
+    clearActionFeedback();
     try {
       const { groups: freshGroups } = await updateSource(slug);
       const version = (freshGroups ?? []).find((g) => g.slug === slug)?.version;
@@ -63,9 +66,7 @@ export default function Skills() {
   }
 
   async function handleInstall(sourceType, identifier) {
-    setActionError(null);
-    setActionSuccess(null);
-    setUpdateLog(null);
+    clearActionFeedback();
     await install(sourceType, identifier);
   }
 

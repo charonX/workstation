@@ -92,9 +92,7 @@ export default function SkillTable({ groups, onRequestDelete, onRequestUpdate, b
                         <span className="skill-count-badge">{group.skills.length}</span>
                       </span>
                       <span className="skill-repo-meta">
-                        {group.sourceType}
-                        {group.sourceType === "git" || group.sourceType === "local" ? ` · ` : ""}
-                        <span data-testid="repo-version">{group.version ?? "—"}</span>
+                        {group.sourceType} · <span data-testid="repo-version">{group.version ?? "—"}</span>
                         {group.sourceUrl ? ` · ${group.sourceUrl}` : ""}
                       </span>
                     </div>
