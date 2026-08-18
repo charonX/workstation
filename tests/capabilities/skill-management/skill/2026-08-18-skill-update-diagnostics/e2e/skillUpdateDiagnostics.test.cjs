@@ -134,12 +134,15 @@ test.describe("Skill update diagnostics UI", () => {
     git(origin, ["commit", "-m", "v1"]);
     await installGitSource(apiBaseUrl, origin);
 
-    // 上游新提交 + 克隆内本地改动 → ff-only 拒绝
-    await writeSkillSource(origin, "review2");
+    // 上游新提交（修改 review → 触发 ff-only 拒绝本地改动）+ 克隆内本地改动
+    await fs.writeFile(
+      path.join(origin, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: v2\n---\n\n# v2\n"
+    );
     git(origin, ["add", "."]);
     git(origin, ["commit", "-m", "v2"]);
     const slug = (await (await fetch(`${apiBaseUrl}/api/skills`)).json()).find((g) => g.sourceType === "git").slug;
-    const localFile = path.join(skillRepoPath, slug, "skills", "review2", "SKILL.md");
+    const localFile = path.join(skillRepoPath, slug, "skills", "review", "SKILL.md");
     await fs.writeFile(localFile, "local dirty change\n");
 
     await openSkillsPage();
