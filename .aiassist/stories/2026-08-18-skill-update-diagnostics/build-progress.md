@@ -29,7 +29,7 @@
 | REQ-020 AC4 无/坏 package.json → 回落 fallback，不阻断扫描 | `readSourceVersion` 外层 try/catch（ENOENT/JSON.parse 异常不抛，回落）；`listSkillGroups` E10 兜底保持 | AC4（git 无 pkg 短哈希 / local 坏 JSON null，均仍被扫描到） | COVERED |
 | REQ-021 AC1 成功 job.log = null / 失败 log = git 输出原文 | `createJob` 加 `log:null`；`runUpdateJob` 失败路径 `job.log = [err.stdout, err.stderr].filter(Boolean).join("\n") || gitErrorMessage(err)`（原始未 trim，与 `error.message`=trim 后 stderr 天然不等）；成功不写 log | AC1（成功 log===null + 'log' 键在）；AC2（失败 log 含 /local changes/i 且 !== error.message） | COVERED |
 | REQ-021 AC2 GET /api/skills/jobs/:jobId 终态返回 log | `getJob` 返回 `{id, status, error, log: job.log ?? null}`；`routes/skills.js` 直透 `getJob` 对象（无字段白名单） | AC1/AC2 经 waitForJob 轮询断言 | COVERED |
-| REQ-021 AC3 waitForJob 失败抛错带 err.log | `src/renderer/api/skills.js` `waitForJob` error 分支 `err.log = job.log ?? null` 后抛 | signoff 记录：无独立 API 断言（renderer 内部传播细节），实现者代码审查 + E2E AC4（QA 门）兜底 | COVERED（单测兜底/QA 观察） |
+| REQ-021 AC3 waitForJob 失败抛错带 err.log | `src/renderer/api/skills.js` `waitForJob` error 分支 `err.log = job.log ?? null` 后抛 | signoff 记录：无独立 API 断言（renderer 内部传播细节），实现者代码审查 + E2E AC4（QA 门）兜底 | COVERED（代码审查 + E2E AC4，QA 门） |
 
 - 修改文件：`src/services/skillService.js`（`readSourceVersion` 新增 + `scanSourceDir` version + `createJob` log:null + `getJob` log + `runUpdateJob` 失败写 job.log；import `execFileSync`）、`src/renderer/api/skills.js`（`waitForJob` err.log）、`src/http/routes/skills.js`（核实直透，无改动）。
 - 测试证据：`api/skillUpdateDiagnostics.test.js` 6/6 pass（RED→GREEN）；`npm run test:unit` 全量 971/971 pass / 0 fail（零回归）。

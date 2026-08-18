@@ -46,10 +46,11 @@ EXPECTED-TRACE：prd.md §6.3（实证 mattpocock-skills → `"1.1.0"`）。
 （7 位短哈希，字符串）；local 源 → `version: null`。
 EXPECTED-TRACE：prd.md §6.3（实证 baoyu-skills → null；git fallback 语义）。
 
-### AC4 — 无 package.json / 解析失败 → null，不阻断扫描
+### AC4 — package.json 缺失/解析失败 → 回落 fallback，不阻断扫描
 
-源根无 package.json 或 JSON 损坏 → `version: null`，该源仍正常出现在列表中
-（E10 语义：单个源异常不使扫描失败）。
+源根 package.json 缺失或 JSON 损坏 → 版本解析回落到 AC3 的 fallback 规则
+（git 源 → `git rev-parse --short HEAD`；local 源 → `null`），该源仍正常出现在
+列表中（E10 语义：单个源异常不使扫描失败）。
 
 ### AC5 — UI 技能组头展示 version
 

@@ -66,7 +66,7 @@
 ## 7. 表单与输入验证
 
 - version 字段：字符串或 `null`（非字符串值归一化；package.json 解析失败 → null，不阻断扫描）。
-- job.log：字符串或 `null`（git 输出 trim；无输出 → null）。
+- job.log：字符串或 `null`（git 输出**原样**，非 trim——原样性是「log ≠ error.message」契约的承重差异；无输出 → null）。
 - 无新增用户输入。
 
 ## 8. 错误状态与失败响应
