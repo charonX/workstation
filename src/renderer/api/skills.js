@@ -37,6 +37,7 @@ export async function waitForJob(jobId, { pollIntervalMs = 200, timeoutMs = 3000
     if (job.status === "error") {
       const err = new Error(job.error?.message || "Skill job failed");
       err.code = job.error?.code;
+      err.log = job.log ?? null; // REQ-021 AC3: carry the raw git output for UI display
       throw err;
     }
     if (Date.now() > deadline) {

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
@@ -202,6 +202,32 @@ function isGitSource(sourceDir) {
   return fs.existsSync(path.join(sourceDir, ".git"));
 }
 
+// Source version (REQ-SKILL-020, PRD §6.3/§7): resolution order is
+//   package.json.version -> git rev-parse --short HEAD -> null.
+// The read is best-effort: a missing/broken package.json falls back instead of
+// failing the scan (E10 — one bad source must never break listing), and a
+// git rev-parse failure (e.g. source marked git but not actually a repo) also
+// yields null.
+function readSourceVersion(sourceDir, git) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, "package.json"), "utf8"));
+    if (typeof pkg.version === "string" && pkg.version !== "") {
+      return pkg.version;
+    }
+  } catch {
+    // E10: missing/broken package.json — fall through to the git short hash.
+  }
+  if (!git) return null;
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: sourceDir,
+      encoding: "utf8"
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function scanSourceDir(sourceDir, slug) {
   const git = isGitSource(sourceDir);
   const skills = [];
@@ -223,6 +249,7 @@ function scanSourceDir(sourceDir, slug) {
     slug,
     sourceType: git ? "git" : "local",
     sourceUrl: git ? readGitRemoteUrl(sourceDir) : null,
+    version: readSourceVersion(sourceDir, git),
     skills
   };
 }
@@ -254,17 +281,20 @@ function createJob() {
   const job = {
     id: `skill-job-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     status: "pending",
-    error: null
+    error: null,
+    log: null
   };
   jobs.set(job.id, job);
   return job;
 }
 
-// GET /api/skills/jobs/:jobId — polling model {id, status, error:{code,message}}.
+// GET /api/skills/jobs/:jobId — polling model {id, status, error:{code,message},
+// log}. log (REQ-SKILL-021) is terminal-only: set on a failed update (raw git
+// output), null on success and while pending/running.
 export function getJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return undefined;
-  return { id: job.id, status: job.status, error: job.error ?? null };
+  return { id: job.id, status: job.status, error: job.error ?? null, log: job.log ?? null };
 }
 
 function finishJob(job, error) {
@@ -477,6 +507,12 @@ async function runUpdateJob(job, sourceDir) {
     // (never reset, never force-overwrite a user's local changes).
     await execFileAsync("git", ["-C", sourceDir, "pull", "--ff-only"]);
   } catch (err) {
+    // REQ-SKILL-021: keep the raw git output (untrimmed stdout+stderr) for the
+    // terminal job.log so the UI can show exactly what git did — distinct from
+    // error.message, which is the trimmed stderr (gitErrorMessage). Success
+    // leaves log null (createJob default); only failures carry output.
+    const output = [err.stdout, err.stderr].filter(Boolean).join("\n");
+    job.log = output || gitErrorMessage(err);
     throw codedError(502, "SKILL_UPDATE_FAILED", gitErrorMessage(err));
   }
 }
