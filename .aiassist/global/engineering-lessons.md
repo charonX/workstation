@@ -18,9 +18,12 @@
 - **安全不变量必须在结构上强制，不能寄希望于外围注释**：
   - 现象：BUG-001/002 是因为「授权桥行在 approve 时主进程不得 execute」只以注释约定，很容易在后续改动中误调 `execute` 导致双重执行。
   - 结论：在 `PermissionAdjudicator.approve` 内部结构化判断 `isBridgeRow`（`riskLevel === "permission"` 或 `notifyOnSettle === false`），彻底跳过 `execute`；同时测试用例直接断言 `assert.equal(executedCommands.length, 0)` 锁死契约。
-- **Fail-Closed 必须作为第一安全防线**：
-  - 现象：未声明的外部工具或解析失败的配置容易出现零确认放行漏洞。
-  - 结论：策略评估器与授权桥对任何未知输入（未知工具、损坏配置、缺失 handler）默认一律返回 `ask` / `deny`。
+- **strict 等全局安全语义必须收归策略/裁决层，上层装配仅转发**：
+  - 现象：`server.js` 曾在 `onPermissionAsk` 中通过 `getModeService().getMode(sessionKey) === "strict"` 手写 `user_bash` 全确认分支，导致 strict 判定散落且重复。
+  - 结论：将 `mode: "strict"` 作为第一判定注入 `permissionPolicy`（评估器直接返回 `"ask"`），并在 `permissionBridge` 统一调度；`server.js` 仅做单行转发，彻底消灭外围 if-else 胶水。
+- **杜绝无法命中生产实现的假断言，用真实行为断言与严格静态断言锁定**：
+  - 现象：断言写成了生产代码中根本不存在的正则（如 `doesNotMatch /if (mode === "strict") { return "ask"; }/`），无法测出真实代码中的重复逻辑。
+  - 结论：测试必须包含真实的业务行为断言（如 strict 模式下安全命令真实产生 pending 单并在 approve 后放行），配合精准的静态代码检查（如断言 `server.js` 零手写 strict 判断），确保红绿有效。
 
 ---
 

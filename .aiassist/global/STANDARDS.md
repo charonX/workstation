@@ -166,3 +166,5 @@
 - **唯一执行者结构化锁定（Zero Execute on Approve）**：授权桥挂起行的 `approve` 仅更新持久化状态并向 Worker 发送 `allow` 决策，主进程 100% 跳过命令 `execute`，物理杜绝双重执行。
 - **严格降级 Fail-Closed**：未知工具面、异常策略配置或未接线 handler 默认一律判定为 `ask` / `deny`，杜绝任何零确认放行漏洞。
 - **单一评估与单一询问**：pre-gate 仅拦截 gotgenes 不可见运算符（重定向/管道），常规命令交 gotgenes 正常评估，同一操作仅生成唯一 `confirmId`，杜绝重复弹卡。
+- **strict 语义单点内聚**：strict 全量确认等策略模式在 `PermissionPolicy`（评估器直接产出 ask）与 `PermissionBridge` 内部消化；`server.js` 的 `onPermissionAsk` 等外围胶水仅作单点转发，禁止手写 if-else 重复判定。
+- **断言必为有效行为判定**：禁止为形式合规编写无法匹配生产实现的假断言（如伪正则）；所有安全契约必须有真实输入/输出断言（包含挂起单生成与决议放行），配合精确静态代码检查。
