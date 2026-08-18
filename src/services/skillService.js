@@ -511,9 +511,10 @@ async function runUpdateJob(job, sourceDir) {
     // terminal job.log so the UI can show exactly what git did — distinct from
     // error.message, which is the trimmed stderr (gitErrorMessage). Success
     // leaves log null (createJob default); only failures carry output.
+    const gitMessage = gitErrorMessage(err);
     const output = [err.stdout, err.stderr].filter(Boolean).join("\n");
-    job.log = output || gitErrorMessage(err);
-    throw codedError(502, "SKILL_UPDATE_FAILED", gitErrorMessage(err));
+    job.log = output || gitMessage;
+    throw codedError(502, "SKILL_UPDATE_FAILED", gitMessage);
   }
 }
 
