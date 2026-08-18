@@ -7,7 +7,7 @@ intention: >-
   无解释、技能组无版本号可辨新旧。用户点「更新」后无法判断更新是否发生/为何失败，
   更新体验与可诊断性缺失。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: PRD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: TEST        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-18
@@ -16,6 +16,8 @@ created: 2026-08-18
 history:
   - {at: 2026-08-18, from: -, to: THINK, note: "创建 story（/bug 跨 story 路由：技能界面更新体验问题经用户拍板单开新 story）——症状：① git 源 charonX-workflow 更新失败/无可见结果（复现：service 层 git pull --ff-only 实际成功，故非服务层硬失败，疑似可观察性黑盒/UI 层问题）② 更新无 log 可查（job 模型 {id,status,error} 无 log 字段，git 输出被丢弃）③ 技能组无版本号展示（GET /api/skills 无 version 字段）"}
   - {at: 2026-08-18, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：四问全确认——①现象=点更新无反应（坐实黑盒观感，service 层复现成功）②版本号=package.json（验证 2/3 源有 version，baoyu-skills 无→需 fallback）③log=仅失败时展示 ④范围=三合一全做。方向拍板：Outcome 更新有可见结果 / Success 成功有反馈+失败原因+log+版本号 / Constraint local 源 E8 行为不变、版本号读 package.json、log 不持久化 / Out of scope 不改 local 更新能力、不做历史 log、不改 git 机制"}
+  - {at: 2026-08-18, from: PRD, to: CRYSTALLIZE, note: "PRD v1 定稿（人拍板）：B1 版本号/B2 失败 log/B3 成功反馈三稳定块；simple（§10 高层完整）；锚点 7 行全实证（0.24.0/1.1.0/null/短哈希等）。UX 面 = 既有技能页（SkillTable/Skills.jsx 已批准页面）增量（版本 meta + 行内成功/失败反馈），无新 HTML 原型需求，DESIGN 跳过；DOMAIN-MODEL 无新领域术语，跳过。进结晶"}
+  - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续域内编号 REQ-SKILL-020~022）：020 版本号展示（AC1-AC5，四态 fallback）/021 失败 log（AC1-AC5，git stderr 原文+err.log）/022 成功反馈（AC1-AC2）。requirements-v1.hash=19cd0418；能力地图 skill 行追加新测试路径与 REQ。无升级点。自动链续跑 /test-author"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
