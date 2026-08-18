@@ -61,11 +61,8 @@ function touchSessionFile(ref) {
 }
 
 export function createSessionStore(options = {}) {
-  // 数据库连接按路径每次操作时获取（getDb 单连接缓存，路径一致时零开销）：
-  // 全局 getDb() 单连接按路径切换——其他服务（taskService 等走 data.db）切换会
-  // 关闭本库连接，捕获引用会在切换后失效（"database is not open"）。按操作
-  // 重新获取保证跨服务切换后本库仍可用（Slice 8 接线依赖：确认服务/任务卡片
-  // 与对话存储同库时确认回调/任务事件前后的切换安全）。
+  // 数据库连接经 getDb(dbPath) 按路径缓存（同路径同句柄、可安全持有）——惰性访问器
+  // 延迟到首次操作才打开（ADR-009 模块级无副作用），路径一致时每次调用零开销。
   const dbPath = options.dbPath ?? defaultDbPath();
   const db = () => getDb(dbPath);
   const baseSessionDir = options.sessionDir;

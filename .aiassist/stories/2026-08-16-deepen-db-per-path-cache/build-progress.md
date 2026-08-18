@@ -53,4 +53,34 @@ Slice 1 停机条件达成：`dbPerPathCache.test.js` 11/11 绿（修复前 5 �
   动态清除无影响（全量 999/999 证实）。
 - closeDb() 由"关当前一个"升级为"关全部"（超集语义，signoff 已确认）；server.js:462 停服路径受益。
 
-（待 Slice 2）
+### Slice 2（2026-08-18）：最少必要调用点防御注释清理（REQ-WORKSPACE-016）✅
+
+实现：逐个甄别全部 55 处 getDb 调用点（20+ 模块）——仅 1 处存在直接因单槽切路径语义而写的
+防御注释（sessionStore），删除/重写；其余 54 处为正常"每操作取一次"用法或无单槽防御注释，
+一律 KEEP。行为逐字节等价（只省去防御注释，未动任何逻辑/错误处理/表操作）。
+
+清理点清单：
+
+| 文件:行 | 原防御注释 | 清理后 |
+|---|---|---|
+| src/services/sessionStore.js:64-68 | "全局 getDb() 单连接按路径切换——其他服务（taskService 等走 data.db）切换会关闭本库连接，捕获引用会在切换后失效（"database is not open"）。按操作重新获取保证跨服务切换后本库仍可用" | 删除单槽切路径防御说明，重写为 per-path 现状："数据库连接经 getDb(dbPath) 按路径缓存（同路径同句柄、可安全持有）——惰性访问器延迟到首次操作才打开（ADR-009 模块级无副作用），路径一致时每次调用零开销"。`const db = () => getDb(dbPath)` 惰性访问器保留（ADR-009 惰性初始化 + 同路径零开销），不做跨函数状态化。 |
+
+KEEP 代表调用点（为何不动）：
+
+| 调用点 | 保留理由 |
+|---|---|
+| src/services/notificationService.js:6-14（getDbRef + `!db \|\| !db.open` 自愈） | 防御对象是 closeDb()（测试隔离）而非单槽切路径——per-path 后 closeDb() 仍关全部（REQ-015 AC1），缓存句柄仍可能被关，自愈机制功能上必需，注释仍准确 |
+| src/services/mcpService.js:224 / permissionAdjudicator.js:85（`const db = () => getDb(path)` 惰性访问器） | 无单槽防御注释，属正常惰性访问用法 |
+| src/services/taskService.js / flowService.js / projectService.js / contentSourceService.js / executionRunner.js / channelBindingService.js / schedulerService.js / main.js / http/server.js / http/routes/agentSessions.js / sessionDomain.js / imRouter.js（"每操作取一次 getDb"） | 每函数一次取句柄、函数内复用，属正常使用方式；无同函数冗余重取 |
+| src/http/server.js:105 注释（"propagate the path so the lazily-opened getDb() lands on the requested file"） | 解释 DB_PATH 传递（惰性打开落到请求文件），非单槽防御 |
+
+测试证据：`npm run rebuild:node -- --foreground-scripts` + 全量 `npm run test:unit` →
+**999 tests / 999 pass / 0 fail**（REQ-016 AC1：55 调用点 + 全部既有 DB 测试零回归；
+AC2 由回归门 + sessionStore 建行/读行既有用例承载）。
+
+实现备注：
+- REQ-016 AC2（清理点行为断言）无独立用例——signoff 已裁决由 AC1 全量回归门间接承载；
+  本次清理点仅删注释，无行为改动，回归门 + sessionStore 既有用例已覆盖。
+- 工作树遗留：signoff.md 含 Slice 1「实现期语义声明」10 行未提交（Slice 1 两个 commit
+  未包含）——不在本 slice commit 范围（只 add 被清理 src + build-progress.md），留给父代理
+  归档处理。
