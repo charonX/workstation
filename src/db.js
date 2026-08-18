@@ -3,8 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-let db = null;
-let currentPath = null;
+// 模块级 per-path 连接缓存（REQ-WORKSPACE-014/015）：path → Database。
+// 同路径同句柄（可缓存、可跨模块安全持有）；多路径并存互不驱逐；
+// closeDb() 关全部 / closeDb(path) 定向关（不存在 no-op）；:memory: 也进缓存
+// （共享语义），closeDb() 一并清空（测试隔离）。
+const cache = new Map();
 
 export function defaultDbPath() {
   if (process.env.DB_PATH) {
@@ -22,16 +25,8 @@ function wrapDbUnwritableError(message, cause) {
 
 export function getDb(dbPath) {
   const target = dbPath || defaultDbPath();
-  if (db && currentPath === target) {
-    return db;
-  }
-  if (db) {
-    try {
-      db.close();
-    } catch {
-      // ignore
-    }
-    db = null;
+  if (cache.has(target)) {
+    return cache.get(target);
   }
   if (target !== ":memory:") {
     const targetDir = path.dirname(target);
@@ -45,6 +40,7 @@ export function getDb(dbPath) {
       throw wrapDbUnwritableError(`database directory is not writable: ${targetDir}`, err);
     }
   }
+  let db;
   try {
     db = new Database(target);
   } catch (err) {
@@ -53,26 +49,37 @@ export function getDb(dbPath) {
     }
     throw err;
   }
-  currentPath = target;
   initSchema(db);
   migrateSchema(db);
+  cache.set(target, db);
   return db;
 }
 
-export function closeDb() {
-  if (db) {
+export function closeDb(dbPath) {
+  if (dbPath !== undefined) {
+    const db = cache.get(dbPath);
+    if (!db) return; // 路径不存在 → no-op（REQ-WORKSPACE-015 AC3）
     try {
       db.close();
     } catch {
       // ignore
     }
-    db = null;
-    currentPath = null;
+    cache.delete(dbPath);
+    return;
   }
+  // 无参 → 关全部（REQ-WORKSPACE-015 AC1；:memory: 一并清空 AC4）
+  for (const db of cache.values()) {
+    try {
+      db.close();
+    } catch {
+      // ignore
+    }
+  }
+  cache.clear();
 }
 
 export function resetDb(dbPath) {
-  const database = getDb(dbPath ?? currentPath ?? ":memory:");
+  const database = getDb(dbPath ?? defaultDbPath());
   database.exec(`
     DROP TABLE IF EXISTS execution_nodes;
     DROP TABLE IF EXISTS logs;
@@ -94,6 +101,16 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS mcp_project_enablement;
     DROP TABLE IF EXISTS mcp_permission_defaults;
   `);
+  // REQ-WORKSPACE-015 AC5（dbPerPathCache.test.js）：resetDb 语义 = 重置该路径库全部表，
+  // 含调用方自定义表（用例中手工创建的 t 不在固定 DROP 列表内）。固定列表之外遗留表动态清除。
+  const leftoverTables = database
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+    .all();
+  for (const { name } of leftoverTables) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      database.exec(`DROP TABLE IF EXISTS "${name}"`);
+    }
+  }
   initSchema(database);
 }
 
