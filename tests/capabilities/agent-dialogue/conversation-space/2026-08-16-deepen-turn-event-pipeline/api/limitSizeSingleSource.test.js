@@ -62,6 +62,16 @@ describe("REQ-AGENT-110 256KB 截断单真源——limitSize 四分支直测（�
     assert.ok(JSON.stringify(out).length <= MAX, `出站 JSON 应 ≤ ${MAX}，实际 ${JSON.stringify(out).length}`);
   });
 
+  it("BUG-001 回归（S3，人拍板修 2026-08-18）：文本载体转义安全——引号密集内容 JSON 转义后仍 ≤ 262144", () => {
+    // BUG-TRACE: BUG-001（review code 层 S3 发现，既有缺陷）
+    // 旧实现 slice(0, MAX-256) 对转义密集文本不保证 ≤ MAX：20 万引号 JSON.stringify
+    // 双倍转义后 ≈400KB 超限（与工具载体迭代收紧同型洞，文本分支缺失）。
+    const out = limitSize(textEndOf(big(200 * 1024, '"')));
+    assert.equal(out.truncated, true, "应标 truncated");
+    assert.ok(out.content.length < 200 * 1024, "content 应被截断");
+    assert.ok(JSON.stringify(out).length <= MAX, `转义后仍应 ≤ ${MAX}，实际 ${JSON.stringify(out).length}`);
+  });
+
   it("AC3：delta=300KB → delta 截断 + truncated:true", () => {
     const out = limitSize({ type: "text_delta", delta: big(300 * 1024) });
     assert.equal(out.truncated, true);
