@@ -118,6 +118,8 @@ test.describe("Skill update diagnostics UI", () => {
 
     // 成功提示可见（含 slug 文本）
     await expect(firstWindow.locator(UPDATE_SUCCESS)).toBeVisible();
+    // REQ-SKILL-021 AC5：成功路径无 log 区块（log 仅失败展示）
+    await expect(firstWindow.locator(UPDATE_LOG_PANEL)).not.toBeVisible();
     // fetchGroups 刷新后组头版本字段仍可见（最新值）
     await expect(anyGitRow.first().locator(REPO_VERSION)).toBeVisible();
   });
@@ -147,9 +149,5 @@ test.describe("Skill update diagnostics UI", () => {
     // AC4：失败 → log 区块展示 git 输出原文
     await expect(firstWindow.locator(UPDATE_LOG_PANEL)).toBeVisible();
     await expect(firstWindow.locator(UPDATE_LOG_PANEL)).toContainText(/local changes/i);
-    // AC5：成功路径无 log 区块 —— 前一测试成功更新后 UPDATE_LOG_PANEL 不存在；
-    // 本测试失败场景外，成功按钮点击（无 log）由 REQ-SKILL-022 测试暗含 —— 此处断言
-    // 失败面板展开时 UPDATE_SUCCESS 不存在（两态互斥）。
-    await expect(firstWindow.locator(UPDATE_SUCCESS)).not.toBeVisible();
   });
 });
