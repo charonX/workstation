@@ -7,7 +7,7 @@ intention: >-
   无解释、技能组无版本号可辨新旧。用户点「更新」后无法判断更新是否发生/为何失败，
   更新体验与可诊断性缺失。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-18
@@ -20,6 +20,7 @@ history:
   - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续域内编号 REQ-SKILL-020~022）：020 版本号展示（AC1-AC5，四态 fallback）/021 失败 log（AC1-AC5，git stderr 原文+err.log）/022 成功反馈（AC1-AC2）。requirements-v1.hash=7885a24c（AC4 语义修正后重算）；能力地图 skill 行追加新测试路径与 REQ。无升级点。自动链续跑 /test-author"}
   - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：API 骨架 6 例（REQ-020 AC1-AC4 版本四态 + REQ-021 AC1/AC2 log 成败两态）+ E2E 3 例（REQ-020 AC5 / REQ-021 AC4-AC5 / REQ-022 AC1-AC2）；test-plan.md 落盘（载体矩阵 + 3 个新 testid 交实现方）；API 6/6 RED 因正确原因（version/log 字段缺失 seam 未就绪）。REQ-021 AC3（waitForJob err.log）由实现者单测+E2E 间接覆盖。自动链续跑 /signoff"}
   - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（version 四态+log 成败态全 trace 到 §6.3/§10.4 实证锚点）/0 TODO/0 快照/边界全覆盖；3 升级点收敛（AC3 由 E2E 间接覆盖非升级、E2E 待 QA 跑、version 解析只读无安全面）。API 6 断言全 RED（seam 门），E2E 3 例待 QA。BUILD 解锁"}
+  - {at: 2026-08-18, from: BUILD, to: BUILD, note: "两切片全绿收官：S1 后端（8d0a3f0 + refactor e2d791c，API 6/6——version 四态 + job.log 成败态）；S2 前端（aa4171a + 对齐补 b008bea + refactor cf1c2bd，版本展示 + 成功/失败反馈 testid 落地）。全量 971/971（基线 6 seam RED 全转绿，零回归）。PRD 对齐：S1 ALIGNED（AC4 修订补提交 ec374ea + §7 trim 措辞修正）；S2 MISALIGNMENT_FOUND→REQ-022 AC1 版本子句补实现（b008bea）后闭合。遗留：AC3 err.log 由 E2E AC4（QA 门）兜底；3 E2E 例待 QA"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

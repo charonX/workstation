@@ -54,3 +54,22 @@
 - 修改文件：`src/renderer/components/skill/SkillTable.jsx`（+4）、`src/renderer/pages/Skills.jsx`、`src/renderer/hooks/useSkills.js`（`fetchGroups` 返回 data；`updateSource` 成功返回 `{ jobId, groups }`，供成功提示取新版本号）、`src/renderer/i18n/zh-CN.json`（+3）、`src/renderer/i18n/en-US.json`（+3）。
 - 测试证据：`api/skillUpdateDiagnostics.test.js` 6/6 pass；`npm run test:unit` 全量 971/971 pass / 0 fail（零回归）；i18n JSON 合法（node JSON.parse）。JSX 语法经逐文件审读核验（本环境无 JSX parser；E2E 3 例待 QA 门）。
 - 补（2026-08-18）：REQ-022 AC1 对齐 PRD §2/§6.1 步骤 2/§10.2——成功提示在刷新后版本非空时含新版本号（`updateSuccessWithVersion`），版本 null/缺失回落 `updateSuccess`（含 slug）。
+
+**Slice 2: complete（aa4171a + b008bea，E2E testid 落地，PRD alignment ALIGNED）**
+- 父代理独立验证：commit 5 文件零测试；testid repo-version/update-success/update-log-panel
+  亲跑 grep 在位；全量 971/971 亲跑复现。
+- PRD 对齐子代理：MISALIGNMENT_FOUND（1 软缺口）→ REQ-022 AC1「若版本有变化含新版本号」
+  未实现（PRD §2/§6.1/§10.2 三处意图一致）→ 补实现 b008bea（useSkills.updateSource
+  返回 {jobId, groups} 刷新组数据 + Skills.jsx 按 slug 取 version + i18n
+  updateSuccessWithVersion 键）。修复后对齐闭合。
+- Slice 2: refactor pass done（cf1c2bd，tests 971/971 亲跑，no rollback）——
+  clearActionFeedback 三态清空收敛 + SkillTable 分隔符恒真守卫去除（sourceType 闭合集
+  {git,local} 实证）。遗留观察（留 /review --cover=code）：三个反馈卡片可抽共享组件、
+  meta 分隔符风格统一。
+
+## BUILD 收官
+
+- 切片全绿：S1 后端（8d0a3f0 + refactor e2d791c，API 6/6）+ S2 前端（aa4171a + b008bea +
+  refactor cf1c2bd）。全量 `npm run test:unit` **971/971 pass / 0 fail**（基线 6 seam RED
+  全转绿，零回归）。
+- E2E 3 例（skillUpdateDiagnostics.test.cjs）**待 QA 门**（本环境无 Electron Playwright）。
