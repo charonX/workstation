@@ -73,3 +73,21 @@
   refactor cf1c2bd）。全量 `npm run test:unit` **971/971 pass / 0 fail**（基线 6 seam RED
   全转绿，零回归）。
 - E2E 3 例（skillUpdateDiagnostics.test.cjs）**待 QA 门**（本环境无 Electron Playwright）。
+
+### BUG-001 / REQ-SKILL-023（安装可观测：流式 log + 无超时误报）— DONE
+
+> 症状：git 地址装技能，前端 30s 后报 "Timed out waiting for skill job to finish"，后台 clone
+> 稍后完成。根因：renderer `waitForJob` 硬编码 30s 超时对仍在进行且会成功的 job 报假失败；且
+> 安装无进度可见。用户拍板：**不超时，弹层看进度**（PRD §10.5 D5）。回归测试 504c073 RED →
+> 本 commit GREEN。
+
+| REQ-AC | 契约 | 实现位置 | 测试 | 状态 |
+|---|---|---|---|---|
+| REQ-023 AC1 | install job 运行中 getJob 返回流式 log（git clone 输出持续追加，终态保留完整输出） | `src/services/skillService.js` `runGitInstallJob`：`execFileAsync` → `spawn("git",["clone","--depth","1","--progress","--",identifier,targetDir])`，stdout+stderr 流式 `job.log = (job.log ?? "") + chunk`（`--progress` 强制进度上管道，非 TTY 也可见）；getJob 透出 `job.log ?? null`（运行中即非 null）；close 非 0 → `err.stderr = job.log` 供 gitErrorMessage（E1 清理 + `SKILL_FETCH_FAILED` 错误码不变） | `api/skillUpdateDiagnostics.test.js` REQ-023 AC1（install git 源 job.log 含 /Cloning into/i）——RED→GREEN | COVERED |
+| REQ-023 AC2 | 安装无超时误报：waitForJob 默认不设超时（timeoutMs=0 轮询至真实终态） | `src/renderer/api/skills.js` `waitForJob`：`timeoutMs` 默认 `30000` → `0`（`deadline = timeoutMs > 0 ? Date.now()+timeoutMs : null`，null 永不超时）；`onLog?.(job.log ?? null)` 每次轮询回传当前 log | signoff 记录：无独立 API 断言（renderer 内部契约），E2E AC3（QA 门）兜底；update 同享无超时默认（D5，同款假失败风险消除） | COVERED（代码审查 + E2E AC3，QA 门） |
+| REQ-023 AC3 | 安装弹层实时显示进度 log（可滚动）；失败显示错误原因 + log；成功 400ms 后关闭保持 | `src/renderer/hooks/useSkills.js` `install` 透传 `onLog` 给 `waitForJob`（`force` 透传保持）；`src/renderer/pages/Skills.jsx` `handleInstall` 第三参 onLog 透传；`src/renderer/components/skill/InstallSkillModal.jsx`：`log` state + 开始清空 + `onInstall(source, identifier, chunk => setLog(chunk))` + `(installing || error)` 时渲染 `<pre data-testid="install-log-panel">`（maxHeight 200 滚动、pre-wrap、占位 `installLogPlaceholder`） | `e2e/skillUpdateDiagnostics.test.cjs`（QA 门，install-log-panel 可见/失败保留）；i18n `installLogTitle`/`installLogPlaceholder` 键已预置（两 json skills 区核实在位，无新增） | PARTIAL（UI 形态 E2E 待 QA 门；API 契约已绿） |
+
+- 修改文件：`src/services/skillService.js`（+`spawn` import；`runGitInstallJob` 流式 log）、`src/renderer/api/skills.js`（`waitForJob` 无超时默认 + onLog）、`src/renderer/hooks/useSkills.js`（`install` onLog 透传）、`src/renderer/pages/Skills.jsx`（`handleInstall` onLog 透传）、`src/renderer/components/skill/InstallSkillModal.jsx`（log 面板）。
+- 测试证据：`api/skillUpdateDiagnostics.test.js` **7/7 pass**（REQ-023 AC1 RED→GREEN，020/021 零回归）；`npm run test:unit` 全量 **972/972 pass / 0 fail**（既有 965 + 本 story 7，零回归；含 skillInstall/skillLibrary REQ-007/008/016 install 既有断言零改动）。
+- i18n：`installLogTitle`（安装日志 / Install Log）、`installLogPlaceholder`（等待命令输出... / Waiting for command output...）已在 zh-CN.json / en-US.json skills 区预置，核实无缺失，无新增。
+- 既有测试零改动硬约束保持：skillInstall.test.js（REQ-SKILL-007 fetch 失败 `SKILL_FETCH_FAILED` + 无残留、REQ-008 local 拷贝）+ skillLibrary.test.js（REQ-SKILL-016 更新路径）全绿——spawn 替换未破坏清理/校验/错误码。

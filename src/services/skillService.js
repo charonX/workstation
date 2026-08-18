@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
@@ -376,7 +376,28 @@ async function runGitInstallJob(job, { identifier, slug }) {
     // "--" terminates option parsing: even an identifier beginning with "-"
     // can never be interpreted as a git option (defense in depth on top of
     // the protocol whitelist).
-    await execFileAsync("git", ["clone", "--depth", "1", "--", identifier, targetDir]);
+    // REQ-SKILL-023 (BUG-001): spawn streams git clone output instead of
+    // buffering to completion. "--progress" forces progress onto the pipe even
+    // though stderr is not a TTY, so job.log keeps growing while the job runs
+    // and the install modal shows live progress (no 30s front-end timeout).
+    await new Promise((resolve, reject) => {
+      const proc = spawn("git", ["clone", "--depth", "1", "--progress", "--", identifier, targetDir]);
+      proc.stdout.setEncoding("utf8");
+      proc.stderr.setEncoding("utf8");
+      proc.stdout.on("data", (chunk) => {
+        job.log = (job.log ?? "") + chunk;
+      });
+      proc.stderr.on("data", (chunk) => {
+        job.log = (job.log ?? "") + chunk;
+      });
+      proc.on("error", (err) => reject(err)); // spawn failure (git not on PATH, etc.)
+      proc.on("close", (code) => {
+        if (code === 0) return resolve();
+        const err = new Error(`git clone exited ${code}`);
+        err.stderr = job.log ?? ""; // raw git output for gitErrorMessage (job.log retains it too)
+        reject(err);
+      });
+    });
   } catch (err) {
     // E1: fetch failure — no residue left in the library.
     fs.rmSync(targetDir, { recursive: true, force: true });

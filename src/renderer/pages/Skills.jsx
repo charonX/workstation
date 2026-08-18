@@ -65,9 +65,9 @@ export default function Skills() {
     }
   }
 
-  async function handleInstall(sourceType, identifier) {
+  async function handleInstall(sourceType, identifier, onLog) {
     clearActionFeedback();
-    await install(sourceType, identifier);
+    await install(sourceType, identifier, { onLog });
   }
 
   return (

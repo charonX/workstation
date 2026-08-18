@@ -16,6 +16,8 @@ export default function InstallSkillModal({ onClose, onInstall }) {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState(null);
   const [completed, setCompleted] = useState(false);
+  // REQ-SKILL-023 (BUG-001): live install log streamed from waitForJob's onLog.
+  const [log, setLog] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -24,8 +26,9 @@ export default function InstallSkillModal({ onClose, onInstall }) {
     setInstalling(true);
     setCompleted(false);
     setError(null);
+    setLog(null); // fresh progress panel for this install
     try {
-      await onInstall(source, identifier.trim());
+      await onInstall(source, identifier.trim(), (chunk) => setLog(chunk));
       setCompleted(true);
       // Brief pause so the success state is perceivable before dismissal.
       setTimeout(() => onClose(), 400);
@@ -92,6 +95,29 @@ export default function InstallSkillModal({ onClose, onInstall }) {
             />
             <p className="help-text">{t("skills.identifierHelp")}</p>
           </div>
+
+          {(installing || error) && (
+            <div className="form-group" style={{ marginTop: "var(--ch-space-4)" }}>
+              <label className="form-label">{t("skills.installLogTitle")}</label>
+              <pre
+                data-testid="install-log-panel"
+                className="install-log-panel"
+                style={{
+                  maxHeight: 200,
+                  overflow: "auto",
+                  background: "var(--ch-surface-high)",
+                  padding: "var(--ch-space-3)",
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  margin: 0,
+                }}
+              >
+                {log || t("skills.installLogPlaceholder")}
+              </pre>
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">

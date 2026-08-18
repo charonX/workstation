@@ -27,10 +27,12 @@ export function useSkills() {
   // Install: start a git/local job and poll to completion. Resolves with the
   // resulting source group ({slug, sourceType, skills[]}) so the caller can
   // surface the outcome; the hook also refreshes the group list.
+  // onLog (REQ-SKILL-023): forwarded to waitForJob so the caller can render
+  // live install progress from the streamed git log.
   const install = useCallback(
-    async (sourceType, identifier, { force } = {}) => {
+    async (sourceType, identifier, { force, onLog } = {}) => {
       const { jobId } = await startInstall({ sourceType, identifier, force: !!force });
-      await waitForJob(jobId);
+      await waitForJob(jobId, { onLog });
       await fetchGroups();
       return { jobId };
     },
