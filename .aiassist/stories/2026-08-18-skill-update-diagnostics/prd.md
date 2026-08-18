@@ -32,6 +32,7 @@
 | B1 | 版本号字段（skillService 扫描加 version；routes 透出；SkillTable 组头展示） |
 | B2 | 失败 log（job 捕获 git 输出；getJob 透出 log；waitForJob 带 log 抛错；UI 失败展开） |
 | B3 | 成功反馈（Skills 页行内成功提示，含版本号；fetchGroups 刷新可见版本变化） |
+| B4 | 安装可观测（2026-08-18 req-gap 就地补全，BUG-001）：runGitInstallJob 流式 log（spawn + --progress）；waitForJob 无超时（timeoutMs=0 默认）；InstallSkillModal 实时进度面板 |
 
 ## 5. 移动块
 
@@ -62,6 +63,7 @@
 | 更新成功（git pull 无新提交） | job `{status:"success", error:null, log:null}`，UI 提示成功 |
 | 更新失败（git pull 报错） | job `{status:"error", error:{code:"SKILL_UPDATE_FAILED",...}, log:<git stderr>}`，UI 展示 log |
 | local 源 POST update | 400 `SKILL_UPDATE_UNSUPPORTED`（E8 现状不变） |
+| install 运行中（git clone --progress） | job `log` 运行中非空（"Cloning into '<slug>'..." 等 git 输出流式追加），UI 弹层实时显示；无前端超时（BUG-001 用户拍板） |
 
 ## 7. 表单与输入验证
 
@@ -111,9 +113,10 @@
 | 接口 | 变化 |
 |---|---|
 | `GET /api/skills` 组对象 | `+version: string \| null`（其余不变） |
-| `GET /api/skills/jobs/:jobId` | `+log: string \| null`（终态才有值；pending/running 为 null） |
+| `GET /api/skills/jobs/:jobId` | `+log: string \| null`——update job 终态才有值（pending/running null，REQ-021）；**install job 运行中即返回流式 log**（git clone --progress 输出持续追加，REQ-SKILL-023） |
 | `POST /api/skills/:slug/update` | 不变（`{jobId}`；local → 400 E8） |
 | `useSkills.updateSource` 抛错对象 | `+log`（错误时带本次 git 输出） |
+| `waitForJob(jobId, { timeoutMs = 0, onLog })` | 默认 `timeoutMs=0` 无超时（轮询至真实终态，消除 30s 假失败 BUG-001）；`onLog(log)` 每次轮询回传当前 log |
 
 ### 10.5 关键决策
 
@@ -123,6 +126,9 @@
 - **D3 成功反馈 = 行内提示**（沿用 actionError 卡片形态加 actionSuccess），非 toast——
   本应用无 toast 惯例（ModeToolbar 显式避免）。
 - **D4 local 源 E8 行为不动**：更新按钮本就不对 local 渲染（SkillTable 仅 git），无用户暴露面。
+- **D5 安装无超时 + 流式进度**（2026-08-18 BUG-001 用户拍板）：install 不设前端超时
+  （waitForJob timeoutMs=0 默认），用户靠弹层实时 log 判断进度；真卡死由手动关闭兜底
+  （后端 job 继续运行）。update 同享无超时默认（同款假失败风险）。
 
 ### 10.7 安全/性能/可观测性
 

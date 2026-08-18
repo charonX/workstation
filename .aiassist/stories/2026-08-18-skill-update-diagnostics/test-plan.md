@@ -37,3 +37,13 @@
 
 - 无纯审美项需人工；颜色/间距沿用既有 actionError 卡片形态。
 - 成功提示的具体文案措辞（中英）由实现期确定，REFLECT 复核可读性。
+
+## REQ-SKILL-023（2026-08-18 req-gap 就地补全，BUG-001）
+
+| AC | seam | 测试方法/断言 | 载体 |
+|---|---|---|---|
+| AC1 流式 log | API | install git 源 → 轮询 job：运行中或终态 log 非空且含 "Cloning into"（git clone 输出） | api/skillUpdateDiagnostics.test.js |
+| AC2 无超时 | 代码 + 回归 | waitForJob 默认 timeoutMs=0（无超时分支）；update/install 均不再 30s 假失败 | 代码审查 + API 回归 |
+| AC3 弹层进度 | E2E（QA 门） | 安装中 InstallSkillModal 显示 log 面板（install-log-panel testid 待定） | e2e/skillUpdateDiagnostics.test.cjs（QA 门） |
+
+- 既有 REQ-021 的 update log 契约（终态才有值）不受影响——install 流式 log 是独立通道。

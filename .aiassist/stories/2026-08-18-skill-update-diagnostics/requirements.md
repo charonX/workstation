@@ -10,6 +10,7 @@
 | REQ-SKILL-020 | 技能源版本号展示 | P1 | 必须 | cross-module | API+E2E | skill-management | skill |
 | REQ-SKILL-021 | 更新失败 log（git 输出可查） | P1 | 必须 | cross-module | API+E2E | skill-management | skill |
 | REQ-SKILL-022 | 更新成功反馈 | P1 | 应该 | cross-module | E2E | skill-management | skill |
+| REQ-SKILL-023 | 安装可观测（流式 log + 无超时误报） | P1 | 必须 | cross-module | API+E2E | skill-management | skill |
 
 ## 稳定块 → REQ 映射
 
@@ -18,6 +19,7 @@
 | B1 版本号展示 | REQ-SKILL-020 |
 | B2 更新失败 log | REQ-SKILL-021 |
 | B3 更新成功反馈 | REQ-SKILL-022 |
+| B4 安装可观测（2026-08-18 req-gap 就地补全，BUG-001） | REQ-SKILL-023 |
 
 ---
 
@@ -129,3 +131,41 @@ EXPECTED-TRACE：prd.md §10.5 D3（行内卡片形态，非 toast）。
 成功提示出现的同时，技能组列表已刷新（`fetchGroups` 后版本字段为最新值）。
 
 **接口契约**：`useSkills.updateSource` 成功解析后返回；失败抛错带 `err.log`（REQ-SKILL-021 AC3）。
+
+---
+
+## REQ-SKILL-023：技能安装可观测（流式 log + 无超时误报）
+
+git 源安装（git clone）时，用户在弹层看到实时进度（git 输出流式显示），且不会因
+前端硬超时对仍在进行且会成功的 job 报假失败（2026-08-18 BUG-001：真实 clone >30s →
+前端 waitForJob 30s 硬超时误报 "Timed out"，后台 job 继续完成）。
+
+- capability: `skill-management`；entity: `skill`
+- scope: `cross-module`；modules: skillService（runGitInstallJob）→ routes/skills（getJob 透出）
+  → renderer api/skills（waitForJob）→ InstallSkillModal
+- 测试路径：`tests/capabilities/skill-management/skill/2026-08-18-skill-update-diagnostics/api/skillUpdateDiagnostics.test.js`（API 半）+ `e2e/skillUpdateDiagnostics.test.cjs`（UI 半，QA 门）
+
+### AC1 — install job 运行中 getJob 返回流式 log
+
+`git clone`（`--progress`）进行中，`GET /api/skills/jobs/:jobId` 返回的 `log` 持续追加
+git stdout/stderr 输出（运行中即可见，如 "Cloning into ..."）；终态保留完整输出。
+（update job 的 log 契约 REQ-021 AC2「终态才有值」不变——install 与 update 是两条通道。）
+
+### AC2 — 安装无超时误报
+
+renderer `waitForJob` 默认不设超时（`timeoutMs` 默认 0 = 无超时，轮询至真实终态）；
+git 源安装慢于 30s 时 UI 不出现 "Timed out" 假失败。真实卡死场景由用户可见进度 + 手动
+关闭兜底（后端 job 继续由既有机制运行）。
+
+### AC3 — 安装弹层实时显示进度 log
+
+安装中，`InstallSkillModal` 显示实时 log 面板（git 输出逐行追加，可滚动）；失败时显示
+错误原因 + log；成功时显示成功态（既有 400ms 后关闭行为保持）。
+
+**接口契约（cross-module）**：
+```
+GET /api/skills/jobs/:jobId → { id, status, error, log: string|null }
+```
+install job 运行中 `log` 非空即返回（流式追加）；update job 运行中 `log` 保持 null
+（REQ-021 AC2 不变）。`waitForJob(jobId, { timeoutMs = 0, onLog })`——`timeoutMs=0`
+无超时；`onLog` 每次轮询回传当前 `log`。

@@ -7,9 +7,9 @@ intention: >-
   无解释、技能组无版本号可辨新旧。用户点「更新」后无法判断更新是否发生/为何失败，
   更新体验与可诊断性缺失。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-18
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -21,6 +21,7 @@ history:
   - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：API 骨架 6 例（REQ-020 AC1-AC4 版本四态 + REQ-021 AC1/AC2 log 成败两态）+ E2E 3 例（REQ-020 AC5 / REQ-021 AC4-AC5 / REQ-022 AC1-AC2）；test-plan.md 落盘（载体矩阵 + 3 个新 testid 交实现方）；API 6/6 RED 因正确原因（version/log 字段缺失 seam 未就绪）。REQ-021 AC3（waitForJob err.log）由实现者单测+E2E 间接覆盖。自动链续跑 /signoff"}
   - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（version 四态+log 成败态全 trace 到 §6.3/§10.4 实证锚点）/0 TODO/0 快照/边界全覆盖；3 升级点收敛（AC3 由 E2E 间接覆盖非升级、E2E 待 QA 跑、version 解析只读无安全面）。API 6 断言全 RED（seam 门），E2E 3 例待 QA。BUILD 解锁"}
   - {at: 2026-08-18, from: BUILD, to: BUILD, note: "两切片全绿收官：S1 后端（8d0a3f0 + refactor e2d791c，API 6/6——version 四态 + job.log 成败态）；S2 前端（aa4171a + 对齐补 b008bea + refactor cf1c2bd，版本展示 + 成功/失败反馈 testid 落地）。全量 971/971（基线 6 seam RED 全转绿，零回归）。PRD 对齐：S1 ALIGNED（AC4 修订补提交 ec374ea + §7 trim 措辞修正）；S2 MISALIGNMENT_FOUND→REQ-022 AC1 版本子句补实现（b008bea）后闭合。遗留：AC3 err.log 由 E2E AC4（QA 门）兜底；3 E2E 例待 QA"}
+  - {at: 2026-08-18, from: QA, to: BUG, note: "用户报告 BUG-001：git 地址装技能报 'Timed out waiting for skill job to finish'。诊断：renderer waitForJob 30s 硬超时误报——后端 git clone 真实耗时 >30s（用户确认后台完成），install 路径字节级未动（非回归），mach-port 行是 Electron 输入法噪音。分类（人确认）：code-defect（假失败）+ req-gap（安装进度/log 不在 REQ 范围）→ 就地补全 REQ-SKILL-023（安装可观测：流式 log + 无超时）+ 修复。用户拍板方向：不要超时，弹层看进度。requirements v1→v1 追加（hash 65dfabfb）；PRD §4 B4/§6.3/§10.4 D5 同步"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
