@@ -48,3 +48,6 @@ coverage/
 
 # 一次性验证 harness（slice 自验/probe 临时目录，结论已入 build-progress）
 .agent-home/
+
+# Agent workspace artifacts
+.agents/
