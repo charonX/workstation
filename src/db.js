@@ -55,25 +55,25 @@ export function getDb(dbPath) {
   return db;
 }
 
+function closeQuietly(db) {
+  try {
+    db.close();
+  } catch {
+    // ignore
+  }
+}
+
 export function closeDb(dbPath) {
   if (dbPath !== undefined) {
     const db = cache.get(dbPath);
     if (!db) return; // 路径不存在 → no-op（REQ-WORKSPACE-015 AC3）
-    try {
-      db.close();
-    } catch {
-      // ignore
-    }
+    closeQuietly(db);
     cache.delete(dbPath);
     return;
   }
   // 无参 → 关全部（REQ-WORKSPACE-015 AC1；:memory: 一并清空 AC4）
   for (const db of cache.values()) {
-    try {
-      db.close();
-    } catch {
-      // ignore
-    }
+    closeQuietly(db);
   }
   cache.clear();
 }
@@ -107,6 +107,7 @@ export function resetDb(dbPath) {
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
     .all();
   for (const { name } of leftoverTables) {
+    // 注入防护：白名单仅放行合法 SQLite 标识符 + 引号包名拼 DROP，防表名逃逸为任意 SQL。
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       database.exec(`DROP TABLE IF EXISTS "${name}"`);
     }
