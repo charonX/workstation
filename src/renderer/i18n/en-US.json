@@ -221,6 +221,7 @@
     "rescan": "Rescan",
     "update": "Update",
     "updateSuccess": "Updated skill source {{slug}}",
+    "updateSuccessWithVersion": "Updated skill source {{slug}} → v{{version}}",
     "updateLogTitle": "Update Log",
     "working": "Working...",
     "expandAll": "Expand all",

@@ -221,6 +221,7 @@
     "rescan": "刷新",
     "update": "更新",
     "updateSuccess": "已更新技能源 {{slug}}",
+    "updateSuccessWithVersion": "已更新技能源 {{slug}} → v{{version}}",
     "updateLogTitle": "更新日志",
     "working": "处理中...",
     "expandAll": "全部展开",

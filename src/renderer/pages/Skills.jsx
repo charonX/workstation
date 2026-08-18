@@ -47,8 +47,13 @@ export default function Skills() {
     setActionSuccess(null);
     setUpdateLog(null);
     try {
-      await updateSource(slug);
-      setActionSuccess(t("skills.updateSuccess", { slug }));
+      const { groups: freshGroups } = await updateSource(slug);
+      const version = (freshGroups ?? []).find((g) => g.slug === slug)?.version;
+      setActionSuccess(
+        version
+          ? t("skills.updateSuccessWithVersion", { slug, version })
+          : t("skills.updateSuccess", { slug })
+      );
     } catch (err) {
       setActionError(err.message || "Update failed");
       setUpdateLog(err.log ?? null);

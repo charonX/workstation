@@ -12,6 +12,7 @@ export function useSkills() {
     try {
       const data = await listSkillGroups();
       setGroups(Array.isArray(data) ? data : []);
+      return data;
     } catch (err) {
       setError(err.message || "Failed to load skills");
     } finally {
@@ -40,8 +41,8 @@ export function useSkills() {
     async (slug) => {
       const { jobId } = await requestSourceUpdate(slug);
       await waitForJob(jobId);
-      await fetchGroups();
-      return { jobId };
+      const groups = await fetchGroups();
+      return { jobId, groups };
     },
     [fetchGroups]
   );
