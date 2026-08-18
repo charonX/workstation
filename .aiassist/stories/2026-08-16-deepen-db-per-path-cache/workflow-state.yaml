@@ -7,7 +7,7 @@ intention: >-
   跨库 join 全部 JS 侧手工归并，缓存一次句柄即埋 database-not-open。
   一句话痛点：连接生命周期是全局隐式状态，正确用法靠注释与纪律维持。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -20,6 +20,7 @@ history:
   - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续 workspace-management/server 域编号 REQ-WORKSPACE-014~016）：014 per-path 缓存（AC1-AC5 同句柄/并存/句柄可持有/默认路径）、015 closeDb 升级（AC1-AC5 关全部/定向/no-op/:memory:/resetDb 保持）、016 最少调用点清理（AC1-AC2 全量回归零破坏）。requirements-v1.hash=db8799ff；能力地图 server 行追加。无升级点。自动链续跑 /test-author"}
   - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：db 直测 11 例（REQ-014 AC1-AC5 + 015 AC1-AC5 + 016 AC1）；test-plan.md 落盘；单槽下 5 绿 6 RED 全因正确原因（异路径并存/句柄跨路径/closeDb(path) 语义/resetDb 双库/代表性调用点）。自动链续跑 /signoff"}
   - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（10 组全 trace 到 §6.3/§8/§10.4）/0 TODO/0 快照/边界全覆盖（no-op/:memory:/resetDb 双库）；2 升级点收敛（REQ-016 AC2 由回归门承载、closeDb 关全部语义定稿时已人确认）。11 断言 5 绿 6 RED（seam 门，全为 per-path 语义无误红）。BUILD 解锁"}
+  - {at: 2026-08-18, from: BUILD, to: QA, note: "两切片全绿收官：S1 db.js per-path 缓存（3be957d + refactor e077a78，11/11——同句柄/并存/closeDb 关全部/定向/:memory:/resetDb 强化）；S2 最少调用点清理（a964c18——全库仅 1 处真单槽防御注释 sessionStore:64，54 处 KEEP）。全量 999/999（6 seam RED 全转绿，零回归）。PRD 对齐 S1 ALIGNED（resetDb 动态清遗留表经对抗审可接受，语义声明入 signoff）；S2 清理克制（55 点甄别 1 清 54 保）。停机条件达成"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

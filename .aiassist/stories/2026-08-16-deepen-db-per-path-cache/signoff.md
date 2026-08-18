@@ -54,3 +54,13 @@
 签核时 11 断言 5 绿 6 RED（seam 未就绪门：per-path 缓存/closeDb 语义未实现）。RED 全为
 per-path 语义（异路径并存/句柄跨路径/closeDb(path)/resetDb 双库），无误红。无升级点遗留。
 signer = **AI**。人工验收留在 REFLECT：diff 审读（单槽→Map 迁移）+ 调用点清理清单复核。
+
+## 实现期语义声明（2026-08-18，Slice 1，PRD 对齐子代理建议文档化）
+
+- **REQ-015 AC5 = resetDb 语义强化（测试锚定）**：resetDb(path) 从"固定 DROP 列表（19 表）"
+  加强为"该路径 full reset——固定表 + 自定义表全部清除（sqlite_master 扫描 + identifier 白名单，
+  标准表由末尾 initSchema 重建）"。授权来源 = 已签核的 AC5 用例（自定义表 `t` 被 drop）而非
+  PRD §10.4 字面"不变"；生产调用方全为标准 schema，全量 999/999 零回归。**勿把固定 19 表清单
+  误当 resetDb 契约。**
+- **resetDb() 无参兜底变化**：原 `currentPath ?? ":memory:"` → `defaultDbPath()`（per-path 无
+  单槽 currentPath；三服务 reset 调用点语义 = 重置默认库 data.db，更贴合 PRD §6.3/§10.4）。
