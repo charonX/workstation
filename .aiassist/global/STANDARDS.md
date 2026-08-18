@@ -120,3 +120,21 @@
 - **零睡眠可观察性**：需要确定性时序的测试用「闸门 executor 队头占用」制造排队窗口，不用时间窗等待；竞态测试用「submit/reset 间不出让微任务」的同步时序触发。
 - **测试 seam 契约 = 生产契约**：fake executor / fake adapter 的入参读取与生产实现同源（如 prompt 一律读 node.config.prompt）；禁止为测试 seam 加生产路径没有的归一化。
 - **子执行写入归父守卫**：嵌套执行（subflow）的持久化写点纳入父 runOnce 的 generation 快照；reset 中途子写全跳过，子行由启动恢复兜底。子日志写子 execution 行，不冒泡父行。
+
+## fail-fast 必须先于副作用，守卫校验返回值形状（2026-08-18，2026-08-16-deepen-session-domain BUG-001 /reflect）
+
+- **fail-fast 落点前置**：带「未接线 → 抛错」语义的守卫（context 袋注入、工厂取位等），
+  调用点必须前置于该函数触碰的一切副作用（写响应头 / 建句柄 / 起子进程 / 发 IPC）。
+  头已提交后抛 = 挂死连接；建句柄后抛 = 孤儿资源。fail-fast 的干净诊断只在副作用之前有意义。
+- **守卫查返回值形状，不只查 getter 是函数**：`typeof getter === "function"` 不等于
+  `getter()` 返回了对象——惰性工厂未赋值时 getter 返回 undefined，只查 typeof 会把
+  undefined 放行到调用方抛裸 TypeError，正是 fail-fast 要避免的 cryptic 错误。
+  守卫应校验取位结果（对象 / 方法存在），而非调用方本身。
+
+## 清理权威必须 try/finally（2026-08-18，2026-08-16-deepen-session-domain BUG-002 /reflect）
+
+- **逐个处理 + 统一清理的循环，清理必须放 finally**：`for (const x of xs) work(x); map.delete(k);`
+  中任一个 work 抛错 → delete 永不执行 → 状态泄漏（挂起集残留、句柄泄漏）。
+- **失败隔离到单元素**：单元素处理失败不该阻断其余元素（per-element try/catch），
+  让"清理权威"（delete / close / unsubscribe）始终能跑完。
+- 判断依据：「直接迭代不增删集合」这类注释假设了处理不抛错——恰恰是假设出问题的地方。

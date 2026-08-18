@@ -477,3 +477,49 @@
 
 - **现象**：skip 反应（markScheduleInvalid）原设计在 runner.submit 内 → runner↔taskService 成环；cron 校验在 taskService → taskService→schedulerService 成环。
 - **处置**：skip 反应归唯一带 scheduleId 的调用方（schedulerService 触发路径）；cron 校验移路由。**结论**：跨模块依赖成环时，把「专属反应」归到唯一调用方，而不是在共享模块里加 import。
+
+## fail-fast 必须先于副作用，否则它比没有更糟（2026-08-18，session-domain BUG-001）
+
+- **现象**：slice-3 新增 `sseRegistryOf(context)` fail-fast（§10.4 契约：未接线 → 抛错）。
+  落点错了两处：`handleGetEvents` 先 writeHead/flushHeaders 再取 registry → SSE 头已提交
+  后抛 = 连接挂死（无 body 无 end）；`handlePostMessage` 先 createSession 再取 → 建句柄后
+  500 = 孤儿会话 + 挂起订阅永不挂接。守卫还只查 `typeof getter === "function"`，而 server.js
+  袋的 getter 恒存在（工厂未赋值时返回 undefined）→ 放行 undefined 到调用方抛裸 TypeError，
+  fail-fast 的干净诊断被架空。
+- **根因**：fail-fast 设计时只写了"未接线要报错"，没规定**报错时机必须早于任何副作用**
+  （写响应头 / 建句柄 / 起进程）。
+- **结论**：带 fail-fast 的守卫，调用点必须前置于该函数触碰的一切副作用；守卫要校验
+  **返回值形状**（typeof getter === "function" 不等于 getter() 返回了对象）。三处同根：
+  头已提交后抛 / 建句柄后抛 / 守卫放行 undefined——review 一次抓全，修起来都是"前置一行"。
+
+## 清理权威必须 try/finally，不能依赖循环自然完成（2026-08-18，session-domain BUG-002）
+
+- **现象**：`attachPending` 的 `for (const sub of subs) sub.attach(session)` 无保护——
+  任一 sub.attach 抛错（陈旧/畸形句柄）→ 循环中断、`pendingSseSubs.delete` 永不执行、
+  其余 sub 永久滞留挂起集。该路径是 attach-or-pend 塌缩后新暴露（旧代码只 attach 新 sub，
+  异常被隔离在单连接）。
+- **结论**：任何"逐个处理 + 最后统一清理"的循环，清理必须放 finally（且失败隔离到单元素，
+  不阻断其余）。"attach 不增删集合 → 直接迭代"的注释假设了不抛错，恰恰是假设出问题的地方。
+
+## 行数预算会吃防御性注释：行为保持 story 加修复也要算注释成本（2026-08-18，session-domain）
+
+- **现象**：REQ-117 AC5 行数 ≤650（目标 ~600），slice-3 落成 644（16 行余量）。/code-review
+  的 bug 修复加了三处 fail-fast 前置注释，644→650，**零余量**。后续路由再增一行就破 AC5。
+- **结论**：带行数上限约束的文件，任何增量（含修复注释）都吃预算；修复时先压自己的注释
+  到最小必要，别把余量当常态。650 贴着上限 = 下一次改动必然触发重新权衡（瘦身 or 重定阈值）。
+
+## 直接跑 node --test 会绕过 rebuild:node，原生绑定 ABI 错位（2026-08-18，环境坑）
+
+- **现象**：better-sqlite3 绑定被更高 Node（ABI 148）编译过，直接 `node --import ... --test`
+  报 E-DB-UNWRITABLE（新 Database 抛错被 wrapDbUnwritableError 误标）。`npm run test:unit`
+  因先跑 `rebuild:node` 而正常。
+- **结论**：本仓库单测的正规入口是 `npm run test:unit`（含 rebuild）。绕过它直接 node --test
+  前先 `npm run rebuild:node`；遇到诡异的 E-DB-UNWRITABLE 先怀疑绑定 ABI，不是测试/DB 配置。
+
+## 独立 review 视角能抓到"测试全绿 + ALIGNED"漏掉的实现细节缺陷（2026-08-18，session-domain）
+
+- **现象**：三切片全绿（960/960）+ PRD 对齐子代理 ALIGNED + refactor 轮通过后，
+  /code-review（换模型重跑）仍抓到 4 缺陷（2 根因：fail-fast 落点 3 项 + attachPending
+  清理 1 项），全部在本次新写代码里，且都是"非生产路径但契约要兑现"的潜伏缺陷。
+- **结论**：字节级搬运的"行为保持"验证 + PRD 意图对齐，覆盖不了"新缝的守卫代码自身质量"。
+  行为保持 story 收尾前仍值得一次独立 code review；缺陷集中在守卫/错误路径/清理路径。

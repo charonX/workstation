@@ -91,3 +91,22 @@
   ADR-026（会话模型配置解析单点）、ADR-028（execution-runner 同批深化先例）、
   ADR-029（turnEventPipeline 同批深化——createSubscription「不二次截断」正依赖
   其 256KB limitSize 单真源决策；注册表统一清理模式同源）
+
+## 实现期补充（2026-08-18，story 验收后）
+
+验收后 /code-review 发现的 4 缺陷（2 根因）在决策 7「行为字节级不变」之外修正，均属
+**新缝守卫代码自身质量**，不推翻决策，记录如下：
+
+1. **fail-fast 落点必须早于副作用**：决策 4 提到的 `getSseRegistry` fail-fast 在
+   handleGetEvents 落于 writeHead/flushHeaders 之后（头已提交后抛 = 挂死连接）、
+   handlePostMessage 落于 createSession 之后（孤儿会话）；守卫只查 typeof getter 放行了
+   工厂未赋值的 undefined（裸 TypeError）。修正：取 registry 前置于副作用；守卫校验
+   返回值形状。→ 一般规律记入 engineering-lessons「fail-fast 必须先于副作用」。
+2. **attachPending 清理权威 try/finally**：逐个 attach 循环中单 sub 抛错会中断循环、
+   挂起集永留。修正：per-sub 隔离 + finally 必清。→ 记入 engineering-lessons「清理权威
+   必须 try/finally」。
+3. **attach-or-pend 塌缩的愈合方向确认**：决策 4 授权的「registerPending + attachPending
+   组合」使陈旧挂起 sub 会被后续任何连接提前挂接——严格少丢事件（在 §10.4 契约面内），
+   非字节等价但方向为愈，验收知情。
+4. **行数实测 650**：决策 4 的 ≤650 上限由 644（16 余量）被 bug 修复注释吃到 650 零余量。
+   后续路由增行需另做瘦身或重定阈值。

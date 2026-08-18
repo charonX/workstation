@@ -1,6 +1,6 @@
 # Session Domain 深化——会话领域逻辑搬出路由层
 
-> 状态：探索期
+> 状态：已完结（历史记录）——REFLECT 门 2 通过（2026-08-18），本 story spec 降级为历史记录；逻辑真值看代码，意图真值看全局文档（ADR-030 / engineering-lessons / STANDARDS / business-capabilities）。
 > 故事 ID：`2026-08-16-deepen-session-domain`
 > 最后更新：2026-08-17
 >
