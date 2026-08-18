@@ -158,3 +158,11 @@
   execFile（缓冲到退出）只适合短命令。
 - **真卡死兜底**：无超时的代价是卡死会一直转——靠用户可见进度 + 手动关闭兜底；后端 job
   由既有生命周期管理。
+
+## 权限裁决与四大安全不变量（2026-08-18，2026-08-16-deepen-permission-adjudication /reflect）
+
+- **Per-Instance 领域工厂，消灭模块级全局 Map**：决议 Promise 注册表与状态标记封闭在领域实例闭包内，模块级零全局状态，防止并发测试与多服务实例状态串扰。
+- **内存 Promise 注册表即时唤醒，消除轮询**：决议等待通过内存 Promise 即时响应 approve/reject，消除 20ms 定时器轮询与 CPU/延迟开销；决议终态由 `try/finally` 保证 Timer 与 Map 及时清理。
+- **唯一执行者结构化锁定（Zero Execute on Approve）**：授权桥挂起行的 `approve` 仅更新持久化状态并向 Worker 发送 `allow` 决策，主进程 100% 跳过命令 `execute`，物理杜绝双重执行。
+- **严格降级 Fail-Closed**：未知工具面、异常策略配置或未接线 handler 默认一律判定为 `ask` / `deny`，杜绝任何零确认放行漏洞。
+- **单一评估与单一询问**：pre-gate 仅拦截 gotgenes 不可见运算符（重定向/管道），常规命令交 gotgenes 正常评估，同一操作仅生成唯一 `confirmId`，杜绝重复弹卡。

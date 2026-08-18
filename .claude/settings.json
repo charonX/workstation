@@ -1,5 +1,22 @@
 {
   "enabledPlugins": {
     "loop-workflow@charonx-workflow": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__codegraph__*"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codegraph prompt-hook"
+          }
+        ]
+      }
+    ]
   }
 }

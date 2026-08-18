@@ -7,6 +7,23 @@
 
 ---
 
+## 权限裁决与安全管道深化：消灭全局状态、即时唤醒与唯一执行者（2026-08-18，2026-08-16-deepen-permission-adjudication）
+
+- **模块级全局 Map 是跨用例干扰与内存泄漏的温床**：
+  - 现象：`notifySettleFlags` 曾作为模块顶级 `Map` 存在于 `confirmationService.js`，并发测试或多实例构造时存在全局状态污染风险。
+  - 结论：将状态注册表下沉到 Per-Instance 工厂（`createPermissionAdjudicator`）的闭包实例内部，实例销毁/隔离自然干净。
+- **消灭 20ms 定时器轮询，改用内存 Promise 注册表即时唤醒**：
+  - 现象：`permissionBridge.js` 原先每隔 20ms `setInterval` 轮询 SQLite 查询决议状态。
+  - 结论：在主进程维护 `pendingDecisions: Map<confirmId, { resolve, timer }>`，在 `approve`/`reject` 同步写库的同时直接 `resolve` 内存 Promise，零延迟、零轮询 CPU 开销，并在终态通过 `try/finally` 严格 `clearTimeout` 与清理 Map。
+- **安全不变量必须在结构上强制，不能寄希望于外围注释**：
+  - 现象：BUG-001/002 是因为「授权桥行在 approve 时主进程不得 execute」只以注释约定，很容易在后续改动中误调 `execute` 导致双重执行。
+  - 结论：在 `PermissionAdjudicator.approve` 内部结构化判断 `isBridgeRow`（`riskLevel === "permission"` 或 `notifyOnSettle === false`），彻底跳过 `execute`；同时测试用例直接断言 `assert.equal(executedCommands.length, 0)` 锁死契约。
+- **Fail-Closed 必须作为第一安全防线**：
+  - 现象：未声明的外部工具或解析失败的配置容易出现零确认放行漏洞。
+  - 结论：策略评估器与授权桥对任何未知输入（未知工具、损坏配置、缺失 handler）默认一律返回 `ask` / `deny`。
+
+---
+
 ## 新增节点类型不要走集中式 switch，走注册表
 
 - **现象**：`upstreamVariables.js` 用 switch 按节点类型推导下游变量，新增 `setVariables` 节点时漏补分支，导致下游变量选择器选不到它的输出（BUG-001）。

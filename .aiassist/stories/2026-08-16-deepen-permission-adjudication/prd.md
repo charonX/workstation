@@ -1,5 +1,6 @@
 # 权限裁决管道深化——permissionAdjudication
 
+> 状态：**已完结（历史记录）**  
 > 故事 ID：`2026-08-16-deepen-permission-adjudication`  
 > 评审来源：架构深化候选 #3（`.aiassist/global/architecture-reviews/architecture-review-2026-08-16.html`）  
 > 关联 ADR：ADR-017（已打过 BUG-001/002 补丁）、ADR-020、ADR-022、ADR-023、ADR-032（新建）  

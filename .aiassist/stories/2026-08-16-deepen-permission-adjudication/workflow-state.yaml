@@ -8,7 +8,10 @@ intention: >-
   FS 工具在 gotgenes 回退路径零确认执行。一句话痛点：权限裁决的知识散在
   两层接缝里，安全不变量没有结构承载。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+status: completed
+completed: true
+completed_at: 2026-08-18
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -24,6 +27,8 @@ history:
   - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 REQ-AGENT-118~122，生成 requirements.md 与哈希"}
   - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "生成 4 份业务测试骨架与 test-plan.md"}
   - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "断言签核通过（门 1），契约已锁定，进入内层实现循环"}
+  - {at: 2026-08-18, from: BUILD, to: QA, note: "3 个切片实现完成，986 个测试全绿，通过 PRD 意图对齐"}
+  - {at: 2026-08-18, from: QA, to: REFLECT, note: "全量单元测试 986/986 与 E2E 236/236 全绿，进入门 2 最终验收与知识沉淀"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "MCP 服务管理页": {
+      "versions": [
+        {
+          "path": ".aiassist/stories/2026-08-12-pi-mcp-plugin/ux/mcp-page.html",
+          "createdAt": "2026-08-16T00:36:18.223Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-08-16T00:36:18.224Z",
+  "updatedAt": "2026-08-16T00:36:36.435Z"
+}

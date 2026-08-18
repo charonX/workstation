@@ -37,7 +37,7 @@
 - [x] **S4 test-gap ×1**（/bug → /test-author）：REQ-097 AC5 worker 侧读失败（chmod-000）→ attachment-error 事件 + 消息不发送——**2026-08-13 已补**（chmod-000 + SSE waitForType 断言 + JSONL 无 image 行，7/7）
 - [ ] **S5 GAP-1 就地补全**（req-gap，fix 中）：F2 步骤 4「provider 被删 → 回落默认 + 提示『原 provider 已移除，已回到默认』」——renderer 提示缺失；补 renderer 提示（model-fallback-hint）+ 签核 E2E 断言
 - [ ] **S5 GAP-2/3/4 观察**（REFLECT/登记）：① 未配置态 attach-button 未禁用（死胡同观感，无签核契约）；② isVisionModel 未知 provider 默认放行——登记 STANDARDS「新增供应商须同步 modelCapabilities.js」；③ i18n JSON 尾换行丢失（trivial）
-- [ ] **S6 测试侧 ×3**（父代理 [test] 路由，非实现缺陷——见 Slice 6 偏差 4/5）：① settingsProviders 标准 6 `toBeVisible()` 断言闭合原生 `<select>` 的 `<option>`——Chromium UA 视为 display:none，不可满足 → 建议 `toHaveCount(1)` / 文本断言；② settingsProviders 标准 7 `selectOption({label: /regex/})`——Playwright label 仅接受字符串 → 建议 `{label:"OpenRouter"}` 或按 value；③ imageAttachmentUi 标准 8 切未配置 catalog provider——与 REQ-094「选择器=已配置条目」+ REQ-093「组合 ∈ 条目」契约冲突（实测选中 amazon-bedrock/amazon.nova-micro-v1:0）→ **需人/父代理裁决**：契约修订（选择器/切换放开目录组合）或测试流改（先 seed/配置该 provider 再切换）
+- [ ] **S6 测试侧 ×3**（父代理 [test] 路由，非实现缺陷——见 Slice 6 偏差 4/5）：① settingsProviders 标准 6 `toBeVisible()` 断言闭合原生 `<select>` 的 `<option>`——Chromium UA 视为 display:none，不可满足 → 建议 `toHaveCount(1)` / 文本断言；② settingsProviders 标准 7 `selectOption({label: /regex/})`——Playwright label 仅接受字符串 → 建议 `{label:"OpenRouter"}` 或按 value；③ imageAttachmentUi 标准 8 切未配置 catalog provider——与 REQ-094「选择器=已配置条目」+ REQ-093「组合 ∈ 条目」契约冲突（实测选中 amazon-bedrock/amazon.nova-micro-v1:0）→ **需人/父代理裁决**：契约修订（选择器/切换放开目录组合）或测试流改（先 seed/配置该 provider 再切换）——**2026-08-14 已清**：① toHaveCount(1)；② selectOption 按 value "openrouter"；③ 先 seed 该 provider 条目再切换（对齐 REQ-093/094 契约，不修订契约）。父代理验证 22/22 绿
 
 ### Slice 1（2026-08-13，REQ-AGENT-090/092/099）：DONE ✅
 
@@ -72,12 +72,12 @@
 - 环境注记：better-sqlite3 ABI 翻转（node↔electron）是并行 story 共享 node_modules 的固有风险——E2E 前必须 rebuild:electron（已多次实证）。
 - 遗留观察：fetchModelsFor 异步竞态（快速切换 provider 先发后至覆盖）——pre-existing，/bug 或 REFLECT 裁决。
 
-### Slice 6（2026-08-14，REQ-AGENT-100/101/102，v0.6 扩展）：DONE（3 项测试侧问题入待处理清单）
+### Slice 6（2026-08-14，REQ-AGENT-100/101/102，v0.6 扩展）：DONE ✅
 
-- 实现 commit：`[build] slice-6-catalog-all-providers`（本 slice 文件集：服务端 listCatalog + catalog 端点 + settings 保存校验单一真源化；renderer catalog 模块 + Settings 动态下拉 + 视觉判定数据源替换）。
-- PRD 对齐子代理：**MISALIGNMENT_FOUND ×1 就地补全**：settings 保存校验仍是硬编码 3 项 allowlist（`AGENT_PROVIDERS`）——与 v0.6「放出全部 37 个 apiKey 型 provider」冲突（E2E 标准 2 实测 400「请选择 provider」）→ 校验源替换为 `isApiKeyProvider`（pi-ai 静态目录 + 排除 OAuth/faux，与 catalog 端点同源），`AGENT_PROVIDERS` 常量移除（无外部消费者）。
-- 父代理验证：**API 45/45**（catalog 6 + providerModelConfig 16 + providerSwitch 11 + autoJudgeDefaultModel 5 + imageAttachment 7）；**全量单元 828/829**（1 红 = sessionMessage 环境性先存，QA 基线已记录）；**E2E 19/22**（3 红全部为测试侧问题，见待处理清单 13-15）；邻接套件 modeToolbar + settingsTabs 16/16；lint 0 错误 0 新增警告。
-- 环境注记：E2E 验证期间再次实证 ABI 翻转（test:unit 后未重建 electron 直跑 E2E → session 创建 500 级联红；重建后 19/22 稳定复现同一 3 红）。
+- 实现 commit `5e1eba2`（11 文件）；测试侧 ×3 父代理 [test] 修正后 **E2E 22/22 + API 45/45 + 全量单元 828/829（1 环境性先存）+ lint 0**。
+- PRD 对齐子代理：MISALIGNMENT ×1 就地补全（settings 保存校验硬编码 3 项 → isApiKeyProvider 单一真源）。
+- modelCapabilities.js 移除确认（grep 无残留）。
+- 父代理验证：**22/22 E2E**（settingsProviders 7 + imageAttachmentUi 9 + modelSelector 6）+ 邻接 modeToolbar/settingsTabs 16/16。
 
 #### PRD → 代码 可追溯性表（Slice 6）
 

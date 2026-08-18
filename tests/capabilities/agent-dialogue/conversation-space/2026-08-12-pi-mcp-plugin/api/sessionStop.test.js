@@ -97,12 +97,18 @@ describe("REQ-AGENT-091 对话手动停止——worker 集成（SDK abort 接线
   let workdir;
   let agentService;
 
+  // 长探针：FAUX 回声 = system prompt + 消息序列化，探针进回声——1500 字符把完整
+  // 回声撑到 ~2KB（≈500 token），tps=150 下完整生成 ~3s+，留出稳定的中段停止窗口
+  //（实测：388 字符短回声 @200tps 总时长 1.3s，600ms 停止时生成已完成 → 截短断言
+  // 无法观测中断；窗口必须 ≫ sleep 且 ≪ 完整生成时长）。
+  const PROBE = `停止回归探针文本。${"长上下文填充段。".repeat(150)}`;
+  const STOP_DELAY_MS = 800;
+
   beforeEach(() => {
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-stop-worker-"));
     agentService = null;
-    // FAUX 慢速流式（对齐 assistantChat E2E 的 TPS=200 先例）：KB 级回声完整生成
-    // 需秒级~十几秒，留出稳定停止窗口；又不至于慢到拖垮套件。
-    process.env.OPC_AGENT_FAUX_TPS = "200";
+    // FAUX 慢速流式（对齐 assistantChat E2E 的 TPS seam 先例）：完整生成秒级以上。
+    process.env.OPC_AGENT_FAUX_TPS = "150";
   });
 
   afterEach(async () => {
@@ -123,12 +129,11 @@ describe("REQ-AGENT-091 对话手动停止——worker 集成（SDK abort 接线
 
   it("标准 1+5：流式中停止 → 回复截短为完整回声前缀 + 及时收尾 + 停止后可再发", async () => {
     await startFauxService();
-    const probe = "停止回归探针文本";
     // 对照组：会话 A 同上下文完整生成，拿到完整回声（FAUX 确定性回声：同上下文
     // 同序列——assistantChat.test.cjs 头注释）。
     const keyA = "ui:copilot:stop-full";
     await agentService.createSession({ spaceKey: keyA, provider: "deepseek", apiKey: "sk-1" });
-    const full = await agentService.prompt(keyA, probe);
+    const full = await agentService.prompt(keyA, PROBE);
     assert.equal(full?.ok, true, `对照组应成功: ${JSON.stringify(full)}`);
     assert.ok(full.reply.length > 0, "对照组回声非空");
 
@@ -137,10 +142,10 @@ describe("REQ-AGENT-091 对话手动停止——worker 集成（SDK abort 接线
     await agentService.createSession({ spaceKey: keyB, provider: "deepseek", apiKey: "sk-1" });
     let first = null;
     const p1 = agentService
-      .prompt(keyB, probe)
+      .prompt(keyB, PROBE)
       .then((r) => { first = { settled: "resolved", value: r }; })
       .catch((e) => { first = { settled: "rejected", error: e }; });
-    await sleep(600); // 流式中段（tps=200 已累积约百余 token，远未完整）
+    await sleep(STOP_DELAY_MS); // 流式中段（已累积百余 token，远未完整）
     const stopAt = Date.now();
     assert.equal(
       typeof agentService.stopSession,
