@@ -43,8 +43,18 @@ export function createSseSubscriptionRegistry() {
     if (!subs || subs.size === 0) return;
     const session = peekSession(svc, spaceKey);
     if (!session) return;
-    for (const sub of subs) sub.attach(session); // attach 不增删本集合 → 直接迭代
-    pendingSseSubs.delete(spaceKey);
+    try {
+      for (const sub of subs) {
+        try {
+          sub.attach(session);
+        } catch {
+          // BUG-002：单 sub 挂接失败（陈旧/畸形句柄）隔离，不阻断其余 sub 挂接——
+          // 失败 sub 的事件流本已不可靠，连接侧 detach 自清理兜底。
+        }
+      }
+    } finally {
+      pendingSseSubs.delete(spaceKey); // 清理权威：无论成败挂起集必清（幂等 no-op 保持）
+    }
   }
 
   // 挂起登记（events 连接无既有句柄分支）：sub.detach 时自移除（见 createSubscription
