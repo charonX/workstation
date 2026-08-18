@@ -3,15 +3,16 @@
 //
 // 职责：
 // - 桥接 Worker 侧 tool_call / user_bash / pre-gate 拦截至主进程 PermissionAdjudicator；
-// - 支持 adjudicator / confirmationService 双入参兼容；
-// - 优先使用 adjudicator.waitForDecision(id) 即时决议（零 20ms 轮询开销）。
+// - 支持 adjudicator / confirmationService 双入参兼容，支持 modeService 注入；
+// - 内聚 strict 模式判定：在 policy 评估层直接响应 strict 全量 ask，无须在 server 层手写分支；
+// - 统一提供 handlePermissionAsk 接口，使 server.js 仅承担单点 IPC 消息转发。
 
 import { randomUUID } from "node:crypto";
 import { createPolicyEvaluator, classifyBashToolCall } from "./permissionPolicy.js";
 
 const POLL_INTERVAL_MS = 20;
 
-export function createPermissionBridge({ adjudicator, confirmationService } = {}) {
+export function createPermissionBridge({ adjudicator, confirmationService, modeService } = {}) {
   const svc = adjudicator ?? confirmationService;
   if (!svc || typeof svc.submit !== "function" || typeof svc.get !== "function") {
     throw Object.assign(new Error("E-BRIDGE-CONFIG: adjudicator / confirmationService 必填（submit/get）"), {
@@ -52,17 +53,18 @@ export function createPermissionBridge({ adjudicator, confirmationService } = {}
     return { confirmId: id, decision: waitForDecision(id) };
   }
 
-  async function evaluateUserBash({ spaceKey, command, cwd, confirmId } = {}) {
-    const evaluator = createPolicyEvaluator({ cwd });
+  async function evaluateUserBash({ spaceKey, command, cwd, confirmId, mode: explicitMode } = {}) {
+    const mode = explicitMode ?? (modeService ? modeService.getMode(spaceKey) : undefined);
+    const evaluator = createPolicyEvaluator({ cwd, mode });
     const verdict = evaluator.evaluate({ tool: "bash", input: { command } });
     if (verdict === "allow") return { verdict: "allow" };
     return {
       verdict: "ask",
       ...(await authorize({
         spaceKey,
-        tool: "bash",
+        tool: "user_bash",
         input: { command },
-        description: `bash: ${command}`,
+        description: `user_bash: ${command}`,
         confirmId,
       })),
     };
@@ -83,5 +85,21 @@ export function createPermissionBridge({ adjudicator, confirmationService } = {}
     };
   }
 
-  return { authorize, evaluateUserBash, evaluateBashToolCall };
+  // 统一权限请求入口（消除 server.js 手写 if-else 与 strict 重复逻辑）
+  async function handlePermissionAsk({ confirmId, sessionKey, tool, input, description, mode } = {}) {
+    if (tool === "user_bash") {
+      const result = await evaluateUserBash({
+        spaceKey: sessionKey,
+        command: input?.command,
+        confirmId,
+        mode,
+      });
+      if (result.verdict === "allow") return { kind: "allow" };
+      return result.decision;
+    }
+    const ask = await authorize({ spaceKey: sessionKey, tool, input, description, confirmId });
+    return ask.decision;
+  }
+
+  return { authorize, evaluateUserBash, evaluateBashToolCall, handlePermissionAsk };
 }

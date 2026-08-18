@@ -165,15 +165,16 @@ function classify({ tool, input }, { cwd, projectDir }) {
   return "ask"; // 未知工具 fail-safe（gotgenes 通用回退同语义）
 }
 
-export function createPolicyEvaluator({ cwd, projectDir } = {}) {
+export function createPolicyEvaluator({ cwd, projectDir, mode } = {}) {
   const root = projectDir ?? cwd;
   const globalRules = loadPermissionRules(GLOBAL_POLICY_PATH);
   const projectFile = root ? path.join(root, PROJECT_POLICY_REL_PATH) : null;
   const projectRules = projectFile ? loadPermissionRules(projectFile) : null;
 
-  // 单值评估：项目文件显式命中 > 全局文件显式命中 > 附录 A 分类。
+  // 单值评估：strict 模式全量 ask > 项目文件显式命中 > 全局文件显式命中 > 附录 A 分类。
   // H4 隔离：每 evaluator 独立加载自身上下文（globalThis 单槽不参与本层评估）。
   function evaluate({ tool, input } = {}) {
+    if (mode === "strict") return "ask";
     const surface = String(tool ?? "");
     const value = surface === "bash" ? String(input?.command ?? "") : surface;
     if (projectRules) {
