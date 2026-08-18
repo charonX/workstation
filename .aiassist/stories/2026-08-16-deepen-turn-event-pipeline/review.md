@@ -89,3 +89,21 @@
 - **tech**：模块/数据流覆盖 PASS；职责单一 PASS；复杂度 PASS（注册表两接口必要性成立）；ADR 三条件 PASS；术语一致 PASS；三个特别核查点（beginTurn 无竞态 / clearSessionState 定时器时序自洽 / E-AGENT-RESET 形态兼容）PASS。
 - **req**：稳定块→REQ 映射 PASS（四块全覆盖、无孤儿）；验收标准↔锚点抽查全量一致（除 B4）；capability/entity PASS；REQ-ID 与哈希 PASS（7452c3c1 三处一致）；可测试性 PASS。
 - **test**：覆盖缺口 PASS（6 REQ 全覆盖、边界/错误 case 全在）；**EXPECTED-TRACE 诚实性 PASS**（13 处逐条核验：锚点真实存在、值一致、无抄代码——实现模块尚不存在）；时序稳定性 PASS（结构性确定：IPC FIFO + 全局串行队列；TPS 失效也稳健）；无快照 PASS；REQ↔测试追溯 PASS。
+
+---
+
+# 补充：code 层审查（2026-08-18，BUILD 后 /review --cover=code）
+
+> 注：`/review --cover=code` 被内置 GitHub PR review 命令拦截（本仓库无 PR），按 loop-workflow code 层执行：对 6 个实现 commit（5f4518e/7415cb9/27d5c9d/6992614/d92f23e/1da6157，3 文件）派 code-reviewer（Fowler 基线 + 契约对齐 + 范围检查 + 4 项设计问题裁决）。
+
+## 结果：PASS（无 CRITICAL / 无 IMPORTANT；3 SUGGESTION）
+
+- 范围核实：6 commit 零业务测试改动、无范围外实现（sessionDomain.js 属并行 story，已排除）
+- 行为等值：旧 forwardEvent/limitSize/mapToContractEvent 与新管线逐段 1:1 搬移（含 touch 时机、延迟分支、abort 合成、注册表清理顺序）
+- Fowler 基线：Duplicated Code 未命中（本 story 净消除——两份清理清单/双实现 limitSize/重复诊断块全部收敛）；Shotgun Surgery 此前命中、本 story 修复；其余未命中或弱命中不修
+- 4 项设计问题裁决：turnStartedAt 覆盖语义【保持+S1 注释】（偏小机制实际不可达，可达偏差系既有语义仅影响诊断 meta）；双载体截断【保持+S2 注释】（生产不可达：契约形状单载体）；now() 多次调用【保持】（微优化无观察差异）；clearPendingTextEnds 别名【保留】（登记点意图命名价值 > Middle Man 成本）
+
+## 遗留 SUGGESTION（人裁决，不阻塞合入）
+
+- **S3（唯一真实缺陷候选）**：`truncateTextCarrier` 文本载体截断非转义安全——`slice(0, MAX-256)` 对转义密集文本（如 261888 个 `"`）JSON.stringify 后 ≈523KB 超限；工具载体分支有迭代收紧、文本分支没有。**既有缺陷**（旧 worker limitSize 与旧主进程 enforceSizeLimit 双副本同型，非本 story 引入），主进程兜底同命中。生产可达：LLM 输出引号密集长文本。修复 = 文本载体套用同款迭代收紧（2-3 行）。处置选项：/bug 修（code-defect，补失败回归测试）或接受并记录（REFLECT 沉淀）。
+- S1/S2：补注释（各 1 行，随任一后续改动带上或 /bug 时一起）
