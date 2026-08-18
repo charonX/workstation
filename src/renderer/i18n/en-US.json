@@ -220,6 +220,8 @@
     "confirmDeleteRepoMessage": "Are you sure you want to delete this skill repo? All contained skills and project associations will be removed.",
     "rescan": "Rescan",
     "update": "Update",
+    "updateSuccess": "Updated skill source {{slug}}",
+    "updateLogTitle": "Update Log",
     "working": "Working...",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all"

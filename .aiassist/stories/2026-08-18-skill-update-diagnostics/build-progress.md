@@ -38,3 +38,18 @@
 
 - E2E（Playwright+Electron）本环境不跑，QA 门执行；前端 slice 以代码审查 + API 回归验证。
 - version 解析与 job.log 契约见 requirements REQ-020 AC1-AC4 / REQ-021 AC1-AC2。
+
+### Slice 2（前端，REQ-020 AC5 / 021 AC4-AC5 / 022 AC1-AC2）— DONE
+
+| REQ-AC | 契约 | 实现位置 | 测试 | 状态 |
+|---|---|---|---|---|
+| REQ-020 AC5 | 技能组头 meta 展示 version（sourceType · version · sourceUrl；null → "—"） | `src/renderer/components/skill/SkillTable.jsx` `skill-repo-meta`：git/local 源在 sourceType 后加 ` · ` + `<span data-testid="repo-version">{group.version ?? "—"}</span>`（版本值原样，无前后缀；E2E toHaveText 精确匹配 "1.1.0"） | `e2e/skillUpdateDiagnostics.test.cjs` 用例 1（QA 门）；API AC1-AC4 已绿（Slice 1） | COVERED |
+| REQ-021 AC4 | 更新失败 → 展示失败原因 + git 输出 log 区块（可滚动） | `src/renderer/pages/Skills.jsx` `handleUpdate` catch：`setActionError(err.message)` + `setUpdateLog(err.log ?? null)`；渲染 `updateLog` 非空时 `<pre data-testid="update-log-panel">`（等宽 pre、pre-wrap、overflow auto、maxHeight 240、背景 `--ch-surface-high`） | `e2e/skillUpdateDiagnostics.test.cjs` 用例 3（QA 门，toContainText /local changes/i）；API AC1-AC3 已绿（Slice 1：err.log 传播） | COVERED |
+| REQ-021 AC5 | 更新成功不展示 log 区块 | 成功路径 `updateLog` 保持 null（handleUpdate 开头清空 + 成功不 set），`update-log-panel` 条件渲染故不出现 | `e2e/skillUpdateDiagnostics.test.cjs` 用例 2（QA 门，not.toBeVisible） | COVERED |
+| REQ-022 AC1 | 更新成功 → 行内成功提示（含 slug；版本尽力而为） | `Skills.jsx` `handleUpdate` 成功后 `setActionSuccess(t("skills.updateSuccess", { slug }))`；渲染绿色卡片 `data-testid="update-success"`（`--ch-success` 色变量，对称 actionError） | `e2e/skillUpdateDiagnostics.test.cjs` 用例 2（QA 门，toBeVisible） | COVERED |
+| REQ-022 AC2 | 成功提示出现同时组头版本刷新可见 | `useSkills.updateSource` 成功路径内 `fetchGroups()`（Slice 1 已有）→ 组列表刷新；`repo-version` 在刷新后仍渲染 | `e2e/skillUpdateDiagnostics.test.cjs` 用例 2（QA 门，repo-version toBeVisible） | COVERED（hook 无改动，复用既有 fetchGroups） |
+
+- i18n：`src/renderer/i18n/zh-CN.json` / `en-US.json` skills 区补 `updateSuccess`（"已更新技能源 {{slug}}" / "Updated skill source {{slug}}"）+ `updateLogTitle`（"更新日志" / "Update Log"）；`version` 键已有复用（组头不额外用 label，直接渲染值）。
+- 交互清空：`handleUpdate`/`handleInstall`/`handleConfirmDelete` 开头统一清 `actionError`/`actionSuccess`/`updateLog`（三态互斥，无残留卡片）。
+- 修改文件：`src/renderer/components/skill/SkillTable.jsx`（+4）、`src/renderer/pages/Skills.jsx`（+45）、`src/renderer/i18n/zh-CN.json`（+2）、`src/renderer/i18n/en-US.json`（+2）。`useSkills.js` 未改（err.log 已随 waitForJob 抛错传播，Slice 1）。
+- 测试证据：`api/skillUpdateDiagnostics.test.js` 6/6 pass；`npm run test:unit` 全量 971/971 pass / 0 fail（零回归）；i18n JSON 合法（node JSON.parse）。JSX 语法经逐文件审读核验（本环境无 JSX parser；E2E 3 例待 QA 门）。

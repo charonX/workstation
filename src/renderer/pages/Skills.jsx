@@ -13,6 +13,8 @@ export default function Skills() {
   const [pendingDeleteSlug, setPendingDeleteSlug] = useState(null);
   const [busySlug, setBusySlug] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [actionSuccess, setActionSuccess] = useState(null);
+  const [updateLog, setUpdateLog] = useState(null);
 
   const skillCount = groups.reduce((sum, g) => sum + g.skills.length, 0);
 
@@ -28,6 +30,8 @@ export default function Skills() {
     setPendingDeleteSlug(null);
     setBusySlug(slug);
     setActionError(null);
+    setActionSuccess(null);
+    setUpdateLog(null);
     try {
       await removeSource(slug);
     } catch (err) {
@@ -40,10 +44,14 @@ export default function Skills() {
   async function handleUpdate(slug) {
     setBusySlug(slug);
     setActionError(null);
+    setActionSuccess(null);
+    setUpdateLog(null);
     try {
       await updateSource(slug);
+      setActionSuccess(t("skills.updateSuccess", { slug }));
     } catch (err) {
       setActionError(err.message || "Update failed");
+      setUpdateLog(err.log ?? null);
     } finally {
       setBusySlug(null);
     }
@@ -51,6 +59,8 @@ export default function Skills() {
 
   async function handleInstall(sourceType, identifier) {
     setActionError(null);
+    setActionSuccess(null);
+    setUpdateLog(null);
     await install(sourceType, identifier);
   }
 
@@ -73,10 +83,45 @@ export default function Skills() {
         </span>
       </div>
 
+      {actionSuccess && (
+        <div className="card" style={{ borderColor: "var(--ch-success)" }} data-testid="update-success">
+          <div className="card-body" style={{ color: "var(--ch-success)" }}>
+            {actionSuccess}
+          </div>
+        </div>
+      )}
+
       {actionError && (
         <div className="card" style={{ borderColor: "var(--ch-error)" }}>
           <div className="card-body" style={{ color: "var(--ch-error)" }}>
             {actionError}
+          </div>
+        </div>
+      )}
+
+      {updateLog && (
+        <div className="card" style={{ borderColor: "var(--ch-border)" }}>
+          <div className="card-body">
+            <div className="update-log-title" style={{ marginBottom: "var(--ch-space-2)", fontWeight: "var(--ch-weight-medium)" }}>
+              {t("skills.updateLogTitle")}
+            </div>
+            <pre
+              data-testid="update-log-panel"
+              style={{
+                margin: 0,
+                maxHeight: 240,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontFamily: "var(--ch-font-mono)",
+                fontSize: "var(--ch-text-xs)",
+                background: "var(--ch-surface-high)",
+                padding: "var(--ch-space-2) var(--ch-space-3)",
+                borderRadius: "var(--ch-radius-md)",
+              }}
+            >
+              {updateLog}
+            </pre>
           </div>
         </div>
       )}
