@@ -101,3 +101,7 @@ worker.js（1854 行、spawn-only 不可 import 的进程入口）内一回合�
 4. **决策 6 澄清**：worker.js 保持「不增加导出」；新增 import 仅限 src/agent/ 内部
    模块（同 sessionLifecycle 先例，worker 必须 import 管线才能接线），不新增外部
    依赖——「零 import」字面不可满足（prd §12 同改）。
+5. **文本载体截断转义安全（BUG-001，2026-08-18）**：truncateTextCarrier 补迭代收紧
+   ——slice 到字节预算不保证 JSON 序列化后 ≤ MAX（引号/控制字符转义放大，20 万引号
+   ≈400KB）；与工具载体 shrinkToolCarrier 同型（`JSON.stringify({...out,[carrier]:
+   text}).length` 二分），出站 JSON 恒 ≤ 262144。Prove-It 回归（3d844d6 + 774a6e7）。

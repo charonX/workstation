@@ -8,7 +8,10 @@ intention: >-
   256KB 尺寸契约双实现已实证漂移。一句话痛点：回合状态机的知识没有属主，
   BUG 密度最高的区域却无法透过 interface 测。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+status: completed    # 已完成（spec 降级为历史记录——逻辑真值看代码，意图真值看全局文档）
+completed: true
+completed_at: 2026-08-18
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -26,6 +29,7 @@ history:
   - {at: 2026-08-17, from: BUILD, to: BUILD, note: "/review 全链修订（panel 4 specialist：4 IMPORTANT + 16 警告全处理，人拍板 2026-08-17）——B1 撤销 E-AGENT-RESET（实证全局串行队列：reset-session 排在在途 prompt 之后，排队丢弃场景不存在，v1 升级点基于错误模型）；B2 补 touch 注入钩子（事件实际出站时调，恒 clearPending:false）；B3 未知 key 照常转发修正；B4 REQ-111 AC2 text_start 表述修正；prd v0.3 + requirements v2（哈希 ce30bc5a）+ 测试 4 文件修订 + signoff v2 重签。phase 保持 BUILD"}
   - {at: 2026-08-17, from: BUILD, to: QA, note: "BUILD 完成（3 slices，全部 PRD 对齐 ALIGNED + refactor 一轮）：slice 1 管线模块（5f4518e+7415cb9）/ slice 2 worker 接线（27d5c9d+6992614a）/ slice 3 agentService 单源（d92f23e+1da6157）；test-gap 修正 ×3（人确认：AC3 计数/ready 监听/recordSdkEvent 覆盖）；契约 v1→v4（当前 437b549f，signoff v4 补签——v4 补签 commit 被并行 story git add -A 扫入其 [build] commit，内容已落盘）；story 全套 30/30 绿。待 /qa-runner 全量回归"}
   - {at: 2026-08-18, from: QA, to: QA, note: "QA 完成（qa-report.md）：单元 story 30/30、全量 949/959（10 红全属并行 story session-domain BUILD 期）、E2E agent-dialogue 94/94 零 flaky——可进入 REFLECT；review code 层 PASS 追加。BUG-001 修复（人拍板修 S3）：limitSize 文本载体转义安全（truncateTextCarrier 补迭代收紧，Prove-It 回归 3d844d6 + 修复 774a6e7），story 31/31 绿；顺带 S1/S2 边界注记"}
+  - {at: 2026-08-18, from: QA, to: REFLECT, note: "门 2 人验收通过（2026-08-18）——REFLECT 沉淀：engineering-lessons 5 条（签核全 RED 盲区/升级点先实证可达性/截断按序列化后长度/并行 story 禁 git add -A/once 事件 seam）；ADR-029 补充 BUG-001（文本载体迭代收紧）；STANDARDS 事件尺寸截断契约节；checklists/testing 签核前测试自检；能力地图 agent-dialogue 测试数 362→393（2026-08-18）。status: completed"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

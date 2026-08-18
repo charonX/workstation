@@ -523,3 +523,51 @@
   清理 1 项），全部在本次新写代码里，且都是"非生产路径但契约要兑现"的潜伏缺陷。
 - **结论**：字节级搬运的"行为保持"验证 + PRD 意图对齐，覆盖不了"新缝的守卫代码自身质量"。
   行为保持 story 收尾前仍值得一次独立 code review；缺陷集中在守卫/错误路径/清理路径。
+
+## 签核全 RED 盲区：test-author 笔误要等实现后才暴露（2026-08-18，turn-event-pipeline）
+
+- **现象**：同一 story 两处 test-author 笔误（REQ-109 AC3 出站计数 3→2、resetDropQueue
+  ready 监听挂在 `await svc.start()` 之后）在门 1 签核时**零执行全 RED**（seam 未就绪
+  import 即失败），笔误直到 BUILD 实现后跑测试才暴露——每次都触发一次 test-gap
+  分类 + 修正轮。
+- **结论**：签核时测试从未运行过 = 断言笔误零拦截。缓解手段：① test-author 阶段对
+  纯逻辑断言做静态自检——同文件交叉验证（AC3 的计数与同文件 AC2/AC4 的计数自相
+  矛盾即可当场发现）；② 依赖既有 seam 的测试（如 ready 监听）对照同 seam 先例
+  （workerWiring 在 start 前挂监听）逐行比对。
+
+## 跨模块契约升级给人之前，先实证触发场景可达性（2026-08-18，turn-event-pipeline B1）
+
+- **现象**：test-author 基于「sessionQueues delete 后 promise 链仍跑 → 主进程 pending
+  永久悬挂」的错误模型，把 E-AGENT-RESET 回执契约升级给人拍板；/review 实证 worker
+  IPC 是全局串行队列（prompt 与 reset-session 同队列按序 await）——「排队中被丢弃的
+  prompt」场景根本不存在，契约作废重裁。
+- **结论**：跨模块行为契约的升级点（expected 推导不出、需要新错误码/回执），升级前
+  必须走查调用链的**队列/串行语义**（谁 await 谁、消息是否带外）实证「触发场景可
+  达」。人拍板前的事实基础错了，拍板结果必然返工。review 的价值在于把这类错误模型
+  拦在实现前——建议 complex story 在 signoff 与 BUILD 之间插入设计链 review。
+
+## 截断契约必须按「序列化后长度」收紧，不能只按原始长度 slice（2026-08-18，BUG-001）
+
+- **现象**：limitSize 文本载体 `slice(0, MAX-256)` 对转义密集文本不保证 ≤ 262144——
+  20 万引号经 JSON.stringify 双倍转义后 ≈400KB 超限；工具载体分支早有迭代收紧
+  （while 二分），文本分支缺失（同型洞，两份旧实现都在）。
+- **结论**：任何「出站 JSON 恒 ≤ N」的截断契约，收紧判定必须用
+  `JSON.stringify({...out, [carrier]: text}).length` 迭代（文本/工具载体同型），
+  原始长度 slice 只做首轮粗截。截断逻辑单源化（ADR-029）让此类洞只修一处。
+
+## 并行 story 禁止 git add -A（2026-08-18，turn-event-pipeline）
+
+- **现象**：本 story 的 signoff v4 commit 在提交瞬间被并行 story 的 `git add -A` +
+  [build] commit 扫走（暂存区共享），签核记录混入他 story 的 commit（内容完整、归属
+  不干净）。
+- **结论**：多 story 并行开发同一仓库时，一律按路径精确 `git add <file>`；`git add -A`
+  会把他人已暂存/新建的文件卷进自己的 commit。commit-msg 钩子在此场景还会误报
+  （[test] 标签撞上他 story 暂存的 src/ 文件）。
+
+## 测试 seam 的 once 事件语义：await start() 已消费 ready（2026-08-18，turn-event-pipeline）
+
+- **现象**：`agentService.start()` 内部 `emitter.once("ready")` 等待首个 ready；测试
+  在 `await svc.start()` 之后才挂 `svc.on("ready")` → 事件永不二次到达 → waitUntil
+  恒超时（v2 重写笔误，基线即红）。
+- **结论**：对「启动即消费一次」的 emitter 事件，测试监听必须在触发动作之前挂；
+  同类 seam 先例（workerWiring 在 start 前挂）可作为对照模板。

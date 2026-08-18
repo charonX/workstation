@@ -164,3 +164,13 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | `toBeVisible` 当真实可见性 | 不查祖先 `overflow:hidden` 裁剪——弹层末行出界潜伏至用户实测（BUG-009） | 真实命中用 `elementFromPoint` 锚定（点坐标处命中的必须是目标元素） |
 | 行级态用无参聚合读 seam | 全局开关冒充行级启用态：UI 假 on、点击反写 false、启用行永不落库（BUG-012） | 读 seam 带行标识参数；E2E「点开关 → 真实落库 → 刷新回读」三步闭环 |
 | mock req 对象形状不随路由演进 | 路由开始读 `req.url` 后，缺 url 字段的旧 mock 全挂（efa6d4d） | mock 对齐真实 req/res 形状；路由新增读取面时盘点既有 mock |
+
+## 签核前测试自检（2026-08-18，turn-event-pipeline /reflect）
+
+- 测试骨架全 RED 时，断言笔误零拦截（seam 未就绪 import 即失败，测试从未执行）。
+  落地两条静态自检：
+  1. 纯逻辑断言**同文件交叉验证**——同一计数/形状在多个 AC 中自相矛盾即可当场发现
+     （例：AC3 出站计数 3 与 AC2/AC4 的 2/4 矛盾）；
+  2. 事件/时序类 seam 断言对照**同 seam 先例**逐行比对（例：`await start()` 已消费
+     ready（once），监听必须挂在其前——workerWiring 先例）。
+- Prove-It 模式（bug 回归）：回归测试必须先红后绿（`3d844d6` 红 → `774a6e7` 绿）。

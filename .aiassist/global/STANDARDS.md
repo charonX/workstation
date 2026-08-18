@@ -138,3 +138,12 @@
 - **失败隔离到单元素**：单元素处理失败不该阻断其余元素（per-element try/catch），
   让"清理权威"（delete / close / unsubscribe）始终能跑完。
 - 判断依据：「直接迭代不增删集合」这类注释假设了处理不抛错——恰恰是假设出问题的地方。
+
+## 事件尺寸截断契约（2026-08-18，2026-08-16-deepen-turn-event-pipeline /reflect）
+
+- 「出站 JSON 恒 ≤ N 字节」的截断契约，收紧判定必须用**序列化后长度**迭代
+  （`JSON.stringify({...out, [carrier]: text}).length` 二分收紧），原始长度
+  slice 只做首轮粗截——JSON 转义（引号/控制字符 → \uXXXX）可使原始长度
+  ≤ 预算的文本序列化后超限（BUG-001 实证：20 万引号 ≈400KB）。
+- 文本载体（content/delta）与工具数据载体（input/output）收紧逻辑同型，
+  单源实现（ADR-029 截断单真源），修一处即全链生效。
