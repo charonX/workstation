@@ -7,7 +7,7 @@ intention: >-
   server.js 反向 import 其内部函数，SSE 注册表由三层之外的三处外部驱动。
   一句话痛点：会话领域逻辑住在路由层，依赖方向倒置，seam 泄漏到调用者。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -27,6 +27,7 @@ history:
   - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 重签通过（signoff.md Assertion v2，signer=AI）：v2 变更集 8 项全部 trace 到人拍板锚点/实证；34 断言 33 RED + 1 双向不变量绿（实测全 RED 均为 seam 未就绪门）；无新升级点。BUILD 重新解锁"}
   - {at: 2026-08-18, from: BUILD, to: QA, note: "三切片全绿收官：S1 sessionDomain.js（1490292，24/24）；S2 sessionSseRegistry.js（689ba56，7/7）；S3 路由瘦身 928→644 + server.js 依赖方向回正（ee7756a + refactor 7be15bb）。停机条件达成且更优：全量回归 960/960（基线 34 fail 全愈，兄弟 story 1 RED 同期修绿）。每切片 PRD 对齐子代理 ALIGNED + refactor 一轮（S1/S2 NO_CHANGES_NEEDED，S3 双传参塌缩）。遗留：1490292 hook 卷入兄弟 signoff 13 行待人裁决；refactor 观察 5 项留 /review --cover=code"}
   - {at: 2026-08-18, from: QA, to: QA, note: "/code-review 复审发现 slice-3 代码 4 缺陷 → 人拍板修（分类 code-defect）。BUG-001（e74302e [test] 红 + 314f544 [bugfix]）：sseRegistryOf fail-fast 落点——handleGetEvents 头已提交后抛（挂死连接）/handlePostMessage 建句柄后 500（孤儿会话）/守卫只查 typeof 放行 undefined（裸 TypeError）；三处前置到副作用之前。BUG-002（e74302e [test] 红 + a530214 [bugfix]）：attachPending 单 sub 抛错致挂起集永留，per-sub 隔离 + finally 必清。回归 964/964 全绿；bug-counter 1→2。剩余两项（drain 时序 = ADR-030 授权塌缩的已知方向、兄弟 story turnEventPipeline/worker/agentService 发现）非本 story 范围"}
+  - {at: 2026-08-18, from: QA, to: REFLECT, note: "QA 慢外门通过（qa-report.md）：单测 971/965/6（6 fail 全为新 story seam 门，非本 story）；E2E conversation-space 回归面 74/75（1 flaky assistantStop 单测复跑通过，pi-mcp-plugin story 时序竞态，非回归）。无 open bug、零回归 → 进 REFLECT 门 2 人验收。遗留：1490292 hook 卷入兄弟 signoff 13 行待裁决"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
