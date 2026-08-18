@@ -7,7 +7,7 @@ intention: >-
   跨库 join 全部 JS 侧手工归并，缓存一次句柄即埋 database-not-open。
   一句话痛点：连接生命周期是全局隐式状态，正确用法靠注释与纪律维持。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: TEST        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -18,6 +18,8 @@ history:
   - {at: 2026-08-18, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：勘察 55 处 getDb 调用横跨 20+ 模块、单槽切路径即关旧库、closeDb 只关单连接、:memory: 共享语义。四问全确认（用户拍板）：①缓存生命周期=进程+closeDb 关全部 ②范围=只改 db.js+最少必要调用点，注释删除逐模块 ③:memory:=缓存但 closeDb 清全部 ④API=透明替换 getDb 签名不变。方向锁定：per-path 连接缓存（Outcome 双库并存句柄可缓存 / Out of scope 55 点全量重构+跨库 join+LRU）"}
   - {at: 2026-08-18, from: PRD, to: CRYSTALLIZE, note: "PRD v1 定稿（人确认）：B1 per-path 缓存 / B2 closeDb 语义升级（关全部+定向）/ B3 最少必要调用点清理三稳定块；simple（§10 高层完整，单模块透明替换零调用点改动）；锚点 6 行全可机器断言。UX 面 N/A（纯后端连接生命周期重构），DESIGN 跳过；DOMAIN-MODEL 无新术语，跳过。进结晶"}
   - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续 workspace-management/server 域编号 REQ-WORKSPACE-014~016）：014 per-path 缓存（AC1-AC5 同句柄/并存/句柄可持有/默认路径）、015 closeDb 升级（AC1-AC5 关全部/定向/no-op/:memory:/resetDb 保持）、016 最少调用点清理（AC1-AC2 全量回归零破坏）。requirements-v1.hash=db8799ff；能力地图 server 行追加。无升级点。自动链续跑 /test-author"}
+  - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：db 直测 11 例（REQ-014 AC1-AC5 + 015 AC1-AC5 + 016 AC1）；test-plan.md 落盘；单槽下 5 绿 6 RED 全因正确原因（异路径并存/句柄跨路径/closeDb(path) 语义/resetDb 双库/代表性调用点）。自动链续跑 /signoff"}
+  - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（10 组全 trace 到 §6.3/§8/§10.4）/0 TODO/0 快照/边界全覆盖（no-op/:memory:/resetDb 双库）；2 升级点收敛（REQ-016 AC2 由回归门承载、closeDb 关全部语义定稿时已人确认）。11 断言 5 绿 6 RED（seam 门，全为 per-path 语义无误红）。BUILD 解锁"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
