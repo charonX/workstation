@@ -44,6 +44,6 @@
 
 ## 备注
 
-- **S3 裁决挂起**（review code 层遗留，非阻塞）：`truncateTextCarrier` 文本载体截断非转义安全（引号密集文本 JSON 转义后可超 256KB）——既有缺陷非本 story 引入；处置选项：/bug 修（2-3 行迭代收紧）或 REFLECT 沉淀为已知缺陷。
+- **S3 已修（BUG-001，人拍板 2026-08-18）**：`truncateTextCarrier` 补迭代收紧（转义安全，Prove-It 回归 3d844d6 + 修复 774a6e7）；story 31/31 绿。
 - **ABI 提醒**：E2E 已 `rebuild:electron`（better-sqlite3 切 electron ABI）——下次跑单元前需 `npm run rebuild:node`（既有教训，并行 story 交叉跑时尤其注意）。
 - 并行 story（session-domain）的 10 个红测试不阻塞本 story 验收，其 BUILD 循环自行收敛。

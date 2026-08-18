@@ -105,5 +105,5 @@
 
 ## 遗留 SUGGESTION（人裁决，不阻塞合入）
 
-- **S3（唯一真实缺陷候选）**：`truncateTextCarrier` 文本载体截断非转义安全——`slice(0, MAX-256)` 对转义密集文本（如 261888 个 `"`）JSON.stringify 后 ≈523KB 超限；工具载体分支有迭代收紧、文本分支没有。**既有缺陷**（旧 worker limitSize 与旧主进程 enforceSizeLimit 双副本同型，非本 story 引入），主进程兜底同命中。生产可达：LLM 输出引号密集长文本。修复 = 文本载体套用同款迭代收紧（2-3 行）。处置选项：/bug 修（code-defect，补失败回归测试）或接受并记录（REFLECT 沉淀）。
+- **S3（唯一真实缺陷候选）**：`truncateTextCarrier` 文本载体截断非转义安全——`slice(0, MAX-256)` 对转义密集文本（如 261888 个 `"`）JSON.stringify 后 ≈523KB 超限；工具载体分支有迭代收紧、文本分支没有。**既有缺陷**（旧 worker limitSize 与旧主进程 enforceSizeLimit 双副本同型，非本 story 引入），主进程兜底同命中。生产可达：LLM 输出引号密集长文本。修复 = 文本载体套用同款迭代收紧（2-3 行）。处置选项：/bug 修（code-defect，补失败回归测试）或接受并记录（REFLECT 沉淀）。**已修（BUG-001，人拍板 2026-08-18：回归测试 3d844d6 + 修复 774a6e7，Prove-It 红→绿；story 31/31）**。
 - S1/S2：补注释（各 1 行，随任一后续改动带上或 /bug 时一起）

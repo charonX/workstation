@@ -10,7 +10,7 @@ intention: >-
 
 phase: QA      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -25,6 +25,7 @@ history:
   - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 AI 全量自检通过（signer=AI）：4 文件头部六行齐全、REQ-AGENT-106~111 全覆盖、expected 值全部 trace 到 §6.3/§10.4 锚点（交叉验证 8 组一致）、无 TODO 占位、无快照、边界覆盖齐；唯一升级点 E-AGENT-RESET 已人拍板并落契约。signoff.md 已生成。BUILD 解锁"}
   - {at: 2026-08-17, from: BUILD, to: BUILD, note: "/review 全链修订（panel 4 specialist：4 IMPORTANT + 16 警告全处理，人拍板 2026-08-17）——B1 撤销 E-AGENT-RESET（实证全局串行队列：reset-session 排在在途 prompt 之后，排队丢弃场景不存在，v1 升级点基于错误模型）；B2 补 touch 注入钩子（事件实际出站时调，恒 clearPending:false）；B3 未知 key 照常转发修正；B4 REQ-111 AC2 text_start 表述修正；prd v0.3 + requirements v2（哈希 ce30bc5a）+ 测试 4 文件修订 + signoff v2 重签。phase 保持 BUILD"}
   - {at: 2026-08-17, from: BUILD, to: QA, note: "BUILD 完成（3 slices，全部 PRD 对齐 ALIGNED + refactor 一轮）：slice 1 管线模块（5f4518e+7415cb9）/ slice 2 worker 接线（27d5c9d+6992614a）/ slice 3 agentService 单源（d92f23e+1da6157）；test-gap 修正 ×3（人确认：AC3 计数/ready 监听/recordSdkEvent 覆盖）；契约 v1→v4（当前 437b549f，signoff v4 补签——v4 补签 commit 被并行 story git add -A 扫入其 [build] commit，内容已落盘）；story 全套 30/30 绿。待 /qa-runner 全量回归"}
+  - {at: 2026-08-18, from: QA, to: QA, note: "QA 完成（qa-report.md）：单元 story 30/30、全量 949/959（10 红全属并行 story session-domain BUILD 期）、E2E agent-dialogue 94/94 零 flaky——可进入 REFLECT；review code 层 PASS 追加。BUG-001 修复（人拍板修 S3）：limitSize 文本载体转义安全（truncateTextCarrier 补迭代收紧，Prove-It 回归 3d844d6 + 修复 774a6e7），story 31/31 绿；顺带 S1/S2 边界注记"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
