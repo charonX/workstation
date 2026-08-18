@@ -174,3 +174,19 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
   2. 事件/时序类 seam 断言对照**同 seam 先例**逐行比对（例：`await start()` 已消费
      ready（once），监听必须挂在其前——workerWiring 先例）。
 - Prove-It 模式（bug 回归）：回归测试必须先红后绿（`3d844d6` 红 → `774a6e7` 绿）。
+
+## git ff-only 失败 fixture（2026-08-18，skill-update E2E）
+
+- 触发条件：`git pull --ff-only` 拒绝 = **本地脏的文件恰好被上游提交修改**。
+- fixture 规则：上游 v2 **修改**克隆里已存在的文件（如 `skills/review/SKILL.md`），再
+  脏**同一个文件** → "Your local changes ... would be overwritten" 确定性失败。
+- 反模式：上游**新增**技能（`review2`）+ 脏克隆内新文件——克隆 v1 无此文件（ENOENT），
+  且 ff-only 对未修改文件不拒绝。skillLibrary.test.js 已有正确先例，复制先例而非另造。
+- 顺带：git 克隆后本地文件以克隆内容为准（v1），fixture 里要脏/改的路径必须以克隆内容
+  存在为前提。
+
+## 作业进度可测性（2026-08-18，skill-update BUG-001）
+
+- 流式 log 断言：job 终态 log 含确定性 git 输出行（"Cloning into"）即可（快 clone 下
+  运行中日志时序不稳定，断言终态而非运行中）。
+- 无超时行为靠代码审查（timeoutMs=0 默认），不写"等 30s"测试（慢且 flaky）。

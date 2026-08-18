@@ -571,3 +571,46 @@
   恒超时（v2 重写笔误，基线即红）。
 - **结论**：对「启动即消费一次」的 emitter 事件，测试监听必须在触发动作之前挂；
   同类 seam 先例（workerWiring 在 start 前挂）可作为对照模板。
+
+## 长 job 的前端硬超时是假失败源：要么无超时+进度，要么区分"仍在跑"与"失败"（2026-08-18，skill-update BUG-001）
+
+- **现象**：git 安装技能，`waitForJob` 硬编码 30s 超时。大仓库 clone 真实耗时 >30s → 前端报
+  "Timed out"（用户以为失败），后端 job 其实继续并在稍后完成。复现：service 层 3s 成功；
+  根因在渲染端 30s 常量，不在后端。
+- **根因**：对"后台会继续跑完"的 job 设硬超时，把"慢"误判成"失败"。超时只是前端观察窗，
+  后端 `settleJobWhen` 不管前端是否放弃。
+- **结论**：作业型接口（install/update/执行）的轮询**默认无超时**（`timeoutMs=0` 轮询至真实
+  终态），靠**进度可见**（流式 log）让用户判断死活；真卡死由用户手动关闭兜底。若保留超时，
+  超时必须区分「仍在跑（返回 pending 态）」与「失败（error 态）」，不得用失败文案表达超时。
+
+## 作业进度 log 必须流式：execFile 缓冲到完成，spawn + --progress 才逐块（2026-08-18，skill-update BUG-001）
+
+- **现象**：安装进度不可见。`execFileAsync`（promisify(execFile)）把 stdout/stderr 缓冲到
+  子进程退出才返回——运行中拿不到任何输出。
+- **结论**：要实时进度，用 `child_process.spawn` + `stdout/stderr.on("data")` 逐块追加到
+  job.log（运行中 getJob 即可见）；git clone 需加 `--progress` 强制进度行上管道（否则
+  非 TTY 时 git 抑制进度）。execFile 适合"只要结果"的短命令，spawn 适合"要过程"的长作业。
+
+## E2E 的 git ff-only 失败 fixture：必须脏「上游提交会修改」的文件（2026-08-18，skill-update 测试作者陷阱）
+
+- **现象**：E2E 让 ff-only 失败，fixture 写错——上游 v2 提交**新增** `review2` 技能，测试去
+  脏克隆里的 `review2/SKILL.md`：克隆是 v1（无此文件）→ ENOENT；即便文件在，ff-only 对新
+  增文件不失败（本地没改它）。正确做法：v2 **修改**克隆里已存在的 `review/SKILL.md`，再脏
+  同一文件 → git 报 "Your local changes would be overwritten"，确定性失败。
+- **结论**：git ff-only 拒绝的触发条件是「本地脏的文件恰好被上游提交修改」。fixture 里脏的
+  文件必须与上游提交改的是同一个；skillLibrary.test.js 已有正确先例，复制先例而非另造。
+
+## 已签 story 内的 req-gap 就地补全：加 REQ + 重哈希 + 补测试，不必重开门（2026-08-18，skill-update BUG-001）
+
+- **现象**：QA 期用户报 bug，修复方向（无超时+进度）不在已签 REQ 范围。按 req-gap 默认收敛
+  路径：requirements 追加 REQ-SKILL-023（AC1-AC3）→ 重算 hash（65dfabfb）→ PRD §4/§6.3/
+  §10.4/D5 同步 → 回归测试红→绿 → QA 重跑。全程 phase BUG→QA，无归档重做、无新 story。
+- **结论**：req-gap 就地补全在「意图缺口」场景比新建 story 轻得多；关键是**规格改动必须落
+  commit**（本 story 曾因 AC4 修订未提交致哈希机制失联，见下）。
+
+## 规格修订不落 commit 会断哈希机制（2026-08-18，skill-update PRD 对齐发现）
+
+- **现象**：test-author 期改 AC4 语义 + 重算 requirements-v1.hash，但只 commit 了测试文件——
+  HEAD 契约文本（旧 AC4）与测试盖的哈希、实现三方冲突，REQ-VERSION 对不上任何已提交版本。
+- **结论**：改 requirements.md 后必须同 commit 落 `requirements-v1.hash`（[docs]）；否则测试
+  的 REQ-VERSION 与 HEAD 契约失联，signoff/实现/测试三方各指一方。

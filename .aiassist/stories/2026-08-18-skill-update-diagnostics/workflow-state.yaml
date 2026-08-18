@@ -8,6 +8,9 @@ intention: >-
   更新体验与可诊断性缺失。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
 phase: REFLECT     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+status: completed  # 已完成（REFLECT 门 2，2026-08-18）——spec 降级为历史记录；逻辑真值看代码，意图真值看全局文档（adr/、business-capabilities.md、CONTEXT.md、STANDARDS.md）
+completed: true
+completed_at: 2026-08-18
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-18
@@ -24,6 +27,7 @@ history:
   - {at: 2026-08-18, from: QA, to: BUG, note: "用户报告 BUG-001：git 地址装技能报 'Timed out waiting for skill job to finish'。诊断：renderer waitForJob 30s 硬超时误报——后端 git clone 真实耗时 >30s（用户确认后台完成），install 路径字节级未动（非回归），mach-port 行是 Electron 输入法噪音。分类（人确认）：code-defect（假失败）+ req-gap（安装进度/log 不在 REQ 范围）→ 就地补全 REQ-SKILL-023（安装可观测：流式 log + 无超时）+ 修复。用户拍板方向：不要超时，弹层看进度。requirements v1→v1 追加（hash 65dfabfb）；PRD §4 B4/§6.3/§10.4 D5 同步"}
   - {at: 2026-08-18, from: BUG, to: QA, note: "BUG-001 修复完成（504c073 [test] 红 + 71bdece [bugfix]）：runGitInstallJob spawn 流式捕获 git clone 输出（--progress，运行中 job.log 可见）；waitForJob 默认 timeoutMs=0 无超时 + onLog 每轮回传；InstallSkillModal 实时进度面板（install-log-panel testid）。验证：api 7/7（REQ-023 AC1 红→绿）+ 全量 972/972 零回归；既有 skillInstall/skillLibrary 零改动保持（spawn 未破坏清理/校验/错误码）。REQ-023 AC3 弹层进度 = E2E 载体（QA 门；快 clone 难以确定性断言，REFLECT 人工复核形态）。bug-counter 1"}
   - {at: 2026-08-18, from: QA, to: REFLECT, note: "QA 慢外门通过（qa-report.md）：单测 972/972；E2E 技能库 14/14 全绿（本 story 3 例 REQ-020 AC5/021 AC4-5/022 + 既有回归 11 例）——期间修 1 测试作者 fixture 错（596567a，产品代码零改动）。无 open bug、零 flaky → 进 REFLECT 门 2 人验收"}
+  - {at: 2026-08-18, from: REFLECT, to: REFLECT, note: "门 2 通过（用户调 /reflect 即验收）：QA 全绿、BUG-001 已修、req-gap 就地补全闭环。沉淀：ADR-031（技能 job 可观测——无前端硬超时 + spawn 流式进度 + 卡死兜底）+ ADR README 索引；engineering-lessons +6（长 job 硬超时假失败/spawn vs execFile/ff-only fixture 陷阱/req-gap 就地补全/规格修订落 commit）；STANDARDS +1（长作业 job 无假失败）；checklists/testing +2（ff-only fixture/作业进度可测性）；business-capabilities skill 行 REQ-SKILL-023。健康指标：bug 1、req-gap 回补 1、实现者轮数 3、单 REQ 均测试 2.5、归档 0。status: completed"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

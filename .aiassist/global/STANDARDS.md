@@ -147,3 +147,14 @@
   ≤ 预算的文本序列化后超限（BUG-001 实证：20 万引号 ≈400KB）。
 - 文本载体（content/delta）与工具数据载体（input/output）收紧逻辑同型，
   单源实现（ADR-029 截断单真源），修一处即全链生效。
+
+## 长作业 job 无假失败：无硬超时 + 流式进度（2026-08-18，2026-08-18-skill-update-diagnostics BUG-001 /reflect）
+
+- **作业轮询默认无超时**：install/update/执行等「后台会跑完」的 job，`waitForJob` 默认
+  `timeoutMs=0` 轮询至真实终态；把「慢」误判成「失败」的前端硬超时是假失败源。保留超时
+  时，超时必须区分「仍在跑（pending）」与「失败（error）」，不得用失败文案表达超时。
+- **进度必须可见**：长作业（git clone/pull 等）用 `spawn` 流式捕获 stdout/stderr 到
+  job.log（`on("data")` 逐块追加，运行中即返回）；git 加 `--progress` 强制进度上管道。
+  execFile（缓冲到退出）只适合短命令。
+- **真卡死兜底**：无超时的代价是卡死会一直转——靠用户可见进度 + 手动关闭兜底；后端 job
+  由既有生命周期管理。

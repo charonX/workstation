@@ -1,5 +1,7 @@
 # 技能源更新可诊断性（版本号 + 失败 log + 成功反馈）
 
+> 状态：已完结（历史记录）——REFLECT 门 2 通过（2026-08-18），本 story spec 降级为历史记录；逻辑真值看代码，意图真值看全局文档（ADR-031 / engineering-lessons / STANDARDS / business-capabilities）。含 req-gap 就地补全 REQ-SKILL-023（安装可观测，BUG-001）。
+
 ## 1. 问题陈述
 
 技能源更新是黑盒：点「更新」无任何可见反馈——成功时按钮 busy 一闪而过、无成功提示、
