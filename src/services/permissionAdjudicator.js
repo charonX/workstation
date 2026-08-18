@@ -166,7 +166,6 @@ export function createPermissionAdjudicator({
     return new Promise((resolve) => {
       const existing = pendingDecisions.get(confirmId);
       if (existing) {
-        // 若已存在，包裹链式调用
         const oldResolve = existing.resolve;
         existing.resolve = (decision) => {
           oldResolve(decision);
@@ -226,6 +225,8 @@ export function createPermissionAdjudicator({
       return { success: false, status: "error", error: err?.message };
     }
 
+    const isBridgeRow = claim.row?.riskLevel === "permission" || notifySettleFlags.get(confirmId) === false;
+
     const pending = pendingDecisions.get(confirmId);
     if (pending) {
       pending.resolve({ kind: "allow" });
@@ -237,7 +238,6 @@ export function createPermissionAdjudicator({
     }
 
     const { row } = claim;
-    const isBridgeRow = row.riskLevel === "permission" || notifySettleFlags.get(confirmId) === false;
     let result;
     if (!isBridgeRow && typeof execute === "function") {
       try {
@@ -269,6 +269,7 @@ export function createPermissionAdjudicator({
       return { success: false, status: "error", error: err?.message };
     }
 
+    const isBridgeRow = claim.row?.riskLevel === "permission" || notifySettleFlags.get(confirmId) === false;
     const denyReason = reason || "操作已取消（用户拒绝）";
     const pending = pendingDecisions.get(confirmId);
     if (pending) {
@@ -281,13 +282,13 @@ export function createPermissionAdjudicator({
     }
 
     const { row } = claim;
-    const isBridgeRow = row.riskLevel === "permission" || notifySettleFlags.get(confirmId) === false;
     if (!isBridgeRow) {
       await notifyIfPresent({
         sessionKey: row.sessionKey,
         confirmId,
         decision: "rejected",
         command: row.command,
+        result: { cancelled: true, message: denyReason, command: row.command },
         reason: denyReason,
       }, confirmId);
     }
@@ -306,12 +307,20 @@ export function createPermissionAdjudicator({
     return rows.map(rowToConfirmation);
   }
 
+  function listAll() {
+    return db()
+      .prepare("SELECT * FROM agent_confirmations ORDER BY createdAt ASC")
+      .all()
+      .map(rowToConfirmation);
+  }
+
   return {
     submit,
     approve,
     reject,
     get,
     listPending,
+    listAll,
     waitForDecision,
   };
 }
