@@ -353,6 +353,8 @@ async function handlePostMessage(res, spaceKey, body, store, context) {
   }
   const svc = await resolveAgentService(context?.getAgentService);
   if (!svc) return notFound(res);
+  // fail-fast 前置（BUG-001）：接线缺失在建句柄之前抛——createSession 后抛 = 孤儿会话。
+  const registry = sseRegistryOf(context);
   svc.createSession({
     spaceKey,
     provider: config.provider,
@@ -362,7 +364,7 @@ async function handlePostMessage(res, spaceKey, body, store, context) {
   });
   // SSE 挂起订阅挂接（会话句柄此刻已存在；此前打开的 events 连接从本轮回流事件起收流）。
   // ADR-030：注册表 per-instance，经 context 袋 getSseRegistry 注入（prd §10.4）。
-  sseRegistryOf(context).attachPending(spaceKey, svc);
+  registry.attachPending(spaceKey, svc);
   try {
     await svc.prompt(spaceKey, text, attachments);
   } catch {
@@ -573,10 +575,12 @@ export function handleAgentLastMode(req, res, body, context = {}) {
 
 // SSE 注册表取位（ADR-030 §10.4 context 袋契约）：server.js 注入（_opcSseRegistryFactory
 // 惰性工厂同型）；未接线 → fail-fast 抛错（生产 server 恒提供，此分支仅在
-// 测试/headless 自建 context 时可达）。
+// 测试/headless 自建 context 时可达）。BUG-001：守卫校验 getter 返回值形状——工厂
+// 未赋值时 getter 返回 undefined，只查 typeof 会放行 → 调用方裸 TypeError。
 function sseRegistryOf(context) {
-  if (typeof context?.getSseRegistry !== "function") throw new Error("getSseRegistry 未接线");
-  return context.getSseRegistry();
+  const registry = typeof context?.getSseRegistry === "function" ? context.getSseRegistry() : undefined;
+  if (!registry || typeof registry.createSubscription !== "function") throw new Error("getSseRegistry 未接线");
+  return registry;
 }
 
 // GET .../events → SSE 流（text/event-stream；Node 原生 http：writeHead +
@@ -593,6 +597,9 @@ function handleGetEvents(res, spaceKey, store, context) {
   const row = store.get(spaceKey);
   if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
 
+  // fail-fast 前置（BUG-001）：接线缺失在写 SSE 头之前抛——头已提交后抛 = 挂死连接。
+  const registry = sseRegistryOf(context);
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -600,7 +607,6 @@ function handleGetEvents(res, spaceKey, store, context) {
   });
   res.flushHeaders(); // 首包立即送达（fetch 依赖头部先到达才 resolve）
 
-  const registry = sseRegistryOf(context);
   const sub = registry.createSubscription(res, spaceKey);
 
   // session-git 首帧补推（REQ-AGENT-058；幂等：与 agentService createSession 推送同源同形）。
