@@ -1,14 +1,17 @@
-// REQ-TRACE: 2026-08-18-skill-update-diagnostics/REQ-SKILL-020, 2026-08-18-skill-update-diagnostics/REQ-SKILL-021
-// REQ-VERSION: v1-hash:7885a24c88a9e9b8a2c1d4d8e36aaf859f2240bed4dcebdeda1126a728277941
+// REQ-TRACE: 2026-08-18-skill-update-diagnostics/REQ-SKILL-020, 2026-08-18-skill-update-diagnostics/REQ-SKILL-021, 2026-08-18-skill-update-diagnostics/REQ-SKILL-023
+// BUG-TRACE: BUG-001
+// REQ-VERSION: v1-hash:65dfabfbdc34a46c651c35b94c53e514eb8645c6ad78df5055bff1c38ee38602
 // CAPABILITY-TRACE: skill-management
 // ENTITY-TRACE: skill
-// EXPECTED-TRACE: prd.md §6.3 锚点——version 四态（0.24.0/1.1.0/7位短哈希/null）+ §10.4 契约（job +log: string|null，成功 null / 失败 git stderr 原文）
+// EXPECTED-TRACE: prd.md §6.3 锚点——version 四态（0.24.0/1.1.0/7位短哈希/null）+ §10.4 契约（update job +log 终态 / install job 流式 log）+ §6.3 install 运行中 log（Cloning into）
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 
-// REQ-SKILL-020（版本号展示）/ REQ-SKILL-021（失败 log）API 契约。
+// REQ-SKILL-020（版本号展示）/ REQ-SKILL-021（失败 log）/ REQ-SKILL-023（安装可观测，BUG-001）
+// API 契约。
 // version 解析顺序：package.json.version → git 源 git rev-parse --short HEAD → null。
-// job.log：终态才有值（成功 null / 失败 git 输出原文）；pending/running 为 null。
+// update job.log：终态才有值（成功 null / 失败 git 输出原文）；install job.log：流式
+// 捕获 git clone 输出（BUG-001：30s 前端误报 → 弹层看进度，log 运行中可见）。
 //
 // seam：src/http/server.js startServer 全栈（skillLibrary.test.js 先例）+ 临时技能库
 // （setSkillRepoPath）+ 手工来源目录（makeSourceDir）+ 真实 git 源安装（install API）。
@@ -240,6 +243,51 @@ describe("REQ-SKILL-021 更新失败 log（job 捕获 git 输出）", () => {
       assert.ok(typeof updateJob.log === "string" && updateJob.log.length > 0, "失败 job 必须带 log（git 输出原文）");
       assert.match(updateJob.log, /local changes/i, "log 应含 git 对本地改动的原始报错");
       assert.notEqual(updateJob.log, updateJob.error.message, "log 是原始输出，非翻译文案");
+    } finally {
+      fs.rmSync(origin, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("REQ-SKILL-023 安装可观测（流式 log，BUG-001）", () => {
+  let serverCtx;
+  let repoRoot;
+
+  beforeEach(async () => {
+    serverCtx = await startServer();
+    repoRoot = makeTempDir("opc-skilllib-instlog-");
+    await setSkillRepoPath(serverCtx.baseUrl, repoRoot);
+  });
+
+  afterEach(async () => {
+    await stopServer(serverCtx);
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it("AC1: install git 源 job log 捕获 git clone 输出（含 Cloning into）", async () => {
+    // EXPECTED-TRACE: prd.md §6.3（install job log 运行中/终态含 "Cloning into" git 输出）
+    const origin = makeTempDir("opc-skilllib-instlog-origin-");
+    try {
+      git(origin, ["init", "-b", "main"]);
+      git(origin, ["config", "user.email", "test@example.com"]);
+      git(origin, ["config", "user.name", "Test User"]);
+      writeSkillMd(path.join(origin, "skills", "review"), { name: "review", description: "v1" });
+      git(origin, ["add", "."]);
+      git(origin, ["commit", "-m", "v1"]);
+
+      const install = await fetch(`${serverCtx.baseUrl}/api/skills/install`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ sourceType: "git", identifier: `file://${origin}` }),
+      });
+      assert.equal(install.status, 202);
+      const job = await waitForJob(serverCtx.baseUrl, (await install.json()).jobId);
+
+      assert.equal(job.status, "success");
+      // 修复前：runGitInstallJob 不捕获输出，job.log = null → 断言红。
+      // 修复后：spawn 流式捕获 git clone stdout/stderr → log 含 "Cloning into '<slug>'..."。
+      assert.ok(typeof job.log === "string" && job.log.length > 0, "install job log 应捕获 git clone 输出（BUG-001 进度可见）");
+      assert.match(job.log, /Cloning into/i, "log 应含 git clone 的 'Cloning into' 输出");
     } finally {
       fs.rmSync(origin, { recursive: true, force: true });
     }
