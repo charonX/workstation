@@ -68,7 +68,8 @@ function commandViolatesCwd(root, command) {
 
 function pathOutsideCwd(root, targetPath) {
   if (!root) return false;
-  const targetAbs = path.resolve(String(targetPath ?? ""));
+  const p = String(targetPath ?? "");
+  const targetAbs = path.isAbsolute(p) ? p : path.resolve(root, p);
   const targetReal = realpathBestEffort(targetAbs);
   return !isInsideOrEqual(comparisonKey(targetReal), comparisonKey(root));
 }
