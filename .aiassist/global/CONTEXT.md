@@ -70,6 +70,8 @@
 | 协议族 | API family | provider 的 API 协议形态（pi-ai 目录 `model.api` 字段）：openai-completions/openai-responses、anthropic-messages、mistral-conversations、google-generative-ai、bedrock/vertex 等——决定探针端点与鉴权头（ADR-027） | 模型配置 | test-connection / 动态模型拉取 |
 | 供应商探针 | providerProbe | 对供应商发最小校验/列表请求的统一派生函数（`{url, headers} \| null`）：test-connection 与动态模型拉取同一派生源；baseUrl 缺失 → null → E-TEST-UNSUPPORTED/目录兜底，不阻塞保存 | 模型配置, 协议族 | Settings 添加表单 |
 | 附件 | 随消息注入上下文的文件（v1：图片——jpeg/png/gif/webp/bmp/heic/heif，SVG 拒收；PDF 本期放弃留后续）：内容进会话历史（pi-ai 原生序列化）、重放可见；经文件选择器添加即显式授权（项目外不弹确认、无特殊标记）；非视觉模型阻止附加（附加时判定 + 发送时复核）；每消息 ≤10 个 | 对话空间 | 图片注入（**≠ 产物**：执行产出物，两者不同） |
+| 权限裁决器 | PermissionAdjudicator：管理高危操作挂起确认单生命周期、超时流转、决议状态下发的领域服务；唯一执行者（approve 产生 allow 决策，零主进程 execute）与单一评估安全不变量的物理承载 | 确认挂起, 对话空间 | 权限拦截 / 确认执行管道 |
+| Fail-Closed 安全降级 | 权限策略评估遇到未知工具面、损坏配置或降级运行时的安全底线——默认一律判定为 ask 挂起人工确认，杜绝零确认绕过 | 权限模式, 确认挂起 | 策略评估 / 异常兜底 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -120,6 +122,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-18 | 新增「权限裁决器」「Fail-Closed 安全降级」概念（架构深化候选 #3，收敛确认执行管道与四大安全不变量） | 2026-08-16-deepen-permission-adjudication /domain-model |
 | 2026-08-12 | 新增「模型配置」实体（provider 条目列表）；「默认模型」「动态模型列表」「会话级切换」「视觉模型」「附件」概念（附件 ≠ 产物） | 2026-08-12-conversation-toolbar-ext /domain-model |
 | 2026-08-12 | 新增「权限模式」（strict/standard/auto 三档，ADR-023）「auto-judge link」（模型判断链节，deny-first + envelope 强制） | 2026-08-11-pi-agent-modes |
 | 2026-08-14 | 新增「协议族」「供应商探针」概念（ADR-027）；「动态模型列表」定义修订为全协议族化（REQ-104） | 2026-08-12-conversation-toolbar-ext /reflect（BUG-001/002） |

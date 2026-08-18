@@ -8,7 +8,7 @@ intention: >-
   FS 工具在 gotgenes 回退路径零确认执行。一句话痛点：权限裁决的知识散在
   两层接缝里，安全不变量没有结构承载。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -16,6 +16,14 @@ created: 2026-08-16
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #3，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html；ADR-017 已为此缝打过 BUG-001/002 两次补丁）"}
+  - {at: 2026-08-18, from: THINK, to: PRD, note: "完成需求洞察，确认方案 A（PermissionAdjudicator 领域模块化 + 结构化四大安全不变量）"}
+  - {at: 2026-08-18, from: PRD, to: DESIGN, note: "生成 prd.md，4 个稳定块就位，标记 complex 需 /tech-design 深潜"}
+  - {at: 2026-08-18, from: DESIGN, to: DOMAIN-MODEL, note: "沉淀领域词汇表（权限裁决器、Fail-Closed）"}
+  - {at: 2026-08-18, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "complex story 进入技术方案深潜"}
+  - {at: 2026-08-18, from: TECH-DESIGN, to: CRYSTALLIZE, note: "完成技术方案深潜，沉淀 ADR-032，进入自动结晶链"}
+  - {at: 2026-08-18, from: CRYSTALLIZE, to: TEST, note: "结晶 REQ-AGENT-118~122，生成 requirements.md 与哈希"}
+  - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "生成 4 份业务测试骨架与 test-plan.md"}
+  - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "断言签核通过（门 1），契约已锁定，进入内层实现循环"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
@@ -24,7 +32,13 @@ archive: []
 #    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
 
 # 块状态(一挡内按块回流时维护)。
-blocks: {}
+blocks:
+  stable:
+    - 纯函数策略评估器与Fail-Closed
+    - 权限裁决域与唯一执行者状态机
+    - 双端授权桥与pre-gate统一接入
+    - 主进程与路由胶水清理
+  moving: []
 #  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
 #  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
 
