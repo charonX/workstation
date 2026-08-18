@@ -40,9 +40,16 @@ const PENDING_TEXT_END_FALLBACK_MS = 5000;
 // 截断单真源（ADR-029 决策 5，人拍板 Q2）：worker 强实现成为唯一实现，主进程
 // agentService 三调用点（emitErrorEvent / inMemory runTurn / 子进程消息回传）
 // import 本函数。
-// 文本载体截断（content/delta 共用）：slice 到 MAX_IPC_BYTES − 256 预算内 + truncated 标记。
+// 文本载体截断（content/delta 共用）：slice 到 MAX_IPC_BYTES − 256 预算内 + truncated
+// 标记；JSON 序列化转义（引号/控制字符 → \uXXXX）可能使 slice 截断后仍超限（BUG-001
+// 实证：20 万引号转义后 ~400KB）→ 迭代收紧保证出站 JSON 恒 ≤ MAX_IPC_BYTES（与工具
+// 载体 shrinkToolCarrier 同型收紧，2-3 行；转义安全）。
 function truncateTextCarrier(out, carrier) {
-  out[carrier] = out[carrier].slice(0, MAX_IPC_BYTES - 256);
+  let text = out[carrier].slice(0, MAX_IPC_BYTES - 256);
+  while (JSON.stringify({ ...out, [carrier]: text }).length > MAX_IPC_BYTES && text.length > 1) {
+    text = text.slice(0, Math.floor(text.length / 2));
+  }
+  out[carrier] = text;
   out.truncated = true;
 }
 
@@ -72,6 +79,9 @@ export function limitSize(event) {
     // truncated 标记（renderer 以文本展示输出，ToolCallBlock 语义一致），保留
     // 契约字段 toolCallId/name/status/isError——不整条降级为 {type, truncated}
     // （否则渲染层无法关联工具块）。
+    // 范围注记（review S2，2026-08-18）：单载体收紧（优先 input）——契约形状
+    // 事件恒单载体（start→input / end→output；透传分支无载体），双载体同超限
+    // 生产不可达，PRD §6.3-6/7 只规定单载体场景。
     shrinkToolCarrier(out, out.input !== undefined ? "input" : "output");
   } else {
     return { type: event.type, truncated: true };
@@ -205,6 +215,9 @@ export function createTurnEventPipeline({
 
   // 冲刷该会话的 pending text_end（正常路径 = message_end 到达；兜底 = 定时器超时）。
   // usage 缺失（兜底路径）→ meta 仅 durationMs（renderer 显示「-」）。
+  // 边界注记（review S1，2026-08-18）：异常连环（两轮 text_end 间 message_end 缺失）
+  // 时多 pending 共享回合起点 → 后到条目 durationMs 偏大、中途兜底 flush 后起点缺失
+  // ——既有语义（守卫+flush 结构自 worker.js 原样搬移），仅影响诊断 meta 字段。
   function flushPendingTextEnds(sessionKey, usage) {
     const list = drainPendingTextEnds(sessionKey);
     if (list.length === 0) return;
