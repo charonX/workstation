@@ -1,0 +1,43 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-18-skill-update-diagnostics
+intention: >-
+  技能源更新是黑盒：git 源更新失败原因不可见（无 log）、local 源不支持更新的原因
+  无解释、技能组无版本号可辨新旧。用户点「更新」后无法判断更新是否发生/为何失败，
+  更新体验与可诊断性缺失。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: PRD        # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-18
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-18, from: -, to: THINK, note: "创建 story（/bug 跨 story 路由：技能界面更新体验问题经用户拍板单开新 story）——症状：① git 源 charonX-workflow 更新失败/无可见结果（复现：service 层 git pull --ff-only 实际成功，故非服务层硬失败，疑似可观察性黑盒/UI 层问题）② 更新无 log 可查（job 模型 {id,status,error} 无 log 字段，git 输出被丢弃）③ 技能组无版本号展示（GET /api/skills 无 version 字段）"}
+  - {at: 2026-08-18, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：四问全确认——①现象=点更新无反应（坐实黑盒观感，service 层复现成功）②版本号=package.json（验证 2/3 源有 version，baoyu-skills 无→需 fallback）③log=仅失败时展示 ④范围=三合一全做。方向拍板：Outcome 更新有可见结果 / Success 成功有反馈+失败原因+log+版本号 / Constraint local 源 E8 行为不变、版本号读 package.json、log 不持久化 / Out of scope 不改 local 更新能力、不做历史 log、不改 git 机制"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
