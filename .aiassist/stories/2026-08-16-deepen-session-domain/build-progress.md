@@ -190,3 +190,36 @@ context、函数内 `resolveAgentService(context?.getAgentService)` 取位（模
 「会话句柄缺失…」注释块 verbatim 重复两段（本切片前已存在，非本 slice diff 引入，
 范围锁不动）；sessionSseRegistry.js Map 访问三处重复 / HEARTBEAT_MS 提升常量
 两轮前已记录，范围锁不含该文件。
+
+## Bug 处理（2026-08-18，/code-review 复审后，人确认 code-defect）
+
+`/code-review`（换模型重跑）对 slice-3 代码发现 4 缺陷，父代理逐条亲验源码后
+确认 2 根因，人拍板「现在修」→ 按 /bug 单 bug 纪律两条独立修复：
+
+### BUG-001 —— sseRegistryOf fail-fast 落点（agentSessions.js，e74302e [test] + 314f544 [bugfix]）
+
+| 缺陷 | 位置（修复前） | 修复 |
+|---|---|---|
+| A. GET events 头已提交后抛 → 连接挂死（无 body 无 end） | handleGetEvents 先 writeHead/flushHeaders 后 sseRegistryOf | sseRegistryOf 前置到 writeHead 之前（头未提交即抛，HTTP 层转 500） |
+| B. 守卫只查 typeof → 工厂未赋值（getter 返回 undefined）放行 → 裸 TypeError | sseRegistryOf 单查 typeof getSseRegistry | 守卫同时校验返回值形状（createSubscription 存在） |
+| C. POST messages 建句柄后抛 → 孤儿会话 + 挂起订阅永不挂接 | handlePostMessage 先 createSession 后 sseRegistryOf | sseRegistryOf 前置到 createSession 之前 |
+
+回归测试 `sseRegistryFailFast.test.js` 3 用例（RED→GREEN）：fail-fast 先于写头 /
+getter 返回 undefined 也干净 fail-fast / fail-fast 先于建句柄。
+
+**行数连带**：路由 644 → 650 行（修复注释占预算 6 行），AC5 ≤650 边界达标零余量。
+后续路由再增行需另做瘦身或重定阈值。
+
+### BUG-002 —— attachPending 循环无 try/finally（sessionSseRegistry.js，e74302e [test] + a530214 [bugfix]）
+
+单 sub attach 抛错（陈旧/畸形句柄）→ 循环中断、挂起集该 key 永不清理、其余 sub
+滞留。attach-or-pend 塌缩后新暴露路径。修复：per-sub try/catch 隔离 + finally
+必清挂起集（幂等 no-op 语义保持）。回归测试 `attachPendingCleanup.test.js`：
+单 sub 失败不阻断其余 + 二次 attachPending 为 no-op（RED→GREEN）。
+
+**验证**：本 story 直测 39/39（35 + 4 回归）+ 回归面 = 61/61；全量 `npm run test:unit`
+**964/964 pass / 0 fail**（960 + 4 新回归断言），零连带破坏。
+
+**非本 story 范围（/code-review 发现，未动）**：turnEventPipeline.js 重复 text_end、
+agentService.js import 环、worker.js 诊断计数、sessionStop.test.js 未提交改动——
+前三属兄弟 story（turn-event-pipeline），后一属 2026-08-12-pi-mcp-plugin 工作区改动。

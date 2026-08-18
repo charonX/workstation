@@ -9,7 +9,7 @@ intention: >-
 
 phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -26,6 +26,7 @@ history:
   - {at: 2026-08-17, from: TEST, to: ASSERTION-SIGNOFF, note: "修复轮落地：prd v0.3 + ADR-030 修订（≤650/事实修正批）；requirements v2（hash 77f0f186，v1 删——REQ-112 AC1 措辞+空 providers golden、REQ-113 normalizeLimit+空文本行、REQ-114 删幻影 worktree+AC4 直测、REQ-116 AC4 载体更正 imageAttachment、REQ-117 AC4 全量表述+AC5 ≤650）；6 测试文件修订（+1 gitState 正分支用例、error 分支、静态断言加固、env 保存恢复+closeDb、REQ-VERSION 全更 v2）；test-plan v2；business-capabilities 行同步"}
   - {at: 2026-08-17, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 重签通过（signoff.md Assertion v2，signer=AI）：v2 变更集 8 项全部 trace 到人拍板锚点/实证；34 断言 33 RED + 1 双向不变量绿（实测全 RED 均为 seam 未就绪门）；无新升级点。BUILD 重新解锁"}
   - {at: 2026-08-18, from: BUILD, to: QA, note: "三切片全绿收官：S1 sessionDomain.js（1490292，24/24）；S2 sessionSseRegistry.js（689ba56，7/7）；S3 路由瘦身 928→644 + server.js 依赖方向回正（ee7756a + refactor 7be15bb）。停机条件达成且更优：全量回归 960/960（基线 34 fail 全愈，兄弟 story 1 RED 同期修绿）。每切片 PRD 对齐子代理 ALIGNED + refactor 一轮（S1/S2 NO_CHANGES_NEEDED，S3 双传参塌缩）。遗留：1490292 hook 卷入兄弟 signoff 13 行待人裁决；refactor 观察 5 项留 /review --cover=code"}
+  - {at: 2026-08-18, from: QA, to: QA, note: "/code-review 复审发现 slice-3 代码 4 缺陷 → 人拍板修（分类 code-defect）。BUG-001（e74302e [test] 红 + 314f544 [bugfix]）：sseRegistryOf fail-fast 落点——handleGetEvents 头已提交后抛（挂死连接）/handlePostMessage 建句柄后 500（孤儿会话）/守卫只查 typeof 放行 undefined（裸 TypeError）；三处前置到副作用之前。BUG-002（e74302e [test] 红 + a530214 [bugfix]）：attachPending 单 sub 抛错致挂起集永留，per-sub 隔离 + finally 必清。回归 964/964 全绿；bug-counter 1→2。剩余两项（drain 时序 = ADR-030 授权塌缩的已知方向、兄弟 story turnEventPipeline/worker/agentService 发现）非本 story 范围"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
