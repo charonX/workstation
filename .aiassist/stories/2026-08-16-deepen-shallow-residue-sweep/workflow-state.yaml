@@ -8,7 +8,7 @@ intention: >-
   dead import 误导读者。一句话痛点：一批浅残留各自携带隐藏语义，
   每处都过 deletion test。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -16,17 +16,24 @@ created: 2026-08-16
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #8，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html）"}
+  - {at: 2026-08-19, from: THINK, to: PRD, note: "完成需求洞察并生成 PRD"}
+  - {at: 2026-08-19, from: PRD, to: DESIGN, note: "PRD 完整性自检通过（simple 分级）"}
+  - {at: 2026-08-19, from: DESIGN, to: CRYSTALLIZE, note: "自动链：结晶生成 requirements.md (v1)"}
+  - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "自动链：生成 4 个业务验收测试骨架与 test-plan.md"}
+  - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "自动链：AI 全量自检与断言签核完成"}
+  - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核通过，进入内层实现循环"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
-#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
-#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
-#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
 
 # 块状态(一挡内按块回流时维护)。
-blocks: {}
-#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
-#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+blocks:
+  stable:
+    - "废除 agentAdapter 与缺 provider 显式报错"
+    - "统一 HTTP 响应助手 responders.js"
+    - "getCronDescription 移至 schedulerService"
+    - "清理 flowService 废弃 UI 助手"
+  moving: []
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
