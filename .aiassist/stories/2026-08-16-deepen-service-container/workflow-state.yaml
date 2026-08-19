@@ -8,7 +8,7 @@ intention: >-
   确认回调跨层 import 路由内部函数。一句话痛点：装配知识没有自己的家，
   路由文件里藏着隐式 DI 容器。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -21,6 +21,7 @@ history:
   - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续 workspace-management/server 域编号 REQ-WORKSPACE-017~019）：017 独立服务容器模块（AC1-AC5）、018 容器生命周期管理（AC1-AC4）、019 server.js 瘦身与兼容代理（AC1-AC5）。requirements-v1.hash=e34004c1；能力地图 server 行追加。自动链续跑 /test-author"}
   - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：生成 unit/serviceContainer.test.js 与 api/serverAssembly.test.js 2 文件 14 用例；test-plan.md 落盘；测试全 RED（seam 未就绪门）。自动链续跑 /signoff"}
   - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：AI 全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（14 组全 trace 到 §6.3/§8/§10.3/§10.4）/0 TODO/0 快照/边界与架构静态约束全覆盖；无升级点。BUILD 解锁"}
+  - {at: 2026-08-19, from: BUILD, to: QA, note: "BUILD 完成：Slice 1 serviceContainer.js 独立容器实现（9/9 绿）+ Slice 2 server.js 瘦身至 234 行并挂载 server.services 与 _opcXxx 代理（5/5 绿）；全仓单元测试 1019/1019 零破坏零回归全绿。推进至 QA 阶段"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
