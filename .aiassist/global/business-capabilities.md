@@ -15,7 +15,7 @@
 |------|----------|---------------|----------|
 | settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `bootstrapEnv.test.js`, `settingsServiceLazy.test.js`, `themeLanguage.spec.js` (E2E) |
 | project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/e2e/` | REQ-WORKSPACE-003~006, REQ-WORKSPACE-011~013 | `project.test.js`, `onboarding.spec.js` (E2E), `projectAgents.test.js`, `agentTypes.test.cjs` (E2E) |
-| server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-db-per-path-cache/api/` | REQ-WORKSPACE-008~010, REQ-WORKSPACE-014~016 | `server.test.js`, `dbPerPathCache.test.js`, `notificationDbPattern.test.js`（BUG-001 回归） |
+| server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-db-per-path-cache/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-service-container/` | REQ-WORKSPACE-008~010, REQ-WORKSPACE-014~016, REQ-WORKSPACE-017~019 | `server.test.js`, `dbPerPathCache.test.js`, `notificationDbPattern.test.js`（BUG-001 回归）, `serviceContainer.test.js`, `serverAssembly.test.js` |
 
 ### flow-orchestration
 > 设计、保存、执行流程图，支持条件分支与循环。
