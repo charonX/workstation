@@ -42,9 +42,6 @@ const activeServers = new Set();
 
 async function startFeishuChannel() {
   const result = await channelManager.start();
-  // 裁决②：生产通道适配器注入 runner（三级回退中间层：live channelManager online
-  // → 生产注入 → test 注入；REQ-FLOW-032 / REQ-CHANNEL-001）。
-  runner.setChannelAdapter(channelManager.getAdapter("feishu"));
   return result;
 }
 // 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。

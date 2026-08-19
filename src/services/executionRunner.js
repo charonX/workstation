@@ -81,11 +81,6 @@ export function setChannelAdapterForTests(adapter) {
   };
 }
 
-// 生产启动兼容入口（已统一由 live channelManager 代理，无需静态持有）
-export function setChannelAdapter(_adapter) {
-  // no-op: runner.resolveChannelSender directly uses live channelManager
-}
-
 export function resolveChannelSender() {
   if (testChannelSender) {
     return testChannelSender;
