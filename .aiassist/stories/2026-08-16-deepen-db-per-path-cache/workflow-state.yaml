@@ -9,7 +9,7 @@ intention: >-
 
 phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
 
 # 阶段流转历史。正常前进和回流都记一条。
@@ -21,6 +21,8 @@ history:
   - {at: 2026-08-18, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：db 直测 11 例（REQ-014 AC1-AC5 + 015 AC1-AC5 + 016 AC1）；test-plan.md 落盘；单槽下 5 绿 6 RED 全因正确原因（异路径并存/句柄跨路径/closeDb(path) 语义/resetDb 双库/代表性调用点）。自动链续跑 /signoff"}
   - {at: 2026-08-18, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（10 组全 trace 到 §6.3/§8/§10.4）/0 TODO/0 快照/边界全覆盖（no-op/:memory:/resetDb 双库）；2 升级点收敛（REQ-016 AC2 由回归门承载、closeDb 关全部语义定稿时已人确认）。11 断言 5 绿 6 RED（seam 门，全为 per-path 语义无误红）。BUILD 解锁"}
   - {at: 2026-08-18, from: BUILD, to: QA, note: "两切片全绿收官：S1 db.js per-path 缓存（3be957d + refactor e077a78，11/11——同句柄/并存/closeDb 关全部/定向/:memory:/resetDb 强化）；S2 最少调用点清理（a964c18——全库仅 1 处真单槽防御注释 sessionStore:64，54 处 KEEP）。全量 999/999（6 seam RED 全转绿，零回归）。PRD 对齐 S1 ALIGNED（resetDb 动态清遗留表经对抗审可接受，语义声明入 signoff）；S2 清理克制（55 点甄别 1 清 54 保）。停机条件达成"}
+  - {at: 2026-08-19, from: QA, to: BUG, note: "用户确认 BUG-001（分类 code-defect，人拍板）：notificationService.js 仍模块级持句柄（let db=null）+ 自愈（getDbRef `!db||!db.open`）+ isDbClosedError 检测 + 两段防御注释——per-path 缓存后全库唯一残留单槽病的站点，Slice 2 清理漏网（自愈机制本身即单槽时代防御，非正常惰性访问）。修：迁移 per-op getDb()（与其余 54 处调用点一致）"}
+  - {at: 2026-08-19, from: BUG, to: QA, note: "BUG-001 修复完成（[test] notificationDbPattern.test.js 红→绿 + [bugfix] notificationService 迁移）：notify/list/markRead 直接 getDb()，删模块级 let db/getDbRef 自愈/isDbClosedError 与防御注释，行为逐字节等价；验证：回归 2/2（静态断言修复前红）+ 既有 REQ-NOTIFY-001 全过 + 全量 1010/1010 零回归（1 次 feishu 并行 flake 复跑绿，非本改动引入）。bug-counter 1"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
