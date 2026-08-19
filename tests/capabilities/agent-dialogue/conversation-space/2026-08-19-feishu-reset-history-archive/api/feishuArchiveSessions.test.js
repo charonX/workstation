@@ -178,6 +178,11 @@ describe("REQ-AGENT-125 & REQ-AGENT-126 归档会话列表可见与只读回看�
     assert.equal(body.messages[0].text, "请帮我统计本月数据");
     assert.equal(body.messages[1].role, "assistant");
     assert.equal(body.messages[1].text, "好的，统计如下...");
+    // EXPECTED-TRACE: prd.md §6.3 row 4（回看消息保持 messageId/createdAt 与 reset 前一致）
+    assert.equal(body.messages[0].messageId, "msg_1", "回读消息应保持 messageId");
+    assert.equal(body.messages[0].createdAt, "2026-08-19T08:00:00.000Z", "回读消息应保持 createdAt");
+    assert.equal(body.messages[1].messageId, "msg_2");
+    assert.equal(body.messages[1].createdAt, "2026-08-19T08:00:05.000Z");
   });
 
   it("REQ-AGENT-126 AC2: 缺失 JSONL 文件回看降级为空数组", async () => {

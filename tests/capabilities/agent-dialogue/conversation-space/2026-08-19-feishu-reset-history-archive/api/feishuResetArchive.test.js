@@ -92,6 +92,12 @@ describe("REQ-AGENT-123 & REQ-AGENT-124 飞书 /reset 归档事务与异常分�
     assert.ok(activeRow, "活跃行 feishu:oc_123 应存在");
     assert.equal(activeRow.sessionRef, info.sessionRef);
     assert.equal(activeRow.title, null, "新活跃行 title 应重置为 NULL");
+    // EXPECTED-TRACE: prd.md §6.3 row 2（新活跃行 provider/model=NULL 回落默认、createdAt=lastActiveAt=此刻）
+    assert.equal(activeRow.provider, null, "新活跃行 provider 应为 NULL（回落默认配置）");
+    assert.equal(activeRow.model, null, "新活跃行 model 应为 NULL（回落默认配置）");
+    assert.equal(activeRow.createdAt, activeRow.lastActiveAt, "新活跃行 createdAt=lastActiveAt=此刻");
+    assert.ok(Date.parse(activeRow.createdAt) >= Date.parse("2026-08-19T09:30:00.000Z"),
+      "新活跃行 createdAt 应为 reset 时刻（晚于旧行 lastActiveAt）");
   });
 
   it("REQ-AGENT-123 AC2: 首世代归档（旧 sessionRef 无 .gen 后缀 → gen1）", () => {
