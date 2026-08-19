@@ -9,7 +9,7 @@ intention: >-
 phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-19
 status: active    # active / completed。由 /reflect 原地归档时置为 completed；已完成 story 的 spec 是历史记录（逻辑看代码、意图看全局文档），回流判断可查。
 completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
@@ -24,6 +24,8 @@ history:
   - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "生成 3 个业务验收测试文件，进入断言签核"}
   - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，无升级点，完成 assertion-signoff（门 1），解锁实现"}
   - {at: 2026-08-19, from: BUILD, to: QA, note: "Slice 1 与 Slice 2 实现并通过全量单测回归（1048/1048 PASS）与 PRD 对齐检查，进入 QA 阶段"}
+  - {at: 2026-08-19, from: QA, to: BUG, note: "BUG-001（review R1，人分类 code-defect）：重启水合消费归档行——getOrCreate 改写归档行 lastActiveAt/缺文件时毁 sessionRef 历史指针"}
+  - {at: 2026-08-19, from: BUG, to: QA, note: "BUG-001 已修（水合循环跳过 feishu :gen\\d+$ 归档键；回归测试 Prove-It 先红后绿，相关回归 33/33 绿），回到 QA"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

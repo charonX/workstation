@@ -23,7 +23,7 @@ ADR-016 确立「空间 = 会话」模型时，飞书空间沿用 builtin-agent 
 
 - 飞书 /reset 后历史对话以只读条目留在 UI 列表（按 lastActiveAt 倒序），点开可回看全部历史消息；活跃会话上下文仍被清空（onReset 通知形态不变，agentService/worker 零改动）。
 - `agent_sessions` 行数随归档增长（与 UI 空间同级，表结构不破——仅 UPDATE 改名 + 同 schema INSERT）。
-- 重启水合会把 mtime 1h 窗口内的归档行一并水合（worker 建永不交互的句柄，占 LRU 名额）：无害资源浪费，接受；如需收敛可在水合处过滤 `:gen\d+$`。
+- ~~重启水合会把 mtime 1h 窗口内的归档行一并水合：无害资源浪费，接受~~ **该评估被复审推翻（review R1 / BUG-001）**：水合并非无害——`getOrCreate` 会刷新归档行 `lastActiveAt`（破坏保留契约与列表排序）、归档 JSONL 缺失时改写 `sessionRef` 毁历史指针，并装配活 worker 会话。已修复：水合循环按 `isFeishuArchiveKey`（`feishu:*:gen\d+$`）跳过归档行（2026-08-19，commit 6be2cdc）。
 - 与既有 ADR 兼容确认：ADR-026（归档行保留 provider/model 快照、新行 NULL 回落默认——语义兼容）、ADR-030（sessionStore 经 import 消费 sessionDomain 投影，方向合规）、ADR-033（`db()` 访问器 + better-sqlite3 transaction，归档原子性成立）。
 - 升级前残留的孤儿世代 JSONL（无对应行）不回填为归档条目（story §12 范围外）。
 
