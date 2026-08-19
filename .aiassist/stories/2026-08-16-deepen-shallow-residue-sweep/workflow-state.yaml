@@ -8,7 +8,7 @@ intention: >-
   dead import 误导读者。一句话痛点：一批浅残留各自携带隐藏语义，
   每处都过 deletion test。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -22,6 +22,7 @@ history:
   - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "自动链：生成 4 个业务验收测试骨架与 test-plan.md"}
   - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "自动链：AI 全量自检与断言签核完成"}
   - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 签核通过，进入内层实现循环"}
+  - {at: 2026-08-19, from: BUILD, to: QA, note: "S1~S4 全部切片实现完成，全量单元测试 1034/1034 通过，进入 QA 阶段"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
