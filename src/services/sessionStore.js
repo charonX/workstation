@@ -233,13 +233,17 @@ export function createSessionStore(options = {}) {
     const ts = nowIso();
     const dir = baseSessionDir ?? (row.sessionRef ? path.dirname(row.sessionRef) : undefined);
 
+    const inPlaceReset = () => {
+      const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
+      const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
+      notifyReset(spaceKey, info);
+      return info;
+    };
+
     if (typeof spaceKey === "string" && spaceKey.startsWith("feishu:")) {
       const messages = projectMessagesFromJsonl(row.sessionRef);
       if (messages.length === 0) {
-        const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
-        const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
-        notifyReset(spaceKey, info);
-        return info;
+        return inPlaceReset();
       }
 
       const currentGen = generationFromRef(row.sessionRef);
@@ -265,17 +269,11 @@ export function createSessionStore(options = {}) {
         return info;
       } catch (err) {
         degradePersistFailure("reset 归档事务", err);
-        const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
-        const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
-        notifyReset(spaceKey, info);
-        return info;
+        return inPlaceReset();
       }
     }
 
-    const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
-    const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
-    notifyReset(spaceKey, info);
-    return info;
+    return inPlaceReset();
   }
 
   // 订阅 /reset 通知（agentService 在创建时注册，清对应空间上下文）。

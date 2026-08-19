@@ -148,11 +148,8 @@ function listSessions(store) {
       }
       group.sessions.push(item);
     } else if (row.spaceKey.startsWith("feishu:")) {
-      let metaKey = row.spaceKey;
-      if (metaKey.includes(":gen")) {
-        metaKey = metaKey.replace(/:gen\d+$/, "");
-      }
-      item.displayName = spaceMeta.get(metaKey) ?? spaceMeta.get(row.spaceKey) ?? row.spaceKey;
+      const chatKey = row.spaceKey.replace(/:gen\d+$/, "");
+      item.displayName = spaceMeta.get(chatKey) ?? spaceMeta.get(row.spaceKey) ?? row.spaceKey;
       feishu.push(item);
     }
   }
