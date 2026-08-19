@@ -14,7 +14,7 @@
   - 涉及文件: `src/flowEngine/agentAdapter.js` (删除), `src/flowEngine/executors/agentExecutor.js`, `src/flowEngine/claudeAgentAdapter.js`
   - 验证测试: `tests/capabilities/flow-orchestration/flow-engine/2026-08-16-deepen-shallow-residue-sweep/api/agentExecutorProvider.test.js`
 
-- [ ] **Slice 2: 统一 HTTP 响应助手与 5 路由收敛引用**
+- [x] **Slice 2: 统一 HTTP 响应助手与 5 路由收敛引用**
   - REQ: `REQ-WORKSPACE-020`
   - 涉及文件: `src/http/responders.js` (新建), `src/http/routes/{mcp,plugins,skills,projects,settings}.js`
   - 验证测试: `tests/capabilities/workspace-management/server/2026-08-16-deepen-shallow-residue-sweep/api/responders.test.js`
@@ -53,3 +53,25 @@
 | §6.3 / §8 缺 provider 显式报错 `E-AGENT-NO-PROVIDER`（REQ-FLOW-058 AC2） | `agentExecutor.js`: agentExecutor (`!provider` 分支) | agentExecutorProvider.test.js AC2 | COVERED |
 | §6.2 / §8 未知 provider 显式报错 `Unknown agent provider`（REQ-FLOW-058 AC3） | `agentExecutor.js`: agentExecutor (未知 provider 分支) | agentExecutorProvider.test.js AC3 | COVERED |
 | §6.1 #1 provider 为 anthropic 时真实分派至 claudeAgentAdapter（REQ-FLOW-058 AC4） | `agentExecutor.js`: agentExecutor (`provider === "anthropic"` 分支) | agentExecutorProvider.test.js AC4 | COVERED |
+
+### Slice 2: 统一 HTTP 响应助手与 5 路由收敛引用 (REQ-WORKSPACE-020)
+
+- **状态**: **complete**
+- **涉及文件**:
+  - `src/http/responders.js`（新建：提供 ok, noContent, badRequest, notFound, mapError, decodeParam, normalizeBool）
+  - `src/http/routes/mcp.js`（重构：导入 responders.js，移除本地多余导出）
+  - `src/http/routes/plugins.js`（重构：导入 responders.js，解除对 mcp.js 的反向引用）
+  - `src/http/routes/skills.js`（重构：导入 responders.js，移除本地重复 helper）
+  - `src/http/routes/projects.js`（重构：导入 responders.js，移除本地重复 helper）
+  - `src/http/routes/settings.js`（重构：导入 responders.js，移除本地重复 helper）
+- **验证结果**: `responders.test.js` 5/5 绿，相关路由及既有测试全绿。
+
+#### PRD→代码 可追溯性表（Slice 2）
+
+| PRD 意图（§10 / REQ） | 实现文件/函数 | 测试文件 | 覆盖状态 |
+|---|---|---|---|
+| §10.2 #1 导出标准化助手集合（REQ-WORKSPACE-020 AC1） | `src/http/responders.js` (`ok`, `noContent`, `badRequest`, `notFound`, `mapError`, `decodeParam`, `normalizeBool`) | `responders.test.js` AC1 | COVERED |
+| §6.3 / §8 标准 HTTP 响应格式（REQ-WORKSPACE-020 AC2） | `src/http/responders.js` (`ok`, `noContent`, `badRequest`, `notFound`) | `responders.test.js` AC2 | COVERED |
+| §6.2 / §10.2 统一 mapError 与 extra 字段透传（REQ-WORKSPACE-020 AC3） | `src/http/responders.js` (`mapError`) | `responders.test.js` AC3 | COVERED |
+| §7 参数解码与布尔归一化（REQ-WORKSPACE-020 AC4） | `src/http/responders.js` (`decodeParam`, `normalizeBool`) | `responders.test.js` AC4 | COVERED |
+| §10.1 #2 / §10.2 5 路由统一引用且解耦 plugins->mcp（REQ-WORKSPACE-020 AC5） | `src/http/routes/{mcp,plugins,skills,projects,settings}.js` | `responders.test.js` AC5 | COVERED |

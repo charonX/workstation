@@ -1,4 +1,5 @@
 import * as skillService from "../../services/skillService.js";
+import { ok, notFound, mapError } from "../responders.js";
 
 // Skills routes (ADR-011 model):
 //   GET    /api/skills                  grouped live scan of the skill library
@@ -57,20 +58,4 @@ export async function handleSkills(req, res, body, pathParts) {
   return notFound(res);
 }
 
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
 
-function mapError(res, err) {
-  const status = err.status || 500;
-  const body = { error: err.code || (status === 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR"), message: err.message };
-  if (err.existing) body.existing = err.existing;
-  res.writeHead(status, { "Content-Type": "application/json" });
-  return res.end(JSON.stringify(body));
-}
-
-function notFound(res, message = "Not found") {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message }));
-}

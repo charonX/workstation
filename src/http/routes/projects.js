@@ -1,6 +1,7 @@
 import * as projectService from "../../services/projectService.js";
 import * as skillService from "../../services/skillService.js";
 import * as permissionConfigService from "../../services/permissionConfigService.js";
+import { ok, noContent, notFound, mapError, decodeParam } from "../responders.js";
 
 export async function handleProjects(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -138,13 +139,7 @@ export async function handleProjects(req, res, body, pathParts) {
   return notFound(res);
 }
 
-function decodeParam(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
+
 
 async function createProject(body) {
   if (body.sourceType === "git" || body.repoUrl) {
@@ -190,23 +185,7 @@ function buildProjectDetail(projectId) {
   };
 }
 
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
 
-function noContent(res) {
-  res.writeHead(204);
-  res.end();
-}
-
-function mapError(res, err) {
-  const status = err.status || 400;
-  const body = { error: err.code || "VALIDATION_ERROR", message: err.message };
-  if (err.invalidAgents) body.invalidAgents = err.invalidAgents;
-  res.writeHead(status, { "Content-Type": "application/json" });
-  return res.end(JSON.stringify(body));
-}
 
 // 权限端点统一错误映射（契约形态，tech-design §3.1/3.2）：E-PROJECT-NOT-FOUND →
 // 404；E-PERMISSION-INVALID → 400 + issues 透传（PUT）；E-PERMISSION-WRITE → 500；
@@ -232,7 +211,4 @@ function permissionError(res, status, code, message, extra) {
   return res.end(JSON.stringify({ code, message, ...extra }));
 }
 
-function notFound(res, message = "Not found") {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message }));
-}
+

@@ -15,18 +15,11 @@
 //
 // mcp 的 projectId 是字符串直接存（无 dir 解析，见 mcpService.setProjectEnabled）。
 //
-// 本文件同时拥有并导出 plugins/mcp 共用的 HTTP 响应助手（ok/badRequest/mapError/
-// notFound/decodeParam/normalizeBool），plugins.js 依赖本模块（重 → 轻依赖方向）。
-// 长期应上移到独立 src/http/routes/_respond.js 并让 skills/settings 等路由复用。
-
 import { createMcpService } from "../../services/mcpService.js";
+import { ok, badRequest, mapError, notFound, decodeParam, normalizeBool } from "../responders.js";
 
 function getService() {
   return createMcpService();
-}
-
-export function normalizeBool(value) {
-  return value === true || value === "true";
 }
 
 export async function handleMcp(req, res, body, pathParts) {
@@ -129,33 +122,4 @@ export async function handleMcp(req, res, body, pathParts) {
   return notFound(res);
 }
 
-export function decodeParam(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
 
-export function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-export function badRequest(res, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
-}
-
-// 业务错误 → 4xx + JSON { error, message }（CLI 侧 stderr 展示，退出码非零）。
-export function mapError(res, err) {
-  const status = err.status || 400;
-  const body = { error: err.code || (status === 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR"), message: err.message };
-  res.writeHead(status, { "Content-Type": "application/json" });
-  return res.end(JSON.stringify(body));
-}
-
-export function notFound(res, message = "Not found") {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message }));
-}

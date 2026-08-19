@@ -25,10 +25,7 @@ import path from "node:path";
 import { createExtensionService } from "../../services/extensionService.js";
 import * as projectService from "../../services/projectService.js";
 import * as settingsService from "../../services/settingsService.js";
-// 共享 HTTP 响应助手（ok/badRequest/mapError/notFound/decodeParam/normalizeBool）
-// 由 mcp.js 拥有并导出（约定：目录内 mcp 模块为共享 helper 归属，plugins 依赖 mcp，
-// 依赖方向为“重模块 → 轻模块”）。长期应上移到独立 src/http/routes/_respond.js。
-import { ok, badRequest, mapError, notFound, decodeParam, normalizeBool } from "./mcp.js";
+import { ok, badRequest, mapError, notFound, decodeParam, normalizeBool } from "../responders.js";
 
 let cachedBuiltinVersion;
 function builtinVersion() {

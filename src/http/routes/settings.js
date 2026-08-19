@@ -5,6 +5,7 @@ import {
   broadcastJudgeConfig,
   buildJudgeConfig,
 } from "../../services/agentService.js";
+import { ok, badRequest, notFound } from "../responders.js";
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -227,22 +228,6 @@ function handleCatalog(res) {
   }
 }
 
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function badRequest(res, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "VALIDATION_ERROR", message }));
-}
-
 function invalid(res, code, message) {
-  res.writeHead(400, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: code, message }));
-}
-
-function notFound(res) {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message: "Not found" }));
+  return badRequest(res, message, code);
 }
