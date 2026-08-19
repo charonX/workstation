@@ -6,8 +6,6 @@ import * as settingsService from "../services/settingsService.js";
 import * as schedulerService from "../services/schedulerService.js";
 import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
 import { createServiceContainer } from "../services/serviceContainer.js";
-import { buildSessionConfig } from "../services/sessionDomain.js";
-import { createSseSubscriptionRegistry } from "../services/sessionSseRegistry.js";
 import { handleProjects } from "./routes/projects.js";
 import { handleFlows, handleFlowImport } from "./routes/flows.js";
 import { handleSchedules } from "./routes/schedules.js";
@@ -27,6 +25,12 @@ import { handleAgentFiles } from "./routes/agentFiles.js";
 
 const activeServers = new Set();
 
+/**
+ * @deprecated 挂载 _opcXxx 兼容代理层仅用于既有测试平滑过渡；禁止新代码依赖。
+ * server.services 为唯一正规 DI seam。
+ * @param {http.Server} server
+ * @param {import('../services/serviceContainer.js').ServiceContainer} container
+ */
 function attachLegacyOpcProxies(server, container) {
   const proxies = {
     _opcAgentRouter: { get: () => container.getAgentRouter(), set: (v) => container.setAgentRouterFactory(() => v) },
