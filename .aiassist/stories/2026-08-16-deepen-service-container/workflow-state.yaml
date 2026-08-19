@@ -8,7 +8,7 @@ intention: >-
   确认回调跨层 import 路由内部函数。一句话痛点：装配知识没有自己的家，
   路由文件里藏着隐式 DI 容器。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -16,28 +16,30 @@ created: 2026-08-16
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #7，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html；与候选 #4 session-domain 有接线重叠：确认回调的 buildSessionConfig 依赖在 #4 修）"}
+  - {at: 2026-08-19, from: THINK, to: PRD, note: "需求洞察完成（interview-notes.md）：明确 8 个服务的惰性工厂、相互接线（imRouter/eventBus 订阅）及定时清理统一收归 Service Container；server.services 作为正式 DI seam 并挂载 _opcXxx 代理平滑兼容既有测试；server.js 瘦身至 ≤250 行"}
+  - {at: 2026-08-19, from: PRD, to: CRYSTALLIZE, note: "PRD v1 定稿（prd.md）：B1 独立服务容器 / B2 生命周期统一管理 / B3 server.js 瘦身与 DI seam 三稳定块；复杂度 simple（§10 高层完整，纯内部架构深化）；纯后端重构跳过 DESIGN 与 DOMAIN-MODEL，进入自动链结晶"}
+  - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "结晶 3 REQ（延续 workspace-management/server 域编号 REQ-WORKSPACE-017~019）：017 独立服务容器模块（AC1-AC5）、018 容器生命周期管理（AC1-AC4）、019 server.js 瘦身与兼容代理（AC1-AC5）。requirements-v1.hash=e34004c1；能力地图 server 行追加。自动链续跑 /test-author"}
+  - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：生成 unit/serviceContainer.test.js 与 api/serverAssembly.test.js 2 文件 14 用例；test-plan.md 落盘；测试全 RED（seam 未就绪门）。自动链续跑 /signoff"}
+  - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过（signoff.md，signer=AI）：AI 全量自检 8 项全过——3 REQ 全覆盖/头部七行核验/EXPECTED-TRACE 逐条交叉验证一致（14 组全 trace 到 §6.3/§8/§10.3/§10.4）/0 TODO/0 快照/边界与架构静态约束全覆盖；无升级点。BUILD 解锁"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
-#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
-#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
-#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
 
 # 块状态(一挡内按块回流时维护)。
-blocks: {}
-#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
-#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+blocks:
+  stable: [B1, B2, B3]
+  moving: []
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
-  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
-  compiled: false           # 是否已跑过 compile-design-system
-  preview: ""               # 当前有效的 preview.html 路径
+  slug: ""
+  compiled: false
+  preview: ""
 
 # story 内已记录的设计资产(由 record-asset.mjs 维护)。
 assets:
-  recorded: []              # [flow-a.html, flow-b.html, ...]
+  recorded: []
 
 # 已生成的变体(按需)。
 variants:
-  active: []                # [dark, compact, ...]
+  active: []
