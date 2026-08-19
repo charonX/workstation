@@ -74,7 +74,7 @@ function toListView(schedule) {
     enabled: schedule.enabled,
     variables: schedule.variables,
     error: schedule.error,
-    cronDescription: taskService.getCronDescription(schedule.cron)
+    cronDescription: schedulerService.getCronDescription(schedule.cron)
   };
 }
 

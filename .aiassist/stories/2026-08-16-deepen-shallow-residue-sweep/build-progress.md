@@ -19,7 +19,7 @@
   - 涉及文件: `src/http/responders.js` (新建), `src/http/routes/{mcp,plugins,skills,projects,settings}.js`
   - 验证测试: `tests/capabilities/workspace-management/server/2026-08-16-deepen-shallow-residue-sweep/api/responders.test.js`
 
-- [ ] **Slice 3: Cron 描述助手归位至 schedulerService**
+- [x] **Slice 3: Cron 描述助手归位至 schedulerService**
   - REQ: `REQ-SCHEDULE-011`
   - 涉及文件: `src/services/schedulerService.js`, `src/services/taskService.js`, `src/http/routes/schedules.js`
   - 验证测试: `tests/capabilities/scheduling-execution/schedule/2026-08-16-deepen-shallow-residue-sweep/api/cronDescription.test.js`
@@ -75,3 +75,22 @@
 | §6.2 / §10.2 统一 mapError 与 extra 字段透传（REQ-WORKSPACE-020 AC3） | `src/http/responders.js` (`mapError`) | `responders.test.js` AC3 | COVERED |
 | §7 参数解码与布尔归一化（REQ-WORKSPACE-020 AC4） | `src/http/responders.js` (`decodeParam`, `normalizeBool`) | `responders.test.js` AC4 | COVERED |
 | §10.1 #2 / §10.2 5 路由统一引用且解耦 plugins->mcp（REQ-WORKSPACE-020 AC5） | `src/http/routes/{mcp,plugins,skills,projects,settings}.js` | `responders.test.js` AC5 | COVERED |
+
+### Slice 3: Cron 描述助手归位至 schedulerService (REQ-SCHEDULE-011)
+
+- **状态**: **complete**
+- **涉及文件**:
+  - `src/services/schedulerService.js`（新增实现并导出 `getCronDescription`，支持 5/6 字段 24 小时制与非法字段数校验报错）
+  - `src/http/routes/schedules.js`（修改 `toListView` 直接调用 `schedulerService.getCronDescription(schedule.cron)`）
+  - `src/services/taskService.js`（移除本地解析实现，改为 `export { getCronDescription } from "./schedulerService.js"` 单行兼容转发）
+- **验证结果**: `cronDescription.test.js` 4/4 绿，既有 schedule/task 回归测试（18/18）全绿。
+
+#### PRD→代码 可追溯性表（Slice 3）
+
+| PRD 意图（§10 / REQ） | 实现文件/函数 | 测试文件 | 覆盖状态 |
+|---|---|---|---|
+| §10.2 #2 导出 getCronDescription 并支持 5/6 字段（REQ-SCHEDULE-011 AC1） | `src/services/schedulerService.js`: `getCronDescription` | `cronDescription.test.js` AC1 | COVERED |
+| §6.3 / §7 非法字段数抛错 `Invalid cron expression: expected 5 or 6 fields`（REQ-SCHEDULE-011 AC1） | `src/services/schedulerService.js`: `getCronDescription` | `cronDescription.test.js` AC2 | COVERED |
+| §10.2 #2 / §6.1 #4 schedules 路由直接导入 schedulerService 并生成 cronDescription（REQ-SCHEDULE-011 AC2） | `src/http/routes/schedules.js`: `toListView` | `cronDescription.test.js` AC3 | COVERED |
+| §10.2 / §2 #3 taskService 单行转发保证平滑过渡（REQ-SCHEDULE-011 AC3） | `src/services/taskService.js`: `export { getCronDescription }` | `cronDescription.test.js` AC4 | COVERED |
+

@@ -19,6 +19,84 @@ export function validateCron(cronExpression) {
   }
 }
 
+export function getCronDescription(cronExpression) {
+  if (!cronExpression || typeof cronExpression !== "string") {
+    throw new Error("Invalid cron expression: expected 5 or 6 fields");
+  }
+  const parts = cronExpression.trim().split(/\s+/);
+  if (parts.length !== 5 && parts.length !== 6) {
+    throw new Error("Invalid cron expression: expected 5 or 6 fields");
+  }
+  // Support both 5-field and 6-field (with seconds) cron; ignore seconds for description.
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts.length === 6 ? parts.slice(1) : parts;
+
+  // Helper: pad number to two digits
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // Helper: parse a field, returning null for *
+  const parseField = (field) => (field === "*" ? null : field);
+
+  const m = parseField(minute);
+  const h = parseField(hour);
+  const dom = parseField(dayOfMonth);
+  const mon = parseField(month);
+  const dow = parseField(dayOfWeek);
+
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  const formatHour = (val) => {
+    const num = parseInt(val, 10);
+    return !isNaN(num) && String(num) === String(val) ? pad(num) : val;
+  };
+  const formatMinute = (val) => {
+    const num = parseInt(val, 10);
+    return !isNaN(num) && String(num) === String(val) ? pad(num) : val;
+  };
+
+  // Build description for common patterns
+  let description = "";
+
+  // Time part (24-hour format)
+  if (m !== null && h !== null) {
+    const hourNum = parseInt(h, 10);
+    const minuteNum = parseInt(m, 10);
+    if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+      description = `At ${pad(hourNum)}:${pad(minuteNum)}`;
+    } else {
+      description = `At ${h}:${m}`;
+    }
+  } else if (h !== null) {
+    description = `At hour ${formatHour(h)}`;
+  } else if (m !== null) {
+    description = `At minute ${formatMinute(m)}`;
+  } else {
+    description = "Every minute";
+  }
+
+  // Day of week
+  if (dow !== null) {
+    const dowNum = parseInt(dow, 10);
+    if (dowNum >= 0 && dowNum <= 6 && String(dowNum) === String(dow)) {
+      description += `, only on ${dayNames[dowNum]}`;
+    } else {
+      description += `, only on day ${dow}`;
+    }
+  }
+
+  // Day of month
+  if (dom !== null && dow === null) {
+    description += `, on day ${dom} of the month`;
+  }
+
+  // Month
+  if (mon !== null) {
+    description += `, in month ${mon}`;
+  }
+
+  return description;
+}
+
+
 function scheduleTask(schedule) {
   validateCron(schedule.cron);
   const variables = parseScheduleVariables(schedule.variables);
