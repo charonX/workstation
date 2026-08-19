@@ -1,8 +1,9 @@
 # 浅残留清理（Sweep the Silent Mocks and Re-homed Leftovers）
 
 > 故事 ID：`2026-08-16-deepen-shallow-residue-sweep`
-> 状态：设计阶段（PRD 结晶准备）
+> 状态：已完结（历史记录）
 > 创建日期：2026-08-16
+> 完结日期：2026-08-19
 > 评审来源：架构深化评审候选 #8 (`.aiassist/global/architecture-reviews/architecture-review-2026-08-16.html`)
 
 ---

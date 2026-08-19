@@ -36,6 +36,14 @@
 - UX 参照中的数值示例（如 `6%`、`12.4k / 200k tokens`）在断言签核时须显式确认为
   格式契约（小数位/单位/千分位），否则实现自由发挥。
 
+## HTTP 响应与错误映射标准（2026-08-19，2026-08-16-deepen-shallow-residue-sweep /reflect）
+
+- 所有 HTTP 路由模块（`src/http/routes/*.js`）**严禁各自内联定义** `ok`/`badRequest`/`mapError`/`notFound` 等响应助手。
+- 统一从 `src/http/responders.js` 导入使用标准 helper（`ok`, `noContent`, `badRequest`, `notFound`, `mapError`, `decodeParam`, `normalizeBool`）。
+- 业务错误映射统一走 `mapError(res, err, defaultStatus = 400)`；错误状态码优先取 `err.status`，业务错误体为 `{ error: err.code || ..., message }`，`invalidAgents`、`issues`、`existing` 等结构化上下文自动透传。
+- 严禁路由间反向导入响应助手（例如 `routes/plugins.js -> routes/mcp.js`）。
+
+
 ## 目录结构约定
 
 ```

@@ -692,3 +692,39 @@
 - **结论**：当签核测试断言了字面 PRD 之外的行为，实现可用测试锚定的语义强化满足，但必须
   在 signoff/build-progress **显式声明**（本 story 记录在 signoff「实现期语义声明」），否则
   后续会把固定表清单误当 resetDb 契约，或把强化误判为越权改动。
+
+## 严禁生产路径静默 Mock：缺少依赖应 Fail-Fast，不可伪造假成功（2026-08-19，shallow-residue S1）
+
+- **现象**：`src/flowEngine/agentAdapter.js` 固定返回 mock success；未配置 provider 的 agent 节点
+  在 `agentExecutor.js` 中静默走 mock 假成功，导致缺少配置的 flow 在生产/非 mock 运行中假装成功，
+  掩盖真实错误。
+- **根因**：历史原型阶段为了离线通过测试而在生产分派路径留下了静默 fallback。
+- **结论**：**生产路径严禁存在无显式开关的静默 Mock**。缺少依赖（如 provider 未填）必须立即
+  Fail-Fast 报错（`E-AGENT-NO-PROVIDER`），测试桩/Mock 只能通过测试 Seam（如
+  `executionRunner.setAgentExecutorForTests`）显式注入，保证生产与测试语义严格一致。
+
+## HTTP Responder 统一与错误上下文透传：契约收敛不是简单粗暴抹平（2026-08-19，shallow-residue S2）
+
+- **现象**：5 个路由各自复制内联 `ok/badRequest/mapError/notFound`，且默认状态码有 400 与 500
+  的方言偏差。统一收敛到 `src/http/responders.js` 时，除基础 `{ error, message }` 外，必须同时
+  保留 `invalidAgents`、`issues`、`existing` 等特定业务错误字段的透传。
+- **结论**：统一基础脚手架（如 HTTP Responders）时，收敛的是**方言碎片与重复代码**，不是粗暴抹平
+  下游依赖的业务协议。`mapError` 的收敛预期是统一默认状态码为 400（业务校验），但对已存在的
+  结构化透传字段（如 409 冲突的 `existing.slug`、校验问题的 `issues`）必须完整保留向后兼容。
+
+## Deletion Test 与模块职责归位：无用代码彻底删除，错位逻辑归入所属领域（2026-08-19，shallow-residue S3/S4）
+
+- **现象**：服务端 `flowService.js` 中残留了 6 个无任何调用的前端 UI 画布计算与缩放函数（`toggleRun`,
+  `zoomIn`, `zoomOut`, `resetZoom`, `getNodeCategories`, `getEditableFields`）；而 `getCronDescription`
+  被误放在 `taskService.js` 中。
+- **结论**：过 Deletion Test 的无用代码果断删除（无活跃引用直接清空）；错位的领域逻辑（Cron 描述属于
+  `schedulerService`）迁入正确所属模块，原模块仅保留单行兼容转发平滑过渡。
+
+## Scope Discipline：严格区分服务端 HTTP 响应收敛与客户端 CLI Helper 复用（2026-08-19，shallow-residue review）
+
+- **现象**：扫描热点清单时包含 `src/cli/commands/{mcp,plugin}.js`，其中 `plugin.js` 从 `./mcp.js`
+  导入 `usageError/handleResponse/setProjectEnabled`。
+- **结论**：服务端 HTTP Responders 收敛（`src/http/responders.js`）解决的是 API 路由层的方言与反向依赖；
+  CLI 客户端助手共享属于 CLI 层的命令组装逻辑。重构必须守住 REQ 契约范围边界，避免“顺手做无关改动”
+  导致范围蔓延。
+
