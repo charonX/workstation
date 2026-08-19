@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getDb, defaultDbPath } from "../db.js";
+import { projectMessagesFromJsonl } from "./sessionDomain.js";
 
 // PRD §8 E-SESSION-PERSIST：SQLite/JSONL 写失败 → 告警日志 + 内存态继续（对话可用，
 // 仅重启不恢复）。只吞持久化类异常（带 err.code：fs E* / SQLite SQLITE_*）；参数错误等
@@ -209,15 +210,7 @@ export function createSessionStore(options = {}) {
     }
   }
 
-  // /reset（REQ-AGENT-010）：仅当前空间——JSONL 世代 +1（新文件）+ summaryRef
-  // 清空 + 通知监听者（agentService 清会话上下文 / 下发 reset-session IPC）。
-  // 其他空间行不受影响（按 spaceKey 定位更新）。
-  function reset(spaceKey) {
-    const row = db().prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
-    if (!row) return undefined;
-    const ts = nowIso();
-    const ref = bumpGeneration(spaceKey, row.sessionRef, baseSessionDir, ts, "reset 换代");
-    const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
+  function notifyReset(spaceKey, info) {
     for (const listener of resetListeners) {
       try {
         listener(spaceKey, info);
@@ -226,6 +219,62 @@ export function createSessionStore(options = {}) {
         process.stderr.write(`sessionStore reset 监听者异常: ${err?.message ?? String(err)}\n`);
       }
     }
+  }
+
+  // /reset（REQ-AGENT-010 / REQ-AGENT-123 / REQ-AGENT-124）：
+  // - 飞书通道（feishu:*）：
+  //   - 空世代（消息投影为空）：不归档，原地换代（既有行为）
+  //   - 非空世代：单事务归档（旧行改名 feishu:<chatId>:gen<N>，新活跃行 feishu:<chatId> 世代 N+1）
+  //   - SQLite 失败按 E-SESSION-PERSIST 降级为原地换代
+  // - 非飞书空间：保留原有 bumpGeneration 换代逻辑
+  function reset(spaceKey) {
+    const row = db().prepare("SELECT * FROM agent_sessions WHERE spaceKey = ?").get(spaceKey);
+    if (!row) return undefined;
+    const ts = nowIso();
+    const dir = baseSessionDir ?? (row.sessionRef ? path.dirname(row.sessionRef) : undefined);
+
+    if (typeof spaceKey === "string" && spaceKey.startsWith("feishu:")) {
+      const messages = projectMessagesFromJsonl(row.sessionRef);
+      if (messages.length === 0) {
+        const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
+        const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
+        notifyReset(spaceKey, info);
+        return info;
+      }
+
+      const currentGen = generationFromRef(row.sessionRef);
+      const nextGen = currentGen + 1;
+      const archiveKey = `${spaceKey}:gen${currentGen}`;
+      const nextRef = sessionRefFor(dir, spaceKey, nextGen);
+      touchSessionFile(nextRef);
+
+      try {
+        const tx = db().transaction(() => {
+          db().prepare("UPDATE agent_sessions SET spaceKey = ? WHERE spaceKey = ?").run(archiveKey, spaceKey);
+          db().prepare("INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt) VALUES (?, ?, ?, ?)").run(
+            spaceKey,
+            nextRef,
+            ts,
+            ts
+          );
+        });
+        tx();
+
+        const info = { spaceKey, sessionRef: nextRef, createdAt: ts, lastActiveAt: ts, summaryRef: null, reset: true };
+        notifyReset(spaceKey, info);
+        return info;
+      } catch (err) {
+        degradePersistFailure("reset 归档事务", err);
+        const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
+        const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
+        notifyReset(spaceKey, info);
+        return info;
+      }
+    }
+
+    const ref = bumpGeneration(spaceKey, row.sessionRef, dir, ts, "reset 换代");
+    const info = { spaceKey, sessionRef: ref, createdAt: row.createdAt, lastActiveAt: ts, summaryRef: null, reset: true };
+    notifyReset(spaceKey, info);
     return info;
   }
 
