@@ -26,6 +26,7 @@ import * as flowService from "./flowService.js";
 import * as projectService from "./projectService.js";
 import { createExecutionQueue, recoverInterruptedExecutions } from "./executionQueue.js";
 import * as notificationService from "./notificationService.js";
+import * as channelManager from "./channelManager.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -42,8 +43,9 @@ const SUBFLOW_NO_OUTPUT_MSG = "E-SUBFLOW-NO-OUTPUT: child flow finished without 
 let executionQueue = createExecutionQueue();
 let executionGeneration = 0;
 
-// Test injection seams（REQ-FLOW-053：注入经 runner seam 生效）。
+// Test injection seams（REQ-FLOW-053 / REQ-FLOW-056：注入经 runner seam 生效）。
 let testAgentExecutor = null;
+let testChannelSender = null;
 let testChannelAdapter = null;
 
 // Production channel adapter injected by server startup (REQ-CHANNEL-001)——
@@ -51,22 +53,36 @@ let testChannelAdapter = null;
 // test 注入，对齐 taskService 原三级；server.js startFeishuChannel 接线，裁决②）。
 let channelAdapter = null;
 
-// Optional lazy reference to channelManager so the runner can always resolve
-// the current live adapter (survives channelManager.restart()). Caches the
-// module after first successful load; missing module or import errors are
-// treated as "channelManager not available" and fall back to the adapters above.
-let channelManagerModule = null;
-
 export function setAgentExecutorForTests(executor) {
   testAgentExecutor = executor;
 }
 
+export function setTestChannelSender(mockSender) {
+  testChannelSender = mockSender;
+  testChannelAdapter = mockSender;
+}
+
+export function resetTestChannelSender() {
+  testChannelSender = null;
+  testChannelAdapter = null;
+}
+
 export function setChannelAdapterForTests(adapter) {
-  testChannelAdapter = adapter;
+  setTestChannelSender(adapter);
 }
 
 export function setChannelAdapter(adapter) {
   channelAdapter = adapter;
+}
+
+export function resolveChannelSender() {
+  if (testChannelSender) {
+    return testChannelSender;
+  }
+  return {
+    send: (channelType, payload) => channelManager.send(channelType, payload),
+    reply: (channelType, payload) => channelManager.reply(channelType, payload)
+  };
 }
 
 function timestamp() {
@@ -248,7 +264,9 @@ export async function runOnce(executionCtx, descriptor = {}) {
   }
 
   try {
-    const executors = {};
+    const executors = {
+      ...(descriptor.executors || {})
+    };
     if (testAgentExecutor) {
       // 测试 seam 直通（父代理裁决 2026-08-16）：注入 executor 与生产契约同源
       // ——prompt 经 node.config.prompt 读取（claudeAgentAdapter 即读该键），
@@ -256,23 +274,29 @@ export async function runOnce(executionCtx, descriptor = {}) {
       executors.agent = testAgentExecutor;
     }
 
-    // REQ-FLOW-032: inject a channel-manager shim into execution variables so
-    // feishuSend nodes can send replies via the currently resolved adapter
-    // (live channelManager adapter or test adapter).
+    // REQ-FLOW-054: pure variables without system shim.
     // debug 直跑路径（execution 为空）经 executionCtx.variables 带入调用方变量
-    //（taskService.debugFlow 转发；slice 2）。
+    //（taskService.debugFlow 转发）。
     const variablesForRun = {
-      ...(execution?.variables ?? executionCtx.variables ?? {}),
-      _channelManager: buildChannelManagerShim()
+      ...(execution?.variables ?? executionCtx.variables ?? {})
     };
 
-    // REQ-FLOW-035 AC7 / D1: 注入 invokeSubflow 服务，绑定当前 execution.id 作为
-    // 父 executionId；persist 绑定自身描述符（debug 子树零落库传播）；generation
-    // 绑定本次 runOnce 捕获的 myGeneration 快照（REQ-FLOW-051 AC1：子执行写点
-    // 纳入父 runOnce 的 generation 守卫——reset 中途子写被拦截）。
+    // REQ-FLOW-035 AC7 / D1 / REQ-FLOW-056: 注入 invokeSubflow 与 channelSender 服务，
+    // 绑定当前 execution.id 作为父 executionId；persist 绑定自身描述符（debug 子树零落库传播）；
+    // generation 绑定本次 runOnce 捕获的 myGeneration 快照（REQ-FLOW-051 AC1：子执行写点
+    // 纳入父 runOnce 的 generation 守卫——reset 中途子写被拦截）；channelSender 透传。
     const parentExecutionId = execution?.id ?? null;
+    const channelSender = resolveChannelSender();
     const services = {
-      invokeSubflow: makeInvokeSubflow({ project, executors, parentExecutionId, persist, generation: myGeneration })
+      invokeSubflow: makeInvokeSubflow({
+        project,
+        executors,
+        parentExecutionId,
+        persist,
+        generation: myGeneration,
+        channelSender
+      }),
+      channelSender
     };
 
     const result = await run(
@@ -361,6 +385,8 @@ export async function runOnce(executionCtx, descriptor = {}) {
 // （20ms 轮询 pendingCount + 5s 上限，超时放弃）→ resolve。队列实例换成新的
 // （clearExecutionQueue 语义）——保证在飞项 settle 后返回，不写已重置 DB。
 export async function reset() {
+  resetTestChannelSender();
+  testAgentExecutor = null;
   // Replace the queue instance entirely so tests/server restarts don't inherit
   // pending or running executions from a previous lifecycle.
   executionGeneration += 1;
@@ -539,37 +565,12 @@ function buildTerminalFailureText(execution) {
   return `执行失败：${reason}`;
 }
 
-// REQ-FLOW-032: shim 注入 execution variables——feishuSend 节点经它拿到当前
-// live adapter（channelManager 重启后实例替换，运行时动态解析）或测试注入
-// adapter（resolveChannelAdapter 兜底）。
-function buildChannelManagerShim() {
-  return {
-    async send(channelType, payload) {
-      const adapter = await resolveChannelAdapter();
-      if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-      return adapter.send(payload);
-    },
-    async reply(channelType, payload) {
-      const adapter = await resolveChannelAdapter();
-      if (!adapter) throw new Error("E-CHANNEL-DOWN: no channel adapter available");
-      return adapter.reply(payload);
-    }
-  };
-}
-
 async function resolveChannelAdapter() {
-  // Prefer the live adapter currently held by channelManager. After
-  // channelManager.restart() the adapter instance is replaced, so any
-  // startup-injected adapter becomes a stale offline reference.
-  if (!channelManagerModule) {
-    try {
-      channelManagerModule = await import("../services/channelManager.js");
-    } catch {
-      channelManagerModule = null;
-    }
+  if (testChannelSender) {
+    return testChannelSender;
   }
-  if (channelManagerModule?.getAdapter) {
-    const liveAdapter = channelManagerModule.getAdapter("feishu");
+  if (channelManager?.getAdapter) {
+    const liveAdapter = channelManager.getAdapter("feishu");
     if (liveAdapter && typeof liveAdapter.getStatus === "function" && liveAdapter.getStatus() === "online") {
       return liveAdapter;
     }
@@ -834,7 +835,8 @@ async function invokeSubflowImpl({
   project,
   executors,
   persist,
-  generation
+  generation,
+  channelSender
 }) {
   // REQ-FLOW-037 AC4: 运行时深度兜底（保存时静态检测已拦截，此为竞态兜底）。
   if (parentDepth + 1 > MAX_SUBFLOW_DEPTH) {
@@ -887,15 +889,17 @@ async function invokeSubflowImpl({
   }
 
   // 构建子 run() 的 services：递归绑定 childExecutionId 作为下一层 parentExecutionId，
-  // generation 继续传播（深层子写点同受父 runOnce 守卫）。
+  // generation 继续传播（深层子写点同受父 runOnce 守卫），channelSender 透传（REQ-FLOW-056 AC3）。
   const childServices = {
     invokeSubflow: makeInvokeSubflow({
       project,
       executors,
       parentExecutionId: childExecutionId,
       persist,
-      generation
-    })
+      generation,
+      channelSender
+    }),
+    channelSender
   };
 
   const childFlowForEngine = { nodeList: childNodeList, edges: childEdges };
@@ -986,11 +990,11 @@ function finalizeChildFailure({ childExecutionId, err, startedAt, writeAllowed }
   logEngineError(childExecutionId, err.message);
 }
 
-// 闭包工厂：绑定 project / executors / parentExecutionId / persist / generation，
+// 闭包工厂：绑定 project / executors / parentExecutionId / persist / generation / channelSender，
 // 返回供 engine/callFlowExecutor 调用的 invokeSubflow。generation 为父 runOnce
 // 捕获的 myGeneration 快照（REQ-FLOW-051 AC1），随递归链逐层传播。
-function makeInvokeSubflow({ project, executors, parentExecutionId, persist, generation }) {
+function makeInvokeSubflow({ project, executors, parentExecutionId, persist, generation, channelSender }) {
   return async function invokeSubflow(args) {
-    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors, persist, generation });
+    return invokeSubflowImpl({ ...args, parentExecutionId, project, executors, persist, generation, channelSender });
   };
 }
