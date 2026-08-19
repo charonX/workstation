@@ -49,7 +49,7 @@
 
 ### REQ-FLOW-056: executionRunner 组装 services.channelSender 并提供测试 Seam
 
-- **标题**：executionRunner 构建统一 channelSender 服务并提供测试注入 Seam
+- **标题**：executionRunner 构建统一 channelSender 服务并提供单一测试注入 Seam
 - **优先级**：P0
 - **必须性**：必须
 - **所属能力**：`flow-orchestration`
@@ -63,14 +63,15 @@
   - `send(channelType: string, payload: { chatId: string, msgType: string, content: string }): Promise<any>`
   - `reply(channelType: string, payload: { messageId: string, msgType: string, content: string }): Promise<any>`
 - 测试 Seam:
-  - `setTestChannelSender(mockSender)`: 设置全局测试 mockSender
+  - `setTestChannelSender(mockSender)`: 设置单一测试 mockSender
+  - `setChannelAdapterForTests(adapter)`: 存量兼容入口，在注入边界显式包装为 2 参 channelSender
   - `resetTestChannelSender()`: 清理测试 mockSender，重置为生产默认
 
 #### 验收标准
-1. **[AC1] 生产默认通道组装**：在未设置测试 mock 时，`executionRunner.runOnce` 将 `channelManager.send` / `channelManager.reply` 封装为 `services.channelSender` 注入 flowEngine。
-2. **[AC2] 测试 Seam 优先直通**：当通过 `setTestChannelSender(mockSender)` 设置 mock 后，`executionRunner.runOnce` 注入的 `services.channelSender` 自动指向该 mock 对象。
+1. **[AC1] 生产默认通道组装**：在未设置测试 mock 时，`executionRunner.resolveChannelSender()` 直接将 `channelManager.send` / `channelManager.reply` 封装为 `services.channelSender` 注入 flowEngine 与终态通知，在线状态检查在 `channelManager` 中统一收口。
+2. **[AC2] 单一测试 Seam 优先直通**：当通过 `setTestChannelSender(mockSender)` 或 `setChannelAdapterForTests(adapter)` 设置 mock 后，`executionRunner` 注入的 `services.channelSender` 自动指向该 mock 对象，无运行时 duck-typing 嗅探。
 3. **[AC3] 嵌套子流程继承 Seam**：`makeInvokeSubflow` 创建子流程执行时，继承 runner 的 `services.channelSender`，保证子流程中的 feishuSend 节点行为与父流程一致。
-4. **[AC4] reset 清理**：调用 `resetTestChannelSender()` 或 `executionRunner.reset()` 后，mock 状态被清理。
+4. **[AC4] reset 真实清理**：调用 `resetTestChannelSender()` 或 `executionRunner.reset()` 后，mock 状态被清理，后续执行恢复为生产默认通道分发。
 
 ---
 
@@ -81,10 +82,10 @@
 - **必须性**：必须
 - **所属能力**：`flow-orchestration`
 - **核心实体**：`flow-engine`
-- **范围（scope）**：`intra-module` (`src/flowEngine/executors/feishuSendExecutor.js`)
+- **范围（scope）**：`intra-module` (`src/flowEngine/executors/feishuSendExecutor.js`, `src/services/channelManager.js`)
 - **测试类型**：单元测试
 - **测试文件**：`tests/capabilities/flow-orchestration/flow-engine/2026-08-16-deepen-channel-sender-seam/api/feishuSendExecutor.test.js`
 
 #### 验收标准
-1. **[AC1] channelSender 缺失报错**：当 `services` 或 `services.channelSender` 为空/未提供时，返回 `{ status: "error", error: "feishuSend: channelSender service not available", logs: [...] }`。
-2. **[AC2] 底层抛错捕获包装**：当 `channelSender.send` 或 `channelSender.reply` 抛出异常（如 `E-CHANNEL-OFFLINE` 或网络错误）时，捕获该异常并返回 `{ status: "error", error: "feishuSend: send failed: <error message>", logs: [...] }`，logs 中包含该错误消息。
+1. **[AC1] channelSender 缺失规范报错**：当 `services` 或 `services.channelSender` 未提供时，返回 `{ status: "error", error: "feishuSend: E-CHANNEL-UNAVAILABLE: channelSender service not available", logs: [...] }`，包含 `E-CHANNEL-UNAVAILABLE` 规范错误码。
+2. **[AC2] 离线与底层抛错捕获包装**：当通道离线或未配置（`channelManager` 报告 offline 抛出 `E-CHANNEL-OFFLINE`）或底层网络抛错时，捕获异常并返回 `{ status: "error", error: "feishuSend: send failed: <error message>", logs: [...] }`，logs 中包含错误消息。

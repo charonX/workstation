@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-channel-sender-seam/REQ-FLOW-055, 2026-08-16-deepen-channel-sender-seam/REQ-FLOW-057
-// REQ-VERSION: v1-hash:6348d0580bb1f96aa54ff94bb9cba9287ec6a6eaac76fb83f6b5754f80af0c6d
+// REQ-VERSION: v1-hash:c3363f6a90ec4db66a9835cad4acc076b399a6c3fded1ce35ed12b7d8e1d4e64
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: flow-engine
 // EXPECTED-TRACE: prd.md §6.3 row 1, 2, 3
@@ -11,6 +11,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { feishuSendExecutor } from "../../../../../../src/flowEngine/executors/feishuSendExecutor.js";
+import { resolveChannelSender } from "../../../../../../src/services/executionRunner.js";
+import * as channelManager from "../../../../../../src/services/channelManager.js";
 
 describe("REQ-FLOW-055 & REQ-FLOW-057: feishuSendExecutor via services.channelSender", () => {
   it("REQ-FLOW-055 AC1: 源码中彻底移除 context._channelManager 与 dynamic import channelManager", () => {
@@ -102,7 +104,7 @@ describe("REQ-FLOW-055 & REQ-FLOW-057: feishuSendExecutor via services.channelSe
     assert.deepEqual(resultEmptyContent.outputVariables, { skipped: true });
   });
 
-  it("REQ-FLOW-057 AC1: 缺失 services.channelSender 时返回受控错误", async () => {
+  it("REQ-FLOW-057 AC1: 缺失 services.channelSender 时返回受控错误包含 E-CHANNEL-UNAVAILABLE", async () => {
     const result = await feishuSendExecutor({
       node: { config: { msgType: "text", content: '{"text":"fail test"}' } },
       context: {
@@ -111,11 +113,12 @@ describe("REQ-FLOW-055 & REQ-FLOW-057: feishuSendExecutor via services.channelSe
       services: {}
     });
     assert.equal(result.status, "error");
+    assert.match(result.error, /E-CHANNEL-UNAVAILABLE/);
     assert.match(result.error, /channelSender service not available/i);
-    assert.ok(result.logs.some((l) => l.message.includes("channelSender service not available")));
+    assert.ok(result.logs.some((l) => l.message.includes("E-CHANNEL-UNAVAILABLE")));
   });
 
-  it("REQ-FLOW-057 AC2: channelSender 抛出异常（如离线）时返回受控错误与日志", async () => {
+  it("REQ-FLOW-057 AC2: channelSender 抛出异常时返回受控错误与日志", async () => {
     const fakeSender = {
       async reply() {
         throw new Error("E-CHANNEL-OFFLINE: channel feishu is offline");
@@ -132,6 +135,26 @@ describe("REQ-FLOW-055 & REQ-FLOW-057: feishuSendExecutor via services.channelSe
     });
     assert.equal(result.status, "error");
     assert.match(result.error, /feishuSend: send failed: E-CHANNEL-OFFLINE/);
+    assert.ok(result.logs.some((l) => l.message.includes("E-CHANNEL-OFFLINE")));
+  });
+
+  it("REQ-FLOW-057 AC2: 生产路径未接线/离线时由 channelManager 统一抛出 E-CHANNEL-OFFLINE", async () => {
+    // 确保 channelManager 处于 offline 状态
+    await channelManager.stop();
+    const productionSender = resolveChannelSender();
+
+    const result = await feishuSendExecutor({
+      node: { config: { msgType: "text", content: '{"text":"prod offline test"}' } },
+      context: {
+        channelReply: { channelType: "feishu", chatId: "oc_chat", messageId: "om_msg" }
+      },
+      services: {
+        channelSender: productionSender
+      }
+    });
+
+    assert.equal(result.status, "error");
+    assert.match(result.error, /E-CHANNEL-OFFLINE: channel feishu is offline/);
     assert.ok(result.logs.some((l) => l.message.includes("E-CHANNEL-OFFLINE")));
   });
 });

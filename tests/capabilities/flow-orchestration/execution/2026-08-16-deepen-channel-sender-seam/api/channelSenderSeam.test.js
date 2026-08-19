@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-16-deepen-channel-sender-seam/REQ-FLOW-054, 2026-08-16-deepen-channel-sender-seam/REQ-FLOW-056
-// REQ-VERSION: v1-hash:6348d0580bb1f96aa54ff94bb9cba9287ec6a6eaac76fb83f6b5754f80af0c6d
+// REQ-VERSION: v1-hash:c3363f6a90ec4db66a9835cad4acc076b399a6c3fded1ce35ed12b7d8e1d4e64
 // CAPABILITY-TRACE: flow-orchestration
 // ENTITY-TRACE: execution
 // EXPECTED-TRACE: prd.md §6.3 row 1, 2, 3
@@ -13,9 +13,6 @@ import path from "node:path";
 import * as executionRunner from "../../../../../../src/services/executionRunner.js";
 
 describe("REQ-FLOW-054 & REQ-FLOW-056: executionRunner channelSender seam & pure variables", () => {
-  let capturedServices = null;
-  let capturedContext = null;
-
   beforeEach(() => {
     executionRunner.resetTestChannelSender?.();
   });
@@ -112,7 +109,6 @@ describe("REQ-FLOW-054 & REQ-FLOW-056: executionRunner channelSender seam & pure
 
     executionRunner.setTestChannelSender(mockSender);
 
-    let senderInEngine = null;
     const testFlow = {
       id: "flow-test-mock-sender",
       nodeList: [{ id: "n1", type: "check-mock" }],
@@ -128,7 +124,6 @@ describe("REQ-FLOW-054 & REQ-FLOW-056: executionRunner channelSender seam & pure
         persist: false,
         executors: {
           "check-mock": async ({ services }) => {
-            senderInEngine = services.channelSender;
             await services.channelSender.send("feishu", { chatId: "oc_mock" });
             return { status: "success" };
           }
@@ -138,9 +133,157 @@ describe("REQ-FLOW-054 & REQ-FLOW-056: executionRunner channelSender seam & pure
 
     assert.equal(mockSent.length, 1);
     assert.equal(mockSent[0].chatId, "oc_mock");
+  });
 
-    // reset 后清除
-    executionRunner.resetTestChannelSender();
-    assert.notEqual(senderInEngine, null);
+  it("REQ-FLOW-056 AC2 兼容性: setChannelAdapterForTests 在注入边界包装 1 参 adapter", async () => {
+    const adapterSent = [];
+    const legacyAdapter = {
+      async send(payload) {
+        adapterSent.push(payload);
+        return { legacy: true };
+      },
+      async reply(payload) {
+        adapterSent.push({ reply: true, ...payload });
+        return { legacy: true };
+      }
+    };
+
+    executionRunner.setChannelAdapterForTests(legacyAdapter);
+
+    const testFlow = {
+      id: "flow-test-legacy-adapter",
+      nodeList: [{ id: "n1", type: "check-legacy" }],
+      edges: []
+    };
+
+    await executionRunner.runOnce(
+      {
+        flow: testFlow,
+        project: { localPath: "/tmp" }
+      },
+      {
+        persist: false,
+        executors: {
+          "check-legacy": async ({ services }) => {
+            await services.channelSender.send("feishu", { chatId: "oc_legacy" });
+            return { status: "success" };
+          }
+        }
+      }
+    );
+
+    assert.equal(adapterSent.length, 1);
+    assert.equal(adapterSent[0].chatId, "oc_legacy");
+  });
+
+  it("REQ-FLOW-056 AC3: 子流程继承父流程注入的 services.channelSender", async () => {
+    const subflowCalls = [];
+    const mockSender = {
+      async send(channelType, payload) {
+        subflowCalls.push({ method: "send", channelType, ...payload });
+        return { ok: true };
+      },
+      async reply(channelType, payload) {
+        subflowCalls.push({ method: "reply", channelType, ...payload });
+        return { ok: true };
+      }
+    };
+
+    executionRunner.setTestChannelSender(mockSender);
+
+    let subflowRan = false;
+    const parentFlow = {
+      id: "parent-flow",
+      nodeList: [{ id: "n1", type: "call-sub" }],
+      edges: []
+    };
+
+    const subFlow = {
+      id: "child-flow",
+      nodeList: [{ id: "cn1", type: "child-send" }],
+      edges: []
+    };
+
+    const customExecutors = {
+      "call-sub": async ({ services }) => {
+        // 调用子流程
+        const result = await services.invokeSubflow(
+          { flow: subFlow, project: { localPath: "/tmp" } },
+          { subflowId: "child-flow", persist: false, executors: customExecutors }
+        );
+        return { status: "success", output: result.output };
+      },
+      "child-send": async ({ services }) => {
+        subflowRan = true;
+        // 子流程节点调用 channelSender
+        await services.channelSender.send("feishu", { chatId: "oc_from_child" });
+        return { status: "success", output: "child_done" };
+      }
+    };
+
+    await executionRunner.runOnce(
+      {
+        flow: parentFlow,
+        project: { localPath: "/tmp" }
+      },
+      {
+        persist: false,
+        executors: customExecutors
+      }
+    );
+
+    assert.equal(subflowRan, true, "子流程必须成功执行");
+    assert.equal(subflowCalls.length, 1, "子流程调用应直接命中 mockSender");
+    assert.equal(subflowCalls[0].chatId, "oc_from_child");
+  });
+
+  it("REQ-FLOW-056 AC4: resetTestChannelSender 与 runner.reset 清理 mock 恢复生产默认", async () => {
+    let mockCalls = 0;
+    const mockSender = {
+      async send() {
+        mockCalls++;
+        return { ok: true };
+      },
+      async reply() {
+        mockCalls++;
+        return { ok: true };
+      }
+    };
+
+    executionRunner.setTestChannelSender(mockSender);
+
+    const testFlow = {
+      id: "flow-test-reset-mock",
+      nodeList: [{ id: "n1", type: "send-node" }],
+      edges: []
+    };
+
+    const customExecutors = {
+      "send-node": async ({ services }) => {
+        try {
+          await services.channelSender.send("feishu", { chatId: "oc_test" });
+        } catch {
+          // 生产离线可能抛错，忽略
+        }
+        return { status: "success" };
+      }
+    };
+
+    // 第一次运行：mock 生效
+    await executionRunner.runOnce(
+      { flow: testFlow, project: { localPath: "/tmp" } },
+      { persist: false, executors: customExecutors }
+    );
+    assert.equal(mockCalls, 1, "第一次运行应调用 mockSender");
+
+    // 调用 runner.reset()
+    await executionRunner.reset();
+
+    // 第二次运行：mock 已被清除，不再调用 mockSender
+    await executionRunner.runOnce(
+      { flow: testFlow, project: { localPath: "/tmp" } },
+      { persist: false, executors: customExecutors }
+    );
+    assert.equal(mockCalls, 1, "reset 后再次运行，mockSender 不应再被调用");
   });
 });
