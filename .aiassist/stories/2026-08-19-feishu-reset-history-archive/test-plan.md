@@ -18,7 +18,8 @@
 
 | 既有测试 | 说明 |
 |---|---|
-| `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/sessionStore.test.js` | 「sessionReset feishu 世代制」用例：旧断言预期单行原地换代，随本 story 升级为归档语义（旧 spec 已是历史记录，测试随代码演进） |
+| `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-builtin-agent/api/sessionStore.test.js` | 仅含「上下文清空」例，与归档语义兼容，无需修订（v0.2 更正：原描述误指本文件含世代制例） |
+| `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/sessionReset.test.js` | 「REQ-AGENT-027 标准 5 feishu:* /reset 世代制回归」为旧语义例：其场景是 getOrCreate 后立即 reset（空世代），恰好落入新语义「空世代不归档原地换代」分支而自然存活、无需修订；测试名/注释更新为「仅空世代不建行」语义（v0.2 更正文件指向） |
 | `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/feishuReadonly.test.js` | 只读守护集成用例，验证 `feishu:` 前缀写操作拦截，天然覆盖新归档键 |
 
 ## 签核待确认点（交 /signoff 确认）

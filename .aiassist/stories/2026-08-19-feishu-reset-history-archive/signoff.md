@@ -55,3 +55,16 @@
 
 - 签署者：**AI**（无升级点遗留）
 - 阶段：`phase: BUILD`（契约锁定，解锁实现）
+
+### Review 后修订记录（2026-08-19 /review panel，review.md）
+
+签核后经 panel review 发现以下锚点/承接缺口，处置如下（契约测试文件未变，REQ hash 不变）：
+
+| 项 | 发现 | 处置 |
+|---|---|---|
+| 403 响应体锚点 | prd.md §6.3 row 7 原写 `{code:"E-SESSION-READONLY"}`，实现/测试实际为 sendError 封套 `{error, message}`；本表交叉验证「值一致 ✅」不成立 | **人确认（2026-08-19）**：PRD 锚点修订为 `{ error: "E-SESSION-READONLY" }`（v0.2），实现与测试不变 |
+| lastActiveAt 锚定 | 新活跃行 lastActiveAt 未锚定，§6.3 row 3 排序断言依赖该值 | PRD v0.2 锚点 2/§10.3 补「lastActiveAt=createdAt=此刻」；已锁测试的排序断言与该值一致（实现即此语义） |
+| §8-5 并发承接 | reset 与入站消息并发无验收断言 | **显式豁免**：归档事务同步执行无 await（code review 实证无交错窗口），单事务原子性由 REQ-AGENT-124 AC3 断言兜底，不单独出并发测试 |
+| REQ-AGENT-124 AC3 | 写失败降级零测试覆盖（review CRITICAL） | test-gap：补 DB 层失败注入测试（touch 在 try 外，只读目录注入无效） |
+| 旧测试语义翻转 | PRD §11.2 预言的「sessionReset 世代制例修订」实际不需要：旧例因空世代分支自然存活 | test-plan.md 指向修正；旧例注释/名称更新为「仅空世代不建行」 |
+| requirements.md 表名 | REQ-125/126 文本写 `space_meta`，实际表名 `agent_space_meta`（测试正确） | 接受为文档债务（修订会动 REQ hash 与测试 REQ-VERSION 头），留 /reflect 随下一版本一并修订 |

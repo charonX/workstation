@@ -63,12 +63,12 @@
 | # | 输入 | 预期输出/结果 | 依据 |
 |---|---|---|---|
 | 1 | 行前状态：`agent_sessions` 含 `feishu:oc_123`（sessionRef=`…/feishu_oc_123.2.jsonl`，title=`你好帮我查一下…`） | 列表 feishu 组 = 1 条，spaceKey=`feishu:oc_123`，title 原值 | 现有 listSessions 行为（回归基线） |
-| 2 | 上述状态 + `store.reset("feishu:oc_123")` | 两行：①`feishu:oc_123:gen2`（sessionRef=`…/feishu_oc_123.2.jsonl`，title 原值，lastActiveAt 原值）；②`feishu:oc_123`（sessionRef=`…/feishu_oc_123.3.jsonl` 且文件已 touch，title=`NULL`，createdAt=此刻）；`feishu:oc_123` 原行不再存在 | 用户拍板期望（归档 + 新行）；世代编号延续防文件碰撞 |
+| 2 | 上述状态 + `store.reset("feishu:oc_123")` | 两行：①`feishu:oc_123:gen2`（sessionRef=`…/feishu_oc_123.2.jsonl`，title 原值，lastActiveAt 原值）；②`feishu:oc_123`（sessionRef=`…/feishu_oc_123.3.jsonl` 且文件已 touch，title=`NULL`，createdAt=此刻，**lastActiveAt=此刻（=createdAt）**）；`feishu:oc_123` 原行不再存在 | 用户拍板期望（归档 + 新行）；世代编号延续防文件碰撞；lastActiveAt 锚定（v0.2，review 发现：排序锚点依赖此值） |
 | 3 | 锚点 2 之后 GET `/api/agent/sessions` | `feishu` 组 2 条：`[0].spaceKey="feishu:oc_123"`（title=null）、`[1].spaceKey="feishu:oc_123:gen2"`（title=原值）；按 lastActiveAt 倒序 | 现有排序契约（裁决 17） |
 | 4 | GET `/api/agent/sessions/feishu%3Aoc_123%3Agen2/messages` | 200 `{messages:[…gen2 全部历史…]}`（messageId/role/createdAt 与重置前一致） | 现有 JSONL 投影（裁决 3） |
 | 5 | 连续两次 reset（第二次前 gen3 有消息） | 出现 `feishu:oc_123:gen3`；活跃行 sessionRef=`…/feishu_oc_123.4.jsonl`；feishu 组 3 条 | 归档可重复、键不碰撞 |
 | 6 | 空世代（活跃行投影 messages=[]）+ `store.reset("feishu:oc_123")` | 无 `…:gen…` 归档行；行数不变；sessionRef 换代（现行为） | 空世代不归档（§6.2 分支） |
-| 7 | POST `/api/agent/sessions/feishu%3Aoc_123%3Agen2/messages` 或 `/reset` | 403 `{code:"E-SESSION-READONLY"}` | 裁决 9 只读守护扩展覆盖归档键 |
+| 7 | POST `/api/agent/sessions/feishu%3Aoc_123%3Agen2/messages` 或 `/reset`（provider/mode 写端点同理） | 403，响应体封套 `{ error: "E-SESSION-READONLY", message: … }`（sendError 既有封套；v0.2 修订：字段名 `code`→`error`，与实现及既有 feishuReadonly 测试一致，人确认 2026-08-19） | 裁决 9 只读守护扩展覆盖归档键 |
 | 8 | reset 回执 | 文本恒为 `已重置当前对话空间会话，可以开始新对话了` | REQ-AGENT-022 现行为不变 |
 
 ## 7. 表单与输入验证（Form / Input Validation）
@@ -83,7 +83,7 @@
 | 2 | 归档写库失败 | SQLite 归档事务（改名+插新行）失败 | stderr `E-SESSION-PERSIST` 诊断 | 回执文案不变 | 回退为原地换代（现行为），不产生半成品归档行 |
 | 3 | 归档 JSONL 缺失 | 归档条目 sessionRef 文件被删 | 无错误码 | GET messages → 200 `{messages:[]}` | 不 500、不重建、不阻断列表 |
 | 4 | 空世代 reset | 活跃行消息投影为空 | 无错误码 | 列表条数不变 | 原地换代（现行为） |
-| 5 | reset 与入站消息并发 | 同一 chat reset 与新消息交错 | 无新错误码 | 消息路由以归档事务完成后的行为准 | 归档事务（改名+插入）单事务原子完成 |
+| 5 | reset 与入站消息并发 | 同一 chat reset 与新消息交错 | 无新错误码 | 消息路由以归档事务完成后的行为准 | 归档事务（改名+插入）单事务原子完成；v0.2 豁免注记：归档事务同步执行无 await（code review 实证无交错窗口），并发时序不单独自动化测试，豁免记于 signoff |
 
 ## 9. 复杂度分级
 
@@ -129,7 +129,7 @@
 
 1. **触发**：飞书入站 `/reset` → agentRouter 命令直通 → `store.reset("feishu:<chatId>")`。
 2. **分支判定**：无行 → 现行为返回；活跃行消息投影为空 → 原地换代（现行为）。
-3. **核心处理**（单事务）：从旧 sessionRef 解析世代号 N → 旧行 `UPDATE spaceKey = feishu:<chatId>:gen<N>`（title/sessionRef/lastActiveAt/createdAt 保留）→ `INSERT feishu:<chatId>` 新行（sessionRef=世代 N+1 新 JSONL 并 touch，title=NULL，provider/model=NULL 回落默认组合）。
+3. **核心处理**（单事务）：从旧 sessionRef 解析世代号 N → 旧行 `UPDATE spaceKey = feishu:<chatId>:gen<N>`（title/sessionRef/lastActiveAt/createdAt 保留）→ `INSERT feishu:<chatId>` 新行（sessionRef=世代 N+1 新 JSONL 并 touch，title=NULL，provider/model=NULL 回落默认组合，createdAt=lastActiveAt=此刻）。
 4. **副作用**：onReset 监听者（agentService）收到 `(feishu:<chatId>, {sessionRef: 新})` → 清活跃空间上下文 + IPC reset-session（既有接线零改动）。
 5. **输出**：回执文案不变；UI 列表下次拉取即见归档条目 + 新条目。
 
@@ -192,7 +192,7 @@
 | 稳定块 | Seam | 测试类型 | 依赖处理 |
 |---|---|---|---|
 | 1 reset 归档语义 | sessionStore（临时目录 + 临时 SQLite，既有单元 seam） | 单元 | 真实 fs/db（临时目录） |
-| 1 分支：空世代/无行/写失败 | 同上 | 单元 | 真实 fs/db；写失败用只读目录或破坏句柄注入 |
+| 1 分支：空世代/无行/写失败 | 同上 | 单元 | 真实 fs/db；写失败注入 = **DB 层失败**（删表/破坏句柄）——v0.2 修正：归档分支 touch 在 try 外，只读目录注入走不到 §8-2 降级分支 |
 | 2 列表可见 + displayName fallback | HTTP 路由 agentSessions（既有集成 seam：真实 store + 临时目录） | 集成 | 真实 store；spaceMeta 直写侧表 |
 | 3 只读回看 + 写守护 | 同上（GET messages 200 历史；POST messages/reset/provider/mode 403） | 集成 | 真实 store |
 | 回执文案不变（锚点 8） | agentRouter（既有单元 seam，stub store） | 单元 | stub store 断言 reset 调用参数 + reply 文案 |
@@ -216,6 +216,13 @@
 - UI 空间 /reset 语义（ADR-016 决策 3）不变。
 - 飞书 HTTP reset → 403 E-SESSION-READONLY（裁决 9）不变——归档只由飞书通道内 `/reset` 命令触发。
 
+### review 记录（2026-08-19 /review panel，详见 review.md）
+
+- **写面守护实际范围** = messages / reset / mode / provider 四端点（`feishu:` 前缀 403）；POST stop 为幂等 no-op 设计，不列入只读守护（对归档键 202 no-op 无害，属既有契约非本 story 新增面）。
+- **守护扩面记录**：mode/provider 的 `feishu:` 前缀守护对活跃行同样生效（此前活跃 feishu 行可 PUT provider/mode）——与飞书通道单向写入语义一致的行为扩面，无既有测试破裂；正式记录于 ADR-0037。
+- **重启水合副作用（接受）**：ready 水合遍历全量行，mtime 1h 窗口内的归档行会被水合（worker 建永不交互的句柄，占 LRU 名额）——无正确性问题，本 story 接受，留 /reflect 观察点；如需收敛可在水合处过滤 `:gen\d+$` 键。
+- **留人决策（/reflect 前）**：mode/provider 端点为 AC3 断言新增的 POST 别名使 `ui:*` 空间 POST 从 404 变为写操作——确认保留或将只读守护前移到方法分派之前。
+
 ## 14. PRD 完整性自检查
 
 | 检查项 | 状态 | 备注 |
@@ -235,3 +242,4 @@
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v0.1 | 2026-08-19 | 初稿 | AI + 人 |
+| v0.2 | 2026-08-19 | /review 后修订：403 锚点字段名 code→error（人确认）；锚点 2/§10.3 补新行 lastActiveAt=createdAt；§8-5 并发豁免注记；§11.1 写失败注入点修正（DB 层）；§13 增补 review 记录 | AI + 人 |

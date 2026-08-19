@@ -25,7 +25,7 @@
 | ADR-013 | 内置 agent 运行时采用 PI，与 flow 节点 Claude Agent SDK 双运行时并存 | 已接受 | 2026-08-02 | REQ-AGENT-003、REQ-AGENT-006 |
 | ADR-014 | 内置 agent 运行时采用"SDK 独立子进程"形态（偏离官方进程内推荐，换取崩溃隔离） | 已接受 | 2026-08-03 | REQ-AGENT-005、REQ-AGENT-009 |
 | ADR-015 | 跨进程看门狗的心跳控制面必须带外处理，任何入站消息均计为存活证据 | 已接受 | 2026-08-05 | REQ-AGENT-005（BUG-008） |
-| ADR-016 | UI 多会话采用"空间 = 会话"模型，/reset 等效新开会话 | 已接受 | 2026-08-06 | 待结晶（2026-08-02-ui-copilot S2） |
+| ADR-016 | UI 多会话采用"空间 = 会话"模型，/reset 等效新开会话 | 已修订（ADR-037，飞书条款） | 2026-08-06 | 待结晶（2026-08-02-ui-copilot S2） |
 | ADR-017 | agent 权限层采用 gotgenes 权限扩展 + 授权桥，策略文件全局/项目两级 | 已接受 | 2026-08-06 | 待结晶（2026-08-02-ui-copilot S8） |
 | ADR-018 | 双区信息架构——会话区默认落地 + 管理区旧壳原样保留 | 已接受 | 2026-08-06 | 待结晶（2026-08-02-ui-copilot S1） |
 | ADR-019 | 维持单进程——PI agent 运行时暂不拆分（会话隔离缓建，附重估触发条件） | 已接受 | 2026-08-08 | REQ-AGENT-045（2026-08-07-pi-agent-consolidation） |
@@ -46,5 +46,4 @@
 | ADR-034 | 通道发送能力统一收拢与单一在线检查属主——废除 `_channelManager` 伪变量与动态 import；收拢到 `services.channelSender`（对齐 ADR-008）；在线检查在 `channelManager.dispatchToAdapter` 统一收口（消除离线静默穿透）；单一测试接缝 `setTestChannelSender` + 边界适配（消除运行时 duck-typing 嗅探与无用空接缝） | 已接受 | 2026-08-19 | REQ-FLOW-054~057（improve-codebase-architecture 候选 #6；2026-08-16-deepen-channel-sender-seam） |
 | ADR-035 | 独立服务容器 ServiceContainer 与 Server 纯传输化——8 个核心服务惰性单例工厂、跨服务接线（imRouter/eventBus 订阅）、日志清理定时调度与统一生命周期管理收归独立容器 `src/services/serviceContainer.js`；`src/http/server.js` 瘦身为纯 HTTP 传输与路由分发（≤250 行），挂载 `server.services` 作为唯一正规 DI seam，并挂载已弃用的 `_opcXxx` 兼容代理层平滑过渡既有测试 | 已接受 | 2026-08-19 | REQ-WORKSPACE-017~019（improve-codebase-architecture 候选 #7；2026-08-16-deepen-service-container） |
 | ADR-036 | 统一 HTTP 响应助手与生产静默 Mock 清除——彻底删除 `agentAdapter.js`，缺 provider 显式报 `E-AGENT-NO-PROVIDER` 错误（杜绝伪造假成功）；提炼 `src/http/responders.js` 统一 5 路由响应助手与错误映射（解耦 `plugins->mcp` 反向依赖，透传 `existing/invalidAgents/issues`）；Cron 描述助手归位至 `schedulerService`；删除 `flowService` 废弃 UI 助手 | 已接受 | 2026-08-19 | REQ-FLOW-058~059、REQ-WORKSPACE-020、REQ-SCHEDULE-011（improve-codebase-architecture 候选 #8；2026-08-16-deepen-shallow-residue-sweep） |
-
-
+| ADR-037 | 飞书 /reset 从「单行世代制」改为「归档 + 新行」——归档键 `feishu:<chatId>:gen<N>` 保留历史可只读回看；空世代不归档；世代编号延续防碰撞；写面守护扩至全 feishu 前缀（含活跃行 mode/provider）；修订 ADR-016 飞书条款 | 已接受 | 2026-08-19 | REQ-AGENT-123~126（2026-08-19-feishu-reset-history-archive） |
