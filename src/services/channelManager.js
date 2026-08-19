@@ -144,11 +144,11 @@ export function getAdapter(channelType) {
 }
 
 async function dispatchToAdapter(channelType, method, payload) {
-  const adapter = getAdapter(channelType);
-  if (!adapter) {
-    throw new Error(`E-CHANNEL-SEND: ${channelType} adapter is not available`);
+  const record = channels.get(channelType);
+  if (!record || record.status !== "online" || !record.adapter) {
+    throw new Error(`E-CHANNEL-OFFLINE: channel ${channelType} is offline`);
   }
-  return adapter[method](payload);
+  return record.adapter[method](payload);
 }
 
 export async function send(channelType, payload) {

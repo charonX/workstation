@@ -60,7 +60,7 @@ export async function feishuSendExecutor({ node, context, services, options }) {
 
   const channelSender = services?.channelSender;
   if (!channelSender) {
-    const message = "feishuSend: channelSender service not available";
+    const message = "feishuSend: E-CHANNEL-UNAVAILABLE: channelSender service not available";
     return { status: "error", error: message, logs: [log(message)] };
   }
 

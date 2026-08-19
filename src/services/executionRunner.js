@@ -46,12 +46,6 @@ let executionGeneration = 0;
 // Test injection seams（REQ-FLOW-053 / REQ-FLOW-056：注入经 runner seam 生效）。
 let testAgentExecutor = null;
 let testChannelSender = null;
-let testChannelAdapter = null;
-
-// Production channel adapter injected by server startup (REQ-CHANNEL-001)——
-// resolveChannelAdapter 三级回退的中间层（live channelManager online → 生产注入 →
-// test 注入，对齐 taskService 原三级；server.js startFeishuChannel 接线，裁决②）。
-let channelAdapter = null;
 
 export function setAgentExecutorForTests(executor) {
   testAgentExecutor = executor;
@@ -59,48 +53,42 @@ export function setAgentExecutorForTests(executor) {
 
 export function setTestChannelSender(mockSender) {
   testChannelSender = mockSender;
-  testChannelAdapter = mockSender;
 }
 
 export function resetTestChannelSender() {
   testChannelSender = null;
-  testChannelAdapter = null;
 }
 
+// 存量兼容入口：在注入边界显式包装，消除运行期 duck-typing 嗅探
 export function setChannelAdapterForTests(adapter) {
-  setTestChannelSender(adapter);
+  if (!adapter) {
+    testChannelSender = null;
+    return;
+  }
+  testChannelSender = {
+    async send(channelType, payload) {
+      if (payload !== undefined) {
+        return adapter.send(payload);
+      }
+      return adapter.send(channelType);
+    },
+    async reply(channelType, payload) {
+      if (payload !== undefined) {
+        return adapter.reply(payload);
+      }
+      return adapter.reply(channelType);
+    }
+  };
 }
 
-export function setChannelAdapter(adapter) {
-  channelAdapter = adapter;
+// 生产启动兼容入口（已统一由 live channelManager 代理，无需静态持有）
+export function setChannelAdapter(_adapter) {
+  // no-op: runner.resolveChannelSender directly uses live channelManager
 }
 
 export function resolveChannelSender() {
   if (testChannelSender) {
-    return {
-      async send(channelType, payload) {
-        if (typeof testChannelSender.send === "function") {
-          if (payload === undefined && typeof channelType === "object") {
-            return testChannelSender.send(channelType);
-          }
-          if (typeof testChannelSender.getStatus === "function" || typeof testChannelSender.onMessage === "function") {
-            return testChannelSender.send(payload);
-          }
-          return testChannelSender.send(channelType, payload);
-        }
-      },
-      async reply(channelType, payload) {
-        if (typeof testChannelSender.reply === "function") {
-          if (payload === undefined && typeof channelType === "object") {
-            return testChannelSender.reply(channelType);
-          }
-          if (typeof testChannelSender.getStatus === "function" || typeof testChannelSender.onMessage === "function") {
-            return testChannelSender.reply(payload);
-          }
-          return testChannelSender.reply(channelType, payload);
-        }
-      }
-    };
+    return testChannelSender;
   }
   return {
     send: (channelType, payload) => channelManager.send(channelType, payload),
@@ -588,27 +576,6 @@ function buildTerminalFailureText(execution) {
   return `执行失败：${reason}`;
 }
 
-async function resolveChannelAdapter() {
-  if (testChannelSender) {
-    return testChannelSender;
-  }
-  if (channelManager?.getAdapter) {
-    const liveAdapter = channelManager.getAdapter("feishu");
-    if (liveAdapter && typeof liveAdapter.getStatus === "function" && liveAdapter.getStatus() === "online") {
-      return liveAdapter;
-    }
-  }
-
-  // Fallback to the adapter injected at server startup (REQ-CHANNEL-001)——
-  // 仅在 online 时使用（与 taskService 原三级回退一致）。
-  if (channelAdapter && typeof channelAdapter.getStatus === "function" && channelAdapter.getStatus() === "online") {
-    return channelAdapter;
-  }
-
-  // Fallback to the adapter injected for tests.
-  return testChannelAdapter;
-}
-
 function resolveTerminalRecipient(execution) {
   // REQ-SCHEDULE-009 v1.1 / REQ-FLOW-032: channel 触发的 execution 不再自动回复 IM
   // 消息（由 flow 中显式 feishuReply 节点控制）。仅 schedule 触发保留自动投递——
@@ -626,8 +593,8 @@ async function deliverTerminalNotification(executionId) {
   const recipient = resolveTerminalRecipient(execution);
   if (!recipient) return;
 
-  const adapter = await resolveChannelAdapter();
-  if (!adapter) return;
+  const sender = resolveChannelSender();
+  if (!sender) return;
 
   const text = execution.status === "success"
     ? buildTerminalSuccessText(execution)
@@ -635,9 +602,9 @@ async function deliverTerminalNotification(executionId) {
 
   try {
     if (recipient.messageId) {
-      await adapter.reply({ messageId: recipient.messageId, text });
+      await sender.reply("feishu", { messageId: recipient.messageId, text });
     } else if (recipient.chatId) {
-      await adapter.send({ chatId: recipient.chatId, text });
+      await sender.send("feishu", { chatId: recipient.chatId, text });
     }
   } catch (err) {
     console.error(`[executionRunner] E-CHANNEL-SEND: failed to deliver terminal notification for ${executionId}:`, err.message);
