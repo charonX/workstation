@@ -64,4 +64,16 @@
 | PRD §8-3 | REQ-AGENT-126 AC2 缺失 JSONL 回看降级 | `src/services/sessionDomain.js` `projectMessagesFromJsonl()` | JSONL 缺失时消息投影返回空数组，GET messages 返回 200 `{ messages: [] }`，不 500 |
 | PRD §6.3 锚点 7 / §8-1 | REQ-AGENT-126 AC3 全写端点 403 守护 | `src/http/routes/agentSessions.js` `handlePostMessage`, `handleReset`, `handlePutProvider`, `handlePutMode` | `feishu:*` 包含归档键 `feishu:<chatId>:gen<N>`，所有 POST/PUT 写操作端点统一返回 403 `E-SESSION-READONLY` |
 
+---
+
+## 进度总结
+
+- Slice 1: complete (4915b10..59dcba8, tests green, PRD alignment passed)
+- Slice 1: refactor pass done (59dcba8..bb82f44, tests green, no rollback)
+- Slice 2: complete (59dcba8..7d71155, tests green, PRD alignment passed)
+- Slice 2: refactor pass done (7d71155..bb82f44, tests green, no rollback)
+- 全量单测状态：1048 tests / 252 suites / 1048 pass / 0 fail (100% 绿灯)
+- 阶段流转：BUILD 已全部完成，推进至 QA 阶段
+
+
 

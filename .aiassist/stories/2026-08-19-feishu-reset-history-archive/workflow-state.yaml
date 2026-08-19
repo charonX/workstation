@@ -6,7 +6,7 @@ intention: >-
   飞书 /reset 后，之前的历史对话在 UI 会话列表中彻底不可见、不可回看——用户期望
   reset 把当前会话归档为可读的历史条目（列表多出一条），并开启新会话。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
@@ -23,6 +23,7 @@ history:
   - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "requirements-v1.hash 计算完成，进入业务测试骨架编写"}
   - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "生成 3 个业务验收测试文件，进入断言签核"}
   - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，无升级点，完成 assertion-signoff（门 1），解锁实现"}
+  - {at: 2026-08-19, from: BUILD, to: QA, note: "Slice 1 与 Slice 2 实现并通过全量单测回归（1048/1048 PASS）与 PRD 对齐检查，进入 QA 阶段"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
