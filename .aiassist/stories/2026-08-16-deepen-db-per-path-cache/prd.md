@@ -1,5 +1,7 @@
 # DB 连接 per-path 缓存——消除全局单槽互斥驱逐
 
+> 状态：已完结（历史记录）——REFLECT 门 2 通过（2026-08-19），本 story spec 降级为历史记录；逻辑真值看代码，意图真值看全局文档（ADR-033 / engineering-lessons / STANDARDS / business-capabilities）。含 BUG-001（notificationService 单槽残留迁移）。
+
 ## 1. 问题陈述
 
 `db.js` 是全局单槽连接：`getDb(path)` 在路径变化时**关旧库开新库**。后果：
