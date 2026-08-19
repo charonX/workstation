@@ -7,7 +7,7 @@ intention: >-
   feishuSend 动态 import 跳过 online 检查与测试注入，debug 路径与生产行为分叉。
   一句话痛点：通道适配器解析有三条语义不同的路径，ADR 已否决的模式仍在生产存活。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -15,17 +15,23 @@ created: 2026-08-16
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-16, from: -, to: THINK, note: "创建 story（/improve-codebase-architecture 评审候选 #6，报告存档 .aiassist/global/architecture-reviews/architecture-review-2026-08-16.html；对齐 ADR-008 已选的 services-bag seam，非重开 ADR）"}
+  - {at: 2026-08-19, from: THINK, to: PRD, note: "完成需求洞察访谈，确认方向 A：统一收拢至 Services Bag"}
+  - {at: 2026-08-19, from: PRD, to: CRYSTALLIZE, note: "生成 PRD（simple 复杂度，无 UI，直接进入结晶自动链）"}
+  - {at: 2026-08-19, from: CRYSTALLIZE, to: TEST, note: "结晶生成 REQ-FLOW-054~057 与 requirements.md"}
+  - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "生成验收测试骨架与 test-plan.md"}
+  - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，门 1 签核完成，进入 BUILD"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
-#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
-#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
-#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
 
 # 块状态(一挡内按块回流时维护)。
-blocks: {}
-#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
-#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+blocks:
+  stable:
+    - "1. 移除 _channelManager 变量注入"
+    - "2. feishuSendExecutor 改走 services.channelSender"
+    - "3. executionRunner 组装 services.channelSender 与测试 Seam"
+    - "4. 通道离线/未就绪时的统一错误与日志处理"
+  moving: []
 
 # 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
 design_system:
