@@ -24,7 +24,7 @@
   - 涉及文件: `src/services/schedulerService.js`, `src/services/taskService.js`, `src/http/routes/schedules.js`
   - 验证测试: `tests/capabilities/scheduling-execution/schedule/2026-08-16-deepen-shallow-residue-sweep/api/cronDescription.test.js`
 
-- [ ] **Slice 4: 清理 flowService 废弃 UI 计算助手**
+- [x] **Slice 4: 清理 flowService 废弃 UI 计算助手**
   - REQ: `REQ-FLOW-059`
   - 涉及文件: `src/services/flowService.js`
   - 验证测试: `tests/capabilities/flow-orchestration/flow/2026-08-16-deepen-shallow-residue-sweep/api/flowServiceCleanup.test.js`
@@ -93,4 +93,19 @@
 | §6.3 / §7 非法字段数抛错 `Invalid cron expression: expected 5 or 6 fields`（REQ-SCHEDULE-011 AC1） | `src/services/schedulerService.js`: `getCronDescription` | `cronDescription.test.js` AC2 | COVERED |
 | §10.2 #2 / §6.1 #4 schedules 路由直接导入 schedulerService 并生成 cronDescription（REQ-SCHEDULE-011 AC2） | `src/http/routes/schedules.js`: `toListView` | `cronDescription.test.js` AC3 | COVERED |
 | §10.2 / §2 #3 taskService 单行转发保证平滑过渡（REQ-SCHEDULE-011 AC3） | `src/services/taskService.js`: `export { getCronDescription }` | `cronDescription.test.js` AC4 | COVERED |
+
+### Slice 4: 清理 flowService 废弃 UI 计算助手 (REQ-FLOW-059)
+
+- **状态**: **complete**
+- **涉及文件**:
+  - `src/services/flowService.js`（彻底删除 `toggleRun`, `zoomIn`, `zoomOut`, `resetZoom`, `getNodeCategories`, `getEditableFields` 6 个 UI 助手导出与实现；显式导出 `publishFlow` 核心服务端方法）
+- **验证结果**: `flowServiceCleanup.test.js` 2/2 绿，全量 1034 个单元测试全绿。
+
+#### PRD→代码 可追溯性表（Slice 4）
+
+| PRD 意图（§10 / REQ） | 实现文件/函数 | 测试文件 | 覆盖状态 |
+|---|---|---|---|
+| §10.1 #6 / §4 #4 彻底删除 flowService 中的 6 个废弃 UI 计算助手（REQ-FLOW-059 AC1） | `src/services/flowService.js`: 删除 `toggleRun`, `zoomIn`, `zoomOut`, `resetZoom`, `getNodeCategories`, `getEditableFields` | `flowServiceCleanup.test.js` AC1 | COVERED |
+| §6.1 #5 / §10.1 #6 保留服务端核心 Flow CRUD 与校验能力（REQ-FLOW-059 AC2） | `src/services/flowService.js`: `createFlow`, `getFlow`, `updateFlow`, `deleteFlow`, `listFlows`, `publishFlow`, `validateNodeList` | `flowServiceCleanup.test.js` AC2 | COVERED |
+
 
