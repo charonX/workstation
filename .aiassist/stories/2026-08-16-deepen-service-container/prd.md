@@ -170,6 +170,8 @@
 - **D2：纯粹搬迁与行为保全**：所有服务的创建参数、回调闭包（如 `notifyResult`、`onPermissionAsk`、`onSessionCreated` 等）与既有逻辑逐字节一致，不改动业务语义。
 - **D3：`_opcXxx` 代理层兼容**：在 `server` 对象上通过 `Object.defineProperty` 或 proxy 暴露 `_opcXxx` 属性，测试中的 getter/setter 读取和替换自动同步到 `container`。
 - **D4：`server.js` 行数硬约束（≤250 行）**：通过静态测试固化瘦身成果，防止装配逻辑重新蔓延回路由层。
+- **D5：`_opcXxx` 代理为 deprecated 兼容层**：代理仅服务于 3 个既有测试的零改动迁移；`server.services` 是唯一正规 DI seam。代理上标注 deprecation 注释，禁止新代码继续依赖 `_opcXxx`；既有测试迁移完成后应删除代理（删除本身不纳入本 story 范围）。
+- **D6：`container.dispose()` 与 `stopServer` 生命周期拆分不重不漏**：`dispose()` 只关容器内资源（定时器、agent 子进程、eventBus 订阅、runner.reset、closeDb、channelManager.stop、schedulerService.removeAll）；HTTP 监听关闭留在 `stopServer`。实施时逐一核对每个资源只在一个入口被清理，避免双重清理或遗漏。
 
 ---
 

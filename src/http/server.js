@@ -1,14 +1,13 @@
 import http from "node:http";
-import cron from "node-cron";
 import os from "node:os";
 import path from "node:path";
-import { resetDb, getDb, closeDb } from "../db.js";
+import { resetDb } from "../db.js";
 import * as settingsService from "../services/settingsService.js";
-import * as taskService from "../services/taskService.js";
-import * as runner from "../services/executionRunner.js";
 import * as schedulerService from "../services/schedulerService.js";
-import * as eventBus from "../services/eventBus.js";
 import { registerServerRecord, unregisterServerRecord } from "../serverRegistry.js";
+import { createServiceContainer } from "../services/serviceContainer.js";
+import { buildSessionConfig } from "../services/sessionDomain.js";
+import { createSseSubscriptionRegistry } from "../services/sessionSseRegistry.js";
 import { handleProjects } from "./routes/projects.js";
 import { handleFlows, handleFlowImport } from "./routes/flows.js";
 import { handleSchedules } from "./routes/schedules.js";
@@ -25,43 +24,23 @@ import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
 import { handleAgentSessions, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
-import { createImRouter } from "../services/channels/imRouter.js";
-import * as channelManager from "../services/channelManager.js";
-import { createAgentRouter } from "../services/agentRouter.js";
-import { createAgentService } from "../services/agentService.js";
-import { createSessionStore } from "../services/sessionStore.js";
-import { createCardRenderer } from "../services/cardRenderer.js";
-import { createConfirmationService } from "../services/confirmationService.js";
-import { createPermissionBridge } from "../services/permissionBridge.js";
-import { createModeService } from "../services/modeService.js";
-import { buildSessionConfig } from "../services/sessionDomain.js";
-import { createSseSubscriptionRegistry } from "../services/sessionSseRegistry.js";
-import { executeToolCommand } from "../agent/toolAdapter.js";
 
 const activeServers = new Set();
 
-async function startFeishuChannel() {
-  const result = await channelManager.start();
-  return result;
-}
-// 每个 server 实例的每日清理定时任务（server -> ScheduledTask），stopServer 时销毁。
-const purgeTasks = new Map();
-
-// 每日清理 cron 表达式：03:17（避开整点整刻的调度尖峰）。
-const PURGE_CRON_SCHEDULE = "17 3 * * *";
-
-// REQ-FLOW-028 AC4/AC5 / tech-design §7：执行日志 7 天滚动清理。
-// 触发点 A：startServer 启动时执行一次（Electron main 与 headless CLI 均经过 startServer）。
-// 触发点 B：node-cron 每日定时任务（PURGE_CRON_SCHEDULE），覆盖常驻实例。
-// 清理失败不得影响 server 启动/运行（safe default），仅记录日志。
-function runExecutionLogPurge() {
-  try {
-    const result = taskService.purgeExpiredExecutions(getDb());
-    console.log(
-      `Execution log purge done: ${result.executions} executions, ${result.executionNodes} execution_nodes, ${result.logs} logs removed`
-    );
-  } catch (err) {
-    console.error("Execution log purge failed:", err.message);
+function attachLegacyOpcProxies(server, container) {
+  const proxies = {
+    _opcAgentRouter: { get: () => container.getAgentRouter(), set: (v) => container.setAgentRouterFactory(() => v) },
+    _opcSessionStoreFactory: { get: () => container.getSessionStoreFactory(), set: (fn) => container.setSessionStoreFactory(fn) },
+    _opcSseRegistryFactory: { get: () => container.getSseRegistryFactory(), set: (fn) => container.setSseRegistryFactory(fn) },
+    _opcConfirmationServiceFactory: { get: () => container.getConfirmationServiceFactory(), set: (fn) => container.setConfirmationServiceFactory(fn) },
+    _opcPermissionBridgeFactory: { get: () => container.getPermissionBridgeFactory(), set: (fn) => container.setPermissionBridgeFactory(fn) },
+    _opcModeServiceFactory: { get: () => container.getModeServiceFactory(), set: (fn) => container.setModeServiceFactory(fn) },
+    _opcAgentService: { get: () => container.peekAgentService(), set: (svc) => container.setAgentService(svc) },
+    _opcAgentServiceFactory: { get: () => container.getAgentServiceFactory(), set: (fn) => container.setAgentServiceFactory(fn) },
+    _opcCardRendererFactory: { get: () => container.getCardRendererFactory(), set: (fn) => container.setCardRendererFactory(fn) },
+  };
+  for (const [prop, descriptor] of Object.entries(proxies)) {
+    Object.defineProperty(server, prop, { ...descriptor, configurable: true, enumerable: true });
   }
 }
 
@@ -69,39 +48,19 @@ export function startServer(options = {}) {
   const shouldReset = options.reset !== false;
   let dbPath;
   if (shouldReset) {
-    // Use an isolated per-process temp DB by default so concurrent test
-    // subprocesses do not share state. The path is propagated via DB_PATH so
-    // CLI/headless fallbacks spawned from the same process share the same DB.
-    // Production callers pass reset:false (or an explicit dbPath) and keep the
-    // persistent file DB at DB_PATH / defaultDbPath().
     dbPath = options.dbPath || process.env.DB_PATH;
     if (!dbPath) {
       dbPath = path.join(os.tmpdir(), `opc-workstation-test-${process.pid}-${Date.now()}.db`);
       process.env.DB_PATH = dbPath;
     }
     resetDb(dbPath);
-    // Isolate settings.json as well: tests must not overwrite the user's real
-    // ~/.opc-workstation/settings.json. Only set a temp config dir if the caller
-    // has not already configured one.
     if (!process.env.OPC_WORKSTATION_CONFIG_DIR) {
-      process.env.OPC_WORKSTATION_CONFIG_DIR = path.join(
-        os.tmpdir(),
-        `opc-workstation-test-config-${process.pid}-${Date.now()}`
-      );
+      process.env.OPC_WORKSTATION_CONFIG_DIR = path.join(os.tmpdir(), `opc-workstation-test-config-${process.pid}-${Date.now()}`);
     }
     settingsService.resetSettings();
-    // Isolate the skill library path in test/reset mode so library scans never
-    // touch the user's real ~/.opc-workstation/skills directory.
-    const tempSkillRepoPath = path.join(
-      os.tmpdir(),
-      `opc-workstation-test-skills-${process.pid}-${Date.now()}`
-    );
+    const tempSkillRepoPath = path.join(os.tmpdir(), `opc-workstation-test-skills-${process.pid}-${Date.now()}`);
     settingsService.saveSettings({ skillRepoPath: tempSkillRepoPath });
   } else if (options.dbPath) {
-    // reset:false with an explicit dbPath (e.g. legacy-DB migration runs):
-    // propagate the path so the lazily-opened getDb() lands on the requested
-    // file — opening it runs initSchema + migrateSchema (REQ-WORKSPACE-011
-    // AC5 legacy migration).
     dbPath = options.dbPath;
     process.env.DB_PATH = dbPath;
   }
@@ -117,8 +76,6 @@ export function startServer(options = {}) {
       });
     });
 
-    // 首选端口（2026-08-02-ui-copilot 重启保端口：main.js 传 registry 既有端口，
-    // 应用重启后 baseUrl 稳定）；缺省/被占用 → 随机端口（listen(0)）。
     const preferredPort = Number.isInteger(options.port) && options.port > 0 ? options.port : 0;
     let usingPreferredPort = preferredPort > 0;
 
@@ -128,272 +85,21 @@ export function startServer(options = {}) {
       if (dbPath) server._opcDbPath = dbPath;
       const owner = String(options.owner ?? process.pid);
       server._opcOwner = owner;
-      try {
-        registerServerRecord(port, process.pid, owner);
-      } catch {
-        // Ignore registry failures in restricted environments.
-      }
-      // 触发点 A：启动即清理一次。
-      runExecutionLogPurge();
-      // 触发点 B：每日定时清理。
-      purgeTasks.set(server, cron.schedule(PURGE_CRON_SCHEDULE, runExecutionLogPurge));
-      async function runStartupStep(label, fn) {
-        try {
-          await fn();
-        } catch (err) {
-          console.error(label, err.message);
-        }
-      }
+      try { registerServerRecord(port, process.pid, owner); } catch {}
 
-      // REQ-SCHEDULE-007：恢复孤儿执行；REQ-SCHEDULE-005：加载 enabled schedules。
-      await runStartupStep("Failed to recover interrupted executions:", () => runner.recoverInterruptedExecutions(getDb()));
-      await runStartupStep("Failed to load schedules:", () => schedulerService.loadAll());
-      // REQ-SCHEDULE-010：schedule 触发已改 schedulerService 直调 runner.submit——
-      // 不再注册 subscribeToScheduleTriggers（删 eventBus 一跳与订阅接线）。
-      // REQ-CHANNEL-001/002：凭据存在时自动启动飞书通道与 IM 路由。
-      await runStartupStep("Failed to start Feishu channel adapter:", () => startFeishuChannel());
-      // agent 优先路由（REQ-AGENT-017，REQ-CHANNEL-002 接替）：IM 消息全量进
-      // agentRouter（绑定检查 → 命令识别 → 会话分发），绑定不再直接 createTask。
-      // agentService 惰性接线（ADR-009）：首次对话消息才创建并 start()——不启动即
-      // 不 spawn 子进程；测试环境无对话消息到达 → 零副作用。会话库落应用配置目录
-      // （Electron = userData；headless = OPC_WORKSTATION_CONFIG_DIR）——Slice 3
-      // concern 的生产态 store 注入（默认 store 库路径 = 应用库，非 cwd/.agent-home）。
-      // Slice 6：sessionStore 与 baseUrl 注入 agentRouter——/reset 命令（REQ-AGENT-010）
-      // 与命令执行层直连（C2 路径：命令模块 → 本地 HTTP API → services，U2）。
-      const configDir = settingsService.configDir();
-      let sharedSessionStore = null;
-      const getSessionStore = () => {
-        if (!sharedSessionStore) {
-          sharedSessionStore = createSessionStore({
-            dbPath: path.join(configDir, "agent-sessions.db"),
-            sessionDir: path.join(configDir, "agent-sessions")
-          });
-        }
-        return sharedSessionStore;
-      };
-      const agentRouter = createAgentRouter({
-        settings: () => settingsService.loadSettings(),
-        sessionStore: getSessionStore,
-        baseUrl: `http://127.0.0.1:${port}`
-      });
-      // 绑定状态经 HTTP 暴露（Settings Agent 区：开始绑定/取消/解绑/状态查询，
-      // REQ-AGENT-014）——handleRequest 经 server 引用取路由实例。
-      server._opcAgentRouter = agentRouter;
-      // Slice 1（REQ-AGENT-027）：会话 REST 端点（/api/agent/sessions）惰性工厂
-      // 暴露——handleRequest 经 server 引用取路由实例（与确认服务同型接线）。
-      server._opcSessionStoreFactory = getSessionStore;
-      // ADR-030（REQ-AGENT-115）：SSE 订阅注册表 per-instance——随本 server 实例走
-      //（模块级全局消亡），惰性工厂同型接线。三处驱动点：确认回调回投（notifyResult）/
-      // 懒解析接线（onSessionCreated）/ 路由 context 袋 getSseRegistry。
-      let serverSseRegistry = null;
-      const getSseRegistry = () => {
-        if (!serverSseRegistry) serverSseRegistry = createSseSubscriptionRegistry();
-        return serverSseRegistry;
-      };
-      server._opcSseRegistryFactory = getSseRegistry;
-      // Slice 8：确认服务（REQ-AGENT-016，b 解耦）——惰性创建（ADR-009：首次
-      // confirm-request / 确认回调才开库）。挂起队列与 agent_sessions 同库
-      // （tech-design 模块图：SQLite：agent_sessions / agent_confirmations）。
-      // - execute：确认回调驱动**同一命令模块**执行（C2 路径，executeToolCommand
-      //   与工具路径共用 TOOL_DEFS 注册表，一处实现两端生效；baseUrl 显式注入本
-      //   server 避免注册表发现歧义）；
-      // - notifyResult：结果经 notify-result IPC 注入 agent 会话 → 自然语言回投
-      //   （W-2，不经过 agent turn——解耦执行）；
-      // - sendCard：确认卡片经通道适配器发送（F1：channelManager 唯一入口）。
-      let serverConfirmationService = null;
-      const getConfirmationService = () => {
-        if (!serverConfirmationService) {
-          serverConfirmationService = createConfirmationService({
-            dbPath: path.join(configDir, "agent-sessions.db"),
-            execute: async (command, args) => executeToolCommand(command, args, { baseUrl: `http://127.0.0.1:${port}` }),
-            notifyResult: async ({ sessionKey, result }) => {
-              const svc = await getAgentService();
-              // 会话句柄缺失（UI 打开会话但从未发消息——种子/「稍后处理」场景，
-              // REQ-AGENT-030 AC3：确认与执行解耦，挂起队列 = SQLite 真相）→ 先按
-              // 该空间建句柄（provider/key 与 handlePostMessage 同源构建），再注入
-              // 结果——保证确认回调的结果经 SSE 流式回投可达（assistantConfirm E2E）。
-              // 会话句柄缺失（UI 打开会话但从未发消息——种子/「稍后处理」场景，
-              // REQ-AGENT-030 AC3：确认与执行解耦，挂起队列 = SQLite 真相）→ 先按
-              // 该空间建句柄（provider/key 与 handlePostMessage 同源构建），再注入
-              // 结果——保证确认回调的结果经 SSE 流式回投可达（assistantConfirm E2E）。
-              // 注：句柄可能已存在（getAgentService 启动时按 agent_sessions 水合既有
-              // 行——hydration 不挂接订阅），故 attachPending 无条件执行
-              // （无挂起订阅时为 no-op，见 services/sessionSseRegistry.js）。
-              if (!svc.getSession(sessionKey)) {
-                // Slice 2（REQ-AGENT-093/095，ADR-026）：按 agent_sessions 行装配
-                //（行值优先；NULL → 默认组合）——与会话消息路径同源。
-                const cfg = buildSessionConfig(sessionKey, getSessionStore());
-                svc.createSession({
-                  spaceKey: sessionKey,
-                  provider: cfg.provider,
-                  model: cfg.model,
-                  apiKey: cfg.apiKey,
-                  identity: cfg.identity,
-                });
-              }
-              getSseRegistry().attachPending(sessionKey, svc);
-              svc.notifyResult(sessionKey, result);
-            },
-            sendCard: (payload) => channelManager.sendCard("feishu", payload),
-          });
-        }
-        return serverConfirmationService;
-      };
-      // 确认回调 HTTP 端点（/api/agent/confirmations/...）经 server 引用取惰性工厂。
-      server._opcConfirmationServiceFactory = getConfirmationService;
-      // Slice 7：授权桥（REQ-AGENT-033，tech-design 授权桥契约节）——惰性创建
-      // （ADR-009）。gotgenes ask（worker 侧 authorizer 链 / uiContext 兜底 /
-      // user_bash）→ IPC permission-ask → 桥建挂起确认行（同表共存 + ui:* 空间
-      // SSE confirmation-pending 分流，复用 confirmationService submit）→ 决议
-      // （approve/reject 既有端点）→ 回传 worker gate 放行/拒绝。
-      let serverPermissionBridge = null;
-      const getPermissionBridge = () => {
-        if (!serverPermissionBridge) {
-          serverPermissionBridge = createPermissionBridge({
-            adjudicator: getConfirmationService(),
-            modeService: getModeService(),
-          });
-        }
-        return serverPermissionBridge;
-      };
-      server._opcPermissionBridgeFactory = getPermissionBridge;
-      // Slice 3（REQ-AGENT-070/072/075）：会话模式服务单例（agentService 注入 +
-      // S4 模式切换端点共用同一实例——会话模式状态与 lastMode 持久化单点）。
-      let serverModeService = null;
-      const getModeService = () => {
-        if (!serverModeService) {
-          serverModeService = createModeService();
-        }
-        return serverModeService;
-      };
-      // Slice 4（REQ-AGENT-071/072）：模式服务单例经 server 引用暴露给会话路由
-      //（handleRequest 同型接线——会话未创建时模式读写直接走单例，不触发 agent
-      // 子进程惰性创建，ADR-009）。
-      server._opcModeServiceFactory = getModeService;
-      let serverAgentService = null;
-      const getAgentService = async () => {
-        if (!serverAgentService) {
-          serverAgentService = createAgentService({
-            cwd: process.cwd(),
-            sessionDir: path.join(configDir, "agent-sessions"),
-            sessionStore: getSessionStore(),
-            // BUG-007：本 server baseUrl 注入 → worker spawn env（工具面直连，
-            // 禁 worker 内 server 自起——启动窗口期注册表发现失败的兜底灾变）。
-            agentServerBaseUrl: `http://127.0.0.1:${port}`,
-            // Slice 3（REQ-AGENT-070）：会话模式服务单例（getSessionMode/
-            // setSessionMode/mode-tripped 熔断降级共用）。
-            modeService: getModeService(),
-            // Slice 8 确认接线（REQ-AGENT-016 标准 1）：worker 工具面 confirm 级
-            // 工具 → IPC confirm-request → 确认服务入队（pending + 确认卡片）。
-            onConfirmRequest: (req) => getConfirmationService().submit(req),
-            // Slice 7 授权桥接线（REQ-AGENT-033/122，ADR-032）：worker gotgenes ask →
-            // IPC permission-ask → 统一交由 bridge.handlePermissionAsk 承载（内聚 strict 判定与策略评估）。
-            onPermissionAsk: (payload) => getPermissionBridge().handlePermissionAsk(payload),
-          });
-          await serverAgentService.start();
-          server._opcAgentService = serverAgentService;
-        }
-        return serverAgentService;
-      };
-      // Slice 1（REQ-AGENT-027）：会话 REST 端点惰性工厂（与确认服务同型接线——
-      // 路由侧 await 工厂触发首次 createAgentService + start）。
-      server._opcAgentServiceFactory = getAgentService;
-      // Slice 7：会话卡片渲染器（REQ-AGENT-019~020）——惰性创建（ADR-009）：
-      // 首次流式/执行事件才实例化；adapter 经 channelManager 解析当前飞书通道。
-      // 任务卡片（REQ-AGENT-020）由 eventBus 执行事件驱动；sessionKey 从执行
-      // 上下文解析（对话下发的执行需记录 originating spaceKey——GAP：工具面
-      // task run 未记录 spaceKey，非对话执行（手动/定时）无会话 → 不发送任务卡片；
-      // 接线点已就绪，随 Slice 8 或后续补全映射）。
-      let serverCardRenderer = null;
-      // Slice 7 补（缺口 3）：会话句柄注册表（REQ-AGENT-020 标准 3 执行结果回投）——
-      // imRouter 创建会话时登记句柄（句柄挂 onExecutionResult 回投钩子），渲染器
-      // 终态事件经 sessions[sessionKey].onExecutionResult 驱动 agent 生成执行摘要，
-      // 摘要回复经流式事件回投（回复卡片，同一渲染器实例）。修复前 createCardRenderer
-      // 未传 sessions → 生产路径回投永不触发。
-      const sessionRegistry = {};
-      const getCardRenderer = () => {
-        if (!serverCardRenderer) {
-          serverCardRenderer = createCardRenderer({
-            adapter: {
-              sendCard: (payload) => channelManager.sendCard("feishu", payload),
-              updateCardStream: (payload) => channelManager.updateCardStream("feishu", payload),
-              // BUG-004：定型 seam（关 streaming_mode + summary 换正文摘要）。
-              finalizeCard: (payload) => channelManager.finalizeCard("feishu", payload),
-              send: (payload) => channelManager.send("feishu", payload)
-            },
-            sessions: sessionRegistry
-          });
-        }
-        return serverCardRenderer;
-      };
-      createImRouter({
-        channelManager,
+      const container = createServiceContainer({
+        port,
+        configDir: process.env.OPC_WORKSTATION_CONFIG_DIR || settingsService.configDir(),
         baseUrl: `http://127.0.0.1:${port}`,
-        agentRouter,
-        agentService: getAgentService,
-        // Slice 9（REQ-AGENT-034）：会话存储注入（惰性工厂同 agentRouter 形态）——
-        // 通道侧 chat 名写入 agent_space_meta（列表显示名 seam，signoff 裁决 10）。
-        sessionStore: getSessionStore,
-        // Slice 7：agent 流式事件 → 回复卡片流式（REQ-AGENT-019）。
-        onSessionEvent: (spaceKey, ev) => {
-          getCardRenderer().handleStreamEvent({ sessionKey: spaceKey, ...ev });
-        },
-        // Slice 7 补（缺口 3）：会话句柄登记 + 执行结果回投钩子（REQ-AGENT-020
-        // 标准 3：执行完成 → agent 生成摘要 → 摘要经流式事件回投 → 回复卡片）。
-        onSessionCreated: (spaceKey, session) => {
-          if (!session || typeof session !== "object") return;
-          // Slice 9（REQ-AGENT-034 标准 3 生产链路补全）：通道侧 createSession 建句柄
-          // 后，挂接本 spaceKey 的挂起 SSE 订阅——UI 选中该飞书会话且 agent 服务尚未
-          // 启动/句柄未创建时，events 连接处于挂起注册表（此前仅 UI 发送路径
-          // handlePostMessage 补挂接，飞书入站消息路径漏挂 → 新消息 SSE 增量不达 UI）。
-          // 此刻 agent 服务已启动（routeToAgent 已 await 工厂），异步补挂接幂等
-          // （无挂起订阅时为 no-op，见 services/sessionSseRegistry.js attachPending）。
-          getAgentService()
-            .then((svc) => getSseRegistry().attachPending(spaceKey, svc))
-            .catch(() => undefined);
-          if (typeof session.onExecutionResult !== "function") {
-            session.onExecutionResult = (result) => {
-              const summaryPrompt = `请用不超过 200 字总结本次执行结果，直接输出总结：${JSON.stringify(result ?? {})}`;
-              return getAgentService()
-                .then((svc) => {
-                  // 摘要回投是新一轮对话：先经会话事件通道宣告 stream_start（轮次
-                  // 边界，REQ-AGENT-019 每轮各一张回复卡片），否则上一轮 final 状态
-                  // 会把摘要流式事件全部丢弃（code-defect 1 同机制）。
-                  if (typeof session.emit === "function") {
-                    session.emit("session-event", { type: "stream_start" });
-                  }
-                  return svc.prompt(spaceKey, summaryPrompt);
-                })
-                .catch(() => undefined);
-            };
-          }
-          sessionRegistry[spaceKey] = session;
-        }
+        owner,
       });
-      // Slice 7 补（缺口 5）：执行事件订阅移出渲染器惰性创建（修复前订阅在首次
-      // 流式事件触发 getCardRenderer 时才注册 → 先于惰性创建的执行事件丢失，任务
-      // 卡片缺头——execution:started 未达即无卡）。订阅在启动路径立即注册，渲染器
-      // 仍按事件到达惰性创建（ADR-009）；无会话的执行（非对话下发）→ sessionKey
-      // 解析为空 → 渲染器不动作。
-      const resolveSessionKey = (executionEvent) => executionEvent?.variables?.spaceKey ?? undefined;
-      // 执行事件 → 任务卡片（REQ-AGENT-020）：事件字段共性（executionId/status）外，
-      // 各事件带专属字段（flowId/log/output/artifacts）经 extra 透传。
-      const dispatchExecutionEvent = (event, type, extra = {}) => {
-        getCardRenderer().handleExecutionEvent({
-          sessionKey: resolveSessionKey(event),
-          type,
-          executionId: event.executionId,
-          status: event.status,
-          ...extra,
-        });
-      };
-      eventBus.subscribe("execution:started", (e) => dispatchExecutionEvent(e, "started", { flowId: e.flowId }));
-      eventBus.subscribe("execution:progress", (e) => dispatchExecutionEvent(e, "progress", { log: e.log }));
-      eventBus.subscribe("execution:completed", (e) => dispatchExecutionEvent(e, "completed", { output: e.output, artifacts: e.artifacts }));
+      server.services = container;
+      attachLegacyOpcProxies(server, container);
+      await container.start();
+
       resolve({ server, baseUrl: `http://127.0.0.1:${port}`, owner });
     };
 
-    // 首选端口被占用（重启保端口窗口竞争等）→ 回退随机端口；其他监听错误上抛。
     server.on("error", (err) => {
       if (err?.code === "EADDRINUSE" && usingPreferredPort) {
         usingPreferredPort = false;
@@ -409,73 +115,18 @@ export function startServer(options = {}) {
 export function stopServer({ server }) {
   return new Promise(async (resolve) => {
     activeServers.delete(server);
-    // Clear pending executions and schedules so server shutdown doesn't leak
-    // async work into the next test's lifecycle.
-    try {
-      schedulerService.removeAll();
-    } catch {
-      // ignore
-    }
-    try {
-      eventBus.clearSubscribers();
-    } catch {
-      // ignore
-    }
-    try {
-      // REQ-FLOW-049 AC5 / REQ-FLOW-052：停止路径改用 runner.reset()（单一失效
-      // 机制——generation+1 + destroy + 有界等待；clearExecutionQueue 双机制废止）。
-      await runner.reset();
-    } catch {
-      // ignore
-    }
-    // Close the cached DB handle: a stopped server must not leak a stale
-    // handle into the next server's lifecycle (the file may be gone or a
-    // different DB_PATH may be in effect by then).
-    try {
-      closeDb();
-    } catch {
-      // ignore
-    }
-    try {
-      await channelManager.stop();
-    } catch {
-      // ignore
-    }
-    // Stop the lazily-created agent service (child process + heartbeat watchdog):
-    // prevents leaked subprocesses across tests and on production shutdown.
-    if (server._opcAgentService) {
-      try {
-        // stop() 现返回 promise（等待 agent 子进程退出）：await 保证关停时
-        // worker 已真正退出，不留「关停后仍在收尾」的子进程/句柄。
-        await server._opcAgentService.stop();
-      } catch {
-        // ignore
-      }
-    }
-    const purgeTask = purgeTasks.get(server);
-    if (purgeTask) {
-      purgeTasks.delete(server);
-      try {
-        purgeTask.destroy();
-      } catch {
-        // Ignore teardown failures.
-      }
+    if (server.services) {
+      try { await server.services.dispose(); } catch {}
     }
     try {
       const address = server.address();
-      if (address) {
-        unregisterServerRecord(server._opcOwner ?? process.pid);
-      }
-    } catch {
-      // Ignore registry failures.
-    }
-
+      if (address) unregisterServerRecord(server._opcOwner ?? process.pid);
+    } catch {}
     server.close(resolve);
   });
 }
 
 async function handleRequest(req, res, server) {
-  // CORS: allow renderer loaded from Vite dev server to call the local API.
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -494,101 +145,53 @@ async function handleRequest(req, res, server) {
   try {
     body = await parseBody(req);
   } catch (err) {
-    // 非法 JSON 语法：parseBody reject（否则上层 catch → 500 INTERNAL_ERROR）。
-    // REQ-AGENT-068 AC1（tech-design §3.2）：PUT /api/projects/:id/permission 契约
-    // 要求 400 E-PERMISSION-INVALID + 路径化 issues（不落盘）。仅此端点按契约映射
-    // （错误形态属权限端点契约）；其余资源保持既有 500 行为不变（rethrow）。
     if (resource === "projects" && subPath.length === 2 && subPath[1] === "permission" && req.method === "PUT") {
       const message = err?.message ?? "Invalid JSON body";
       res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({
-          code: "E-PERMISSION-INVALID",
-          message,
-          issues: [{ path: "(root)", message }],
-        })
-      );
+      return res.end(JSON.stringify({ code: "E-PERMISSION-INVALID", message, issues: [{ path: "(root)", message }] }));
     }
     throw err;
   }
 
   res.setHeader("Content-Type", "application/json");
+  const services = server.services;
 
   switch (resource) {
     case "settings":
-      return handleSettings(req, res, body, subPath, { agentRouter: server._opcAgentRouter });
+      return handleSettings(req, res, body, subPath, { agentRouter: services?.getAgentRouter() });
     case "agent":
-      // 会话 REST（REQ-AGENT-027，Slice 1）：/api/agent/sessions 及其子资源
-      // （messages/reset）→ handleAgentSessions；其余（confirmations）走既有端点。
       if (subPath[0] === "sessions") {
         return handleAgentSessions(req, res, body, subPath, {
-          getSessionStore: () => server._opcSessionStoreFactory?.(),
-          getAgentService: () => server._opcAgentServiceFactory?.(),
-          // Slice 3（REQ-AGENT-028 SSE）：同步窥探既有服务实例（未创建 → null）——
-          // events 端点据此判断「直接挂接既有会话句柄」还是「挂起等首条消息建句柄」；
-          // 不触发惰性创建（ADR-009：打开 events 连接不启动 agent 子进程）。
-          peekAgentService: () => server._opcAgentService ?? null,
-          // Slice 4（REQ-AGENT-071/072）：会话模式端点共用模式服务单例（与
-          // agentService 注入同一实例——模式状态与 lastMode 持久化单点；会话
-          // 未创建时直接走单例，创建后经 agentService setSessionMode 下发 IPC）。
-          getModeService: () => server._opcModeServiceFactory?.(),
-          // ADR-030（REQ-AGENT-115）：SSE 订阅注册表注入（per-instance，随本 server
-          // 实例走）——handlePostMessage/handleGetEvents 经此消费挂起登记与补挂接。
-          getSseRegistry: () => server._opcSseRegistryFactory?.(),
+          getSessionStore: () => services?.getSessionStore(),
+          getAgentService: () => services?.getAgentService(),
+          peekAgentService: () => services?.peekAgentService() ?? null,
+          getModeService: () => services?.getModeService(),
+          getSseRegistry: () => services?.getSseRegistry(),
         });
       }
-      // 确认回调（REQ-AGENT-016）：确认卡片按钮动作 → approve/reject（回调驱动执行，
-      // b 解耦）；挂起队列可见（M2 移动块基础）。卡片按钮 value 携带 confirmId +
-      // decision，飞书卡片动作桥接（WS 事件 → 本端点）待 QA。
-      // 全局 lastMode（BUG-001 裁决 A：无会话切模式 = 改全局默认）：PUT
-      // /api/agent/mode/last——renderer 无会话切换经此落盘 settings lastMode，
-      // 后续新建会话取位 = 新 lastMode（REQ-AGENT-072 标准 2）。
       if (subPath[0] === "mode" && subPath[1] === "last") {
-        return handleAgentLastMode(req, res, body, {
-          getModeService: () => server._opcModeServiceFactory?.(),
-        });
+        return handleAgentLastMode(req, res, body, { getModeService: () => services?.getModeService() });
       }
-      if (subPath[0] === "files") {
-        // 图片文件（REQ-AGENT-051 / I-3 访问机制）：GET /api/agent/files/image——
-        // 主进程白名单判定（项目目录边界 + 扩展名）后读文件回传二进制，renderer 转
-        // blob URL（I-3 裁决：dev/prod origin 一致，file:// 直链在 dev 被 Chromium
-        // scheme 混合规则拦截）。无需 server 引用（projectService 直接映射）。
-        return handleAgentFiles(req, res, subPath.slice(1));
-      }
+      if (subPath[0] === "files") return handleAgentFiles(req, res, subPath.slice(1));
       return handleAgentConfirmations(req, res, body, subPath, {
-        getConfirmationService: () => server._opcConfirmationServiceFactory?.(),
+        getConfirmationService: () => services?.getConfirmationService(),
       });
-    case "projects":
-      return handleProjects(req, res, body, subPath);
+    case "projects": return handleProjects(req, res, body, subPath);
     case "flows":
-      if (subPath.length === 1 && subPath[0] === "import") {
-        return handleFlowImport(req, res, body);
-      }
+      if (subPath.length === 1 && subPath[0] === "import") return handleFlowImport(req, res, body);
       return handleFlows(req, res, body, subPath);
-    case "schedules":
-      return handleSchedules(req, res, body, subPath);
-    case "executions":
-      return handleExecutions(req, res, body, subPath);
-    case "skills":
-      return handleSkills(req, res, body, subPath);
-    case "plugins":
-      return handlePlugins(req, res, body, subPath);
-    case "mcp":
-      return handleMcp(req, res, body, subPath);
-    case "agents":
-      return handleAgents(req, res);
-    case "dashboard":
-      return handleDashboard(req, res);
-    case "notifications":
-      return handleNotifications(req, res, body, subPath);
-    case "content-sources":
-      return handleContentSources(req, res, body, subPath);
-    case "channel":
-      return handleChannel(req, res, body, subPath);
-    case "server":
-      return handleServer(req, res, server, subPath);
-    default:
-      return notFound(res);
+    case "schedules": return handleSchedules(req, res, body, subPath);
+    case "executions": return handleExecutions(req, res, body, subPath);
+    case "skills": return handleSkills(req, res, body, subPath);
+    case "plugins": return handlePlugins(req, res, body, subPath);
+    case "mcp": return handleMcp(req, res, body, subPath);
+    case "agents": return handleAgents(req, res);
+    case "dashboard": return handleDashboard(req, res);
+    case "notifications": return handleNotifications(req, res, body, subPath);
+    case "content-sources": return handleContentSources(req, res, body, subPath);
+    case "channel": return handleChannel(req, res, body, subPath);
+    case "server": return handleServer(req, res, server, subPath);
+    default: return notFound(res);
   }
 }
 
@@ -597,7 +200,6 @@ function handleServer(req, res, server, subPath) {
   if (req.method === "POST" && action === "shutdown") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
-    // Graceful shutdown after the response has been flushed.
     setTimeout(() => stopServer({ server }), 0);
     return;
   }
@@ -611,14 +213,9 @@ function handleServer(req, res, server, subPath) {
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
-    // DELETE may carry a JSON body for bulk operations
-    // (REQ-SKILL-011 AC5); only GET is always bodyless.
     if (req.method === "GET") return resolve({});
-
     let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-    });
+    req.on("data", (chunk) => { data += chunk; });
     req.on("end", () => {
       if (!data) return resolve({});
       try {
