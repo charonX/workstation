@@ -100,6 +100,26 @@
 
 ---
 
+## 聚焦重审（2026-08-19 `--cover=req,test`，修复后复审）
+
+> 背景：首轮 4 阻塞项修复后（PRD v0.2 `389cd51`、AC3 补测试 `fb85a6b`）的聚焦复审。
+
+### 复审确认已收敛
+
+- 403 锚点 `{error}`（PRD v0.2，人确认）；REQ-AGENT-124 AC3 写失败降级测试已补且绿；旧例空世代语义正名；ADR-037 落档。
+
+### 新发现
+
+| # | 级别 | 位置 | 发现 | 处置状态 |
+|---|---|---|---|---|
+| R1 | **CRITICAL** | `agentService.js:867-892` + `sessionStore.js:149,134-136` | **重启水合消费归档行**：水合循环 `store.list()` 无归档过滤，对 `feishu:<chatId>:gen<N>` 归档行调 `getOrCreate` → ① 归档 JSONL 存在时 `UPDATE lastActiveAt=now`（违反 REQ-AGENT-123 AC1「归档行 lastActiveAt 保持原值」，且每次重启把归档行顶到列表最前，破坏 REQ-AGENT-125 AC1 排序）；② 归档 JSONL 缺失且 lastActiveAt 在窗口内时走 missing-file 分支 `bumpGeneration` 改写归档行 sessionRef 指向空新文件——静默销毁历史指针（正是 REQ-AGENT-125 AC3/126 AC2 承诺优雅降级的场景）；③ 归档行被装配为活 worker 会话（session-config IPC + API key 注入）。ADR-037 后果 3「水合归档行 = 无害资源浪费」的评估**漏掉了行变异**，评估不成立。已由主会话对照 `isWithinHydrationWindow`（mtime 判定，归档文件 mtime 新 → 必在窗口）实证 | 待人分类（建议 code-defect 走 /bug） |
+| R2 | IMPORTANT | `requirements.md:69` | REQ-AGENT-126 AC3 文本写 403 响应体 `{ code: "E-SESSION-READONLY" }`，与 PRD v0.2 锚点 7（人确认 `{error}`）、sendError 封套、已签核测试矛盾；REQ 文件 hash 锁定，契约文档与测试不一致 | 待人决策（文档债务 / REQ v2 重哈希） |
+| R3 | IMPORTANT | `feishuResetArchive.test.js` AC1 | 未断言新活跃行 provider/model=NULL 与 createdAt=此刻（REQ-AGENT-123 AC1 契约明列；PRD v0.2 锚点 2） | test-gap，可补（[test]） |
+| R4 | IMPORTANT | `feishuArchiveSessions.test.js:177` | REQ-AGENT-126 AC1 要求回读消息保持 messageId/role/createdAt/text 一致，测试只断言 role/text | test-gap，可补（[test]） |
+| R5 | SUGGESTION | `sessionStore.js:244` | 空世代判定用 `projectMessagesFromJsonl` 全量读+逐行 JSON parse 整个历史 JSONL，仅为判断「有无有效消息」——长会话 /reset 时主进程 O(文件) 同步解析，可改为首行短路 | 待人决策（接受 / 优化） |
+
+---
+
 ## 审查人决策记录
 
 <!-- 人填写：是否接受本 review 结论，以及理由。 -->
