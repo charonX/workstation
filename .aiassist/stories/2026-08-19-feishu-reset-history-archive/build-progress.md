@@ -41,3 +41,27 @@
 | PRD §8-2 | REQ-AGENT-124 AC3 写失败降级 | `src/services/sessionStore.js` `reset()` | 归档事务抛错时捕获、调用 `degradePersistFailure("reset 归档事务", err)` 并在 catch 分支降级为原地换代 `bumpGeneration` |
 | PRD §10.4 契约 1 样例 3 | REQ-AGENT-124 AC4 畸形 ref 兜底 | `src/services/sessionStore.js` `generationFromRef()` | 无法解析世代号时兜底按 gen1 处理生成 `:gen1` 归档行，不抛异常 |
 
+### Slice 2: REQ-AGENT-125 & REQ-AGENT-126 归档会话列表展示与全写端点只读守护
+
+- **状态**：COMPLETED
+- **改动文件**：
+  - `src/http/routes/agentSessions.js`
+- **测试结果**：
+  - `tests/capabilities/agent-dialogue/conversation-space/2026-08-19-feishu-reset-history-archive/api/feishuArchiveSessions.test.js` (6/6 PASS)
+  - `tests/capabilities/agent-dialogue/conversation-space/2026-08-16-deepen-session-domain/api/dependencyDirection.test.js` (4/4 PASS)
+  - `tests/capabilities/agent-dialogue/conversation-space/2026-08-02-ui-copilot/api/feishuReadonly.test.js` (2/2 PASS)
+  - 故事全部 14 测试及全量 conversation-space 回归测试（351/351 PASS，100% 绿灯）
+  - 路由代码行数：600 行（严格满足 ≤ 650 架构约束）
+
+#### PRD → 代码可追溯性表
+
+| PRD 锚点 / 契约 | REQ / 验收项 | 实现位置 | 逻辑说明 |
+|---|---|---|---|
+| PRD §6.3 锚点 3 / §10.2 模块表 | REQ-AGENT-125 AC1 列表展示归档条目与排序 | `src/http/routes/agentSessions.js` `listSessions()` | 遍历 store.list() 时 `feishu:*` 前缀包含所有活跃行与归档行，统一按 lastActiveAt 倒序排列 |
+| PRD §10.4 契约 1 逆解析 | REQ-AGENT-125 AC2 displayName fallback 逆解析 | `src/http/routes/agentSessions.js` `listSessions()` | `row.spaceKey.includes(":gen")` 时剥离 `:gen\d+$` 得到主 chat key，优先查 spaceMeta 作为 displayName |
+| PRD §8-3 | REQ-AGENT-125 AC3 缺失 JSONL 列表容错 | `src/http/routes/agentSessions.js` `listSessions()` | 会话列表基于 DB 元数据构造，不依赖磁盘 JSONL 存在性，正常返回 200 |
+| PRD §6.3 锚点 4 | REQ-AGENT-126 AC1 历史消息只读回看 | `src/http/routes/agentSessions.js` `handleGetMessages()` | GET messages 复用既有 JSONL 消息投影，返回 200 `{ messages: [...] }` |
+| PRD §8-3 | REQ-AGENT-126 AC2 缺失 JSONL 回看降级 | `src/services/sessionDomain.js` `projectMessagesFromJsonl()` | JSONL 缺失时消息投影返回空数组，GET messages 返回 200 `{ messages: [] }`，不 500 |
+| PRD §6.3 锚点 7 / §8-1 | REQ-AGENT-126 AC3 全写端点 403 守护 | `src/http/routes/agentSessions.js` `handlePostMessage`, `handleReset`, `handlePutProvider`, `handlePutMode` | `feishu:*` 包含归档键 `feishu:<chatId>:gen<N>`，所有 POST/PUT 写操作端点统一返回 403 `E-SESSION-READONLY` |
+
+

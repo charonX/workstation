@@ -1,61 +1,10 @@
 // src/http/routes/agentSessions.js
 // UI Copilot 会话中心 — 会话 REST 端点（tech-design「接口契约」HTTP 会话端点表）。
 //
-// Slice 1（REQ-AGENT-027 空间=会话数据层）端点：
-//   POST /api/agent/sessions { spaceKind, projectId? } → 200 { spaceKey }；spaceKind 非法 /
-//                                                      projectId 无效 → 400 E-SESSION-CREATE
-//   POST /api/agent/sessions/:spaceKey/messages { text, attachments? } → 202 { messageId }；
-//                                                      空（无附件时）/超限 → 400；
-//                                                      feishu:* → 403 E-SESSION-READONLY
-//   POST /api/agent/sessions/:spaceKey/reset           → 200 { spaceKey: 新 }（UI 空间 = 同分组
-//                                                      新建会话并切换，旧行保留可读可继续，F4 语义）；
-//                                                      feishu:* → 403 E-SESSION-READONLY
-//   POST /api/agent/sessions/:spaceKey/stop            → 202（REQ-AGENT-091，BUG-010 对话手动
-//                                                      停止；idle/不存在/未起子进程均 no-op 202，
-//                                                      幂等安全操作不报错、不启动子进程）
-// Slice 2（REQ-AGENT-029 分组列表与历史回看）端点：
-//   GET  /api/agent/sessions                          → 200 { general, projects, feishu }
-//                                                     （完整分组：join projects 取名 / 孤儿标记 /
-//                                                       agent_space_meta chat 名 / lastActiveAt 倒序）
-//   GET  /api/agent/sessions/:spaceKey/messages?limit&before → 200 { messages: [...] }
-//                                                     （JSONL 投影分页；默认 limit=100）
-// Slice 3（REQ-AGENT-028 消息发送 + SSE 流式）端点：
-//   POST /api/agent/sessions/:spaceKey/messages 完整错误映射：trim 空 / 超上限 → 400
-//                                                     （上限 = enforceSizeLimit 同单位 256KB 字符）；
-//                                                     不存在 → 404 E-SESSION-NOT-FOUND；
-//                                                     feishu:* → 403 E-SESSION-READONLY（先于 409，
-//                                                     裁决 2：只读是空间属性）；孤儿项目空间 →
-//                                                     409 E-SESSION-ORPHAN（空间属性先于 agent
-//                                                     配置）；agent 未配置 → 409 E-AGENT-CONFIG
-//   GET  /api/agent/sessions/:spaceKey/events         → SSE 流（text/event-stream）：会话句柄
-//                                                     session-event 原样转发（≤256KB 契约由
-//                                                     agentService 源头截断保证）+ 轮次边界
-//                                                     text_start 宣告（imRouter stream_start 同型
-//                                                     先例：worker 未映射 PI turn_start/turn_end，
-//                                                     边界由路由层宣告）+ 15s 心跳注释帧（裁决 11
-//                                                     允许辅助事件交错）；断线不崩、重连可再建；
-//                                                     confirmation-pending 事件类型由 Slice 4 产生，
-//                                                     本切片接通「事件流经 SSE 转发」通道
-// Slice 4（REQ-AGENT-030 内联确认卡桥）端点增补：
-//   GET  .../events 订阅 eventBus `confirmation-pending`（confirmationService 按空间
-//                                                    前缀分流发布：ui:* 空间新建挂起行 → 发布；
-//                                                    飞书空间不走此通道）→ 按本连接 spaceKey
-//                                                    过滤转发为 SSE confirmation-pending 帧
-//                                                    （字段 = 裁决 11：confirmId/operation/
-//                                                    description；不依赖特定入队路径——直桥
-//                                                    submit 与 worker confirm-request 同构发布）。
-// Slice 2（REQ-AGENT-093/095，ADR-026）会话级 provider 端点：
-//   GET  /api/agent/sessions/:spaceKey/provider  → 200 { provider, model }（行值优先；
-//                                                    NULL → 默认组合；条目已删 → 回落默认 E12）
-//   PUT  /api/agent/sessions/:spaceKey/provider  → 200 { provider, model }（校验组合 ∈
-//                                                    已配置条目 → 400 E-MODEL-CONFIG-MISSING；
-//                                                    key 解密失败 → 400 E-MODEL-KEY-FAIL；
-//                                                    幂等；回写 agent_sessions 行 + 活跃会话
-//                                                    provider-change IPC 热更新，sessionRef 不换代）
-//
 // 空间 key 语法（ADR-016 / CONTEXT.md 对话空间）：ui:copilot:<sessionId>（通用空间）、
-// ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 世代制沿用（不套用
-// UI 新行语义——世代留给飞书空间与 provider/key 变更重建）。
+// ui:project:<projectId>:<sessionId>（项目空间）；feishu:<chatId> 与 feishu:<chatId>:gen<N>（飞书空间与归档）。
+// ADR-030（story 2026-08-16-deepen-session-domain）：会话领域逻辑已收编 services/sessionDomain.js
+// 与 services/sessionSseRegistry.js —— 本文件 = HTTP 转发层 + admission 编排。
 //
 // signoff 裁决：1（错误码 E-SESSION-CREATE/E-SESSION-NOT-FOUND/E-SESSION-READONLY）、
 // 3（历史封套 { messages }，条目含 messageId/role/createdAt）、4（title slice(0,40)
@@ -146,19 +95,16 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
     return notFound(res);
   }
 
-  // 会话模式（REQ-AGENT-071/072，Slice 4）：GET → { mode }（当前会话模式；
-  // 未显式切过 = 全局 lastMode，首次 auto）；PUT { mode } → { mode }（会话级
-  // 切换 + settings lastMode 持久化；非法值 → 400 E-MODE-INVALID）。
+  // 会话模式（REQ-AGENT-071/072，Slice 4）：GET → { mode }；PUT/POST { mode } → { mode }
   if (tail.length === 1 && tail[0] === "mode") {
     if (req.method === "GET") return handleGetMode(res, spaceKey, context);
-    if (req.method === "PUT") return handlePutMode(res, spaceKey, body ?? {}, context);
+    if (req.method === "PUT" || req.method === "POST") return handlePutMode(res, spaceKey, body ?? {}, context);
     return notFound(res);
   }
 
-  // 会话级 provider（REQ-AGENT-093/095，Slice 2，ADR-026）：GET → { provider, model }
-  // 回读；PUT { provider, model } → 校验/回写/热更新（见文件头端点契约）。
+  // 会话级 provider（REQ-AGENT-093/095，ADR-026）：GET / PUT/POST
   if (tail.length === 1 && tail[0] === "provider") {
-    if (req.method === "PUT") return handlePutProvider(res, spaceKey, body ?? {}, store, context);
+    if (req.method === "PUT" || req.method === "POST") return handlePutProvider(res, spaceKey, body ?? {}, store, context);
     if (req.method === "GET") return handleGetProvider(res, spaceKey, store, context);
     return notFound(res);
   }
@@ -168,17 +114,11 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
 
 // —— 集合级端点 ——
 
-// 分组会话列表（REQ-AGENT-029 标准 1~3/5）：
+// 分组会话列表（REQ-AGENT-029 / REQ-AGENT-125）：
 // - general = ui:copilot:*；projects = ui:project:<pid>:*；feishu = feishu:*。
-// - 项目组 join projects 表取名（标准 1）；pid 不存在 → orphan:true + projectName:null
-//   （标准 2 / signoff 裁决 16，不回填 pid）。
-// - BUG-003：projects 分组 = 所有现存项目（UX 原型语义，sessions 可空）——遍历
-//   projects 表补全无会话项目（空组，前端「没有聊天」空态 + 行内＋可达）；孤儿判定
-//   不变（有会话项目已删 → orphan:true 保持，不回补）。
-// - 飞书条目显示名取 agent_space_meta 侧表（标准 5 / 裁决 10 候选 A）；表/行缺失 →
-//   fallback 到 spaceKey（裁决 10）。
-// - 条目字段 = 裁决 17 最小集（title/lastActiveAt/sessionRef + spaceKey 供选中），
-//   飞书条目附加 displayName。各组内按 lastActiveAt 倒序（裁决 17）。
+// - 项目组 join projects 表取名；pid 不存在 → orphan:true + projectName:null。
+// - 飞书条目显示名取 agent_space_meta 侧表，归档条目 (:genN) 逆解析 chat 主键查 fallback。
+// - 各组内按 lastActiveAt 倒序。
 function listSessions(store) {
   const projectNames = loadProjectNameMap();
   const spaceMeta = loadSpaceMetaMap(store);
@@ -208,7 +148,11 @@ function listSessions(store) {
       }
       group.sessions.push(item);
     } else if (row.spaceKey.startsWith("feishu:")) {
-      item.displayName = spaceMeta.get(row.spaceKey) ?? row.spaceKey;
+      let metaKey = row.spaceKey;
+      if (metaKey.includes(":gen")) {
+        metaKey = metaKey.replace(/:gen\d+$/, "");
+      }
+      item.displayName = spaceMeta.get(metaKey) ?? spaceMeta.get(row.spaceKey) ?? row.spaceKey;
       feishu.push(item);
     }
   }
@@ -453,6 +397,9 @@ function handleGetMode(res, spaceKey, context) {
 }
 
 function handlePutMode(res, spaceKey, body, context) {
+  if (spaceKey.startsWith("feishu:")) {
+    return sendError(res, 403, "E-SESSION-READONLY", "飞书会话只读，不支持修改模式");
+  }
   const mode = body?.mode;
   if (!AGENT_MODES.includes(mode)) {
     return sendError(res, 400, "E-MODE-INVALID", `非法模式 ${mode}（合法值：${AGENT_MODES.join("/")}）`);
@@ -509,6 +456,9 @@ function handleGetProvider(res, spaceKey, store, context) {
 // 同组合重复 PUT 无副作用。服务实例存在 → 经 setSessionProvider（含 IPC）；未启动
 // → 直连 settings + store（校验/行回写，不触发子进程启动；懒恢复/水合按行装配）。
 function handlePutProvider(res, spaceKey, body, store, context) {
+  if (spaceKey.startsWith("feishu:")) {
+    return sendError(res, 403, "E-SESSION-READONLY", "飞书会话只读，不支持修改模型配置");
+  }
   const row = getSessionRowOrError(res, store, spaceKey);
   if (!row) return;
   const { provider, model } = body ?? {};
