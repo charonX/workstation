@@ -1,6 +1,7 @@
 # 独立服务容器（Service Container）——装配知识收归与 server.js 纯化
 
 - **Story ID**: `2026-08-16-deepen-service-container`
+- **状态**: 已完结（历史记录）
 - **日期**: 2026-08-19
 - **来源**: `/improve-codebase-architecture` 架构评审候选 #7（`architecture-review-2026-08-16.html`）
 

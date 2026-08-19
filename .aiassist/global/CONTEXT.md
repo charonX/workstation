@@ -28,6 +28,7 @@
 | 嵌套执行 | Nested Execution | 子流程被调用时产生的 execution，通过 parentExecutionId/parentNodeId/depth 与父执行关联 | `executions` 表 | — |
 | 对话空间 | Conversation Space | 对话的上下文容器，**空间 = 会话**（2026-08-06 ADR-016 修订）：每条 chat 一个独立空间，上下文互不串扰；spaceKey 语法 `feishu:<chatId>`（世代制沿用）、`ui:copilot:<sessionId>`、`ui:project:<projectId>:<sessionId>` | `agent_sessions` 表 + PI session | 聊天（"会话"在 UI 语境 = 对话空间本身，是规范说法；禁止用它指代 execution 等其他概念） |
 | 模型配置 | Model Config | 对话与 auto 判断的模型来源条目：provider + apiKey + 可选模型覆盖 + 默认标记；可配置多条、默认唯一；会话级切换选择的对象；存量单条配置迁移为第一条 + 默认 | settings.json `agent` 段（列表形态） | provider 设置、模型条目（UI 文案「模型」= 模型配置，provider · 模型一体呈现） |
+| 服务容器 | Service Container | 内聚 8 个核心服务的惰性单例工厂、跨服务接线（imRouter/eventBus）、日志清理定时调度与安全销毁的统一管理容器（ADR-035）；挂载于 `server.services` 作为唯一正规 DI 接缝 | `src/services/serviceContainer.js` | DI 容器、Server 闭包（禁止在路由或 server 中手写隐式单例闭包） |
 
 ## 业务概念
 

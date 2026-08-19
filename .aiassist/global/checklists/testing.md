@@ -76,8 +76,9 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 只从源码路径测试 | 构建产物文件布局缺陷（快照/资源未复制进产物）源码启动测试发现不了（BUG-002 教训） | 涉及产物布局的能力加构件级契约测试：跑真实 build --outDir 临时目录，断言产物含目标文件且与源一致 |
 | 批量接口只有全成功用例 | 单项失败/冲突/身份错误时整体行为无契约（BUG-003 教训） | 批量接口回归必测：单项失败不中断其余、逐项结果（results+count）形状、坏输入 400、空声明 409 |
 | 新增节点类型只改实现不改注册表 | 变量选择器/面板/校验漏识别（BUG-001 教训：upstreamVariables switch 漏 setVariables） | 新增节点类型统一在 nodeRegistry.js 注册，输出变量推导用 deriveOutputVariables |
-| 前置 story 回归测试未随当前行为更新 | 当前 story 改变已有节点/UI 后旧断言失败（BUG-005 教训） | 变更已有节点/UI 时同步搜索并更新所有引用该类型/文案的回归测试 |
 | 集中式 switch 推导变量 | 每新增类型要改多处，易遗漏 | 用注册表 + deriveOutputVariables 通用化，新增类型只改一处 |
+| 故障注入未在 finally 清理底层句柄 | mock `task.destroy = () => { throw ... }` 测容错，代码 catch 成功但底层真实定时器/连接从未被 stop，导致测试进程事件循环挂死 | 故障注入后在 `try...finally` 恢复原方法并显式销毁底层真实资源，或注入假定时器/假连接 seam |
+
 
 ---
 

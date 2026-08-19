@@ -111,3 +111,5 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-032: 权限裁决器 PermissionAdjudicator 领域模块化（Per-Instance 工厂 + 内存 Promise 注册表）
 - ADR-033: DB 连接 per-path 缓存（getDb 单槽改 Map<path,Database>）
 - ADR-034: 通道发送能力统一收拢与单一在线检查属主（services.channelSender + channelManager.dispatchToAdapter 集中在线检查）
+- ADR-035: 独立服务容器 ServiceContainer 与 Server 纯传输化（createServiceContainer 惰性工厂/接线/调度 + server.js 瘦身至 ≤250 行 + server.services 唯一 DI seam）
+
