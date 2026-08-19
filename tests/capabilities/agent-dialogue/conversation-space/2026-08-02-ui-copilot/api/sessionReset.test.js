@@ -232,7 +232,7 @@ describe("REQ-AGENT-027 标准 4 UI 空间 /reset = 同分组新建会话", () =
   });
 });
 
-describe("REQ-AGENT-027 标准 5 feishu:* /reset 世代制回归（store 层）", () => {
+describe("REQ-AGENT-027 标准 5 feishu:* /reset 空世代原地换代回归（store 层）", () => {
   let workdir;
   let sessionDir;
   let dbPath;
@@ -256,8 +256,9 @@ describe("REQ-AGENT-027 标准 5 feishu:* /reset 世代制回归（store 层）"
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("store.reset on a feishu:* space bumps the JSONL generation and rotates sessionRef (existing semantics unchanged)", async () => {
-    // Arrange：既有空间（复用 builtin-agent sessionStore.test.js 的断言风格）。
+  it("store.reset on an empty-generation feishu:* space bumps the JSONL generation in place without creating a row", async () => {
+    // Arrange：既有空世代空间（getOrCreate 仅 touch 占位文件，无任何消息——
+    // ADR-037 空世代不归档分支；非空世代归档语义见 2026-08-19-feishu-reset-history-archive）。
     const s1 = store.getOrCreate("feishu:oc_1", { sessionDir });
     assert.equal(s1.created, true, "前置：首次建空间");
     const genBefore = sessionStoreMod.generationFromRef(s1.sessionRef);
@@ -265,16 +266,16 @@ describe("REQ-AGENT-027 标准 5 feishu:* /reset 世代制回归（store 层）"
     // Act
     const reset = store.reset("feishu:oc_1");
 
-    // Assert：世代 +1、sessionRef 换代、spaceKey 不变（世代制，非 UI 新行语义）。
+    // Assert：空世代原地换代——世代 +1、sessionRef 换代、spaceKey 不变、不建行。
     assert.ok(reset, "feishu:* reset 应返回换代信息");
-    assert.equal(reset.spaceKey, "feishu:oc_1", "feishu:* reset 不换 spaceKey（世代制，区别于 UI 新行语义）");
+    assert.equal(reset.spaceKey, "feishu:oc_1", "空世代 reset 不换 spaceKey（原地换代，区别于 UI 新行语义）");
     assert.equal(sessionStoreMod.generationFromRef(reset.sessionRef), genBefore + 1, "reset 后 JSONL 世代应 +1");
     assert.notEqual(reset.sessionRef, s1.sessionRef, "reset 后 sessionRef 应换代");
     assert.ok(fs.existsSync(reset.sessionRef), "新世代 JSONL 应落盘");
-    // 同一空间仍只有一行（世代制不建行）。
+    // 空世代不归档：同一空间仍只有一行。
     const { getDb } = await import("../../../../../../src/db.js");
     const { c } = getDb().prepare("SELECT COUNT(*) AS c FROM agent_sessions WHERE spaceKey = ?").get("feishu:oc_1");
-    assert.equal(c, 1, "feishu:* reset 世代制不应新建 agent_sessions 行");
+    assert.equal(c, 1, "空世代 feishu:* reset 不应新建 agent_sessions 行（ADR-037 空世代不归档）");
   });
 });
 

@@ -2,7 +2,7 @@
 // REQ-VERSION: v1-hash:8a4fce4fe307c46375fff08faf1aac3342adbe8a95b92c97c15fc3886d629003
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
-// EXPECTED-TRACE: prd.md §6.3 row 2, row 5, row 6, §10.4 contract 1, contract 2
+// EXPECTED-TRACE: prd.md §6.3 row 2, row 5, row 6, §8 row 2, §10.4 contract 1, contract 2
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: true
 
@@ -197,6 +197,67 @@ describe("REQ-AGENT-123 & REQ-AGENT-124 飞书 /reset 归档事务与异常分�
     const db = getDb(dbPath);
     const count = db.prepare("SELECT COUNT(*) as count FROM agent_sessions").get().count;
     assert.equal(count, 0, "不应产生任何会话行");
+  });
+
+  it("REQ-AGENT-124 AC3: 归档事务 DB 写失败 → E-SESSION-PERSIST + 降级原地换代（无半成品归档行）", () => {
+    const spaceKey = "feishu:oc_fail";
+    const oldSessionRef = path.join(sessionDir, "feishu_oc_fail.2.jsonl");
+    seedFeishuSession({
+      spaceKey,
+      sessionRef: oldSessionRef,
+      title: "故障注入会话",
+      messageCount: 1
+    });
+    // DB 层失败注入：预存归档目标键冲突行 → 归档 UPDATE 撞 UNIQUE 约束，事务整体回滚。
+    // （归档分支 touchSessionFile 在 try 外，只读目录类 fs 失败会直接抛出、走不到降级
+    //  分支——注入点必须是 DB 层失败，prd.md §11.1 v0.2 修正）
+    const db = getDb(dbPath);
+    db.prepare(`
+      INSERT INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt, title)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      "feishu:oc_fail:gen2",
+      path.join(sessionDir, "feishu_oc_fail.legacy.jsonl"),
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-01T00:00:00.000Z",
+      "预存冲突行"
+    );
+
+    const stderrWrites = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (chunk) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    };
+    let info;
+    try {
+      // EXPECTED-TRACE: prd.md §8 row 2（写失败降级）+ §6.3 row 2（原地换代语义）
+      info = store.reset(spaceKey);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    // (a) stderr 输出 E-SESSION-PERSIST 降级诊断
+    assert.ok(
+      stderrWrites.some((line) => line.includes("E-SESSION-PERSIST") && line.includes("reset 归档事务")),
+      `stderr 应含 E-SESSION-PERSIST 归档事务降级诊断，实际：${stderrWrites.join("")}`
+    );
+
+    // (b) 降级为原地换代：返回活跃键 + 世代 +1（内存态继续）
+    assert.ok(info, "降级后 reset 仍应返回 session info");
+    assert.equal(info.spaceKey, spaceKey);
+    assert.match(info.sessionRef, /feishu_oc_fail\.3\.jsonl$/);
+    assert.ok(fs.existsSync(info.sessionRef), "新世代 JSONL 文件应存在（归档路径已 touch）");
+
+    // (c) 无半成品归档行：活跃行 spaceKey 未改名（事务回滚）、归档目标行仍是预存冲突行、总行数不变
+    const rows = db.prepare("SELECT * FROM agent_sessions ORDER BY spaceKey ASC").all();
+    assert.equal(rows.length, 2, "归档事务回滚 + 原地换代不插行，总行数维持 2");
+    const activeRow = rows.find((r) => r.spaceKey === spaceKey);
+    assert.ok(activeRow, "活跃行 spaceKey 应保持不变（改名已回滚）");
+    assert.equal(activeRow.sessionRef, info.sessionRef, "活跃行 sessionRef 原地换代");
+    assert.equal(activeRow.title, "故障注入会话", "活跃行 title 未被归档流程带走");
+    const conflictRow = rows.find((r) => r.spaceKey === "feishu:oc_fail:gen2");
+    assert.equal(conflictRow.title, "预存冲突行", "归档目标行仍是预存冲突行（未被改名覆盖）");
   });
 
   it("REQ-AGENT-124 AC4: 畸形 sessionRef 兜底为 gen1 归档键", () => {
