@@ -77,7 +77,30 @@ export function setChannelAdapter(adapter) {
 
 export function resolveChannelSender() {
   if (testChannelSender) {
-    return testChannelSender;
+    return {
+      async send(channelType, payload) {
+        if (typeof testChannelSender.send === "function") {
+          if (payload === undefined && typeof channelType === "object") {
+            return testChannelSender.send(channelType);
+          }
+          if (typeof testChannelSender.getStatus === "function" || typeof testChannelSender.onMessage === "function") {
+            return testChannelSender.send(payload);
+          }
+          return testChannelSender.send(channelType, payload);
+        }
+      },
+      async reply(channelType, payload) {
+        if (typeof testChannelSender.reply === "function") {
+          if (payload === undefined && typeof channelType === "object") {
+            return testChannelSender.reply(channelType);
+          }
+          if (typeof testChannelSender.getStatus === "function" || typeof testChannelSender.onMessage === "function") {
+            return testChannelSender.reply(payload);
+          }
+          return testChannelSender.reply(channelType, payload);
+        }
+      }
+    };
   }
   return {
     send: (channelType, payload) => channelManager.send(channelType, payload),
