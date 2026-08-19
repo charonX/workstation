@@ -217,8 +217,10 @@ export function submit({ projectId, flowId, trigger, variables, scheduleId }) {
 // submit 时快照；缺省则入口捕获，debug 路径 persist=false 守卫不生效）→
 // 检查点①（失配 → abortExecutionIfQueued 结算 queued 行 → return）→
 // 迁移 queued→running（v2：出队后立即，零睡眠）→ 拼装（executors：
-// testAgentExecutor 注入；_channelManager shim 经 resolveChannelAdapter；
-// services.invokeSubflow = makeInvokeSubflow 绑定自身 persist）→ 引擎 run →
+// testAgentExecutor 注入；services.channelSender = resolveChannelSender()
+//（生产走 channelManager 统一在线分发，测试走 setTestChannelSender /
+//  setChannelAdapterForTests 边界包装）；services.invokeSubflow = makeInvokeSubflow
+// 绑定自身 persist）→ 引擎 run →
 // 检查点②（成功）/③（catch）→ 写入（insertExecutionNodes/completeExecution/
 // collectArtifacts（仅 artifacts=true）/addExecutionLog）→ finally 检查点④ 门控
 // deliverTerminalNotification/writeExecutionNotification（仅 notify=true）。
