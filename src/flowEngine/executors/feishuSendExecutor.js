@@ -28,11 +28,11 @@ function parseContent(rawContent) {
   }
 }
 
-export async function feishuSendExecutor({ node, context, options }) {
+export async function feishuSendExecutor({ node, context, services, options }) {
   const log = (message) => ({ at: new Date().toISOString(), message });
   const logs = [];
 
-  const channelReply = context.channelReply;
+  const channelReply = context?.channelReply;
   if (!channelReply || !channelReply.chatId) {
     logs.push(log("feishuSend: no channelReply in context; node skipped"));
     return {
@@ -58,36 +58,24 @@ export async function feishuSendExecutor({ node, context, options }) {
     };
   }
 
-  // Resolve channel manager: allow injection via context._channelManager (tests override),
-  // otherwise dynamic-import the default to avoid ESM circular imports.
-  let channelManager = context._channelManager;
-  if (!channelManager) {
-    try {
-      channelManager = await import("../../services/channelManager.js");
-    } catch (err) {
-      const message = `feishuSend: failed to load channelManager: ${err.message}`;
-      return { status: "error", error: message, logs: [log(message)] };
-    }
+  const channelSender = services?.channelSender;
+  if (!channelSender) {
+    const message = "feishuSend: channelSender service not available";
+    return { status: "error", error: message, logs: [log(message)] };
   }
 
   const channelType = channelReply.channelType || "feishu";
   const replyToOriginal = node.config?.replyToMessage !== false; // default true
-  const payload = {
-    chatId: channelReply.chatId,
-    msgType,
-    content: JSON.stringify(content),
-    ...(replyToOriginal && channelReply.messageId ? { messageId: channelReply.messageId } : {})
-  };
 
   try {
     if (replyToOriginal && channelReply.messageId) {
-      await channelManager.reply(channelType, {
+      await channelSender.reply(channelType, {
         messageId: channelReply.messageId,
         msgType,
         content: JSON.stringify(content)
       });
     } else {
-      await channelManager.send(channelType, {
+      await channelSender.send(channelType, {
         chatId: channelReply.chatId,
         msgType,
         content: JSON.stringify(content)
