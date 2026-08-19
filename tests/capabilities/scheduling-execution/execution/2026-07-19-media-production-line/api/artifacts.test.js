@@ -272,7 +272,6 @@ describe("REQ-SCHEDULE-008/009: 产物登记与终态投递钩子", () => {
     // 结构约束：通道发送只发生在 runner 终态钩子，agent 执行器不得引用通道层。
     const files = [
       "src/flowEngine/executors/agentExecutor.js",
-      "src/flowEngine/agentAdapter.js",
       "src/flowEngine/claudeAgentAdapter.js"
     ];
     for (const file of files) {

@@ -9,6 +9,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
+import { setAgentExecutorForTests } from "../../../../../../src/services/executionRunner.js";
 
 const CLI = "node src/cli/opc-workstation.js";
 
@@ -18,6 +19,11 @@ describe("Tasks and Executions", () => {
   let flow;
 
   beforeEach(async () => {
+    setAgentExecutorForTests(async ({ node }) => ({
+      status: "success",
+      output: `mock agent response (${node?.config?.agentType || "mock"})`,
+      logs: [{ at: new Date().toISOString(), message: "mock agent executed" }]
+    }));
     serverCtx = await startServer();
     project = await (await fetch(`${serverCtx.baseUrl}/api/projects`, {
       method: "POST",
@@ -32,6 +38,7 @@ describe("Tasks and Executions", () => {
   });
 
   afterEach(async () => {
+    setAgentExecutorForTests(null);
     await stopServer(serverCtx);
   });
 
