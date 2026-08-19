@@ -57,14 +57,18 @@ describe("REQ-AGENT-117 依赖方向回正（静态断言）", () => {
     assert.ok(!/\bbuildSessionConfig\b/.test(names), "server.js 不得从路由 import buildSessionConfig");
     assert.ok(!/\battachPendingSseSubs\b/.test(names), "server.js 不得从路由 import attachPendingSseSubs");
 
-    // server.js 必须从 services 层新模块取领域能力（方向回正的正向证据）
+    // server.js 或 serviceContainer.js 必须从 services 层取领域能力（方向回正的正向证据）
+    const containerFile = `${SRC}/services/serviceContainer.js`;
+    const checkSource = fs.existsSync(containerFile)
+      ? fs.readFileSync(containerFile, "utf8")
+      : source;
     assert.ok(
-      /from\s*["'][^"']*services\/sessionDomain\.js["']/.test(source),
-      "server.js 应 import services/sessionDomain.js"
+      /from\s*["'][^"']*(?:services\/|\.\/)sessionDomain\.js["']/.test(checkSource),
+      "services/serviceContainer.js 应 import sessionDomain.js"
     );
     assert.ok(
-      /from\s*["'][^"']*services\/sessionSseRegistry\.js["']/.test(source),
-      "server.js 应 import services/sessionSseRegistry.js"
+      /from\s*["'][^"']*(?:services\/|\.\/)sessionSseRegistry\.js["']/.test(checkSource),
+      "services/serviceContainer.js 应 import sessionSseRegistry.js"
     );
   });
 

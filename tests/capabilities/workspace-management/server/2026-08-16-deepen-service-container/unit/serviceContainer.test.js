@@ -218,14 +218,27 @@ describe("REQ-WORKSPACE-018 容器生命周期统一管理与资源清理", () =
 
     // 故意让内部 purgeTask.destroy 抛异常
     const purgeTask = container.getPurgeTask?.();
+    const origDestroy = purgeTask?.destroy;
     if (purgeTask) {
       purgeTask.destroy = () => {
         throw new Error("simulated cron destroy failure");
       };
     }
 
-    await assert.doesNotReject(async () => {
-      await container.dispose();
-    }, "dispose 遇到单个子项异常时不得中断");
+    try {
+      await assert.doesNotReject(async () => {
+        await container.dispose();
+      }, "dispose 遇到单个子项异常时不得中断");
+    } finally {
+      // 恢复并执行真实销毁，防止 node-cron interval 泄漏导致测试进程挂死
+      if (purgeTask && origDestroy) {
+        purgeTask.destroy = origDestroy;
+        try {
+          origDestroy.call(purgeTask);
+        } catch {
+          // ignore
+        }
+      }
+    }
   });
 });
