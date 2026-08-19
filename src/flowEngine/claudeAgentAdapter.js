@@ -78,8 +78,11 @@ export async function execute({ prompt, model, projectPath, options, apiKey } = 
   };
 
   try {
-    for await (const message of queryFn({ prompt, options: sdkOptions })) {
-      if (message.type === "assistant") {
+    const stream = await queryFn({ prompt, options: sdkOptions });
+    for await (const message of stream) {
+      if (message.type === "text") {
+        assistantText += message.text ?? "";
+      } else if (message.type === "assistant") {
         for (const block of message.message?.content ?? []) {
           if (block.type === "text") {
             assistantText += block.text;
