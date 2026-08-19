@@ -85,6 +85,14 @@ export function newUiSpaceKeyFor(spaceKey) {
   return prefix ? `${prefix}${randomUUID()}` : undefined;
 }
 
+// 飞书归档键判定（ADR-037 / BUG-001）：feishu:<chatId>:gen<N> 归档行只读——
+// 不参与重启水合/会话装配（getOrCreate 会刷新 lastActiveAt、缺文件时改写
+// sessionRef 毁历史指针）；列表展示与消息回看不经此判定（归档条目照常可见）。
+const FEISHU_ARCHIVE_KEY_RE = /^feishu:.+:gen\d+$/;
+export function isFeishuArchiveKey(spaceKey) {
+  return FEISHU_ARCHIVE_KEY_RE.test(String(spaceKey ?? ""));
+}
+
 // —— JSONL 历史投影（B1：平台侧不复制全文，运行时真相 = PI JSONL）——
 // 兼容两种 message 行形态（同构）：PI SessionManager 与平台内存内核轻量记录
 // 均写 { type:"message", id, timestamp, message: { role, content } }——

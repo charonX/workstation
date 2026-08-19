@@ -52,6 +52,7 @@ import { expandTilde, realpathBestEffort } from "./pathUtils.js";
 import { readGitBranch } from "./gitBranch.js";
 import { buildSystemPrompt } from "./agentSystemPrompt.js";
 import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFailure } from "./sessionStore.js";
+import { isFeishuArchiveKey } from "./sessionDomain.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
 import { createMcpService } from "./mcpService.js";
 import { limitSize } from "../agent/turnEventPipeline.js";
@@ -867,6 +868,11 @@ function createProcessAgentService(options = {}) {
             const rows = store.list();
             let inWindow = 0;
             for (const row of rows) {
+              // BUG-001：飞书归档行（feishu:<chatId>:gen<N>，ADR-037）只读、不参与
+              // 水合——getOrCreate 会刷新其 lastActiveAt（破坏归档保留契约与列表
+              // 排序）、归档 JSONL 缺失时会 bumpGeneration 改写 sessionRef 毁历史
+              // 指针，且归档条目本就不该装配为活 worker 会话。
+              if (isFeishuArchiveKey(row.spaceKey)) continue;
               // 窗口过滤：超窗（含文件缺失且行活跃时间旧）不水合。
               if (!isWithinHydrationWindow(row.sessionRef, row.lastActiveAt)) {
                 // 存量句柄一并丢弃（懒恢复兜底：下次交互 getOrCreate 重发 config）。
