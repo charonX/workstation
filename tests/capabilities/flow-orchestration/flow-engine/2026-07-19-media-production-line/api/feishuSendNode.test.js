@@ -31,8 +31,10 @@ describe("REQ-FLOW-032: feishuSend node executor", () => {
       node: { config: { msgType: "text", content: '{"text":"已存：{{agent.savedPath}}"}' } },
       context: {
         "agent.savedPath": "/abs/path/to/file.md",
-        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" },
-        _channelManager: fakeChannelManager
+        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" }
+      },
+      services: {
+        channelSender: fakeChannelManager
       }
     });
     assert.equal(result.status, "success");
@@ -54,8 +56,10 @@ describe("REQ-FLOW-032: feishuSend node executor", () => {
     await feishuSendExecutor({
       node: { config: { msgType: "text", replyToMessage: false, content: '{"text":"hello"}' } },
       context: {
-        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" },
-        _channelManager: fakeChannelManager
+        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" }
+      },
+      services: {
+        channelSender: fakeChannelManager
       }
     });
     assert.equal(sent.length, 1, "replyToMessage=false 时走 send");
@@ -77,8 +81,10 @@ describe("REQ-FLOW-032: feishuSend node executor", () => {
     await feishuSendExecutor({
       node: { config: { msgType: "post", content: JSON.stringify(postContent) } },
       context: {
-        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" },
-        _channelManager: fakeChannelManager
+        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" }
+      },
+      services: {
+        channelSender: fakeChannelManager
       }
     });
     assert.equal(replied[0].msgType, "post");
@@ -93,8 +99,10 @@ describe("REQ-FLOW-032: feishuSend node executor", () => {
     const result = await feishuSendExecutor({
       node: { config: { msgType: "text", content: '{"text":"hi"}' } },
       context: {
-        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" },
-        _channelManager: fakeChannelManager
+        channelReply: { channelType: "feishu", chatId: "oc_1", messageId: "om_1" }
+      },
+      services: {
+        channelSender: fakeChannelManager
       }
     });
     assert.equal(result.status, "error");

@@ -105,9 +105,12 @@ describe("REQ-FLOW-042: 引擎 executor 签名扩展与多输出支持", () => {
     const fakeChannelManager = {
       async send(_type, payload) { sent.push(payload); return { ok: true }; }
     };
-    const result = await run({ flow }, {}, {
-      channelReply: { channelType: "feishu", chatId: "c1", messageId: "m1" },
-      _channelManager: fakeChannelManager
+    const result = await run({ flow }, {
+      services: {
+        channelSender: fakeChannelManager
+      }
+    }, {
+      channelReply: { channelType: "feishu", chatId: "c1", messageId: "m1" }
     });
     const fsRec = result.nodeRecords.find(r => r.nodeId === "fs");
     assert.ok(fsRec);
