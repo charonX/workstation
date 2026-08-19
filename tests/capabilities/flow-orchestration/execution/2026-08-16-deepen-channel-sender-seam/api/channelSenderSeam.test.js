@@ -191,48 +191,64 @@ describe("REQ-FLOW-054 & REQ-FLOW-056: executionRunner channelSender seam & pure
 
     executionRunner.setTestChannelSender(mockSender);
 
-    let subflowRan = false;
-    const parentFlow = {
-      id: "parent-flow",
-      nodeList: [{ id: "n1", type: "call-sub" }],
-      edges: []
-    };
+    // 引入 service 注册真实子流程与父流程
+    const projectService = await import("../../../../../../src/services/projectService.js");
+    const flowService = await import("../../../../../../src/services/flowService.js");
 
-    const subFlow = {
-      id: "child-flow",
-      nodeList: [{ id: "cn1", type: "child-send" }],
-      edges: []
-    };
+    const projectId = "proj-seam-test";
+    projectService.resetProjects([{ id: projectId, name: "test-proj", localPath: "/tmp" }]);
 
-    const customExecutors = {
-      "call-sub": async ({ services }) => {
-        // 调用子流程
-        const result = await services.invokeSubflow(
-          { flow: subFlow, project: { localPath: "/tmp" } },
-          { subflowId: "child-flow", persist: false, executors: customExecutors }
-        );
-        return { status: "success", output: result.output };
-      },
-      "child-send": async ({ services }) => {
-        subflowRan = true;
-        // 子流程节点调用 channelSender
-        await services.channelSender.send("feishu", { chatId: "oc_from_child" });
-        return { status: "success", output: "child_done" };
-      }
-    };
+    // 子流程：flowInput(声明 outputVariables 包含 channelReply) -> feishuSend -> flowOutput
+    const childFlow = flowService.importFlow({
+      id: "flow-child-seam",
+      projectId,
+      name: "child-flow",
+      nodes: [
+        { id: "ci", type: "flowInput", config: { outputVariables: [{ name: "channelReply" }] } },
+        { id: "cs", type: "feishuSend", config: { msgType: "text", content: '{"text":"msg from child"}' } },
+        { id: "co", type: "flowOutput", config: { outputVariables: [] } }
+      ],
+      edges: [
+        { id: "ce1", sourceNodeId: "ci", targetNodeId: "cs" },
+        { id: "ce2", sourceNodeId: "cs", targetNodeId: "co" }
+      ],
+      status: "draft"
+    });
+
+    // 父流程：trigger -> callFlow(targetFlowId: childFlow.id, inputMappings: 映射 channelReply)
+    const parentFlow = flowService.importFlow({
+      id: "flow-parent-seam",
+      projectId,
+      name: "parent-flow",
+      nodes: [
+        { id: "pi", type: "trigger", config: {} },
+        {
+          id: "pc",
+          type: "callFlow",
+          config: {
+            targetFlowId: childFlow.id,
+            targetInputNodeId: "ci",
+            inputMappings: [{ childVar: "channelReply", parentExpr: "{{channelReply}}" }]
+          }
+        }
+      ],
+      edges: [
+        { id: "pe1", sourceNodeId: "pi", targetNodeId: "pc" }
+      ],
+      status: "draft"
+    });
 
     await executionRunner.runOnce(
       {
         flow: parentFlow,
-        project: { localPath: "/tmp" }
+        project: { id: projectId, localPath: "/tmp" },
+        variables: { channelReply: { channelType: "feishu", chatId: "oc_from_child" } }
       },
       {
-        persist: false,
-        executors: customExecutors
+        persist: false
       }
     );
 
-    assert.equal(subflowRan, true, "子流程必须成功执行");
     assert.equal(subflowCalls.length, 1, "子流程调用应直接命中 mockSender");
     assert.equal(subflowCalls[0].chatId, "oc_from_child");
   });
