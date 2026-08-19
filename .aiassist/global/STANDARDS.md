@@ -177,3 +177,10 @@
   单连接调用方的安全超集。
 - **句柄可缓存**：模块可安全持有 getDb(path) 返回值；"每次操作重新取 + 防御注释"是单槽
   时代遗留，清理时逐个追问"per-path 后还需要吗"（自愈/句柄失效检测机制尤其可疑）。
+
+## 通道发送能力注入与单一在线检查（2026-08-19，2026-08-16-deepen-channel-sender-seam /reflect）
+
+- **执行变量注册表保持纯净**：执行上下文中的 `variables` 仅容纳业务数据与环境变量，禁止注入服务对象（如 `_channelManager`），所有系统/外部服务能力一律走 `services` bag 注入（对齐 ADR-008）。
+- **在线状态检查单一属主（Online check lives in one place）**：通道在线状态检查（`getStatus() === "online"`）必须且只在底层通道分发属主（`channelManager.dispatchToAdapter`）中集中执行；禁止在调用方与分发方之间抹平为双边不查，离线/未配置统一抛出标准错误码 `E-CHANNEL-OFFLINE`。
+- **测试接缝边界显式包装，零运行时 Duck-Typing**：测试注入接缝（如 `setTestChannelSender`）应接收标准接口签名；向后兼容旧形态输入时，必须在**注入函数边界**处一次性完成形态适配与包装，禁止在运行期热路径中逐次嗅探 `typeof` / `arguments.length`（脆弱且耦合内部方法名）。
+- **消灭静默无操作的残留空接缝**：重构废除旧接缝时，应联动清理所有调用方（如 `server.js`）并彻底删除空导出，禁止保留"静默 no-op"公开方法。

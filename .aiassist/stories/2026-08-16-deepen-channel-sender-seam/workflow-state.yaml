@@ -7,7 +7,10 @@ intention: >-
   feishuSend 动态 import 跳过 online 检查与测试注入，debug 路径与生产行为分叉。
   一句话痛点：通道适配器解析有三条语义不同的路径，ADR 已否决的模式仍在生产存活。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA          # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+status: completed
+completed: true
+completed_at: 2026-08-19
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-16
@@ -21,6 +24,7 @@ history:
   - {at: 2026-08-19, from: TEST, to: ASSERTION-SIGNOFF, note: "生成验收测试骨架与 test-plan.md"}
   - {at: 2026-08-19, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，门 1 签核完成，进入 BUILD"}
   - {at: 2026-08-19, from: BUILD, to: QA, note: "Slice 1 & Slice 2 实现完成，契约与回归测试全绿，进入 QA"}
+  - {at: 2026-08-19, from: QA, to: REFLECT, note: "QA 全绿，完成知识沉淀（ADR-034、engineering-lessons、STANDARDS、checklists），Story 原地完结归档"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

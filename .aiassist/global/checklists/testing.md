@@ -190,3 +190,13 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - 流式 log 断言：job 终态 log 含确定性 git 输出行（"Cloning into"）即可（快 clone 下
   运行中日志时序不稳定，断言终态而非运行中）。
 - 无超时行为靠代码审查（timeoutMs=0 默认），不写"等 30s"测试（慢且 flaky）。
+
+## 2026-08-19 追加（2026-08-16-deepen-channel-sender-seam /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 运行期对注入 mock 做 duck-typing arity 嗅探 | 脆弱（参数个数误判、内部方法名耦合）且污染热路径 | 在测试注入入口（如 `setChannelAdapterForTests`）边界处一次性显式包装为目标接口形状；运行期零嗅探 |
+| 测试子流程继承特性时伪造内联 flow 调用 | 绕过了 runner / service 真实加载与映射机制，产生无意义报错（E-FLOW-REF-MISSING） | 严格通过 `flowService.importFlow` 注册真实子流程与父流程，配置标准的 `callFlow` 映射进行端到端断言 |
+| reset 清理断言只检查旧引用非 null | 引用是 reset 前捕获的闭包局部变量，无法证明 mock 在后续执行中被清理 | 真实执行：设置 mock 执行验证生效 → 执行 `reset()` → 再次执行断言 mock 计数不再增加（已回退至默认） |
+| 在线检查收拢时在两端抹平不查 | 重构删除了上层 shim 检查却未在底层分发属主中补齐，导致生产离线无守卫静默穿透 | 在底层通道分发属主（`channelManager.dispatchToAdapter`）集中守卫，并在测试中覆盖生产默认未接线/离线断言 |
+

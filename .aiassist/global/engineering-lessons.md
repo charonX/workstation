@@ -5,6 +5,21 @@
 - 在项目演进过程中补充踩坑记录、最佳实践、性能调优等。
 - 保持简洁，优先记录可复用的结论，而非一次性细节。
 
+## 通道能力收拢与测试接缝设计：单一在线检查、边界适配与零假断言（2026-08-19，2026-08-16-deepen-channel-sender-seam）
+
+- **「在线检查统一收拢」不等于「双边抹平不查」**：
+  - 现象：原先测试路径的 shim 会检查通道在线状态，而生产路径漏查；重构统一收口时若只是删除了测试 shim，未在底层通道分发属主（`channelManager.dispatchToAdapter`）中加入状态守卫，会导致生产离线时直接调用 adapter 发送而无守卫，把不一致抹平成了"两处都不查"。
+  - 结论：将在线状态守卫收拢到唯一分发属主（`channelManager.dispatchToAdapter`），未上线/未配置一律抛出规范化错误 `E-CHANNEL-OFFLINE`，消除离线静默穿透。
+- **测试接缝在注入边界做一次性形态适配，禁止热路径运行时 Duck-Typing 嗅探**：
+  - 现象：为了兼容旧的 1 参 adapter 测试注入，在 `resolveChannelSender().send` 运行期用 `typeof adapter.getStatus === "function" || typeof adapter.onMessage === "function"` 判断参数个数（arity）。这种运行时嗅探不仅脆弱（若 2 参 mock 恰好包含同名方法会被误判丢参），而且把 runner 强耦合到 adapter 内部方法名。
+  - 结论：在 `setChannelAdapterForTests(adapter)` **注入边界处一次性包装** 为标准的 2 参 `channelSender` 对象；`resolveChannelSender()` 直接返回 2 参 sender，运行期零嗅探、零额外逻辑。
+- **废弃接缝必须彻底连根拔起，禁止保留静默无操作的空接缝**：
+  - 现象：废除旧属性注入后，在 runner 中保留了 `setChannelAdapter(_adapter) {}` no-op 空方法，`server.js` 仍然在调用它，形成了无意义的伪接缝。
+  - 结论：消灭旧模式时，同步清理调用方（`server.js`）并彻底删除空导出，保持公共 API 干净。
+- **子流程测试必须遵循真实契约，严禁伪造不存在的内联调用**：
+  - 现象：测试子流程继承 `services.channelSender` 时，直接给 `invokeSubflow` 传入了内联 flow 对象，忽视了 runner 真实契约是从 `flowService.getFlow` 获取注册 flow 且需要 `callFlow` 节点的 `inputMappings` 映射。
+  - 结论：测试嵌套执行等跨模块特性时，严格遵循真实 service 注册与节点映射契约，产出真实可信的自动化证据。
+
 ---
 
 ## 权限裁决与安全管道深化：消灭全局状态、即时唤醒与唯一执行者（2026-08-18，2026-08-16-deepen-permission-adjudication）

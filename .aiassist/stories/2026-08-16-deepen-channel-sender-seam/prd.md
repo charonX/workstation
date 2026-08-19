@@ -1,9 +1,9 @@
 # 通道发送接缝深化（Retire the _channelManager shim & Deepen ChannelSender Seam）
 
 > 故事 ID：`2026-08-16-deepen-channel-sender-seam`
-> 状态：设计中
+> 状态：已完结（历史记录）
 > 创建日期：2026-08-16
-> 最后更新：2026-08-19
+> 完结日期：2026-08-19
 
 ---
 

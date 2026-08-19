@@ -102,3 +102,12 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-023: agent 权限模式化（authorizerChain 模型 link + 模式门控，三档 strict/standard/auto）
 - ADR-024: PI 插件机制全量复用官方包管理（worker 从封闭装配转官方发现链路）
 - ADR-025: MCP 桥内置内联 + DB 快照注入 + broker 权限接线（gotgenes mcp 面）
+- ADR-026: 会话级模型配置持久化 + provider-change 热更新
+- ADR-027: 供应商探针协议族感知派生（pi-ai 目录 model.api + baseUrl 单一真源）
+- ADR-028: 执行运行器 ExecutionRunner（唯一执行入口 / 描述符参数化 / reset 有界等待 / 零落库）
+- ADR-029: 回合事件管线模块化 turnEventPipeline（工厂模块 + 会话状态注册表统一清理）
+- ADR-030: 会话领域收编 sessionDomain（纯函数）+ sessionSseRegistry
+- ADR-031: 技能 job 可观测性（waitForJob 默认无超时 + spawn 流式进度）
+- ADR-032: 权限裁决器 PermissionAdjudicator 领域模块化（Per-Instance 工厂 + 内存 Promise 注册表）
+- ADR-033: DB 连接 per-path 缓存（getDb 单槽改 Map<path,Database>）
+- ADR-034: 通道发送能力统一收拢与单一在线检查属主（services.channelSender + channelManager.dispatchToAdapter 集中在线检查）
