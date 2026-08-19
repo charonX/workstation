@@ -10,7 +10,7 @@
 | REQ | 测试文件 | seam | 类型 | 覆盖 |
 |---|---|---|---|---|
 | REQ-AGENT-123 飞书 /reset 归档事务与回执保持 | `feishuResetArchive.test.js`、`feishuResetReceipt.test.js` | `sessionStore.reset`、`agentRouter.route` | 单元 | AC1 正常世代归档（旧行改名 `…:gen2` + 新活跃行）；AC2 首世代归档（无 `.gen` 后缀 → `gen1`）；AC3 连续归档键名递增；AC4 `onReset` 回调触发形态与参数；AC5 飞书 /reset 回执文案恒为「已重置当前对话空间会话，可以开始新对话了」 |
-| REQ-AGENT-124 飞书 /reset 异常与退化分支处理 | `feishuResetArchive.test.js` | `sessionStore.reset` | 单元 | AC1 空世代不归档（原地换代）；AC2 从未对话过的 chat 发 reset 返回 undefined；AC4 畸形 sessionRef 兜底为 gen1 归档键 |
+| REQ-AGENT-124 飞书 /reset 异常与退化分支处理 | `feishuResetArchive.test.js` | `sessionStore.reset` | 单元 | AC1 空世代不归档（原地换代）；AC2 从未对话过的 chat 发 reset 返回 undefined；AC3 归档事务 DB 写失败 → E-SESSION-PERSIST + 降级原地换代（DB 层 UNIQUE 冲突注入，无半成品归档行）；AC4 畸形 sessionRef 兜底为 gen1 归档键 |
 | REQ-AGENT-125 归档条目在会话列表展示与 displayName fallback | `feishuArchiveSessions.test.js` | `GET /api/agent/sessions` 路由（真实 store + 临时 SQLite） | 集成 | AC1 会话列表包含归档条目并按 `lastActiveAt` 倒序；AC2 归档条目 title 为空时 displayName fallback 逆解析查 `space_meta`；AC3 归档条目 JSONL 文件缺失容错 |
 | REQ-AGENT-126 归档条目只读回看与写操作守护 | `feishuArchiveSessions.test.js` | `GET /api/agent/sessions/:spaceKey/messages`、`POST /api/agent/sessions/:spaceKey/*` | 集成 | AC1 历史消息只读回看（GET messages 200 返回全部历史）；AC2 缺失 JSONL 文件回看降级为空数组；AC3 POST 写端点（messages / reset / provider / mode）均返回 403 `E-SESSION-READONLY` |
 
