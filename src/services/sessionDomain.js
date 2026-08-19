@@ -5,8 +5,9 @@
 //   - config 装配：buildSessionConfig + DEFAULT_PROVIDER（REQ-AGENT-112）；
 //   - 空间 key 解析：uiGroupPrefixFor/projectIdOf/newUiSpaceKeyFor + PROJECT_PREFIX_RE
 //     （REQ-AGENT-114，ADR-016 语法）；
-//   - 历史投影/分页：projectMessagesFromJsonl/partText/normalizeLimit/paginateMessages
-//     （REQ-AGENT-113）；
+//   - 历史投影/分页：projectMessagesFromJsonl/hasProjectedMessage/partText/
+//     normalizeLimit/paginateMessages（REQ-AGENT-113；hasProjectedMessage 为
+//     review R5 空世代首行短路判定，与投影共用 projectLine 谓词）；
 //   - 附件规则：attachmentsError + IMAGE_MIME_TYPES/MAX_ATTACHMENTS/MAX_ATTACHMENT_BYTES
 //     （REQ-AGENT-116）；
 //   - 会话元数据投影：gitStateForSpace（REQ-AGENT-114 AC4，与 key 解析同源）。
@@ -98,6 +99,41 @@ export function isFeishuArchiveKey(spaceKey) {
 // 均写 { type:"message", id, timestamp, message: { role, content } }——
 // content 为文本段数组（{type:"text",text}）或纯字符串。非 message 行（session 头/
 // 事件/compaction 等）跳过；单行损坏跳过（不阻断其余历史）；文件缺失 → 空数组。
+
+// 单行 → 投影消息（无效行/非消息行/工具载体/空文本行 → undefined）。
+// projectMessagesFromJsonl 与 hasProjectedMessage 共用同一有效性谓词（单一事实源，
+// 防双份漂移）：历史 = 对话文本，只投影 user/assistant 且空文本行剔除（BUG-009）。
+function projectLine(line) {
+  if (!line.trim()) return undefined;
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (entry?.type !== "message" || !entry.message || typeof entry.message.role !== "string") return undefined;
+  // BUG-009：工具不落历史（REQ-AGENT-054 / PRD B8「工具块仅实时呈现不落历史」）。
+  // 修复前：role:"toolResult" 行原样投影 → 原始工具输出以纯文本气泡漏进历史
+  // （生产实锤 2026-08-10：重开会话后 bash ls 输出/project_list JSON 裸露）；
+  // 只含 thinking/toolCall（无 text 段）的 assistant 行投影为空文本气泡。
+  const role = entry.message.role;
+  if (role !== "user" && role !== "assistant") return undefined;
+  const content = entry.message.content;
+  let text = "";
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content.map(partText).join("");
+  }
+  if (text.trim() === "") return undefined;
+  return {
+    messageId: String(entry.id ?? ""),
+    role,
+    createdAt: typeof entry.timestamp === "string" ? entry.timestamp : "",
+    text,
+  };
+}
+
 export function projectMessagesFromJsonl(sessionRef) {
   let raw;
   try {
@@ -107,37 +143,26 @@ export function projectMessagesFromJsonl(sessionRef) {
   }
   const messages = [];
   for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (entry?.type !== "message" || !entry.message || typeof entry.message.role !== "string") continue;
-    // BUG-009：工具不落历史（REQ-AGENT-054 / PRD B8「工具块仅实时呈现不落历史」）。
-    // 修复前：role:"toolResult" 行原样投影 → 原始工具输出以纯文本气泡漏进历史
-    // （生产实锤 2026-08-10：重开会话后 bash ls 输出/project_list JSON 裸露）；
-    // 只含 thinking/toolCall（无 text 段）的 assistant 行投影为空文本气泡。
-    // 历史 = 对话文本：只投影 user/assistant，且空文本行（纯工具调用载体）剔除。
-    const role = entry.message.role;
-    if (role !== "user" && role !== "assistant") continue;
-    const content = entry.message.content;
-    let text = "";
-    if (typeof content === "string") {
-      text = content;
-    } else if (Array.isArray(content)) {
-      text = content.map(partText).join("");
-    }
-    if (text.trim() === "") continue;
-    messages.push({
-      messageId: String(entry.id ?? ""),
-      role,
-      createdAt: typeof entry.timestamp === "string" ? entry.timestamp : "",
-      text,
-    });
+    const message = projectLine(line);
+    if (message) messages.push(message);
   }
   return messages;
+}
+
+// 空世代存在性判定（review R5）：与 projectMessagesFromJsonl 同一谓词，首个有效
+// 消息行即短路——/reset 的空世代判定只需「有无消息」，不为长会话全量解析整份
+// JSONL（O(首条消息) 替代 O(文件)）。文件缺失/无有效行 → false。
+export function hasProjectedMessage(sessionRef) {
+  let raw;
+  try {
+    raw = fs.readFileSync(sessionRef, "utf8");
+  } catch {
+    return false;
+  }
+  for (const line of raw.split("\n")) {
+    if (projectLine(line)) return true;
+  }
+  return false;
 }
 
 // 文本段归一化：纯字符串原样；{ type:"text", text } 取 text；image 块 → 附件名

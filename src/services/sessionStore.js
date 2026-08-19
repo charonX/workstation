@@ -24,7 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getDb, defaultDbPath } from "../db.js";
-import { projectMessagesFromJsonl } from "./sessionDomain.js";
+import { hasProjectedMessage } from "./sessionDomain.js";
 
 // PRD §8 E-SESSION-PERSIST：SQLite/JSONL 写失败 → 告警日志 + 内存态继续（对话可用，
 // 仅重启不恢复）。只吞持久化类异常（带 err.code：fs E* / SQLite SQLITE_*）；参数错误等
@@ -241,8 +241,9 @@ export function createSessionStore(options = {}) {
     };
 
     if (typeof spaceKey === "string" && spaceKey.startsWith("feishu:")) {
-      const messages = projectMessagesFromJsonl(row.sessionRef);
-      if (messages.length === 0) {
+      // 空世代不归档（原地换代）：存在性判定首行短路（review R5），不为长会话
+      // 全量解析整份 JSONL。
+      if (!hasProjectedMessage(row.sessionRef)) {
         return inPlaceReset();
       }
 
