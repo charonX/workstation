@@ -24,7 +24,7 @@ const locators = require("../../../../../e2e/helpers/locators.cjs");
 async function seedNestedFlow(apiBaseUrl, projectId, name = "parent", childName = "child") {
   const child = await createFlow(apiBaseUrl, { name: childName, projectId, nodeList: [
     { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "msg" }] } },
-    { id: "agt", type: "agent", config: { outputVariable: "echo", prompt: "{{cin.msg}}" } },
+    { id: "agt", type: "setVariables", config: { outputVariables: [{ name: "echo", type: "string" }], expressions: [{ name: "echo", expression: "{{cin.msg}}" }] } },
     { id: "out", type: "flowOutput", config: { outputVariables: [{ name: "echo" }] } }
   ], edges: [
     { sourceNodeId: "cin", targetNodeId: "agt" },
@@ -119,7 +119,7 @@ test.describe("Nested Execution Detail", () => {
     const project = await createProject(apiBaseUrl, { name: "Detail3", localPath: `${userDataDir}/ws/detail3` });
     const gc = await createFlow(apiBaseUrl, { name: "gc", projectId: project.id, nodeList: [
       { id: "gin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "gagt", type: "agent", config: { outputVariable: "x", prompt: "{{gin.x}}" } },
+      { id: "gagt", type: "setVariables", config: { outputVariables: [{ name: "x", type: "string" }], expressions: [{ name: "x", expression: "{{gin.x}}" }] } },
       { id: "gout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [
       { sourceNodeId: "gin", targetNodeId: "gagt" }, { sourceNodeId: "gagt", targetNodeId: "gout" }
@@ -131,7 +131,7 @@ test.describe("Nested Execution Detail", () => {
         inputMappings: [{ childVar: "x", parentExpr: "{{pin.msg}}" }],
         outputMappings: [{ childVar: "x", parentKey: "pcall.x" }]
       }},
-      { id: "pagt", type: "agent", config: { outputVariable: "echo", prompt: "{{pcall.x}}" } },
+      { id: "pagt", type: "setVariables", config: { outputVariables: [{ name: "echo", type: "string" }], expressions: [{ name: "echo", expression: "{{pcall.x}}" }] } },
       { id: "pout", type: "flowOutput", config: { outputVariables: [{ name: "echo" }] } }
     ], edges: [
       { sourceNodeId: "pin", targetNodeId: "pcall" },
@@ -201,12 +201,12 @@ test.describe("Nested Execution Detail", () => {
     const project = await createProject(apiBaseUrl, { name: "Detail5", localPath: `${userDataDir}/ws/detail5` });
     const c1 = await createFlow(apiBaseUrl, { name: "c1", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "cagt", type: "agent", config: { outputVariable: "x", prompt: "{{cin.x}}" } },
+      { id: "cagt", type: "setVariables", config: { outputVariables: [{ name: "x", type: "string" }], expressions: [{ name: "x", expression: "{{cin.x}}" }] } },
       { id: "cout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [{ sourceNodeId: "cin", targetNodeId: "cagt" }, { sourceNodeId: "cagt", targetNodeId: "cout" }]});
     const c2 = await createFlow(apiBaseUrl, { name: "c2", projectId: project.id, nodeList: [
       { id: "cin", type: "flowInput", config: { outputVariables: [{ name: "x" }] } },
-      { id: "cagt", type: "agent", config: { outputVariable: "x", prompt: "{{cin.x}}" } },
+      { id: "cagt", type: "setVariables", config: { outputVariables: [{ name: "x", type: "string" }], expressions: [{ name: "x", expression: "{{cin.x}}" }] } },
       { id: "cout", type: "flowOutput", config: { outputVariables: [{ name: "x" }] } }
     ], edges: [{ sourceNodeId: "cin", targetNodeId: "cagt" }, { sourceNodeId: "cagt", targetNodeId: "cout" }]});
     const parent = await createFlow(apiBaseUrl, { name: "parent2", projectId: project.id, nodeList: [

@@ -50,12 +50,12 @@ test.describe("REQ-FLOW-028 Flow Editor 调试弹窗行为", () => {
         },
         {
           id: "n2",
-          type: "agent",
+          type: "setVariables",
           name: "Greet",
           position: { x: 360, y: 120 },
           config: {
-            outputVariable: "greeting",
-            prompt: "say hello to {{n1.name}}",
+            outputVariables: [{ name: "greeting", type: "string" }],
+            expressions: [{ name: "greeting", expression: "hello {{n1.name}}" }],
             retries: 0,
             onError: "fail",
           },
@@ -82,6 +82,6 @@ test.describe("REQ-FLOW-028 Flow Editor 调试弹窗行为", () => {
     // BUG-006 回归：结果面板应同时展示 Output 和 Execution logs。
     await expect(outputPanel).toContainText(/output/i);
     await expect(outputPanel).toContainText(/execution logs/i);
-    await expect(outputPanel).toContainText(/mock agent executed/i);
+    await expect(outputPanel).toContainText(/setVariables/i);
   });
 });
