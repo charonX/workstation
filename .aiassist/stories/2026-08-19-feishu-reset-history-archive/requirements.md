@@ -1,12 +1,12 @@
 # Requirements — 飞书 /reset 历史会话归档与回看
 
 > 故事 ID：`2026-08-19-feishu-reset-history-archive`
-> 版本：v1
-> 最后更新：2026-08-19
+> 版本：v2
+> 最后更新：2026-08-22
 > 来源：`prd.md` v0.1（§4 三大稳定块：飞书 /reset 归档语义、归档条目列表可见、归档条目只读回看；§10 技术方案）
 > 移动块：无（PRD §5 移动块 1「孤儿世代文件回填」已归入 §12 范围外，不进入本 REQ）
 > UX 参照：N/A（纯后台状态与列表元数据变更，复用既有 SessionList 与只读气泡；DESIGN 阶段跳过）
-> ADR：待落 `adr/0037-feishu-reset-archive.md`（修订 ADR-016 决策 1/4 飞书条款）
+> ADR：`adr/ADR-037`（已落档，修订 ADR-016 决策 1/4 飞书条款）
 > 测试目录：`tests/capabilities/agent-dialogue/conversation-space/2026-08-19-feishu-reset-history-archive/api/`
 
 ---
@@ -44,11 +44,11 @@
 ## REQ-AGENT-125 归档条目在会话列表展示与 displayName fallback
 
 - 优先级 P0 / 必须 / intra-module / routes/agentSessions / agent-dialogue / conversation-space / 集成
-- 接口契约：`GET /api/agent/sessions` 在 `feishu` 分组中返回归档条目，按 `lastActiveAt` 倒序排序；对 `feishu:<chatId>:gen<N>` 逆解析出 `feishu:<chatId>` 查询 `space_meta` 作为 displayName fallback。
+- 接口契约：`GET /api/agent/sessions` 在 `feishu` 分组中返回归档条目，按 `lastActiveAt` 倒序排序；对 `feishu:<chatId>:gen<N>` 逆解析出 `feishu:<chatId>` 查询 `agent_space_meta` 作为 displayName fallback。
 
 验收标准：
 1. **列表包含归档条目与排序（锚点 §6.3-3）**：`GET /api/agent/sessions` 响应中，`feishu` 组同时包含新活跃条目（`spaceKey="feishu:oc_123"`, `title=null`）与归档条目（`spaceKey="feishu:oc_123:gen2"`, `title="你好帮我查一下…"`），按 `lastActiveAt` 降序排列（集成：真实 store + 临时 SQLite）。
-2. **displayName fallback 逆解析（契约 §10.4-契约 1）**：`space_meta` 记录 `feishu:oc_123` 的 name 为 `"项目沟通群"`，归档条目 `feishu:oc_123:gen2` 在 title 为 null 时，`displayName` 正确 fallback 为 `"项目沟通群"`（集成）。
+2. **displayName fallback 逆解析（契约 §10.4-契约 1）**：`agent_space_meta` 记录 `feishu:oc_123` 的 name 为 `"项目沟通群"`，归档条目 `feishu:oc_123:gen2` 在 title 为 null 时，`displayName` 正确 fallback 为 `"项目沟通群"`（集成）。
 3. **归档条目 JSONL 缺失容错（§8-3）**：归档条目的 JSONL 磁盘文件被删除时，`GET /api/agent/sessions` 仍然正常返回 200 与该会话元数据，不 500、不阻断列表加载（集成）。
 
 ---
@@ -66,4 +66,4 @@
    - `POST /api/agent/sessions/feishu%3Aoc_123%3Agen2/reset`
    - `POST /api/agent/sessions/feishu%3Aoc_123%3Agen2/provider`
    - `POST /api/agent/sessions/feishu%3Aoc_123%3Agen2/mode`
-   均返回 403 响应，响应体包含 `{ code: "E-SESSION-READONLY" }`（集成）。
+   均返回 403 响应，响应体包含 `{ error: "E-SESSION-READONLY" }`（集成；v2 修订：字段名 code→error，与 PRD v0.2 锚点 7 / sendError 封套 / 已签核测试对齐——复审 R2 文档债务清偿）。

@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-08-19-feishu-reset-history-archive/REQ-AGENT-123, 2026-08-19-feishu-reset-history-archive/REQ-AGENT-124
-// REQ-VERSION: v1-hash:8a4fce4fe307c46375fff08faf1aac3342adbe8a95b92c97c15fc3886d629003
+// REQ-VERSION: v2-hash:507ffe922e1d620d7fe0d6382a3c2d3b359d27085338c3b76769d794f7df5dc1
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: conversation-space
 // EXPECTED-TRACE: prd.md §6.3 row 2, row 5, row 6, §8 row 2, §10.4 contract 1, contract 2
