@@ -69,3 +69,15 @@
 | 旧测试语义翻转 | PRD §11.2 预言的「sessionReset 世代制例修订」实际不需要：旧例因空世代分支自然存活 | test-plan.md 指向修正；旧例注释/名称更新为「仅空世代不建行」 |
 | requirements.md 表名 | REQ-125/126 文本写 `space_meta`，实际表名 `agent_space_meta`（测试正确） | 接受为文档债务（修订会动 REQ hash 与测试 REQ-VERSION 头），留 /reflect 随下一版本一并修订 |
 | requirements.md 403 字段 | REQ-AGENT-126 AC3 文本写响应体 `{ code: "E-SESSION-READONLY" }`，与 PRD v0.2 锚点 7/sendError 封套/已签核测试的 `{ error }` 矛盾（复审 R2） | **人确认（2026-08-19）**：同上先例接受为文档债务——不动 hash 锁定的 REQ 文件，留 /reflect 随 REQ v2 一并修订 |
+
+### REQ v2 修订记录（2026-08-22 /reflect，文档债务清偿）
+
+人确认随 /reflect 清偿上述两笔文档债务，REQ 修订为 **v2**（`requirements-v2.hash` = `507ffe922e1d620d7fe0d6382a3c2d3b359d27085338c3b76769d794f7df5dc1`）：
+
+| 项 | v1 原文 | v2 修订 |
+|---|---|---|
+| 表名漂移 | REQ-AGENT-125 契约与 AC2 写 `space_meta` | 改为实际表名 `agent_space_meta` |
+| 403 字段漂移 | REQ-AGENT-126 AC3 写 `{ code: "E-SESSION-READONLY" }` | 改为 `{ error: "E-SESSION-READONLY" }`（与 PRD v0.2 锚点 7 / sendError 封套 / 已签核测试对齐） |
+| ADR 状态 | 头部「待落 adr/0037」 | 更新为 `adr/ADR-037` 已落档 |
+
+4 个测试文件的 `REQ-VERSION` 头同步更新为 `v2-hash:507ffe92…`；断言内容零变化（纯文本勘误，无行为契约改动）。

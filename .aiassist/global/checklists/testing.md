@@ -201,3 +201,12 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | reset 清理断言只检查旧引用非 null | 引用是 reset 前捕获的闭包局部变量，无法证明 mock 在后续执行中被清理 | 真实执行：设置 mock 执行验证生效 → 执行 `reset()` → 再次执行断言 mock 计数不再增加（已回退至默认） |
 | 在线检查收拢时在两端抹平不查 | 重构删除了上层 shim 检查却未在底层分发属主中补齐，导致生产离线无守卫静默穿透 | 在底层通道分发属主（`channelManager.dispatchToAdapter`）集中守卫，并在测试中覆盖生产默认未接线/离线断言 |
 
+## 2026-08-22 追加（2026-08-19-feishu-reset-history-archive /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 新增持久化状态后维护循环不识别 | 归档行被重启水合无差别 `getOrCreate`：改写 lastActiveAt / 缺文件时毁 sessionRef 历史指针（BUG-001） | 引入新状态类别的行时，审计所有全表扫描循环（水合/驱逐/清理/统计），用键形谓词（`isFeishuArchiveKey`）显式跳过或特殊处理；Prove-It 先红后绿回归 |
+| hash 锁定 REQ 文件发现笔误当场硬改 | 打断 BUILD 节奏且牵连测试头同步，易引入契约漂移 | 挂账到 signoff/review 显式记录 + 偿还节点（下一 /reflect）；偿还走版本化（v2.hash 新增 + 测试 REQ-VERSION 头同步），断言零变化 |
+| 判定型谓词复用全量投影函数 | 「空世代判定」读整个 JSONL 逐行 parse，长会话 O(文件) 同步解析 | 提取单一行级谓词 + 首行短路（`hasProjectedMessage`）；复杂投影留给真正需要全量数据的调用方 |
+| E2E fixture 使用生产分派节点（agent）做脚手架 | 生产路径废除静默 mock 后（E-AGENT-NO-PROVIDER），旧 E2E 预存失败 | 离线 E2E 脚手架统一用 `setVariables` 等确定性节点；确需 agent 语义时经 `setAgentExecutorForTests` seam 注入 |
+

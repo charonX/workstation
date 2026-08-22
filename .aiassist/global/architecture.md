@@ -112,4 +112,6 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-033: DB 连接 per-path 缓存（getDb 单槽改 Map<path,Database>）
 - ADR-034: 通道发送能力统一收拢与单一在线检查属主（services.channelSender + channelManager.dispatchToAdapter 集中在线检查）
 - ADR-035: 独立服务容器 ServiceContainer 与 Server 纯传输化（createServiceContainer 惰性工厂/接线/调度 + server.js 瘦身至 ≤250 行 + server.services 唯一 DI seam）
+- ADR-036: 统一 HTTP 响应助手与生产静默 Mock 清除（responders.js 收敛 5 路由 + 缺 provider 显式 E-AGENT-NO-PROVIDER + cron 描述归位 schedulerService + flowService UI 助手清除）
+- ADR-037: 飞书 /reset 从「单行世代制」改为「归档 + 新行」（归档键 feishu:<chatId>:gen<N> 只读回看；修订 ADR-016 飞书条款）
 

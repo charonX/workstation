@@ -728,3 +728,34 @@
   CLI 客户端助手共享属于 CLI 层的命令组装逻辑。重构必须守住 REQ 契约范围边界，避免“顺手做无关改动”
   导致范围蔓延。
 
+## 持久化状态行的生命周期要覆盖所有写入口（2026-08-22，feishu-reset-history-archive BUG-001 /reflect）
+
+- **现象**：ADR-037 引入「归档行」（`feishu:<chatId>:gen<N>`）后，重启水合循环仍对全表 `store.list()`
+  无差别调 `getOrCreate`——归档 JSONL 存在时被改写 `lastActiveAt=now`（顶到列表最前），缺失时走
+  missing-file 分支 `bumpGeneration` 改写归档行 sessionRef 指向空文件，静默销毁历史指针。
+- **根因**：新增一种持久化状态（归档行）时，只改了「写入方」（reset 归档事务），没有盘点既有
+  「全表遍历的维护任务」（水合/驱逐/统计）。review 的 ADR 后果评估「水合归档行 = 无害资源浪费」
+  也漏掉了行变异路径。
+- **结论**：**引入新状态类别的行时，必须审计所有按类别无差别扫全表的维护循环**（水合、清理、
+  迁移、统计），逐个判断新状态该被跳过还是特殊处理；「只读」语义要在数据层用键形过滤结构化表达
+  （`isFeishuArchiveKey` 跳过），不靠约定俗成。ADR 后果评估要把「谁还会碰这些行」列成清单再下结论。
+
+## 文档债务挂账要有偿还锚点，hash 锁定契约的勘误走版本化修订（2026-08-22，feishu-reset-history-archive R2 /reflect）
+
+- **现象**：REQ v1 两处文本与实现漂移（`space_meta`→实际表名 `agent_space_meta`、403 字段
+  `{code}`→实际 `{error}`）。因 requirements.md 被 hash 锁定（测试 REQ-VERSION 头引用），当场修订
+  会牵连测试头同步。当时人确认「接受为文档债务，留 /reflect 随 REQ v2 一并修订」。
+- **做法**：/reflect 时人拍板清账 → 修正文本、重算 sha256 写入 `requirements-v2.hash`、4 个测试文件
+  REQ-VERSION 头同步升 `v2-hash:`、signoff 补记修订对照表；断言内容零变化（纯文本勘误）。
+- **结论**：hash 锁定的契约文档发现笔误时，「挂账 + 明确偿还节点（下一个 /reflect）」优于当场改
+  （避免打断 BUILD 节奏）；但挂账必须落在 signoff/review 的显式记录里并指明偿还时机，否则就是永远
+  不还的债。偿还走版本化（v1.hash 保留 + 新增 v2.hash），历史可追溯。
+
+## 长会话热路径避免全量解析：判定谓词用首行短路（2026-08-22，feishu-reset-history-archive R5 /reflect）
+
+- **现象**：「空世代判定」用全量投影函数读整个历史 JSONL 并逐行 JSON.parse，只为回答「有没有一条
+  有效消息」——长会话 /reset 时主进程 O(文件) 同步解析。
+- **结论**：当底层已有逐行迭代器时，判定型谓词应提取单一行级谓词（`projectLine`）+ 首行短路，
+  复杂投影留给真正需要全量数据的调用方；「复用现成大函数」在热路径上是性能负债不是便利。
+
+

@@ -73,6 +73,10 @@
 | 附件 | 随消息注入上下文的文件（v1：图片——jpeg/png/gif/webp/bmp/heic/heif，SVG 拒收；PDF 本期放弃留后续）：内容进会话历史（pi-ai 原生序列化）、重放可见；经文件选择器添加即显式授权（项目外不弹确认、无特殊标记）；非视觉模型阻止附加（附加时判定 + 发送时复核）；每消息 ≤10 个 | 对话空间 | 图片注入（**≠ 产物**：执行产出物，两者不同） |
 | 权限裁决器 | PermissionAdjudicator：管理高危操作挂起确认单生命周期、超时流转、决议状态下发的领域服务；唯一执行者（approve 产生 allow 决策，零主进程 execute）与单一评估安全不变量的物理承载 | 确认挂起, 对话空间 | 权限拦截 / 确认执行管道 |
 | Fail-Closed 安全降级 | 权限策略评估遇到未知工具面、损坏配置或降级运行时的安全底线——默认一律判定为 ask 挂起人工确认，杜绝零确认绕过 | 权限模式, 确认挂起 | 策略评估 / 异常兜底 |
+| 飞书归档条目 | Feishu Archive Entry | 飞书空间 /reset 后保留的历史会话行（ADR-037，2026-08-19）：spaceKey `feishu:<chatId>:gen<N>`，title/sessionRef/lastActiveAt/createdAt 冻结原值，只读可回看；写端点 403 E-SESSION-READONLY；displayName 为空时逆解析活跃键查 agent_space_meta fallback | 对话空间 | 会话列表「飞书」分组历史回看 |
+| 活跃行 | Active Row | spaceKey 无 `:gen<N>` 后缀的当前会话行：飞书空间 = 唯一可写可交互行；/reset 时被改名为归档键并插入新活跃行（title/provider/model=NULL 回落默认） | 对话空间 | reset 归档事务 / 写面守护 |
+| 世代编号 | Generation Number | 飞书空间 JSONL 文件的世代序数 N（`feishu_<chatId>.<N+1>.jsonl` / 归档键 `:gen<N>`）：归档时从旧 sessionRef 解析并 +1 延续，防碰撞；空世代不归档但换代照常递增 | 对话空间 | 归档键命名 / 孤儿世代文件判定 |
+| 空世代 | Empty Generation | 活跃行消息投影为空的世代（JSONL 空文件或无有效 user/assistant 消息）：/reset 不产生归档行，原地换代——「没聊过的会话不留历史」 | 对话空间 | reset 分支语义 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -123,6 +127,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-22 | 新增「飞书归档条目」「活跃行」「世代编号」「空世代」术语（ADR-037 归档语义沉淀） | 2026-08-19-feishu-reset-history-archive /reflect |
 | 2026-08-18 | 新增「权限裁决器」「Fail-Closed 安全降级」概念（架构深化候选 #3，收敛确认执行管道与四大安全不变量） | 2026-08-16-deepen-permission-adjudication /domain-model |
 | 2026-08-12 | 新增「模型配置」实体（provider 条目列表）；「默认模型」「动态模型列表」「会话级切换」「视觉模型」「附件」概念（附件 ≠ 产物） | 2026-08-12-conversation-toolbar-ext /domain-model |
 | 2026-08-12 | 新增「权限模式」（strict/standard/auto 三档，ADR-023）「auto-judge link」（模型判断链节，deny-first + envelope 强制） | 2026-08-11-pi-agent-modes |

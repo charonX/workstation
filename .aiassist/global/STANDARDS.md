@@ -192,3 +192,13 @@
 - **在线状态检查单一属主（Online check lives in one place）**：通道在线状态检查（`getStatus() === "online"`）必须且只在底层通道分发属主（`channelManager.dispatchToAdapter`）中集中执行；禁止在调用方与分发方之间抹平为双边不查，离线/未配置统一抛出标准错误码 `E-CHANNEL-OFFLINE`。
 - **测试接缝边界显式包装，零运行时 Duck-Typing**：测试注入接缝（如 `setTestChannelSender`）应接收标准接口签名；向后兼容旧形态输入时，必须在**注入函数边界**处一次性完成形态适配与包装，禁止在运行期热路径中逐次嗅探 `typeof` / `arguments.length`（脆弱且耦合内部方法名）。
 - **消灭静默无操作的残留空接缝**：重构废除旧接缝时，应联动清理所有调用方（如 `server.js`）并彻底删除空导出，禁止保留"静默 no-op"公开方法。
+
+## 只读域的结构化表达与维护循环审计（2026-08-22，2026-08-19-feishu-reset-history-archive BUG-001 /reflect）
+
+- **新状态类别的行必须被所有全表扫描的维护循环识别**：引入新持久化状态（如归档行）时，逐个审计水合、驱逐、清理、迁移、统计等无差别扫全表的循环——明确该状态是「跳过」还是「特殊处理」，缺省遍历即隐含变异风险。
+- **只读语义用键形谓词结构化表达**：`feishu:*` 只读域在数据层用键形判定（如 `isFeishuArchiveKey`）过滤，不靠调用方约定俗成；写面守护（403 E-SESSION-READONLY）与维护循环跳过共用同一谓词。
+- **hash 锁定契约的笔误勘误走版本化修订**：requirements.md 发现文本漂移时挂账到 signoff/review 显式记录并指明偿还节点（下一 /reflect）；偿还时新增 `requirements-v2.hash` 并同步全部测试文件 REQ-VERSION 头，断言内容零变化。
+
+## 判定型谓词首行短路（2026-08-22，2026-08-19-feishu-reset-history-archive R5 /reflect）
+
+- 热路径上的「有没有 X」判定不得复用全量投影函数；从既有逐行迭代器提取单一行级谓词 + 首行短路，O(文件) 降为 O(命中)。
