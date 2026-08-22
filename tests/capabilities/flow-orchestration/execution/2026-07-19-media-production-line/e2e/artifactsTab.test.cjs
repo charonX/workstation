@@ -84,15 +84,19 @@ test.describe("REQ-FLOW-030 Executions 产物 tab（E2E，UX 原型映射）", (
 
   test("成功执行的产物 tab 展示 artifacts 列表（文件名/路径）与打开动作按钮", async () => {
     // 前置：一次成功执行且登记了产物（产物登记由 REQ-SCHEDULE-008 落地）。
-    // 空 flow 不会自动产出文件，因此先创建产物文件、在执行启动后 touch 刷新 mtime，
-    // 使 collectArtifacts 把该文件登记为 artifact。
+    // 空 flow 不会自动产出文件，因此先创建产物文件并把 mtime 设为未来 60s：
+    // collectArtifacts 按 stat.mtimeMs >= startedAt 扫描，而 submit→dequeue 是
+    // 同步热路径——全量跑时空 flow 可能在 createExecution HTTP 返回前就执行完，
+    // 「createExecution 后再 touch」会落在 collectArtifacts 之后而漏登（2026-08-22
+    // 实测：单跑稳定、全量跑偶发空态）。未来 mtime 保证无论扫描何时发生都命中窗口，
+    // 且测试结束即随 userDataDir 清理，无残留影响。
     const flow = await createFlow(apiBaseUrl, { name: "Artifacts List Flow", projectId: project.id });
     const artifactFile = path.join(project.localPath, "outputs/daily/2026-07-19-ai-daily.md");
     fs.mkdirSync(path.dirname(artifactFile), { recursive: true });
     fs.writeFileSync(artifactFile, "# daily digest", "utf8");
+    const future = new Date(Date.now() + 60_000);
+    fs.utimesSync(artifactFile, future, future);
     const execution = await createExecution(apiBaseUrl, { projectId: project.id, flowId: flow.id });
-    // 确保文件 mtime 在执行 startedAt 之后，避免空 flow 执行过快导致扫描时文件尚未写入。
-    fs.utimesSync(artifactFile, new Date(), new Date());
     await waitForTerminalStatus(apiBaseUrl, execution.id);
 
     await openExecutionsPage(firstWindow);
