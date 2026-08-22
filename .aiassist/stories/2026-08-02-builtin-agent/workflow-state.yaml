@@ -7,12 +7,12 @@ intention: >-
   使用；人不在电脑前时无法了解平台正在进行的任务、无法下发任务——需要飞书对话驱动的
   内置 agent（零依赖内核 + 飞书入口，合并自 wayfind S1+S2）。
 
-phase: BUG           # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 12    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-02
 completed: true
-completed_at: 2026-08-05
+completed_at: 2026-08-22
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -43,6 +43,8 @@ history:
   - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-010（code-defect，人拍板）：sendCard 竞态窗口内容丢失——回填前更新携带 undefined cardId 被真实 adapter 跳过，回填只补 finalize 不补全量内容 → 短回合卡片正文冻结在首 delta（生产实锤「确实」「需要我」截断卡）。回归先红（cardStream BUG-010 用例），修复=回填时补发全量累计内容更新（H4 sequence 递增）。另：T3 中途裂开现象证据不足未立案，待复现日志"}
   - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-011（code-defect，人拍板）：同卡流式更新/定型 fire-and-forget 无顺序保证——finalize（PATCH settings）抢在在途尾部更新（PUT elements/content）之前落地 → streaming_mode 关闭 → 尾部更新被拒 → 卡片冻结半途（生产实锤：226 更新全派发、finalize 成功、卡片仅前缀）；失败经 recordWarning 静默、生产零日志。回归先红（sendCardSchema 挂起 PUT 断言 finalize 不派发），修复=adapter 按 cardId 串行化（每卡 promise 链，乱序 300317 一并消除）+ 更新耗尽补 console.error。全量 894/894"}
   - {at: 2026-08-17, from: BUG, to: BUG, note: "BUG-012（code-defect，人拍板）：BUG-011 串行化引入排队追账——每个 delta 更新一次串行 RTT，后台跑完卡片仍逐字追 1-2 分钟；叠加 print_step=1/70ms 打字机。修复：同卡排队更新合并（content 全量累计，被覆盖者跳过 HTTP 零信息丢失；finalize 不合并、顺序保证不弱化）+ 链排空自清 + print_step 1→10（重签 2 条断言）。回归先红（wireOrder 实锤 seq2 落地）后绿；全量 895/895"}
+  - {at: 2026-08-22, from: BUG, to: QA, note: "补记收口：BUG-010/011/012 三连修复后未回写状态机（8-17 停在 BUG）。全量单元回归 1051/1051 绿（含 feishu-reset/shallow-residue 等 5 个后续 story 的测试面），卡片流式链路回归面全绿，回到 QA"}
+  - {at: 2026-08-22, from: QA, to: REFLECT, note: "门 2 补验收：人确认接受。bug 总账 12 起（11 修 1 关）；BUG-009~012 卡片流式四连的经验已随各 /bug 沉淀至 engineering-lessons 与 checklists/testing.md。story 最终完结（completed_at 更正为 2026-08-22）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
