@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|
 | **Slice 1** | Worker 侧轨迹落盘与 IPC 出站 | REQ-AGENT-127 | `src/agent/trajectoryRecorder.js`, `src/agent/worker.js`, `src/services/agentService.js` | `api/trajectoryRecorder.test.js` | `COMPLETED` |
 | **Slice 2** | 领域模型投影与 HTTP 轨迹 API | REQ-AGENT-128 | `src/services/sessionDomain.js`, `src/http/routes/agentSessions.js` | `api/trajectoryApi.test.js` | `COMPLETED` |
-| **Slice 3** | 归一记录纯函数模型与时间域计算 | REQ-AGENT-134, REQ-AGENT-132 | `src/renderer/components/trajectory/trajectoryModel.js` | `api/trajectoryModel.test.js` | `NOT_STARTED` |
+| **Slice 3** | 归一记录纯函数模型与时间域计算 | REQ-AGENT-134, REQ-AGENT-132 | `src/renderer/components/trajectory/trajectoryModel.js` | `api/trajectoryModel.test.js` | `COMPLETED` |
 | **Slice 4** | UI 组件渲染与交互集成 | REQ-AGENT-129, REQ-AGENT-130, REQ-AGENT-131, REQ-AGENT-132, REQ-AGENT-133, REQ-AGENT-135 | `src/renderer/components/trajectory/*`, `src/renderer/components/Assistant.jsx`, `src/renderer/api/agentSessions.js` | `e2e/trajectoryView.test.cjs` | `NOT_STARTED` |
 
 ---
@@ -58,4 +58,23 @@
 | §7 输入验证 (limit 归一化) | REQ-AGENT-128 AC3 | `sessionDomain.normalizeTrajectoryLimit` | `trajectoryApi.test.js` (AC3: 查询参数校验与归一化) |
 | §6.2 异常 / §8 错误状态 (坏行跳过) | REQ-AGENT-128 AC4 | `sessionDomain.readTrajectoryRecords` (try/catch skipped++) | `trajectoryApi.test.js` (AC4: 缺失文件空态与损坏行容错) |
 | §8 错误状态 (404) | REQ-AGENT-128 AC5 | `agentSessions.handleGetTrajectory` (store.get → 404) | `trajectoryApi.test.js` (AC5: 未知会话 404) |
+
+### 2026-08-23: Slice 3: 归一记录纯函数模型与时间域计算 (REQ-AGENT-134, REQ-AGENT-132)
+
+- **状态**: `COMPLETED`
+- **契约测试**: `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/api/trajectoryModel.test.js`（6/6 PASS）
+- **变更模块**:
+  - `src/renderer/components/trajectory/trajectoryModel.js`（新建）: 实现 5 个纯函数导出：`createTrajectoryState`、`applyTrajectoryRecord`（原位更新 + 升序插入、key 稳定）、`prependTrajectoryRecords`（顶部触底合并去重）、`filterRecordsByTimeRange`（时间域过滤）、`calculateTimelineSegments`（TTFT/decode 拆分）。
+
+#### PRD → 代码可追溯性表
+
+| PRD 锚点 / 条款 | REQ 条款 | 实现代码位置 | 验证测试 |
+|---|---|---|---|
+| §10.5 D4 / §10.2 (单一记录模型) | REQ-AGENT-134 AC2 | `trajectoryModel.createTrajectoryState` | `trajectoryModel.test.js` (AC2: 初始状态构建与升序排列) |
+| §10.5 D4 (原位更新+key 稳定) | REQ-AGENT-134 AC2 | `trajectoryModel.applyTrajectoryRecord` | `trajectoryModel.test.js` (AC2: running→completed 原位更新) |
+| §10.5 D4 (幂等) | REQ-AGENT-134 AC2 | `trajectoryModel.applyTrajectoryRecord` | `trajectoryModel.test.js` (AC2: 重复 seq 幂等) |
+| §10.2 (顶部加载) | REQ-AGENT-134 AC2 | `trajectoryModel.prependTrajectoryRecords` | `trajectoryModel.test.js` (AC2: prependTrajectoryRecords 合并保序) |
+| §6.3 TL2 / REQ-AGENT-132 AC2 (时间域过滤) | REQ-AGENT-132 AC2 | `trajectoryModel.filterRecordsByTimeRange` | `trajectoryModel.test.js` (AC2: filterRecordsByTimeRange) |
+| §6.3 TL1 / REQ-AGENT-132 AC1 (时间段拆分) | REQ-AGENT-132 AC1 | `trajectoryModel.calculateTimelineSegments` | `trajectoryModel.test.js` (AC1: calculateTimelineSegments) |
+
 
