@@ -44,6 +44,7 @@ import { createAutoJudgeLink } from "./autoJudgeLink.js";
 import { assembleSessionExtensions } from "./sessionAssembly.js";
 import { createMcpBrokerLink } from "./mcpBrokerLink.js";
 import { setServerBaseUrlOverride } from "../cli/server.js";
+import { createTrajectoryRecorder } from "./trajectoryRecorder.js";
 
 // —— 环境契约（主进程 spawn 时注入；无则回退默认值，便于手工调试）——
 const sessionDir = process.env.OPC_AGENT_SESSION_DIR ?? path.join(process.cwd(), "agent-sessions");
@@ -550,11 +551,19 @@ const turnPipeline = createTurnEventPipeline({
   clearTimeout,
   now: Date.now,
 });
+// 轨迹记录器（REQ-AGENT-127 第一现场落盘与 IPC 出站）
+const trajectoryRecorder = createTrajectoryRecorder({
+  sessionDir,
+  send,
+  log,
+  now: Date.now,
+});
 // 装配态 Map 登记（worker 持有、管线统一清理——淘汰/重置一条路径，修手抄清单抄岔）。
 turnPipeline.registerSessionScopedMap(toolContexts);
 turnPipeline.registerSessionScopedMap(sessionQueues);
 turnPipeline.registerSessionScopedMap(sessionModes);
 turnPipeline.registerSessionScopedMap(judgeModels);
+turnPipeline.registerSessionCleanup((sessionKey) => trajectoryRecorder.clearSessionState(sessionKey));
 
 // sweep 周期（signoff 裁决 2：60s 语义）；unref：不阻塞进程退出。
 const sweepTimer = setInterval(() => {
@@ -1103,7 +1112,18 @@ async function createSessionEntry(msg) {
         }),
   });
   toolSurface.onEvent((ev) => {
-    if (ev.type === "tool_execution_error") turnPipeline.onSessionEvent(sessionKey, ev);
+    if (ev.type === "tool_execution_error") {
+      turnPipeline.onSessionEvent(sessionKey, ev);
+      trajectoryRecorder.onToolError({
+        sessionKey,
+        safeKey: safeKeyFor(sessionKey),
+        toolCallId: ev.toolCallId,
+        toolName: ev.name,
+        errorCode: ev.errorCode,
+        errorMessage: ev.errorMessage,
+        sessionRef: effectiveRef,
+      });
+    }
   });
 
   const { session: agentSession } = await createAgentSession({
@@ -1156,6 +1176,60 @@ async function createSessionEntry(msg) {
     const t = ev?.type ?? ev?.assistantMessageEvent?.type ?? "?";
     if (SDK_COUNTED_EVENT_TYPES.has(t)) turnPipeline.recordSdkEvent(sessionKey, t);
     turnPipeline.onSessionEvent(sessionKey, ev);
+
+    // REQ-AGENT-127 轨迹落盘接线
+    const safeKey = safeKeyFor(sessionKey);
+    if (ev?.type === "message_update") {
+      const a = ev.assistantMessageEvent;
+      if (a?.type === "text_delta" || a?.type === "text_start") {
+        trajectoryRecorder.onFirstTextDelta({
+          sessionKey,
+          safeKey,
+          textPreview: a.delta || a.content,
+          sessionRef: entry.sessionRef,
+        });
+      }
+    } else if (ev?.type === "message_end") {
+      trajectoryRecorder.onAssistantMessageEnd({
+        sessionKey,
+        safeKey,
+        usage: ev.message?.usage,
+        sessionRef: entry.sessionRef,
+      });
+    } else if (ev?.type === "tool_execution_start") {
+      trajectoryRecorder.onToolStart({
+        sessionKey,
+        safeKey,
+        toolCallId: ev.toolCallId,
+        toolName: ev.toolName,
+        args: ev.args,
+        sessionRef: entry.sessionRef,
+      });
+    } else if (ev?.type === "tool_execution_end") {
+      trajectoryRecorder.onToolEnd({
+        sessionKey,
+        safeKey,
+        toolCallId: ev.toolCallId,
+        toolName: ev.toolName,
+        result: ev.result,
+        isError: ev.isError,
+        sessionRef: entry.sessionRef,
+      });
+    } else if (ev?.type === "compaction_start") {
+      trajectoryRecorder.onCompactionStart({
+        sessionKey,
+        safeKey,
+        reason: ev.reason,
+        sessionRef: entry.sessionRef,
+      });
+    } else if (ev?.type === "compaction_end") {
+      trajectoryRecorder.onCompactionEnd({
+        sessionKey,
+        safeKey,
+        reason: ev.reason,
+        sessionRef: entry.sessionRef,
+      });
+    }
   });
   // 经生命周期模块注册（tech-design 接口 1）：覆盖注册（懒恢复/重建）清 tombstone，
   // 并刷新活跃时间；LRU 上限由模块在注册时执行（REQ-AGENT-036）。
@@ -1336,6 +1410,9 @@ async function handlePrompt(msg) {
     entry.queued = false;
     entry.streaming = true; // 流式保护（F2/E1：进行中的回复不掐断）
     turnPipeline.beginTurn(sessionKey); // 幂等清两诊断计数（人拍板 B：失败轮残留不混轮）
+    const safeKey = safeKeyFor(sessionKey);
+    trajectoryRecorder.onTurnStart({ sessionKey, safeKey, sessionRef: entry.sessionRef });
+    trajectoryRecorder.onUserMessage({ sessionKey, safeKey, text, sessionRef: entry.sessionRef });
     try {
       // FAUX 测试 seam（H3）：每轮排队一个确定性响应。可编程工具调用注入缝
       // （REQ-AGENT-043/044，OPC_FAUX_TOOL_SEQUENCE）：序列未耗尽 → 本轮 FAUX
@@ -1423,11 +1500,22 @@ async function handlePrompt(msg) {
       });
     } catch (err) {
       // REQ-AGENT-007：供应商失败/超时/限流 → 结构化错误消息，进程不崩、会话存活。
+      trajectoryRecorder.onTurnAbort({
+        sessionKey,
+        safeKey,
+        reason: "error",
+        sessionRef: entry.sessionRef,
+      });
       const reason = err?.message ?? String(err);
       const error = { code: "E-AGENT-LLM-FAIL", reason };
       log(`prompt 失败 session=${sessionKey} code=${error.code}`);
       sendPromptError(id, sessionKey, error, `LLM 调用失败：${reason}`);
     } finally {
+      trajectoryRecorder.onTurnEnd({
+        sessionKey,
+        safeKey,
+        sessionRef: entry.sessionRef,
+      });
       entry.streaming = false; // 流结束：回归可淘汰集合（TTL/LRU 候选；组冷却延迟即淘汰）
     }
   });
@@ -1561,6 +1649,12 @@ async function handleMessage(msg) {
         break;
       }
       log(`stop-session 中断 session=${msg.sessionKey} streaming=${!!entry.streaming}`);
+      trajectoryRecorder.onTurnAbort({
+        sessionKey: msg.sessionKey,
+        safeKey: safeKeyFor(msg.sessionKey),
+        reason: "stop",
+        sessionRef: entry.sessionRef,
+      });
       entry.agentSession.abort().catch((err) =>
         log(`abort 失败 session=${msg.sessionKey} err=${err?.message ?? String(err)}`)
       );

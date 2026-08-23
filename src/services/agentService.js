@@ -957,6 +957,17 @@ function createProcessAgentService(options = {}) {
         if (session) session.emit("session-event", limitSize(msg.event));
         break;
       }
+      case "trajectory-record": {
+        // REQ-AGENT-134 / PRD §10.4 接口 3: IPC trajectory-record 转发为 session-event
+        const session = sessions.get(msg.sessionKey);
+        if (session) {
+          session.emit("session-event", {
+            type: "trajectory-record",
+            record: limitSize(msg.event),
+          });
+        }
+        break;
+      }
       case "session-error": {
         const session = sessions.get(msg.sessionKey);
         if (!session) break;
