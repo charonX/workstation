@@ -14,7 +14,7 @@
 | **Slice 1** | Worker 侧轨迹落盘与 IPC 出站 | REQ-AGENT-127 | `src/agent/trajectoryRecorder.js`, `src/agent/worker.js`, `src/services/agentService.js` | `api/trajectoryRecorder.test.js` | `COMPLETED` |
 | **Slice 2** | 领域模型投影与 HTTP 轨迹 API | REQ-AGENT-128 | `src/services/sessionDomain.js`, `src/http/routes/agentSessions.js` | `api/trajectoryApi.test.js` | `COMPLETED` |
 | **Slice 3** | 归一记录纯函数模型与时间域计算 | REQ-AGENT-134, REQ-AGENT-132 | `src/renderer/components/trajectory/trajectoryModel.js` | `api/trajectoryModel.test.js` | `COMPLETED` |
-| **Slice 4** | UI 组件渲染与交互集成 | REQ-AGENT-129, REQ-AGENT-130, REQ-AGENT-131, REQ-AGENT-132, REQ-AGENT-133, REQ-AGENT-135 | `src/renderer/components/trajectory/*`, `src/renderer/components/Assistant.jsx`, `src/renderer/api/agentSessions.js` | `e2e/trajectoryView.test.cjs` | `NOT_STARTED` |
+| **Slice 4** | UI 组件渲染与交互集成 | REQ-AGENT-129, REQ-AGENT-130, REQ-AGENT-131, REQ-AGENT-132, REQ-AGENT-133, REQ-AGENT-135 | `src/renderer/components/trajectory/*`, `src/renderer/components/Assistant.jsx`, `src/renderer/api/agentSessions.js` | `e2e/trajectoryView.test.cjs` | `COMPLETED` |
 
 ---
 
@@ -76,5 +76,33 @@
 | §10.2 (顶部加载) | REQ-AGENT-134 AC2 | `trajectoryModel.prependTrajectoryRecords` | `trajectoryModel.test.js` (AC2: prependTrajectoryRecords 合并保序) |
 | §6.3 TL2 / REQ-AGENT-132 AC2 (时间域过滤) | REQ-AGENT-132 AC2 | `trajectoryModel.filterRecordsByTimeRange` | `trajectoryModel.test.js` (AC2: filterRecordsByTimeRange) |
 | §6.3 TL1 / REQ-AGENT-132 AC1 (时间段拆分) | REQ-AGENT-132 AC1 | `trajectoryModel.calculateTimelineSegments` | `trajectoryModel.test.js` (AC1: calculateTimelineSegments) |
+
+### 2026-08-23: Slice 4: UI 组件渲染与交互集成 (REQ-AGENT-129~133, 135)
+
+- **状态**: `COMPLETED`
+- **契约测试**: `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/e2e/trajectoryView.test.cjs`（E2E，待 QA 阶段验证）
+- **全量单元测试回归**: 1068 tests, 0 failures（无回归）
+- **变更模块**:
+  - `src/renderer/api/agentSessions.js`: 新增 `getTrajectoryRecords()` API 函数（轨迹端点调用）
+  - `src/renderer/components/trajectory/TrajectoryView.jsx`（新建）: 视图总入口，含历史加载、SSE live 接入、空态、三区布局
+  - `src/renderer/components/trajectory/Ledger.jsx`（新建）: 虚拟滚动账本行（ROW_HEIGHT=36, OVERSCAN=10, MOUNT_MAX=50 满足 VS1 锚点），行点击选中
+  - `src/renderer/components/trajectory/TimelineOverview.jsx`（新建）: 时间轴条带，`assistant_span` 拆 TTFT/decode 两段（`data-timeline-segment`），`tool_call` 按比例投影
+  - `src/renderer/components/trajectory/Inspector.jsx`（新建）: 详情检查器（输入/输出/耗时/Token/子执行跳转 `data-testid="subexec-link"`）
+  - `src/renderer/components/assistant/ChatView.jsx`: 新增「轨迹」Tab（`data-testid="trajectory-tab"`），Tab 切换控制 `TrajectoryView`/消息区显隐
+  - `src/renderer/pages/Assistant.jsx`: 新增 `liveTrajectoryRecord` 状态，SSE `trajectory-record` 事件转发，`spaceKey` 和 `liveTrajectoryRecord` 传入 `ChatView`
+
+#### PRD → 代码可追溯性表
+
+| PRD 锚点 / 条款 | REQ 条款 | 实现代码位置 | 验证测试 |
+|---|---|---|---|
+| §4 稳定块 3 / §6.3 V1 (Tab 显隐) | REQ-AGENT-129 AC1 | `ChatView.jsx` (activeTab state + trajectory-tab + view-tabs) | `trajectoryView.test.cjs` (Tab 切换) |
+| §6.2 E-TRAJ-EMPTY (空态卡片) | REQ-AGENT-129 AC2 | `TrajectoryView.jsx` (records.length===0 → traj-empty-state) | `trajectoryView.test.cjs` (空态卡片) |
+| §4 稳定块 4 / §6.3 L1 (账本行渲染) | REQ-AGENT-130 AC1 | `Ledger.jsx` (LedgerRow, data-record-type) | `trajectoryView.test.cjs` (Ledger 行渲染) |
+| §6.3 I1 (Inspector 展开) | REQ-AGENT-131 AC1 | `Inspector.jsx`, `TrajectoryView.jsx` (selectedRecord state) | `trajectoryView.test.cjs` (Inspector 展开) |
+| §6.3 TL1 (Timeline TTFT/decode) | REQ-AGENT-132 AC1 | `TimelineOverview.jsx` (data-timeline-segment=ttft/decode) | `trajectoryView.test.cjs` (Timeline 分段) |
+| §6.3 VS1 (虚拟滚动 ≤50 节点) | REQ-AGENT-133 AC1 | `Ledger.jsx` (MOUNT_MAX=50, slice窗口) | `trajectoryView.test.cjs` (虚拟滚动上界) |
+| §10.5 D4 / §6.3 (SSE 单一模型) | REQ-AGENT-134 AC1 | `Assistant.jsx` (trajectory-record case), `TrajectoryView.jsx` (applyTrajectoryRecord) | E2E live 流 |
+| §6.3 J1 (子执行跳转) | REQ-AGENT-135 AC1 | `Inspector.jsx` (SubexecLink, data-testid="subexec-link") | `trajectoryView.test.cjs` (子执行跳转) |
+
 
 

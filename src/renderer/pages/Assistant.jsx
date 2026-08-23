@@ -242,6 +242,8 @@ export default function Assistant() {
   const [sessionMode, setSessionModeState] = useState("auto");
   const [modeNotice, setModeNotice] = useState(null);
   const sessionModeRef = useRef("auto");
+  // 轨迹 live 事件（REQ-AGENT-134）：SSE trajectory-record 事件转发到 TrajectoryView。
+  const [liveTrajectoryRecord, setLiveTrajectoryRecord] = useState(null);
   useEffect(() => {
     sessionModeRef.current = sessionMode;
   }, [sessionMode]);
@@ -489,6 +491,9 @@ export default function Assistant() {
         if (typeof ev.reason === "string" && ev.reason) setModeNotice(ev.reason);
       } else if (ev.type === "session-error") {
         setStreamingBoth(false);
+      } else if (ev.type === "trajectory-record") {
+        // 轨迹 live 事件（REQ-AGENT-134 / ADR-038）：trajectory-record SSE 转发给 TrajectoryView。
+        if (ev.event) setLiveTrajectoryRecord(ev.event);
       }
     };
 
@@ -817,6 +822,8 @@ export default function Assistant() {
         defaultModel={defaultModel}
         sessionModel={sessionModel}
         onModelChange={handleModelChange}
+        spaceKey={selectedKey}
+        liveTrajectoryRecord={liveTrajectoryRecord}
       />
     </div>
   );

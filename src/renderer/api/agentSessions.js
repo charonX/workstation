@@ -128,6 +128,20 @@ export async function fetchProjectImage(projectId, imagePath) {
 }
 
 /**
+ * 会话轨迹记录读取（REQ-AGENT-128 / PRD §10.4 接口 2）：
+ * GET /api/agent/sessions/:key/trajectory → { records, hasMore, meta: { skipped } }
+ * @param {string} spaceKey
+ * @param {{ limit?: number, before?: string }} options
+ */
+export function getTrajectoryRecords(spaceKey, { limit, before } = {}) {
+  const qs = new URLSearchParams();
+  if (limit !== undefined) qs.set("limit", String(limit));
+  if (before !== undefined) qs.set("before", before);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return get(`/api/agent/sessions/${encodeKey(spaceKey)}/trajectory${suffix}`);
+}
+
+/**
  * SSE 订阅封装（tech-design F2）：EventSource 原生自动重连（断线不崩、重连可再建），
  * 每次连接建立（含首次与断线重连）触发 onOpen —— 调用方在 onOpen 中先 GET .../messages
  * 全量对齐再续流（SSE 只推增量，不做事件回溯）。事件帧 = agentService session-event
