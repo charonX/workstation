@@ -1,0 +1,52 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-22-tool-call-review
+intention: >-
+  重开会话后工具调用不可回看——工具块只实时呈现不落历史（BUG-009 刻意决策），
+  调试/复盘时丢失了 agent 实际执行了哪些工具、输入输出、耗时、token 等轨迹证据。
+  用户需要一个可回看的会话轨迹账本（deepseek ui-trajectory 式），
+  让工具/subtool 调用成为可浏览的记录。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: BUILD            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-22
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-22, from: -, to: THINK, note: "创建 story（初衷：工具调用可回看）"}
+  - {at: 2026-08-22, from: THINK, to: PRD, note: "十问访谈收敛，方向 C 全量对标 ui-trajectory（分阶段：嵌套内部展开剥离后续），参考 pi-observability；interview-notes.md 完成"}
+  - {at: 2026-08-23, from: PRD, to: DESIGN, note: "prd.md v0.1 合成（complex：9 稳定块/17 锚点/§10 九条已锁约束）；待 /tech-design 深潜 §10"}
+  - {at: 2026-08-23, from: DESIGN, to: DOMAIN-MODEL, note: "trajectory.html 单屏一体原型完成（调试密度变体/真实语义假数据/内置状态开关），编译+check 绿，preview 66KB 1 card；待用户 review"}
+  - {at: 2026-08-23, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "领域术语核对：轨迹=新增实体，无 CONTEXT.md 冲突（术语待 /reflect 沉淀 trajectory 实体条目）"}
+  - {at: 2026-08-23, from: TECH-DESIGN, to: CRYSTALLIZE, note: "§10 深潜完成（四问四答 D1-D6 + 三接口契约 golden values），ADR-038 落地；进入自动链"}
+  - {at: 2026-08-23, from: CRYSTALLIZE, to: BUILD, note: "自动链完成：结晶 REQ-AGENT-127~135、编写 4 份测试契约（单元/集成/E2E）、门 1 断言签核通过；解锁实现"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"            # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true            # 是否已跑过 compile-design-system
+  preview: .aiassist/stories/2026-08-22-tool-call-review/ux/preview.html
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: [trajectory.html]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]

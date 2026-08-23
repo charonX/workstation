@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Trajectory View": {
+      "versions": [
+        {
+          "path": "trajectory.html",
+          "createdAt": "2026-08-23T07:02:17.295Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-08-23T07:02:17.295Z",
+  "updatedAt": "2026-08-23T07:02:17.295Z"
+}

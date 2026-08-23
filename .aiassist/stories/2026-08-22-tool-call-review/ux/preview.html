@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ux — Design system</title>
+<style>
+
+:root {
+  color-scheme: light;
+  --ds-bg: #FAF9F5;
+  --ds-surface: #FFFFFF;
+  --ds-text: rgba(15, 12, 8, 0.92);
+  --ds-text-2: rgba(15, 12, 8, 0.62);
+  --ds-text-3: rgba(15, 12, 8, 0.46);
+  --ds-border: rgba(15, 12, 8, 0.10);
+  --ds-border-soft: rgba(15, 12, 8, 0.07);
+  --ds-hover: rgba(15, 12, 8, 0.045);
+  --ds-active: rgba(15, 12, 8, 0.07);
+  --ds-accent: #D97757;
+  --ds-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ds-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--ds-font);
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+.ds-pane { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+
+/* ------------------------------------------------- outline (left nav) */
+.ds-outline {
+  flex: 0 0 248px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ds-border-soft);
+  background: var(--ds-bg);
+}
+@media (max-width: 1007px) { .ds-outline { display: none; } }
+.ds-outline-head { padding: 18px 16px 12px; }
+.ds-outline-head h1 { margin: 0; font-size: 18px; font-weight: 550; letter-spacing: -0.01em; color: var(--ds-text); }
+.ds-outline-scroll { flex: 1; overflow-y: auto; padding: 4px 8px 16px; scrollbar-width: thin; }
+.ds-pinned { margin: 0 0 4px; padding: 0 0 6px; border-bottom: 1px solid var(--ds-border-soft); }
+.ds-item {
+  display: flex; align-items: center; width: 100%;
+  text-align: left; padding: 5px 8px 5px 24px;
+  font-size: 12px; line-height: 1.35; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-item:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-item.active { font-weight: 550; color: var(--ds-text); background: var(--ds-active); }
+.ds-item .ds-ic { flex: 0 0 auto; width: 13px; height: 13px; margin-left: -19px; margin-right: 6px; opacity: 0.75; }
+.ds-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-group-btn {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  padding: 6px 8px; margin-top: 6px;
+  font-size: 12px; font-weight: 550; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-group-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-group-btn .ds-caret { width: 9px; height: 9px; flex: 0 0 auto; transition: transform 0.15s ease; opacity: 0.7; }
+.ds-outline-group.collapsed .ds-caret { transform: rotate(-90deg); }
+.ds-outline-group.collapsed .ds-group-items { display: none; }
+.ds-group-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------- content column */
+.ds-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ds-content-inner {
+  display: flex; flex-direction: column; gap: 24px;
+  padding: 30px 16px 80px;
+  max-width: 760px; margin: 0 auto;
+}
+.ds-group-label { margin: 6px 0 14px; font-size: 13px; font-weight: 550; color: var(--ds-text); }
+.ds-card + .ds-card { margin-top: 26px; }
+.ds-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ds-card-title { margin: 0; font-size: 13.5px; font-weight: 550; line-height: 1.3; color: var(--ds-text); }
+.ds-card-sub { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--ds-text-3); }
+.ds-prevwrap {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--ds-border-soft); border-radius: 8px;
+  background: #fff;
+}
+/* Outer-tree color-scheme on the shadow host beats the card's own
+   ':host { color-scheme: light dark }' (rewritten from ':root'), so
+   light-dark() tokens resolve LIGHT regardless of the viewer's OS theme —
+   the preview chrome is light-only. Cards opting into dark explicitly
+   (e.g. a '.spectrum-dark' subtree) still render dark. */
+.ds-stage { transform-origin: top left; visibility: hidden; color-scheme: light; }
+.ds-stage[data-ready] { visibility: visible; }
+
+/* ------------------------------------------------------------- readme */
+.ds-readme-body { position: relative; }
+.ds-readme-body.collapsed { max-height: 280px; overflow: hidden; }
+.ds-readme-body.collapsed::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 64px;
+  background: linear-gradient(to bottom, rgba(250, 249, 245, 0), var(--ds-bg));
+  pointer-events: none;
+}
+.ds-readme-toggle { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--ds-text-2); }
+.ds-readme-toggle:hover { color: var(--ds-text); }
+
+/* -------------------------------------------------------------- prose */
+.ds-prose { font-size: 13px; line-height: 1.6; color: var(--ds-text); }
+.ds-prose > :first-child { margin-top: 0; }
+.ds-prose h1 { font-size: 19px; font-weight: 600; margin: 22px 0 8px; letter-spacing: -0.01em; }
+.ds-prose h2 { font-size: 16px; font-weight: 600; margin: 20px 0 6px; }
+.ds-prose h3 { font-size: 13.5px; font-weight: 600; margin: 16px 0 4px; }
+.ds-prose h4, .ds-prose h5, .ds-prose h6 { font-size: 12.5px; font-weight: 600; margin: 14px 0 4px; }
+.ds-prose p { margin: 0 0 10px; }
+.ds-prose ul, .ds-prose ol { margin: 0 0 10px; padding-left: 22px; }
+.ds-prose li { margin: 2px 0; }
+.ds-prose code {
+  font-family: var(--ds-mono); font-size: 0.92em;
+  background: rgba(15, 12, 8, 0.055); border-radius: 4px; padding: 0.1em 0.35em;
+}
+.ds-prose pre {
+  background: rgba(15, 12, 8, 0.045); border: 1px solid var(--ds-border-soft);
+  border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 12px;
+}
+.ds-prose pre code { background: none; padding: 0; font-size: 11.5px; line-height: 1.55; }
+.ds-prose blockquote {
+  margin: 0 0 10px; padding: 2px 0 2px 12px;
+  border-left: 3px solid rgba(15, 12, 8, 0.14); color: var(--ds-text-2);
+}
+.ds-prose hr { border: 0; border-top: 1px solid var(--ds-border-soft); margin: 16px 0; }
+.ds-prose table { border-collapse: collapse; margin: 0 0 12px; font-size: 12px; width: 100%; }
+.ds-prose th, .ds-prose td { border: 1px solid var(--ds-border); padding: 5px 9px; text-align: left; vertical-align: top; }
+.ds-prose th { background: rgba(15, 12, 8, 0.035); font-weight: 600; }
+.ds-prose img { max-width: 100%; border-radius: 6px; }
+.ds-prose a { color: inherit; text-decoration: underline; text-decoration-color: rgba(15, 12, 8, 0.3); }
+.ds-prose a:hover { text-decoration-color: currentColor; }
+
+.ds-empty { font-size: 13px; color: var(--ds-text-3); padding: 24px 0; }
+
+</style>
+
+</head>
+<body>
+<div class="ds-pane">
+<nav class="ds-outline" aria-label="Design system outline"><div class="ds-outline-head"><h1>Design system</h1></div><div class="ds-outline-scroll"><div class="ds-outline-group"><button class="ds-group-btn" data-group-toggle><svg class="ds-caret" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 3.25 5 6.75l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>trajectory</span></button><div class="ds-group-items"><button class="ds-item" data-target="g-trajectory"><span>轨迹视图（单屏一体）</span></button></div></div></div></nav>
+<main class="ds-content" data-scroll>
+<div class="ds-content-inner">
+<div class="ds-group" id="g-trajectory" data-anchor data-anchor-key="g-trajectory"><h2 class="ds-group-label">trajectory</h2><section class="ds-card" id="card-0-x" data-card data-anchor data-anchor-key="g-trajectory"><header class="ds-card-head"><div><h3 class="ds-card-title">轨迹视图（单屏一体）</h3></div></header><div class="ds-prevwrap" data-fit style="box-sizing:content-box;width:728px;height:455px;"><div class="ds-stage" data-stage style="width:1440px;height:900px;transform:scale(0.5055555555555555);"><template shadowrootmode="open"><div class="__dsroot" style="margin:0;width:100%;height:100%;overflow:auto;box-sizing:border-box;"><div class="zone">
+  <!-- 左栏：会话列表（简化示意）-->
+  <aside class="session-col">
+    <div class="col-title">通用</div>
+    <div class="session-item active">
+      <div class="s-title">排查 project_list 超时</div>
+      <div class="s-meta">今天 · 有轨迹</div>
+    </div>
+    <div class="session-item">
+      <div class="s-title">日报 flow 调试</div>
+      <div class="s-meta">昨天</div>
+    </div>
+    <div class="col-title">项目 · workstation</div>
+    <div class="session-item">
+      <div class="s-title">老会话（无轨迹）</div>
+      <div class="s-meta">08-19 · 启用前</div>
+    </div>
+  </aside>
+
+  <!-- 右栏：对话窗 -->
+  <main class="chat-col">
+    <header class="chat-header">
+      <h2 class="chat-title">排查 project_list 超时</h2>
+      <span class="space-badge">通用</span>
+      <nav class="view-tabs" data-testid="view-tabs">
+        <span class="view-tab" id="tab-chat">对话</span>
+        <span class="view-tab active" id="tab-traj" data-testid="trajectory-tab">轨迹</span>
+      </nav>
+    </header>
+
+    <!-- ============ 轨迹视图 ============ -->
+    <section class="trajectory-view on" data-testid="trajectory-view">
+
+      <!-- Timeline Overview -->
+      <div class="timeline-wrap">
+        <div class="timeline-label">
+          <span>时间线总览 <span id="tl-range"></span></span>
+          <span class="zoom-hint">滚轮缩放 · 拖拽区间过滤 · 右键清除/平移</span>
+        </div>
+        <div class="timeline-canvas" id="tl-canvas" data-testid="timeline-overview">
+          <div class="tl-track" id="tl-track"></div>
+          <div class="tl-brush" id="tl-brush"></div>
+          <div class="tl-tip" id="tl-tip"></div>
+        </div>
+      </div>
+
+      <!-- Ledger -->
+      <div class="ledger-area">
+        <div class="filter-banner" id="filter-banner"></div>
+        <div class="partial-note" id="partial-note">跳过 2 条损坏记录（E-TRAJ-PARTIAL）</div>
+        <div class="ledger-scroll" id="ledger-scroll" data-testid="trajectory-ledger">
+          <button class="load-older" id="load-older">加载更早一页 ↑</button>
+          <div class="ledger-spacer" id="ledger-spacer"></div>
+        </div>
+        <div class="follow-banner" id="follow-banner">跟随已暂停 — 点击回到最新 ↓</div>
+
+        <!-- 空态覆盖层 -->
+        <div class="overlay-state" id="empty-state" data-testid="traj-empty-state">
+          <div class="empty-card">
+            <h3>该会话没有轨迹记录</h3>
+            <p>功能启用前的会话不追溯。新会话的工具调用将自动记录在此。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inspector -->
+      <aside class="inspector" id="inspector" data-testid="inspector-panel">
+        <div class="inspector-head">
+          <span id="insp-title">tool_call · project_list</span>
+          <span class="close" id="insp-close">收起 ✕</span>
+        </div>
+        <div class="inspector-body">
+          <div class="insp-main">
+            <div class="insp-section">
+              <div class="insp-label">输入 Input</div>
+              <div class="insp-content" id="insp-input"></div>
+            </div>
+            <div class="insp-section">
+              <div class="insp-label">输出 Output <span class="truncated-badge" id="insp-truncated" style="display:none">已截断 truncated</span></div>
+              <div class="insp-content" id="insp-output"></div>
+            </div>
+            <div class="insp-section" id="insp-subexec-wrap" style="display:none">
+              <a class="subexec-link" id="insp-subexec" data-testid="subexec-link">↗ 打开子执行详情 ex_2041</a>
+            </div>
+          </div>
+          <div class="insp-side">
+            <div class="insp-label">Timing</div>
+            <div class="kv"><span class="k">开始</span><span id="insp-start"></span></div>
+            <div class="kv"><span class="k">时长</span><span id="insp-duration"></span></div>
+            <div style="height:8px"></div>
+            <div class="insp-label">Tokens</div>
+            <div class="kv"><span class="k">input</span><span id="insp-in"></span></div>
+            <div class="kv"><span class="k">output</span><span id="insp-out"></span></div>
+            <div class="kv"><span class="k">cacheRead</span><span id="insp-cache"></span></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============ 对话视图（占位示意）============ -->
+    <section class="conversation-view" data-testid="message-list">
+      <div class="msg-bubble user">project_list 为什么超时？帮我查一下。</div>
+      <div class="msg-bubble">我先列出项目，然后检查 task run 的子执行日志……<br>（工具调用在实时流式期间以折叠块呈现于此；重开后此处只保留文本——工具明细请切「轨迹」查看。）</div>
+    </section>
+  </main>
+</div>
+
+<!-- 演示状态开关（原型专用）-->
+<div class="demo-bar">
+  <button class="demo-btn" id="demo-empty">演示：空态（老会话）</button>
+  <button class="demo-btn" id="demo-partial">演示：损坏行</button>
+  <button class="demo-btn" id="demo-reset">恢复正常数据</button>
+</div></div></template></div></div></section></div>
+</div>
+</main>
+</div>
+<script type="application/json" id="ds-data">{"cards":[{"id":"card-0-x","w":1440,"h":900,"base":"","css":["r78ym1","as1fkj","13u271d"],"js":[{"code":"\n/* ============ 演示数据（Q3=A：真实语义假数据——一次真实调试场景）============ */\nconst T0 = Date.now();\nconst iso = (ms) => new Date(ms).toISOString();\nconst hhmmss = (ms) => new Date(ms).toLocaleTimeString(\"zh-CN\", { hour12: false });\n\n// 记录模型 = PRD §10 已锁约束 5 的归一记录形态（重放/live 同构）。\nconst records = [\n  { type: \"turn_boundary\", turn: 1 },\n  { type: \"user_message\",  ts: T0 + 0,     text: \"project_list 为什么超时？帮我查一下。\" },\n  { type: \"assistant_span\", ts: T0 + 120, ttftMs: 830, decodeMs: 2140,\n    usage: { input: 1842, output: 156, cacheRead: 512 }, textPreview: \"我先列出项目，然后检查 task run 的子执行日志……\" },\n  { type: \"tool_call\", ts: T0 + 980, toolCallId: \"tc_01\", name: \"project_list\",\n    input: { limit: 100 }, output: { projects: [\"workstation\", \"media-line\"], total: 2 },\n    durationMs: 42300, isError: false }, // ← 本次调试目标：慢工具\n  { type: \"assistant_span\", ts: T0 + 43400, ttftMs: 640, decodeMs: 1780,\n    usage: { input: 2410, output: 203, cacheRead: 1024 }, textPreview: \"project_list 用了 42 秒，明显异常。我继续看 task run 的执行记录……\" },\n  { type: \"tool_call\", ts: T0 + 44100, toolCallId: \"tc_02\", name: \"bash\",\n    input: { command: \"sqlite3 ~/.opc-workstation/data.db 'EXPLAIN QUERY PLAN SELECT * FROM projects'\" },\n    output: \"SCAN projects\\nUSE TEMP B-TREE FOR ORDER BY\", durationMs: 187, isError: false },\n  { type: \"turn_boundary\", turn: 2 },\n  { type: \"user_message\", ts: T0 + 60000, text: \"那帮我对 workstation 跑一次日报 flow 验证修复。\" },\n  { type: \"assistant_span\", ts: T0 + 60180, ttftMs: 705, decodeMs: 1650,\n    usage: { input: 3105, output: 188, cacheRead: 1536 }, textPreview: \"好的，我触发一次 task run 并跟踪它的子执行。\" },\n  { type: \"tool_call\", ts: T0 + 60900, toolCallId: \"tc_03\", name: \"task_run\",\n    input: { projectId: \"proj_ws\", flowId: \"flow_daily\", trigger: \"dialogue\" },\n    output: { executionId: \"ex_2041\", queuePosition: 0 }, durationMs: 96, isError: false,\n    subExecutionId: \"ex_2041\" },\n];\n\nconst ROW_H = 28, RULE_H = 18;\n\n/* ============ Tab 切换（稳定块 3）============ */\nconst tabChat = document.getElementById(\"tab-chat\");\nconst tabTraj = document.getElementById(\"tab-traj\");\nconst convView = document.querySelector(\".conversation-view\");\nconst trajView = document.querySelector(\".trajectory-view\");\nfunction switchTab(toTraj) {\n  tabTraj.classList.toggle(\"active\", toTraj);\n  tabChat.classList.toggle(\"active\", !toTraj);\n  trajView.style.display = toTraj ? \"flex\" : \"none\";\n  convView.classList.toggle(\"on\", !toTraj);\n}\ntabChat.onclick = () => switchTab(false);\ntabTraj.onclick = () => switchTab(true);\n\n/* ============ Timeline：投影 / 缩放 / 拖拽过滤 / hover（稳定块 6）============ */\nconst tmin = records[1].ts, tmax = records[records.length-1].ts + 500;\nlet zoom = 1, panFrac = 0, brush = null;\nconst track = document.getElementById(\"tl-track\");\nconst canvas = document.getElementById(\"tl-canvas\");\nconst tip = document.getElementById(\"tl-tip\");\nconst brushEl = document.getElementById(\"tl-brush\");\n\nconst fracOf = (ts) => ((ts - tmin) / (tmax - tmin));           // 记录 → [0,1]\nconst viewFrac = (f) => (f - panFrac) * zoom;                    // 时间域 → 视口\nconst px = (ts) => `calc(${(viewFrac(fracOf(ts)) * 100).toFixed(3)}%)`;\n\nfunction renderTimeline() {\n  track.innerHTML = \"\";\n  document.getElementById(\"tl-range\").textContent =\n    `${hhmmss(tmin + panFrac*(tmax-tmin))} – ${hhmmss(tmin + (panFrac + 1/zoom)*(tmax-tmin))}`;\n  for (const r of records) {\n    if (!r.ts && r.type !== \"turn_boundary\") continue;\n    if (r.type === \"assistant_span\") {\n      const s0 = r.ts, mid = r.ts + r.ttftMs, end = r.ts + r.ttftMs + r.decodeMs;\n      const w0 = Math.max(0, Math.min(100, viewFrac(fracOf(s0))*100));\n      const w1 = Math.max(0, Math.min(100, viewFrac(fracOf(mid))*100));\n      const w2 = Math.max(0, Math.min(100, viewFrac(fracOf(end))*100));\n      seg(w0, w1 - w0, \"ttft\"); seg(w1, w2 - w1, \"decode\");\n      r._hover = { start: s0, dur: r.ttftMs + r.decodeMs, label: \"assistant\" };\n      addHover(w0, w2, r._hover);\n    } else if (r.type === \"tool_call\") {\n      const w0 = viewFrac(fracOf(r.ts))*100;\n      const w1 = viewFrac(fracOf(r.ts + r.durationMs))*100;\n      const el = document.createElement(\"div\");\n      el.className = `tl-seg tool${r.isError ? \" err\" : \"\"}`;\n      el.style.left = px(r.ts);\n      el.style.width = `calc(${Math.max(0.4, w1-w0).toFixed(3)}%)`;\n      r._hover = { start: r.ts, dur: r.durationMs, label: r.name };\n      el.addEventListener(\"mouseenter\", () => showTip(el, r._hover));\n      el.addEventListener(\"mouseleave\", hideTip);\n      track.appendChild(el);\n    } else if (r.type === \"turn_boundary\") {\n      const el = document.createElement(\"div\");\n      el.className = \"tl-seg turnmark\";\n      const prev = records[records.indexOf(r)-1];\n      el.style.left = px((prev?.ts ?? tmin) + 400);\n      track.appendChild(el);\n    }\n  }\n  function seg(left, width, kind) {\n    const el = document.createElement(\"div\");\n    el.className = `tl-seg ${kind}`;\n    el.dataset.timelineSegment = kind; // TL1 断言锚\n    el.style.left = left.toFixed(3) + \"%\";\n    el.style.width = Math.max(width, 0).toFixed(3) + \"%\";\n    track.appendChild(el);\n  }\n  function addHover(l0, l1, info) {\n    const el = document.createElement(\"div\");\n    el.className = \"tl-seg\"; el.style.background = \"transparent\";\n    el.style.left = l0.toFixed(3) + \"%\"; el.style.width = Math.max(l1-l0, 0.4).toFixed(3) + \"%\";\n    let timer = null;\n    el.addEventListener(\"mouseenter\", () => { timer = setTimeout(() => showTip(el, info), 500); }); // deepseek：500ms hover\n    el.addEventListener(\"mouseleave\", () => { clearTimeout(timer); hideTip(); });\n    track.appendChild(el);\n  }\n}\nfunction showTip(el, info) {\n  tip.textContent = `${info.label}  ${hhmmss(info.start)} · ${(info.dur/1000).toFixed(2)}s`;\n  const rect = canvas.getBoundingClientRect();\n  const x = Math.min(rect.width - 180, Math.max(0, parseFloat(el.style.left)/100*rect.width));\n  tip.style.left = x + \"px\"; tip.style.top = \"-26px\"; tip.style.display = \"block\";\n}\nfunction hideTip() { tip.style.display = \"none\"; }\n\n// 滚轮缩放（以指针为中心）；右键清除/平移；拖拽区间过滤\ncanvas.addEventListener(\"wheel\", (e) => {\n  e.preventDefault();\n  const at = e.offsetX / canvas.clientWidth;\n  zoom = Math.max(1, Math.min(30, zoom * (e.deltaY \u003c 0 ? 1.2 : 1/1.2)));\n  panFrac = Math.max(0, Math.min(1 - 1/zoom, at - at/zoom));\n  applyView(); renderLedger();\n}, { passive: false });\ncanvas.addEventListener(\"contextmenu\", (e) => {\n  e.preventDefault();\n  if (brush) { clearBrush(); return; }         // 右键单击清除选择\n  panFrac = Math.max(0, panFrac - e.movementX / canvas.clientWidth / zoom); // 右键拖拽平移（简化：移动即平移）\n  applyView(); renderLedger();\n});\nlet dragging = false, dragStart = null;\ncanvas.addEventListener(\"mousedown\", (e) => { if (e.button !== 0) return; dragging = true; dragStart = e.offsetX; });\nwindow.addEventListener(\"mousemove\", (e) => {\n  if (!dragging) return;\n  const rect = canvas.getBoundingClientRect();\n  const a = Math.max(0, Math.min(dragStart, e.clientX - rect.left));\n  const b = Math.min(canvas.clientWidth, Math.max(dragStart, e.clientX - rect.left));\n  if (Math.abs(b - a) \u003c 6) return;\n  brush = [a / canvas.clientWidth, b / canvas.clientWidth];\n  brushEl.style.display = \"block\";\n  brushEl.style.left = brush[0]*100 + \"%\"; brushEl.style.width = (brush[1]-brush[0])*100 + \"%\";\n});\nwindow.addEventListener(\"mouseup\", (e) => {\n  if (!dragging) return; dragging = false;\n  if (brush) applyBrushFilter();\n});\nfunction applyBrushFilter() {\n  const [a, b] = brush.map((f) => tmin + (panFrac + f/zoom) * (tmax - tmin));\n  window.__brushWindow = [a, b];\n  renderLedger();\n  document.getElementById(\"filter-banner\").classList.add(\"on\");\n  document.getElementById(\"filter-banner\").textContent =\n    `已按区间过滤 ${hhmmss(a)} – ${hhmmss(b)}（右键清除）`;\n}\nfunction clearBrush() {\n  brush = null; window.__brushWindow = null;\n  brushEl.style.display = \"none\";\n  document.getElementById(\"filter-banner\").classList.remove(\"on\");\n  renderLedger();\n}\ndocument.getElementById(\"filter-banner\").onclick = clearBrush;\nfunction applyView() { /* 缩放/平移后由 renderTimeline/renderLedger 重画 */ }\n\n/* ============ Ledger 渲染 + 虚拟滚动窗口（稳定块 4/7）============ */\nconst scroll = document.getElementById(\"ledger-scroll\");\nconst spacer = document.getElementById(\"ledger-spacer\");\nconst OVERSCAN = 6;\nlet followTail = true, loadedFrom = 0; // 演示：前 200 条为「更早一页」未加载\n\nfunction visibleRecords() {\n  let rs = records;\n  if (window.__brushWindow) {\n    const [a, b] = window.__brushWindow;\n    rs = rs.filter((r) => r.ts >= a && r.ts \u003c= b || r.type === \"turn_boundary\");\n  }\n  return rs;\n}\nconst rowEls = new Map();\n\nfunction renderLedger() {\n  spacer.querySelectorAll(\".lrow,.turn-rule\").forEach((el) => el.remove());\n  rowEls.clear();\n  const rs = visibleRecords();\n  const items = [];\n  rs.forEach((r, i) => {\n    if (r.type === \"turn_boundary\") items.push({ kind: \"rule\", y: i * ROW_H, label: `Turn ${r.turn}` });\n    items.push({ kind: \"row\", rec: r, i, y: i * ROW_H });\n  });\n  const totalH = rs.length * ROW_H + RULE_H * items.filter(x=>x.kind===\"rule\").length;\n  spacer.style.height = Math.max(totalH, scroll.clientHeight) + \"px\";\n\n  // 虚拟窗口：只挂可见 ± overscan（VS1）\n  const st = followTail ? scroll.scrollHeight : scroll.scrollTop;\n  const viewTop = followTail ? totalH - scroll.clientHeight : scroll.scrollTop;\n  let accY = 0;\n  for (const it of items) {\n    const y = it.y + (it.kind === \"rule\" ? 0 : 0);\n    if (it.kind === \"rule\") {\n      if (y > viewTop - 40 && y \u003c viewTop + scroll.clientHeight + 40) {\n        const el = document.createElement(\"div\");\n        el.className = \"turn-rule\";\n        el.style.top = y + \"px\";\n        el.innerHTML = `\u003cspan class=\"turn-label\">${it.label}\u003c/span>`;\n        spacer.appendChild(el);\n      }\n      continue;\n    }\n    if (y \u003c viewTop - OVERSCAN*ROW_H || y > viewTop + scroll.clientHeight + OVERSCAN*ROW_H) continue;\n    const el = buildRow(it.rec, it.i);\n    el.style.top = y + \"px\";\n    spacer.appendChild(el);\n    rowEls.set(it.i, el);\n  }\n  document.getElementById(\"load-older\").classList.toggle(\"on\", scroll.scrollTop > 0 && scroll.scrollTop \u003c 200);\n  document.getElementById(\"follow-banner\").classList.toggle(\"on\", !followTail && hasNewAtTail());\n}\nfunction hasNewAtTail(){ return true; }\n\nfunction buildRow(r, i) {\n  const el = document.createElement(\"div\");\n  if (r.type === \"turn_boundary\") return el;\n  el.className = \"lrow\"; el.style.top = \"\"; el.dataset.rowIndex = i;\n  el.onclick = () => selectRow(r, el);\n  const ev = document.createElement(\"span\"); ev.className = \"idx\"; ev.textContent = String(i+1).padStart(3,\" \");\n  const kind = document.createElement(\"span\");\n  const content = document.createElement(\"span\"); content.className = \"content\";\n  if (r.type === \"user_message\") {\n    kind.className = \"ev user\"; kind.textContent = \"USER\";\n    content.textContent = r.text;\n  } else if (r.type === \"assistant_span\") {\n    kind.className = \"ev assistant\"; kind.textContent = \"ASSISTANT\";\n    content.textContent = `${r.textPreview}  ·  TTFT ${(r.ttftMs/1000).toFixed(2)}s + 解码 ${(r.decodeMs/1000).toFixed(2)}s`;\n  } else if (r.type === \"tool_call\") {\n    const running = r.status === \"running\", interrupted = r.status === \"interrupted\", error = r.isError;\n    kind.className = `ev tool${error?\" error\":\"\"}${running?\" running\":\"\"}`;\n    kind.textContent = running ? \"TOOL…\" : \"TOOL\";\n    el.classList.toggle(\"error-row\", error);\n    el.classList.toggle(\"interrupted-row\", interrupted);\n    const nm = document.createElement(\"span\"); nm.className = \"tname\"; nm.textContent = r.name;\n    content.appendChild(nm);\n    const sum = document.createTextNode(\"  \" + JSON.stringify(r.input).slice(0, 70));\n    content.appendChild(sum);\n    if (interrupted) content.append(\"  （已中断）\");\n  }\n  el.append(ev, kind, content);\n  return el;\n}\n\n/* ============ 行选中 → Inspector（稳定块 5）============ */\nconst inspector = document.getElementById(\"inspector\");\nfunction selectRow(r, el) {\n  spacer.querySelectorAll(\".lrow.selected\").forEach((x)=>x.classList.remove(\"selected\"));\n  el.classList.add(\"selected\");\n  if (r.type !== \"tool_call\") { inspector.classList.remove(\"open\"); return; }\n  document.getElementById(\"insp-title\").textContent = `tool_call · ${r.name}`;\n  document.getElementById(\"insp-input\").textContent = JSON.stringify(r.input, null, 2);\n  const out = typeof r.output === \"string\" ? r.output : JSON.stringify(r.output, null, 2);\n  document.getElementById(\"insp-output\").textContent = out.slice(0, 400) + (out.length > 400 ? \"\\n…\" : \"\");\n  document.getElementById(\"insp-truncated\").style.display = r.outputLen > 400 ? \"inline-block\" : \"none\";\n  document.getElementById(\"insp-start\").textContent = hhmmss(r.ts);\n  document.getElementById(\"insp-duration\").textContent = r.durationMs != null ? (r.durationMs/1000).toFixed(2)+\"s\" : \"—（运行中不伪造时长）\";\n  const u = nearestUsage(r);\n  document.getElementById(\"insp-in\").textContent = u.input;\n  document.getElementById(\"insp-out\").textContent = u.output;\n  document.getElementById(\"insp-cache\").textContent = u.cacheRead;\n  const wrap = document.getElementById(\"insp-subexec-wrap\");\n  wrap.style.display = r.subExecutionId ? \"block\" : \"none\";\n  inspector.classList.add(\"open\");\n}\nfunction nearestUsage(r) {\n  // 演示语义：取该回合 assistant_span 的 usage（实现=回合内最近前驱）\n  let best = null;\n  for (const x of records) {\n    if (x.type === \"assistant_span\" && x.ts \u003c= r.ts) best = x;\n    if (x === r) break;\n  }\n  return best?.usage ?? { input: \"-\", output: \"-\", cacheRead: \"-\" };\n}\ndocument.getElementById(\"insp-close\").onclick = () => inspector.classList.remove(\"open\");\ndocument.getElementById(\"insp-subexec\").onclick = () => alert(\"路由 → /executions/ex_2041 详情页（J1：子执行跳转入口）\");\n\n/* ============ 滚动跟随 / 顶触加载（稳定块 7）============ */\nscroll.addEventListener(\"scroll\", () => {\n  const nearBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight \u003c 40;\n  if (nearBottom) followTail = true;\n  else if (followTail) followTail = false; // 上滑暂停跟随\n  document.getElementById(\"load-older\").classList.toggle(\"on\", scroll.scrollTop \u003c 120);\n});\ndocument.getElementById(\"follow-banner\").onclick = () => { followTail = true; toTail(); };\ndocument.getElementById(\"load-older\").onclick = function () {\n  this.textContent = \"加载中…\"; this.classList.add(\"loading\");\n  setTimeout(() => { // 演示：prepend 一页（语义行键保持——真实实现 prepend 后键不变）\n    this.textContent = \"加载更早一页 ↑\"; this.classList.remove(\"loading\");\n    this.classList.remove(\"on\");\n  }, 700);\n};\nfunction toTail() { scroll.scrollTop = scroll.scrollHeight; }\n\n/* ============ 实时接入演示（稳定块 8）：模拟一条 running → 完成 ============ */\nsetTimeout(() => {\n  if (!switchTab) return;\n  records.push({ type: \"tool_call\", ts: T0 + 62000, toolCallId: \"tc_04\", name: \"settings_get\",\n    status: \"running\", input: { section: \"agent\" } });\n  renderLedger(); if (followTail) toTail();\n}, 2500);\nsetTimeout(() => {\n  const r = records[records.length-1];\n  r.status = undefined; r.durationMs = 142; r.isError = false;\n  r.output = { agent: { providers: 2 } };\n  renderLedger(); if (followTail) toTail();\n}, 5200);\n\n/* ============ 演示状态开关（空态/损坏行）============ */\nconst emptyState = document.getElementById(\"empty-state\");\ndocument.getElementById(\"demo-empty\").onclick = () => emptyState.classList.toggle(\"on\");\ndocument.getElementById(\"demo-partial\").onclick = () =>\n  document.getElementById(\"partial-note\").classList.toggle(\"on\");\ndocument.getElementById(\"demo-reset\").onclick = () => {\n  emptyState.classList.remove(\"on\");\n  document.getElementById(\"partial-note\").classList.remove(\"on\");\n};\n\n/* init */\nrenderTimeline(); renderLedger(); toTail();\nwindow.addEventListener(\"resize\", renderLedger);\n","babel":false,"name":null}]}],"css":{"r78ym1":":host{\n  /* === Typography === */\n  --ch-font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif; /* @kind font */\n  --ch-font-mono: \"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace; /* @kind font */\n\n  --ch-text-xs: 11px; /* @kind other */\n  --ch-text-sm: 12px; /* @kind other */\n  --ch-text-base: 13px; /* @kind other */\n  --ch-text-md: 14px; /* @kind other */\n  --ch-text-lg: 16px; /* @kind other */\n  --ch-text-xl: 20px; /* @kind other */\n  --ch-text-2xl: 28px; /* @kind other */\n\n  --ch-weight-normal: 400; /* @kind other */\n  --ch-weight-medium: 500; /* @kind other */\n  --ch-weight-semibold: 600; /* @kind other */\n  --ch-weight-bold: 700; /* @kind other */\n\n  --ch-leading-tight: 1.25; /* @kind other */\n  --ch-leading-normal: 1.5; /* @kind other */\n  --ch-leading-relaxed: 1.75; /* @kind other */\n\n  /* === Spacing === */\n  --ch-space-1: 4px;\n  --ch-space-2: 8px;\n  --ch-space-3: 12px;\n  --ch-space-4: 16px;\n  --ch-space-5: 20px;\n  --ch-space-6: 24px;\n  --ch-space-8: 32px;\n  --ch-space-10: 40px;\n\n  /* === Border Radius === */\n  --ch-radius-sm: 4px;\n  --ch-radius-md: 6px;\n  --ch-radius-lg: 8px;\n  --ch-radius-xl: 12px;\n  --ch-radius-full: 9999px;\n\n  /* === Layout === */\n  --ch-topbar-height: 48px; /* @kind other */\n  --ch-sidebar-width: 260px; /* @kind other */\n  --ch-right-panel-width: 320px; /* @kind other */\n  --ch-panel-padding: 16px; /* @kind other */\n}\n:host,\n[data-theme=\"light\"]{\n  color-scheme: light;\n\n  --ch-bg: #f7f8f7;\n  --ch-surface: #ffffff;\n  --ch-surface-high: #f0f1ef;\n  --ch-surface-highest: #e6e7e4;\n  --ch-border: #d9dbd6;\n  --ch-border-strong: #bfc2bb;\n  --ch-text: #1a1c19;\n  --ch-text-secondary: #4d524b;\n  --ch-text-tertiary: #7a8179;\n\n  --ch-accent: #0d9488;\n  --ch-accent-dim: #0f766e;\n  --ch-accent-text: #ffffff;\n  --ch-accent-soft: rgba(13, 148, 136, 0.10);\n\n  --ch-success: #16a34a;\n  --ch-success-soft: rgba(22, 163, 74, 0.10);\n  --ch-warning: #d97706;\n  --ch-warning-soft: rgba(217, 119, 6, 0.10);\n  --ch-error: #dc2626;\n  --ch-error-soft: rgba(220, 38, 38, 0.10);\n  --ch-info: #2563eb;\n  --ch-info-soft: rgba(37, 99, 235, 0.10);\n\n  --ch-codex: #9333ea;\n  --ch-skill: #0891b2;\n  --ch-trigger: #d97706;\n  --ch-output: #16a34a;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);\n}\n[data-theme=\"dark\"]{\n  color-scheme: dark;\n\n  --ch-bg: #0d1117;\n  --ch-surface: #161b22;\n  --ch-surface-high: #1f242c;\n  --ch-surface-highest: #2a3039;\n  --ch-border: #2f3634;\n  --ch-border-strong: #3c4a46;\n  --ch-text: #dde4e1;\n  --ch-text-secondary: #8b929d;\n  --ch-text-tertiary: #5f6a66;\n\n  --ch-accent: #2dd4bf;\n  --ch-accent-dim: #1a9e8e;\n  --ch-accent-text: #003731;\n  --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n  --ch-success: #22c55e;\n  --ch-success-soft: rgba(34, 197, 94, 0.14);\n  --ch-warning: #f59e0b;\n  --ch-warning-soft: rgba(245, 158, 11, 0.14);\n  --ch-error: #ef4444;\n  --ch-error-soft: rgba(239, 68, 68, 0.14);\n  --ch-info: #3b82f6;\n  --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n  --ch-codex: #a855f7;\n  --ch-skill: #06b6d4;\n  --ch-trigger: #f59e0b;\n  --ch-output: #22c55e;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n}\n@media (prefers-color-scheme: dark){:host:not([data-theme=\"light\"]){\n    color-scheme: dark;\n\n    --ch-bg: #0d1117;\n    --ch-surface: #161b22;\n    --ch-surface-high: #1f242c;\n    --ch-surface-highest: #2a3039;\n    --ch-border: #2f3634;\n    --ch-border-strong: #3c4a46;\n    --ch-text: #dde4e1;\n    --ch-text-secondary: #8b929d;\n    --ch-text-tertiary: #5f6a66;\n\n    --ch-accent: #2dd4bf;\n    --ch-accent-dim: #1a9e8e;\n    --ch-accent-text: #003731;\n    --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n    --ch-success: #22c55e;\n    --ch-success-soft: rgba(34, 197, 94, 0.14);\n    --ch-warning: #f59e0b;\n    --ch-warning-soft: rgba(245, 158, 11, 0.14);\n    --ch-error: #ef4444;\n    --ch-error-soft: rgba(239, 68, 68, 0.14);\n    --ch-info: #3b82f6;\n    --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n    --ch-codex: #a855f7;\n    --ch-skill: #06b6d4;\n    --ch-trigger: #f59e0b;\n    --ch-output: #22c55e;\n\n    --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n    --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n    --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n  }\n}\n","as1fkj":":host{\n  /* === Typography === */\n  --ch-font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif; /* @kind font */\n  --ch-font-mono: \"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace; /* @kind font */\n\n  --ch-text-xs: 11px; /* @kind other */\n  --ch-text-sm: 12px; /* @kind other */\n  --ch-text-base: 13px; /* @kind other */\n  --ch-text-md: 14px; /* @kind other */\n  --ch-text-lg: 16px; /* @kind other */\n  --ch-text-xl: 20px; /* @kind other */\n  --ch-text-2xl: 28px; /* @kind other */\n\n  --ch-weight-normal: 400; /* @kind other */\n  --ch-weight-medium: 500; /* @kind other */\n  --ch-weight-semibold: 600; /* @kind other */\n  --ch-weight-bold: 700; /* @kind other */\n\n  --ch-leading-tight: 1.25; /* @kind other */\n  --ch-leading-normal: 1.5; /* @kind other */\n  --ch-leading-relaxed: 1.75; /* @kind other */\n\n  /* === Spacing === */\n  --ch-space-1: 4px;\n  --ch-space-2: 8px;\n  --ch-space-3: 12px;\n  --ch-space-4: 16px;\n  --ch-space-5: 20px;\n  --ch-space-6: 24px;\n  --ch-space-8: 32px;\n  --ch-space-10: 40px;\n\n  /* === Border Radius === */\n  --ch-radius-sm: 4px;\n  --ch-radius-md: 6px;\n  --ch-radius-lg: 8px;\n  --ch-radius-xl: 12px;\n  --ch-radius-full: 9999px;\n\n  /* === Layout === */\n  --ch-topbar-height: 48px; /* @kind other */\n  --ch-sidebar-width: 260px; /* @kind other */\n  --ch-right-panel-width: 320px; /* @kind other */\n  --ch-panel-padding: 16px; /* @kind other */\n}\n:host,\n[data-theme=\"light\"]{\n  color-scheme: light;\n\n  --ch-bg: #f7f8f7;\n  --ch-surface: #ffffff;\n  --ch-surface-high: #f0f1ef;\n  --ch-surface-highest: #e6e7e4;\n  --ch-border: #d9dbd6;\n  --ch-border-strong: #bfc2bb;\n  --ch-text: #1a1c19;\n  --ch-text-secondary: #4d524b;\n  --ch-text-tertiary: #7a8179;\n\n  --ch-accent: #0d9488;\n  --ch-accent-dim: #0f766e;\n  --ch-accent-text: #ffffff;\n  --ch-accent-soft: rgba(13, 148, 136, 0.10);\n\n  --ch-success: #16a34a;\n  --ch-success-soft: rgba(22, 163, 74, 0.10);\n  --ch-warning: #d97706;\n  --ch-warning-soft: rgba(217, 119, 6, 0.10);\n  --ch-error: #dc2626;\n  --ch-error-soft: rgba(220, 38, 38, 0.10);\n  --ch-info: #2563eb;\n  --ch-info-soft: rgba(37, 99, 235, 0.10);\n\n  --ch-codex: #9333ea;\n  --ch-skill: #0891b2;\n  --ch-trigger: #d97706;\n  --ch-output: #16a34a;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);\n}\n[data-theme=\"dark\"]{\n  color-scheme: dark;\n\n  --ch-bg: #0d1117;\n  --ch-surface: #161b22;\n  --ch-surface-high: #1f242c;\n  --ch-surface-highest: #2a3039;\n  --ch-border: #2f3634;\n  --ch-border-strong: #3c4a46;\n  --ch-text: #dde4e1;\n  --ch-text-secondary: #8b929d;\n  --ch-text-tertiary: #5f6a66;\n\n  --ch-accent: #2dd4bf;\n  --ch-accent-dim: #1a9e8e;\n  --ch-accent-text: #003731;\n  --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n  --ch-success: #22c55e;\n  --ch-success-soft: rgba(34, 197, 94, 0.14);\n  --ch-warning: #f59e0b;\n  --ch-warning-soft: rgba(245, 158, 11, 0.14);\n  --ch-error: #ef4444;\n  --ch-error-soft: rgba(239, 68, 68, 0.14);\n  --ch-info: #3b82f6;\n  --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n  --ch-codex: #a855f7;\n  --ch-skill: #06b6d4;\n  --ch-trigger: #f59e0b;\n  --ch-output: #22c55e;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n}\n@media (prefers-color-scheme: dark){:host:not([data-theme=\"light\"]){\n    color-scheme: dark;\n\n    --ch-bg: #0d1117;\n    --ch-surface: #161b22;\n    --ch-surface-high: #1f242c;\n    --ch-surface-highest: #2a3039;\n    --ch-border: #2f3634;\n    --ch-border-strong: #3c4a46;\n    --ch-text: #dde4e1;\n    --ch-text-secondary: #8b929d;\n    --ch-text-tertiary: #5f6a66;\n\n    --ch-accent: #2dd4bf;\n    --ch-accent-dim: #1a9e8e;\n    --ch-accent-text: #003731;\n    --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n    --ch-success: #22c55e;\n    --ch-success-soft: rgba(34, 197, 94, 0.14);\n    --ch-warning: #f59e0b;\n    --ch-warning-soft: rgba(245, 158, 11, 0.14);\n    --ch-error: #ef4444;\n    --ch-error-soft: rgba(239, 68, 68, 0.14);\n    --ch-info: #3b82f6;\n    --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n    --ch-codex: #a855f7;\n    --ch-skill: #06b6d4;\n    --ch-trigger: #f59e0b;\n    --ch-output: #22c55e;\n\n    --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n    --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n    --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n  }\n}\n.ch-sr-only{\n  position: absolute;\n  width: 1px;\n  height: 1px;\n  padding: 0;\n  margin: -1px;\n  overflow: hidden;\n  clip: rect(0, 0, 0, 0);\n  white-space: nowrap;\n  border-width: 0;\n}\n.ch-focus-ring:focus-visible{\n  outline: none;\n  box-shadow: 0 0 0 2px var(--ch-accent);\n}\n","13u271d":"*{ box-sizing: border-box; margin: 0; padding: 0; }\n.__dsroot{\n  font-family: var(--ch-font-sans);\n  font-size: var(--ch-text-base);\n  background: var(--ch-bg);\n  color: var(--ch-text);\n  height: 100vh;\n  overflow: hidden;\n}\n.zone{ display: flex; height: 100vh; }\n.session-col{\n  width: 240px; flex: none;\n  border-right: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  display: flex; flex-direction: column;\n}\n.session-col .col-title{\n  padding: var(--ch-space-3) var(--ch-space-4);\n  font-size: var(--ch-text-sm); color: var(--ch-text-tertiary);\n  font-weight: var(--ch-weight-semibold);\n}\n.session-item{\n  padding: var(--ch-space-2) var(--ch-space-4);\n  cursor: pointer; color: var(--ch-text-secondary);\n  border-left: 2px solid transparent;\n}\n.session-item.active{\n  background: var(--ch-accent-soft); color: var(--ch-text);\n  border-left-color: var(--ch-accent);\n}\n.session-item .s-title{ font-size: var(--ch-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.session-item .s-meta{ font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: 2px; }\n.chat-col{ flex: 1; display: flex; flex-direction: column; min-width: 0; }\n.chat-header{\n  display: flex; align-items: center; gap: var(--ch-space-3);\n  padding: var(--ch-space-3) var(--ch-space-5);\n  border-bottom: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  flex: none;\n}\n.chat-title{ font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }\n.space-badge{\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);\n  padding: 1px 8px;\n}\n.view-tabs{ display: flex; gap: 2px; margin-left: auto; }\n.view-tab{\n  padding: 4px 14px; font-size: var(--ch-text-sm); cursor: pointer;\n  border-radius: var(--ch-radius-md); color: var(--ch-text-tertiary);\n  user-select: none;\n}\n.view-tab.active{ background: var(--ch-accent-soft); color: var(--ch-accent-dim); font-weight: var(--ch-weight-medium); }\n[data-theme=\"dark\"] .view-tab.active{ color: var(--ch-accent); }\n.demo-bar{\n  position: fixed; bottom: 12px; right: 12px; z-index: 50;\n  display: flex; flex-direction: column; gap: 6px;\n}\n.demo-btn{\n  font-size: var(--ch-text-xs); padding: 4px 10px;\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);\n  background: var(--ch-surface-high); color: var(--ch-text-secondary);\n  cursor: pointer;\n}\n.demo-btn:hover{ border-color: var(--ch-border-strong); color: var(--ch-text); }\n.trajectory-view{ display: flex; flex-direction: column; flex: 1; min-height: 0; }\n.timeline-wrap{\n  flex: none; padding: var(--ch-space-2) var(--ch-space-5) var(--ch-space-3);\n  border-bottom: 1px solid var(--ch-border); background: var(--ch-surface);\n  position: relative;\n}\n.timeline-label{\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  margin-bottom: var(--ch-space-1); display: flex; justify-content: space-between;\n}\n.timeline-label .zoom-hint{ opacity: 0.7; }\n.timeline-canvas{\n  position: relative; height: 64px;\n  background: var(--ch-bg);\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);\n  cursor: crosshair; overflow: hidden;\n  --zoom: 1; --pan: 0; /* 时间域变量：JS 更新 */\n}\n.tl-track{ position: absolute; inset: 6px 10px; }\n.tl-span{\n  position: absolute; top: 50%; transform: translateY(-50%);\n  height: 10px; border-radius: 3px;\n}\n.tl-seg{ position: absolute; top: 50%; height: 10px; }\n.tl-seg.ttft{ background: var(--ch-info);      border-radius: 3px 0 0 3px; }\n.tl-seg.decode{ background: var(--ch-accent);    border-radius: 0 3px 3px 0; }\n.tl-seg.tool{ background: var(--ch-skill);     top: calc(50% + 9px); height: 7px; border-radius: 3px; }\n.tl-seg.tool.err{ background: var(--ch-error); }\n.tl-seg.turnmark{\n  width: 2px; background: var(--ch-border-strong); top: 4px; bottom: 4px; height: auto;\n  transform: none;\n}\n.tl-tip{\n  position: absolute; z-index: 20; pointer-events: none;\n  background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong);\n  border-radius: var(--ch-radius-sm); padding: 4px 8px;\n  font-size: var(--ch-text-xs); font-family: var(--ch-font-mono);\n  color: var(--ch-text); box-shadow: var(--ch-shadow-md);\n  white-space: nowrap; display: none;\n}\n.tl-brush{\n  position: absolute; top: 0; bottom: 0; z-index: 10;\n  background: var(--ch-accent-soft);\n  border-left: 1px solid var(--ch-accent); border-right: 1px solid var(--ch-accent);\n  display: none;\n}\n.ledger-area{ flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }\n.filter-banner{\n  display: none; flex: none;\n  padding: 4px var(--ch-space-5);\n  background: var(--ch-accent-soft); color: var(--ch-accent-dim);\n  font-size: var(--ch-text-xs); cursor: pointer;\n}\n[data-theme=\"dark\"] .filter-banner{ color: var(--ch-accent); }\n.filter-banner.on{ display: block; }\n.ledger-scroll{ flex: 1; overflow-y: auto; min-height: 0; position: relative; }\n.ledger-spacer{ position: relative; }\n.lrow{\n  position: absolute; left: 0; right: 0;\n  display: grid;\n  grid-template-columns: 44px 92px 1fr;\n  gap: var(--ch-space-3); align-items: baseline;\n  padding: 5px var(--ch-space-5);\n  font-family: var(--ch-font-mono);\n  font-size: var(--ch-text-sm);\n  line-height: var(--ch-leading-tight);\n  cursor: pointer;\n  border-left: 2px solid transparent;\n}\n.lrow:hover{ background: var(--ch-surface-high); }\n.lrow.selected{ background: var(--ch-accent-soft); border-left-color: var(--ch-accent); }\n.lrow .idx{ color: var(--ch-text-tertiary); text-align: right; font-size: var(--ch-text-xs); }\n.lrow .ev{ font-size: var(--ch-text-xs); letter-spacing: 0.02em; }\n.ev.user{ color: var(--ch-warning); }\n.ev.assistant{ color: var(--ch-info); }\n.ev.tool{ color: var(--ch-skill); }\n.ev.tool.error{ color: var(--ch-error); }\n.ev.tool.running{ color: var(--ch-text-tertiary); }\n.ev.turnmark{ color: var(--ch-text-tertiary); }\n.lrow .content{\n  color: var(--ch-text-secondary);\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\n}\n.lrow .content .tname{ color: var(--ch-text); font-weight: var(--ch-weight-medium); }\n.lrow.error-row .content{ color: var(--ch-error); }\n.lrow.interrupted-row .content{ color: var(--ch-text-tertiary); text-decoration: line-through; text-decoration-color: var(--ch-text-tertiary); }\n.lrow .running-mark{ color: var(--ch-warning); font-size: var(--ch-text-xs); }\n.turn-rule{\n  position: absolute; left: 0; right: 0; height: 0;\n  border-top: 2px solid var(--ch-border-strong);\n}\n.turn-rule .turn-label{\n  position: absolute; right: var(--ch-space-5); top: -16px;\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  background: var(--ch-bg); padding: 0 6px;\n}\n.load-older{\n  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);\n  z-index: 15; font-size: var(--ch-text-xs);\n  padding: 3px 12px; border-radius: var(--ch-radius-full);\n  border: 1px solid var(--ch-border); background: var(--ch-surface);\n  color: var(--ch-text-secondary); cursor: pointer; display: none;\n}\n.load-older.on{ display: block; }\n.load-older.loading{ color: var(--ch-text-tertiary); pointer-events: none; }\n.follow-banner{\n  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);\n  z-index: 15; font-size: var(--ch-text-xs);\n  padding: 3px 12px; border-radius: var(--ch-radius-full);\n  background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong);\n  color: var(--ch-text-secondary); cursor: pointer; display: none;\n  box-shadow: var(--ch-shadow-sm);\n}\n.follow-banner.on{ display: block; }\n.inspector{\n  flex: none; max-height: 42%;\n  border-top: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  display: none; flex-direction: column;\n}\n.inspector.open{ display: flex; }\n.inspector-head{\n  display: flex; align-items: center; gap: var(--ch-space-3);\n  padding: var(--ch-space-2) var(--ch-space-5);\n  border-bottom: 1px solid var(--ch-border);\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n}\n.inspector-head .close{ margin-left: auto; cursor: pointer; color: var(--ch-text-tertiary); font-size: var(--ch-text-sm); }\n.inspector-head .close:hover{ color: var(--ch-text); }\n.inspector-body{ overflow-y: auto; padding: var(--ch-space-3) var(--ch-space-5); display: grid; grid-template-columns: 1fr 220px; gap: var(--ch-space-5); }\n.insp-main{ min-width: 0; }\n.insp-section{ margin-bottom: var(--ch-space-3); }\n.insp-label{\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;\n}\n.insp-content{\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-xs);\n  background: var(--ch-code-bg); color: var(--ch-code-text);\n  border-radius: var(--ch-radius-sm); padding: var(--ch-space-2) var(--ch-space-3);\n  white-space: pre-wrap; word-break: break-all;\n  max-height: 140px; overflow-y: auto;\n}\n.insp-side .kv{ display: flex; justify-content: space-between; font-size: var(--ch-text-xs); padding: 2px 0; font-family: var(--ch-font-mono); }\n.insp-side .kv .k{ color: var(--ch-text-tertiary); }\n.truncated-badge{\n  display: inline-block; font-size: var(--ch-text-xs);\n  color: var(--ch-warning); border: 1px solid var(--ch-warning);\n  border-radius: var(--ch-radius-sm); padding: 0 6px; margin-left: 8px;\n}\n.subexec-link{\n  display: inline-flex; align-items: center; gap: 6px;\n  margin-top: var(--ch-space-2);\n  font-size: var(--ch-text-xs); font-family: var(--ch-font-mono);\n  color: var(--ch-info); cursor: pointer;\n  border: 1px solid var(--ch-info); border-radius: var(--ch-radius-md);\n  padding: 2px 10px;\n}\n.subexec-link:hover{ background: var(--ch-info-soft); }\n.overlay-state{\n  position: absolute; inset: 0; z-index: 30;\n  display: none; align-items: center; justify-content: center;\n  background: var(--ch-bg);\n}\n.overlay-state.on{ display: flex; }\n.empty-card{ text-align: center; color: var(--ch-text-secondary); }\n.empty-card h3{ font-size: var(--ch-text-lg); font-weight: var(--ch-weight-medium); margin-bottom: var(--ch-space-2); color: var(--ch-text); }\n.empty-card p{ font-size: var(--ch-text-sm); color: var(--ch-text-tertiary); }\n.partial-note{\n  position: absolute; top: 8px; right: var(--ch-space-5); z-index: 25;\n  font-size: var(--ch-text-xs); color: var(--ch-warning);\n  background: var(--ch-warning-soft); border-radius: var(--ch-radius-sm);\n  padding: 2px 8px; display: none;\n}\n.partial-note.on{ display: block; }\n.conversation-view{ display: none; flex: 1; min-height: 0; flex-direction: column; padding: var(--ch-space-5); overflow-y: auto; }\n.conversation-view.on{ display: flex; }\n.msg-bubble{ max-width: 70%; margin-bottom: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-3); border-radius: var(--ch-radius-lg); background: var(--ch-surface-high); font-size: var(--ch-text-sm); line-height: var(--ch-leading-normal); }\n.msg-bubble.user{ margin-left: auto; background: var(--ch-accent-soft); }\n"}}</script>
+<script>
+(function () {
+  var dataEl = document.getElementById("ds-data");
+  if (!dataEl) return;
+  var DATA = JSON.parse(dataEl.textContent);
+  var ASSETS = DATA.assets || {};
+  var cardById = {};
+  DATA.cards.forEach(function (c) { cardById[c.id] = c; });
+
+  function normPath(p) {
+    var segs = p.split("/");
+    var out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (!s || s === ".") continue;
+      if (s === "..") { if (out.length) out.pop(); continue; }
+      out.push(s);
+    }
+    return out.join("/");
+  }
+
+  var supportsAdopt = (function () {
+    try {
+      var s = new CSSStyleSheet();
+      s.replaceSync(":host{}");
+      return "adoptedStyleSheets" in Document.prototype || "adoptedStyleSheets" in ShadowRoot.prototype;
+    } catch (e) { return false; }
+  })();
+
+  var sheetCache = {};
+  function getSheet(hash) {
+    if (!sheetCache[hash]) {
+      var s = new CSSStyleSheet();
+      try { s.replaceSync(DATA.css[hash] || ""); } catch (e) { console.error("[ds-preview] css error", e); }
+      sheetCache[hash] = s;
+    }
+    return sheetCache[hash];
+  }
+
+  // Cards scroll if their content overflows the declared viewport, but the
+  // scrollbar chrome itself reads as a defect in a scaled-down thumbnail —
+  // hide it (content stays scrollable). Applied last so it wins ties.
+  var BASE_CARD_CSS = ".__dsroot{scrollbar-width:none;-ms-overflow-style:none}.__dsroot::-webkit-scrollbar{display:none}";
+  var baseCardSheet = null;
+  function getBaseCardSheet() {
+    if (!baseCardSheet) {
+      baseCardSheet = new CSSStyleSheet();
+      try { baseCardSheet.replaceSync(BASE_CARD_CSS); } catch (e) {}
+    }
+    return baseCardSheet;
+  }
+
+  function ensureShadow(stage) {
+    var root = stage.shadowRoot;
+    if (!root) {
+      var tpl = stage.querySelector("template");
+      root = stage.attachShadow({ mode: "open" });
+      if (tpl) { root.appendChild(tpl.content); tpl.remove(); }
+    }
+    return root;
+  }
+
+  function applyStyles(root, hashes) {
+    if (supportsAdopt && root.adoptedStyleSheets !== undefined) {
+      try { root.adoptedStyleSheets = hashes.map(getSheet).concat([getBaseCardSheet()]); return; } catch (e) {}
+    }
+    var base = document.createElement("style");
+    base.textContent = BASE_CARD_CSS;
+    root.insertBefore(base, root.firstChild);
+    for (var i = hashes.length - 1; i >= 0; i--) {
+      var st = document.createElement("style");
+      st.textContent = DATA.css[hashes[i]] || "";
+      root.insertBefore(st, root.firstChild);
+    }
+  }
+
+  function appendExports(code) {
+    var names = {};
+    var re = /^(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|^(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/gm;
+    var m;
+    while ((m = re.exec(code))) names[m[1] || m[2]] = 1;
+    var tail = Object.keys(names).map(function (n) {
+      return "try{__vars." + n + "=" + n + ";}catch(__e){}";
+    }).join("");
+    return tail ? code + "\n;" + tail : code;
+  }
+
+  function makeEnv(card, root, rootEl) {
+    var vars = Object.create(null);
+    var pendingLoad = [];
+    var realDoc = document;
+    var realWin = window;
+    var winProxy, docProxy;
+
+    // Card sources live in subdirectories, but their HTML is re-rooted into
+    // this single file — rebase relative fetch() URLs against the card's
+    // source dir, serving build-time-inlined project assets when available
+    // (which also makes them work over file://).
+    vars.fetch = function (input, init) {
+      var u = null;
+      try { u = typeof input === "string" ? input : null; } catch (e) {}
+      if (u != null && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u) && u.charAt(0) !== "/" && u.charAt(0) !== "#" && u.charAt(0) !== "?") {
+        var m = /^([^?#]*)([\s\S]*)$/.exec(u);
+        var resolved = normPath((card.base ? card.base + "/" : "") + m[1]);
+        if (Object.prototype.hasOwnProperty.call(ASSETS, resolved)) return realWin.fetch(ASSETS[resolved], init);
+        return realWin.fetch(resolved + m[2], init);
+      }
+      return realWin.fetch(input, init);
+    };
+
+    docProxy = new Proxy(realDoc, {
+      get: function (t, k) {
+        switch (k) {
+          case "getElementById":
+            return function (id) {
+              return root.getElementById ? root.getElementById(id) : root.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(id) : id));
+            };
+          case "querySelector": return root.querySelector.bind(root);
+          case "querySelectorAll": return root.querySelectorAll.bind(root);
+          case "getElementsByClassName": return function (c) { return rootEl.getElementsByClassName(c); };
+          case "getElementsByTagName": return function (s) { return rootEl.getElementsByTagName(s); };
+          case "body": case "documentElement": case "head": return rootEl;
+          case "defaultView": return winProxy;
+          case "readyState": return "complete";
+          case "currentScript": return null;
+          case "activeElement": return root.activeElement || null;
+          case "styleSheets": return root.styleSheets;
+          case "location": return realWin.location;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "DOMContentLoaded" || type === "load" || type === "readystatechange") pendingLoad.push(fn);
+              else realDoc.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return realDoc.removeEventListener.bind(realDoc);
+          default: {
+            var v = t[k];
+            return typeof v === "function" ? v.bind(t) : v;
+          }
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "title" || k === "cookie") return true;
+        try { t[k] = val; } catch (e) {}
+        return true;
+      },
+    });
+
+    winProxy = new Proxy(realWin, {
+      get: function (t, k) {
+        switch (k) {
+          case "document": return docProxy;
+          case "window": case "self": case "globalThis": case "top": case "parent": case "frames": return winProxy;
+          case "innerWidth": return card.w;
+          case "innerHeight": return card.h;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "load" || type === "DOMContentLoaded") pendingLoad.push(fn);
+              else t.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return t.removeEventListener.bind(t);
+          default:
+            if (k in vars) return vars[k];
+            var v = t[k];
+            if (typeof v === "function" && typeof k === "string" && /^[a-z]/.test(k)) {
+              try { return v.bind(t); } catch (e) { return v; }
+            }
+            return v;
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "onload") { pendingLoad.push(val); return true; }
+        vars[k] = val;
+        return true;
+      },
+      has: function (t, k) { return k in vars || k in t; },
+    });
+
+    var scope = new Proxy(vars, {
+      has: function (t, k) {
+        if (typeof k !== "string") return false;
+        if (k === "window" || k === "document" || k === "globalThis" || k === "self" || k === "__vars" || k === "__scope" || k === "event") return false;
+        return k in t;
+      },
+      get: function (t, k) { return t[k]; },
+      set: function (t, k, v) { t[k] = v; return true; },
+    });
+
+    return { win: winProxy, doc: docProxy, vars: vars, scope: scope, pendingLoad: pendingLoad };
+  }
+
+  function runCode(card, env, code, name) {
+    var body = "with(__scope){\n" + appendExports(code) + "\n}";
+    try {
+      var fn = new Function("window", "document", "globalThis", "self", "__vars", "__scope", body);
+      fn.call(env.win, env.win, env.doc, env.win, env.win, env.vars, env.scope);
+    } catch (err) {
+      console.error("[ds-preview] " + card.id + (name ? " (" + name + ")" : "") + ":", err);
+    }
+  }
+
+  function runScripts(card, env) {
+    for (var i = 0; i < card.js.length; i++) {
+      var s = card.js[i];
+      var code = s.code;
+      if (s.babel) {
+        if (window.Babel) {
+          try {
+            code = Babel.transform(code, { presets: [["react", {}]], filename: s.name || "card.jsx" }).code;
+          } catch (err) {
+            console.error("[ds-preview] babel " + card.id + ":", err);
+            continue;
+          }
+        } else {
+          console.error("[ds-preview] " + card.id + " needs Babel but it is not loaded");
+          continue;
+        }
+      }
+      runCode(card, env, code, s.name);
+    }
+    var flush = env.pendingLoad.splice(0);
+    if (flush.length) {
+      setTimeout(function () {
+        var ev; try { ev = new Event("load"); } catch (e) { ev = { type: "load" }; }
+        flush.forEach(function (fn) {
+          try { typeof fn === "function" && fn.call(env.win, ev); } catch (err) { console.error("[ds-preview]", err); }
+        });
+      }, 0);
+    }
+  }
+
+  function bindInlineHandlers(card, env, rootEl) {
+    var all = rootEl.querySelectorAll("*");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      for (var j = 0; j < el.attributes.length; j++) {
+        var at = el.attributes[j];
+        if (at.name.indexOf("data-ds-on") !== 0) continue;
+        (function (el, evt, code) {
+          el.addEventListener(evt, function (event) {
+            try {
+              var fn = new Function("window", "document", "globalThis", "self", "__scope", "event", "with(__scope){\n" + code + "\n}");
+              fn.call(el, env.win, env.doc, env.win, env.win, env.scope, event);
+            } catch (err) { console.error("[ds-preview] inline handler:", err); }
+          });
+        })(el, at.name.slice(10), at.value);
+      }
+    }
+  }
+
+  function fit(section) {
+    var card = cardById[section.id];
+    var wrap = section.querySelector("[data-fit]");
+    var stage = section.querySelector("[data-stage]");
+    if (!card || !wrap || !stage) return;
+    // Measure the available width on the SECTION, not the wrap: the wrap is
+    // shrink-wrapped to the scaled stage below, so reading it back would feed
+    // the previous scale into the next one.
+    var cw = section.clientWidth || wrap.clientWidth;
+    if (!cw) return;
+    // The declared viewport height is a MINIMUM: content that ends up taller
+    // (React mounts, fetched icons, wrapped rows) grows the stage instead of
+    // getting clipped. Monotonic with a 1px tolerance so repeated measures
+    // never jitter the layout back down.
+    var rootEl = stage.shadowRoot && stage.shadowRoot.querySelector(".__dsroot");
+    if (rootEl) {
+      // Cap growth so content sized relative to the container (height:100%
+      // plus a fixed extra) can never ratchet the stage upward forever.
+      var contentH = Math.min(rootEl.scrollHeight, Math.max(card.h, 4000));
+      if (contentH > (card.eh || card.h) + 1) card.eh = contentH;
+    }
+    var h = Math.max(card.eh || 0, card.h);
+    stage.style.height = h + "px";
+    // Width-only scaling: height never shrinks the card (it would leave blank
+    // bands beside the narrower stage). The wrap shrink-wraps the scaled stage
+    // so its frame always hugs the visible pixels.
+    var scale = Math.min(cw / card.w, 1);
+    stage.style.transform = scale === 1 ? "none" : "scale(" + scale + ")";
+    wrap.style.width = Math.ceil(card.w * scale) + "px";
+    wrap.style.height = Math.ceil(h * scale) + "px";
+  }
+
+  var sections = [].slice.call(document.querySelectorAll("[data-card]"));
+  function fitAll() { sections.forEach(fit); }
+
+  // ---- mount all cards
+  sections.forEach(function (section) {
+    var card = cardById[section.id];
+    if (!card) return;
+    var stage = section.querySelector("[data-stage]");
+    try {
+      var root = ensureShadow(stage);
+      var rootEl = root.querySelector(".__dsroot");
+      applyStyles(root, card.css);
+      var env = makeEnv(card, root, rootEl);
+      if (card.js.length) runScripts(card, env);
+      bindInlineHandlers(card, env, rootEl);
+      // Card content keeps changing after mount (React commits async, icon
+      // fetches resolve, images decode) — re-measure on every DOM change and
+      // resource load inside the shadow tree.
+      if (window.MutationObserver) {
+        new MutationObserver(function () { fit(section); }).observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true,
+        });
+      }
+      root.addEventListener("load", function () { fit(section); }, true);
+    } catch (err) {
+      console.error("[ds-preview] mount " + card.id + ":", err);
+    }
+    stage.setAttribute("data-ready", "1");
+    fit(section);
+  });
+
+  // ---- scaling
+  var scroller = document.querySelector("[data-scroll]");
+  var inner = document.querySelector(".ds-content-inner");
+  if (window.ResizeObserver && inner) {
+    var raf = 0;
+    new ResizeObserver(function () {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fitAll);
+    }).observe(inner);
+  } else {
+    window.addEventListener("resize", fitAll);
+  }
+  // Web fonts swap and late resources settle without DOM mutations —
+  // re-measure once fonts are ready plus a few fallback ticks.
+  if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+    document.fonts.ready.then(function () { fitAll(); });
+  }
+  [250, 750, 1500, 3000].forEach(function (ms) { setTimeout(fitAll, ms); });
+
+  // ---- outline interactions
+  var items = [].slice.call(document.querySelectorAll(".ds-item[data-target]"));
+  var itemByTarget = {};
+  items.forEach(function (it) { itemByTarget[it.getAttribute("data-target")] = it; });
+  var anchors = [].slice.call(document.querySelectorAll("[data-anchor]"));
+  var suppressUntil = 0;
+
+  function setActive(it) {
+    items.forEach(function (x) { x.classList.toggle("active", x === it); });
+    if (it) {
+      var g = it.closest(".ds-outline-group");
+      if (g) g.classList.remove("collapsed");
+    }
+  }
+
+  items.forEach(function (it) {
+    it.addEventListener("click", function () {
+      var target = document.getElementById(it.getAttribute("data-target"));
+      if (!target || !scroller) return;
+      var top = scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 20;
+      suppressUntil = Date.now() + 900;
+      setActive(it);
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    });
+  });
+
+  [].slice.call(document.querySelectorAll("[data-group-toggle]")).forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      btn.closest(".ds-outline-group").classList.toggle("collapsed");
+    });
+  });
+
+  function spy() {
+    if (Date.now() < suppressUntil || !scroller) return;
+    var cTop = scroller.getBoundingClientRect().top;
+    var best = null;
+    for (var i = 0; i < anchors.length; i++) {
+      var r = anchors[i].getBoundingClientRect();
+      if (r.top - cTop <= 90) best = anchors[i];
+      else break;
+    }
+    if (!best && anchors.length) best = anchors[0];
+    if (best) {
+      var key = best.getAttribute("data-anchor-key") || best.id;
+      setActive(itemByTarget[key] || itemByTarget[best.id] || null);
+    }
+  }
+  if (scroller) {
+    var sraf = 0;
+    scroller.addEventListener("scroll", function () {
+      cancelAnimationFrame(sraf);
+      sraf = requestAnimationFrame(spy);
+    }, { passive: true });
+    spy();
+  }
+
+  // ---- readme collapse
+  var readme = document.querySelector("[data-readme]");
+  var toggle = document.querySelector("[data-readme-toggle]");
+  if (readme && toggle) {
+    var update = function () {
+      var collapsed = readme.classList.contains("collapsed");
+      toggle.textContent = collapsed ? "Show more" : "Show less";
+    };
+    if (readme.scrollHeight <= 300) {
+      readme.classList.remove("collapsed");
+      toggle.style.display = "none";
+    }
+    toggle.addEventListener("click", function () {
+      readme.classList.toggle("collapsed");
+      update();
+      fitAll();
+    });
+    update();
+  }
+
+  window.addEventListener("load", fitAll);
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,743 @@
+<!-- @dsCard group="trajectory" name="轨迹视图（单屏一体）" viewport="1440x900" -->
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>轨迹视图 — 会话轨迹账本原型</title>
+<link rel="stylesheet" href="_ds-global/tokens.css" />
+<link rel="stylesheet" href="_ds-global/styles.css" />
+<style>
+/* ============================================================
+   轨迹视图 UX 原型 — story 2026-08-22-tool-call-review
+   基调：现有会话区语言的「调试密度变体」（Q2=B 基于 A）
+   —— 等宽字体主导、行号列、高信息密度；token 全部取自设计系统。
+   三区一体（Q1=A）：Timeline 条带 / Ledger 账本 / Inspector 检查器。
+   交互：tab 切换、行选中→inspector、滚轮缩放时间域、拖拽区间过滤、
+        右键清除/平移、上滑暂停跟随、顶触加载上一页、状态开关演示。
+   参照：deepseek ui-trajectory 语义（PRD §4 锚点）。
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--ch-font-sans);
+  font-size: var(--ch-text-base);
+  background: var(--ch-bg);
+  color: var(--ch-text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* —— 会话区双栏骨架（左列表 + 右对话窗，与 Assistant 页一致，简化呈现）—— */
+.zone { display: flex; height: 100vh; }
+.session-col {
+  width: 240px; flex: none;
+  border-right: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  display: flex; flex-direction: column;
+}
+.session-col .col-title {
+  padding: var(--ch-space-3) var(--ch-space-4);
+  font-size: var(--ch-text-sm); color: var(--ch-text-tertiary);
+  font-weight: var(--ch-weight-semibold);
+}
+.session-item {
+  padding: var(--ch-space-2) var(--ch-space-4);
+  cursor: pointer; color: var(--ch-text-secondary);
+  border-left: 2px solid transparent;
+}
+.session-item.active {
+  background: var(--ch-accent-soft); color: var(--ch-text);
+  border-left-color: var(--ch-accent);
+}
+.session-item .s-title { font-size: var(--ch-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-item .s-meta { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: 2px; }
+
+.chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* —— 对话窗头 + 双 tab（稳定块 3：对话 / 轨迹切换入口）—— */
+.chat-header {
+  display: flex; align-items: center; gap: var(--ch-space-3);
+  padding: var(--ch-space-3) var(--ch-space-5);
+  border-bottom: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  flex: none;
+}
+.chat-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }
+.space-badge {
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);
+  padding: 1px 8px;
+}
+.view-tabs { display: flex; gap: 2px; margin-left: auto; }
+.view-tab {
+  padding: 4px 14px; font-size: var(--ch-text-sm); cursor: pointer;
+  border-radius: var(--ch-radius-md); color: var(--ch-text-tertiary);
+  user-select: none;
+}
+.view-tab.active { background: var(--ch-accent-soft); color: var(--ch-accent-dim); font-weight: var(--ch-weight-medium); }
+[data-theme="dark"] .view-tab.active { color: var(--ch-accent); }
+
+/* —— 演示状态开关（原型专用：切换空态/损坏行/中断态演示）—— */
+.demo-bar {
+  position: fixed; bottom: 12px; right: 12px; z-index: 50;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.demo-btn {
+  font-size: var(--ch-text-xs); padding: 4px 10px;
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+  background: var(--ch-surface-high); color: var(--ch-text-secondary);
+  cursor: pointer;
+}
+.demo-btn:hover { border-color: var(--ch-border-strong); color: var(--ch-text); }
+
+/* ==================== 轨迹视图主体 ==================== */
+.trajectory-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* —— Timeline Overview（稳定块 6）：固定条带，真实 start/duration 投影 —— */
+.timeline-wrap {
+  flex: none; padding: var(--ch-space-2) var(--ch-space-5) var(--ch-space-3);
+  border-bottom: 1px solid var(--ch-border); background: var(--ch-surface);
+  position: relative;
+}
+.timeline-label {
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  margin-bottom: var(--ch-space-1); display: flex; justify-content: space-between;
+}
+.timeline-label .zoom-hint { opacity: 0.7; }
+.timeline-canvas {
+  position: relative; height: 64px;
+  background: var(--ch-bg);
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+  cursor: crosshair; overflow: hidden;
+  --zoom: 1; --pan: 0; /* 时间域变量：JS 更新 */
+}
+.tl-track { position: absolute; inset: 6px 10px; }
+.tl-span {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  height: 10px; border-radius: 3px;
+}
+/* assistant 片段拆 TTFT / decode 两段（TL1 锚点）*/
+.tl-seg { position: absolute; top: 50%; height: 10px; }
+.tl-seg.ttft   { background: var(--ch-info);      border-radius: 3px 0 0 3px; }
+.tl-seg.decode { background: var(--ch-accent);    border-radius: 0 3px 3px 0; }
+.tl-seg.tool   { background: var(--ch-skill);     top: calc(50% + 9px); height: 7px; border-radius: 3px; }
+.tl-seg.tool.err { background: var(--ch-error); }
+.tl-seg.turnmark {
+  width: 2px; background: var(--ch-border-strong); top: 4px; bottom: 4px; height: auto;
+  transform: none;
+}
+/* hover 500ms 提示（deepseek 语义：钟表时间+时长）*/
+.tl-tip {
+  position: absolute; z-index: 20; pointer-events: none;
+  background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong);
+  border-radius: var(--ch-radius-sm); padding: 4px 8px;
+  font-size: var(--ch-text-xs); font-family: var(--ch-font-mono);
+  color: var(--ch-text); box-shadow: var(--ch-shadow-md);
+  white-space: nowrap; display: none;
+}
+/* 拖选区间高亮（TL2）*/
+.tl-brush {
+  position: absolute; top: 0; bottom: 0; z-index: 10;
+  background: var(--ch-accent-soft);
+  border-left: 1px solid var(--ch-accent); border-right: 1px solid var(--ch-accent);
+  display: none;
+}
+
+/* ==================== Ledger（稳定块 4/7）==================== */
+.ledger-area { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.filter-banner {
+  display: none; flex: none;
+  padding: 4px var(--ch-space-5);
+  background: var(--ch-accent-soft); color: var(--ch-accent-dim);
+  font-size: var(--ch-text-xs); cursor: pointer;
+}
+[data-theme="dark"] .filter-banner { color: var(--ch-accent); }
+.filter-banner.on { display: block; }
+.ledger-scroll { flex: 1; overflow-y: auto; min-height: 0; position: relative; }
+.ledger-spacer { position: relative; } /* 总高度占位（虚拟滚动），JS 设定 */
+
+/* 行结构：index 列 + 事件列 + 内容列（deepseek：账本只显 index/event/content）*/
+.lrow {
+  position: absolute; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: 44px 92px 1fr;
+  gap: var(--ch-space-3); align-items: baseline;
+  padding: 5px var(--ch-space-5);
+  font-family: var(--ch-font-mono);
+  font-size: var(--ch-text-sm);
+  line-height: var(--ch-leading-tight);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.lrow:hover { background: var(--ch-surface-high); }
+.lrow.selected { background: var(--ch-accent-soft); border-left-color: var(--ch-accent); }
+.lrow .idx { color: var(--ch-text-tertiary); text-align: right; font-size: var(--ch-text-xs); }
+.lrow .ev  { font-size: var(--ch-text-xs); letter-spacing: 0.02em; }
+.ev.user       { color: var(--ch-warning); }
+.ev.assistant  { color: var(--ch-info); }
+.ev.tool       { color: var(--ch-skill); }
+.ev.tool.error { color: var(--ch-error); }
+.ev.tool.running { color: var(--ch-text-tertiary); }
+.ev.turnmark   { color: var(--ch-text-tertiary); }
+.lrow .content {
+  color: var(--ch-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lrow .content .tname { color: var(--ch-text); font-weight: var(--ch-weight-medium); }
+.lrow.error-row .content { color: var(--ch-error); }
+.lrow.interrupted-row .content { color: var(--ch-text-tertiary); text-decoration: line-through; text-decoration-color: var(--ch-text-tertiary); }
+/* running 行不显示时长（in-flight 不伪造时长，L2/T4 锚点）*/
+.lrow .running-mark { color: var(--ch-warning); font-size: var(--ch-text-xs); }
+
+/* 回合边界粗线（deepseek thick rules；L1 锚点）*/
+.turn-rule {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px solid var(--ch-border-strong);
+}
+.turn-rule .turn-label {
+  position: absolute; right: var(--ch-space-5); top: -16px;
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  background: var(--ch-bg); padding: 0 6px;
+}
+
+/* 顶触加载上一页控件（VS2/deepseek first-row control）*/
+.load-older {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 15; font-size: var(--ch-text-xs);
+  padding: 3px 12px; border-radius: var(--ch-radius-full);
+  border: 1px solid var(--ch-border); background: var(--ch-surface);
+  color: var(--ch-text-secondary); cursor: pointer; display: none;
+}
+.load-older.on { display: block; }
+.load-older.loading { color: var(--ch-text-tertiary); pointer-events: none; }
+
+/* 跟随暂停横幅（VS2：上滑暂停跟随）*/
+.follow-banner {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 15; font-size: var(--ch-text-xs);
+  padding: 3px 12px; border-radius: var(--ch-radius-full);
+  background: var(--ch-surface-highest); border: 1px solid var(--ch-border-strong);
+  color: var(--ch-text-secondary); cursor: pointer; display: none;
+  box-shadow: var(--ch-shadow-sm);
+}
+.follow-banner.on { display: block; }
+
+/* ==================== Inspector（稳定块 5）==================== */
+.inspector {
+  flex: none; max-height: 42%;
+  border-top: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  display: none; flex-direction: column;
+}
+.inspector.open { display: flex; }
+.inspector-head {
+  display: flex; align-items: center; gap: var(--ch-space-3);
+  padding: var(--ch-space-2) var(--ch-space-5);
+  border-bottom: 1px solid var(--ch-border);
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+}
+.inspector-head .close { margin-left: auto; cursor: pointer; color: var(--ch-text-tertiary); font-size: var(--ch-text-sm); }
+.inspector-head .close:hover { color: var(--ch-text); }
+.inspector-body { overflow-y: auto; padding: var(--ch-space-3) var(--ch-space-5); display: grid; grid-template-columns: 1fr 220px; gap: var(--ch-space-5); }
+.insp-main { min-width: 0; }
+.insp-section { margin-bottom: var(--ch-space-3); }
+.insp-label {
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.insp-content {
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-xs);
+  background: var(--ch-code-bg); color: var(--ch-code-text);
+  border-radius: var(--ch-radius-sm); padding: var(--ch-space-2) var(--ch-space-3);
+  white-space: pre-wrap; word-break: break-all;
+  max-height: 140px; overflow-y: auto;
+}
+.insp-side .kv { display: flex; justify-content: space-between; font-size: var(--ch-text-xs); padding: 2px 0; font-family: var(--ch-font-mono); }
+.insp-side .kv .k { color: var(--ch-text-tertiary); }
+.truncated-badge {
+  display: inline-block; font-size: var(--ch-text-xs);
+  color: var(--ch-warning); border: 1px solid var(--ch-warning);
+  border-radius: var(--ch-radius-sm); padding: 0 6px; margin-left: 8px;
+}
+/* 子执行跳转入口（J1：task run → 执行详情）*/
+.subexec-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: var(--ch-space-2);
+  font-size: var(--ch-text-xs); font-family: var(--ch-font-mono);
+  color: var(--ch-info); cursor: pointer;
+  border: 1px solid var(--ch-info); border-radius: var(--ch-radius-md);
+  padding: 2px 10px;
+}
+.subexec-link:hover { background: var(--ch-info-soft); }
+
+/* ==================== 状态覆盖层（空态/损坏行/中断演示）==================== */
+.overlay-state {
+  position: absolute; inset: 0; z-index: 30;
+  display: none; align-items: center; justify-content: center;
+  background: var(--ch-bg);
+}
+.overlay-state.on { display: flex; }
+.empty-card { text-align: center; color: var(--ch-text-secondary); }
+.empty-card h3 { font-size: var(--ch-text-lg); font-weight: var(--ch-weight-medium); margin-bottom: var(--ch-space-2); color: var(--ch-text); }
+.empty-card p { font-size: var(--ch-text-sm); color: var(--ch-text-tertiary); }
+.partial-note {
+  position: absolute; top: 8px; right: var(--ch-space-5); z-index: 25;
+  font-size: var(--ch-text-xs); color: var(--ch-warning);
+  background: var(--ch-warning-soft); border-radius: var(--ch-radius-sm);
+  padding: 2px 8px; display: none;
+}
+.partial-note.on { display: block; }
+
+/* —— 对话 tab 占位（tab 切换演示用，静态示意）—— */
+.conversation-view { display: none; flex: 1; min-height: 0; flex-direction: column; padding: var(--ch-space-5); overflow-y: auto; }
+.conversation-view.on { display: flex; }
+.msg-bubble { max-width: 70%; margin-bottom: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-3); border-radius: var(--ch-radius-lg); background: var(--ch-surface-high); font-size: var(--ch-text-sm); line-height: var(--ch-leading-normal); }
+.msg-bubble.user { margin-left: auto; background: var(--ch-accent-soft); }
+</style>
+</head>
+<body>
+<div class="zone">
+  <!-- 左栏：会话列表（简化示意）-->
+  <aside class="session-col">
+    <div class="col-title">通用</div>
+    <div class="session-item active">
+      <div class="s-title">排查 project_list 超时</div>
+      <div class="s-meta">今天 · 有轨迹</div>
+    </div>
+    <div class="session-item">
+      <div class="s-title">日报 flow 调试</div>
+      <div class="s-meta">昨天</div>
+    </div>
+    <div class="col-title">项目 · workstation</div>
+    <div class="session-item">
+      <div class="s-title">老会话（无轨迹）</div>
+      <div class="s-meta">08-19 · 启用前</div>
+    </div>
+  </aside>
+
+  <!-- 右栏：对话窗 -->
+  <main class="chat-col">
+    <header class="chat-header">
+      <h2 class="chat-title">排查 project_list 超时</h2>
+      <span class="space-badge">通用</span>
+      <nav class="view-tabs" data-testid="view-tabs">
+        <span class="view-tab" id="tab-chat">对话</span>
+        <span class="view-tab active" id="tab-traj" data-testid="trajectory-tab">轨迹</span>
+      </nav>
+    </header>
+
+    <!-- ============ 轨迹视图 ============ -->
+    <section class="trajectory-view on" data-testid="trajectory-view">
+
+      <!-- Timeline Overview -->
+      <div class="timeline-wrap">
+        <div class="timeline-label">
+          <span>时间线总览 <span id="tl-range"></span></span>
+          <span class="zoom-hint">滚轮缩放 · 拖拽区间过滤 · 右键清除/平移</span>
+        </div>
+        <div class="timeline-canvas" id="tl-canvas" data-testid="timeline-overview">
+          <div class="tl-track" id="tl-track"></div>
+          <div class="tl-brush" id="tl-brush"></div>
+          <div class="tl-tip" id="tl-tip"></div>
+        </div>
+      </div>
+
+      <!-- Ledger -->
+      <div class="ledger-area">
+        <div class="filter-banner" id="filter-banner"></div>
+        <div class="partial-note" id="partial-note">跳过 2 条损坏记录（E-TRAJ-PARTIAL）</div>
+        <div class="ledger-scroll" id="ledger-scroll" data-testid="trajectory-ledger">
+          <button class="load-older" id="load-older">加载更早一页 ↑</button>
+          <div class="ledger-spacer" id="ledger-spacer"></div>
+        </div>
+        <div class="follow-banner" id="follow-banner">跟随已暂停 — 点击回到最新 ↓</div>
+
+        <!-- 空态覆盖层 -->
+        <div class="overlay-state" id="empty-state" data-testid="traj-empty-state">
+          <div class="empty-card">
+            <h3>该会话没有轨迹记录</h3>
+            <p>功能启用前的会话不追溯。新会话的工具调用将自动记录在此。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inspector -->
+      <aside class="inspector" id="inspector" data-testid="inspector-panel">
+        <div class="inspector-head">
+          <span id="insp-title">tool_call · project_list</span>
+          <span class="close" id="insp-close">收起 ✕</span>
+        </div>
+        <div class="inspector-body">
+          <div class="insp-main">
+            <div class="insp-section">
+              <div class="insp-label">输入 Input</div>
+              <div class="insp-content" id="insp-input"></div>
+            </div>
+            <div class="insp-section">
+              <div class="insp-label">输出 Output <span class="truncated-badge" id="insp-truncated" style="display:none">已截断 truncated</span></div>
+              <div class="insp-content" id="insp-output"></div>
+            </div>
+            <div class="insp-section" id="insp-subexec-wrap" style="display:none">
+              <a class="subexec-link" id="insp-subexec" data-testid="subexec-link">↗ 打开子执行详情 ex_2041</a>
+            </div>
+          </div>
+          <div class="insp-side">
+            <div class="insp-label">Timing</div>
+            <div class="kv"><span class="k">开始</span><span id="insp-start"></span></div>
+            <div class="kv"><span class="k">时长</span><span id="insp-duration"></span></div>
+            <div style="height:8px"></div>
+            <div class="insp-label">Tokens</div>
+            <div class="kv"><span class="k">input</span><span id="insp-in"></span></div>
+            <div class="kv"><span class="k">output</span><span id="insp-out"></span></div>
+            <div class="kv"><span class="k">cacheRead</span><span id="insp-cache"></span></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============ 对话视图（占位示意）============ -->
+    <section class="conversation-view" data-testid="message-list">
+      <div class="msg-bubble user">project_list 为什么超时？帮我查一下。</div>
+      <div class="msg-bubble">我先列出项目，然后检查 task run 的子执行日志……<br>（工具调用在实时流式期间以折叠块呈现于此；重开后此处只保留文本——工具明细请切「轨迹」查看。）</div>
+    </section>
+  </main>
+</div>
+
+<!-- 演示状态开关（原型专用）-->
+<div class="demo-bar">
+  <button class="demo-btn" id="demo-empty">演示：空态（老会话）</button>
+  <button class="demo-btn" id="demo-partial">演示：损坏行</button>
+  <button class="demo-btn" id="demo-reset">恢复正常数据</button>
+</div>
+
+<script>
+/* ============ 演示数据（Q3=A：真实语义假数据——一次真实调试场景）============ */
+const T0 = Date.now();
+const iso = (ms) => new Date(ms).toISOString();
+const hhmmss = (ms) => new Date(ms).toLocaleTimeString("zh-CN", { hour12: false });
+
+// 记录模型 = PRD §10 已锁约束 5 的归一记录形态（重放/live 同构）。
+const records = [
+  { type: "turn_boundary", turn: 1 },
+  { type: "user_message",  ts: T0 + 0,     text: "project_list 为什么超时？帮我查一下。" },
+  { type: "assistant_span", ts: T0 + 120, ttftMs: 830, decodeMs: 2140,
+    usage: { input: 1842, output: 156, cacheRead: 512 }, textPreview: "我先列出项目，然后检查 task run 的子执行日志……" },
+  { type: "tool_call", ts: T0 + 980, toolCallId: "tc_01", name: "project_list",
+    input: { limit: 100 }, output: { projects: ["workstation", "media-line"], total: 2 },
+    durationMs: 42300, isError: false }, // ← 本次调试目标：慢工具
+  { type: "assistant_span", ts: T0 + 43400, ttftMs: 640, decodeMs: 1780,
+    usage: { input: 2410, output: 203, cacheRead: 1024 }, textPreview: "project_list 用了 42 秒，明显异常。我继续看 task run 的执行记录……" },
+  { type: "tool_call", ts: T0 + 44100, toolCallId: "tc_02", name: "bash",
+    input: { command: "sqlite3 ~/.opc-workstation/data.db 'EXPLAIN QUERY PLAN SELECT * FROM projects'" },
+    output: "SCAN projects\nUSE TEMP B-TREE FOR ORDER BY", durationMs: 187, isError: false },
+  { type: "turn_boundary", turn: 2 },
+  { type: "user_message", ts: T0 + 60000, text: "那帮我对 workstation 跑一次日报 flow 验证修复。" },
+  { type: "assistant_span", ts: T0 + 60180, ttftMs: 705, decodeMs: 1650,
+    usage: { input: 3105, output: 188, cacheRead: 1536 }, textPreview: "好的，我触发一次 task run 并跟踪它的子执行。" },
+  { type: "tool_call", ts: T0 + 60900, toolCallId: "tc_03", name: "task_run",
+    input: { projectId: "proj_ws", flowId: "flow_daily", trigger: "dialogue" },
+    output: { executionId: "ex_2041", queuePosition: 0 }, durationMs: 96, isError: false,
+    subExecutionId: "ex_2041" },
+];
+
+const ROW_H = 28, RULE_H = 18;
+
+/* ============ Tab 切换（稳定块 3）============ */
+const tabChat = document.getElementById("tab-chat");
+const tabTraj = document.getElementById("tab-traj");
+const convView = document.querySelector(".conversation-view");
+const trajView = document.querySelector(".trajectory-view");
+function switchTab(toTraj) {
+  tabTraj.classList.toggle("active", toTraj);
+  tabChat.classList.toggle("active", !toTraj);
+  trajView.style.display = toTraj ? "flex" : "none";
+  convView.classList.toggle("on", !toTraj);
+}
+tabChat.onclick = () => switchTab(false);
+tabTraj.onclick = () => switchTab(true);
+
+/* ============ Timeline：投影 / 缩放 / 拖拽过滤 / hover（稳定块 6）============ */
+const tmin = records[1].ts, tmax = records[records.length-1].ts + 500;
+let zoom = 1, panFrac = 0, brush = null;
+const track = document.getElementById("tl-track");
+const canvas = document.getElementById("tl-canvas");
+const tip = document.getElementById("tl-tip");
+const brushEl = document.getElementById("tl-brush");
+
+const fracOf = (ts) => ((ts - tmin) / (tmax - tmin));           // 记录 → [0,1]
+const viewFrac = (f) => (f - panFrac) * zoom;                    // 时间域 → 视口
+const px = (ts) => `calc(${(viewFrac(fracOf(ts)) * 100).toFixed(3)}%)`;
+
+function renderTimeline() {
+  track.innerHTML = "";
+  document.getElementById("tl-range").textContent =
+    `${hhmmss(tmin + panFrac*(tmax-tmin))} – ${hhmmss(tmin + (panFrac + 1/zoom)*(tmax-tmin))}`;
+  for (const r of records) {
+    if (!r.ts && r.type !== "turn_boundary") continue;
+    if (r.type === "assistant_span") {
+      const s0 = r.ts, mid = r.ts + r.ttftMs, end = r.ts + r.ttftMs + r.decodeMs;
+      const w0 = Math.max(0, Math.min(100, viewFrac(fracOf(s0))*100));
+      const w1 = Math.max(0, Math.min(100, viewFrac(fracOf(mid))*100));
+      const w2 = Math.max(0, Math.min(100, viewFrac(fracOf(end))*100));
+      seg(w0, w1 - w0, "ttft"); seg(w1, w2 - w1, "decode");
+      r._hover = { start: s0, dur: r.ttftMs + r.decodeMs, label: "assistant" };
+      addHover(w0, w2, r._hover);
+    } else if (r.type === "tool_call") {
+      const w0 = viewFrac(fracOf(r.ts))*100;
+      const w1 = viewFrac(fracOf(r.ts + r.durationMs))*100;
+      const el = document.createElement("div");
+      el.className = `tl-seg tool${r.isError ? " err" : ""}`;
+      el.style.left = px(r.ts);
+      el.style.width = `calc(${Math.max(0.4, w1-w0).toFixed(3)}%)`;
+      r._hover = { start: r.ts, dur: r.durationMs, label: r.name };
+      el.addEventListener("mouseenter", () => showTip(el, r._hover));
+      el.addEventListener("mouseleave", hideTip);
+      track.appendChild(el);
+    } else if (r.type === "turn_boundary") {
+      const el = document.createElement("div");
+      el.className = "tl-seg turnmark";
+      const prev = records[records.indexOf(r)-1];
+      el.style.left = px((prev?.ts ?? tmin) + 400);
+      track.appendChild(el);
+    }
+  }
+  function seg(left, width, kind) {
+    const el = document.createElement("div");
+    el.className = `tl-seg ${kind}`;
+    el.dataset.timelineSegment = kind; // TL1 断言锚
+    el.style.left = left.toFixed(3) + "%";
+    el.style.width = Math.max(width, 0).toFixed(3) + "%";
+    track.appendChild(el);
+  }
+  function addHover(l0, l1, info) {
+    const el = document.createElement("div");
+    el.className = "tl-seg"; el.style.background = "transparent";
+    el.style.left = l0.toFixed(3) + "%"; el.style.width = Math.max(l1-l0, 0.4).toFixed(3) + "%";
+    let timer = null;
+    el.addEventListener("mouseenter", () => { timer = setTimeout(() => showTip(el, info), 500); }); // deepseek：500ms hover
+    el.addEventListener("mouseleave", () => { clearTimeout(timer); hideTip(); });
+    track.appendChild(el);
+  }
+}
+function showTip(el, info) {
+  tip.textContent = `${info.label}  ${hhmmss(info.start)} · ${(info.dur/1000).toFixed(2)}s`;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.min(rect.width - 180, Math.max(0, parseFloat(el.style.left)/100*rect.width));
+  tip.style.left = x + "px"; tip.style.top = "-26px"; tip.style.display = "block";
+}
+function hideTip() { tip.style.display = "none"; }
+
+// 滚轮缩放（以指针为中心）；右键清除/平移；拖拽区间过滤
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const at = e.offsetX / canvas.clientWidth;
+  zoom = Math.max(1, Math.min(30, zoom * (e.deltaY < 0 ? 1.2 : 1/1.2)));
+  panFrac = Math.max(0, Math.min(1 - 1/zoom, at - at/zoom));
+  applyView(); renderLedger();
+}, { passive: false });
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (brush) { clearBrush(); return; }         // 右键单击清除选择
+  panFrac = Math.max(0, panFrac - e.movementX / canvas.clientWidth / zoom); // 右键拖拽平移（简化：移动即平移）
+  applyView(); renderLedger();
+});
+let dragging = false, dragStart = null;
+canvas.addEventListener("mousedown", (e) => { if (e.button !== 0) return; dragging = true; dragStart = e.offsetX; });
+window.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const a = Math.max(0, Math.min(dragStart, e.clientX - rect.left));
+  const b = Math.min(canvas.clientWidth, Math.max(dragStart, e.clientX - rect.left));
+  if (Math.abs(b - a) < 6) return;
+  brush = [a / canvas.clientWidth, b / canvas.clientWidth];
+  brushEl.style.display = "block";
+  brushEl.style.left = brush[0]*100 + "%"; brushEl.style.width = (brush[1]-brush[0])*100 + "%";
+});
+window.addEventListener("mouseup", (e) => {
+  if (!dragging) return; dragging = false;
+  if (brush) applyBrushFilter();
+});
+function applyBrushFilter() {
+  const [a, b] = brush.map((f) => tmin + (panFrac + f/zoom) * (tmax - tmin));
+  window.__brushWindow = [a, b];
+  renderLedger();
+  document.getElementById("filter-banner").classList.add("on");
+  document.getElementById("filter-banner").textContent =
+    `已按区间过滤 ${hhmmss(a)} – ${hhmmss(b)}（右键清除）`;
+}
+function clearBrush() {
+  brush = null; window.__brushWindow = null;
+  brushEl.style.display = "none";
+  document.getElementById("filter-banner").classList.remove("on");
+  renderLedger();
+}
+document.getElementById("filter-banner").onclick = clearBrush;
+function applyView() { /* 缩放/平移后由 renderTimeline/renderLedger 重画 */ }
+
+/* ============ Ledger 渲染 + 虚拟滚动窗口（稳定块 4/7）============ */
+const scroll = document.getElementById("ledger-scroll");
+const spacer = document.getElementById("ledger-spacer");
+const OVERSCAN = 6;
+let followTail = true, loadedFrom = 0; // 演示：前 200 条为「更早一页」未加载
+
+function visibleRecords() {
+  let rs = records;
+  if (window.__brushWindow) {
+    const [a, b] = window.__brushWindow;
+    rs = rs.filter((r) => r.ts >= a && r.ts <= b || r.type === "turn_boundary");
+  }
+  return rs;
+}
+const rowEls = new Map();
+
+function renderLedger() {
+  spacer.querySelectorAll(".lrow,.turn-rule").forEach((el) => el.remove());
+  rowEls.clear();
+  const rs = visibleRecords();
+  const items = [];
+  rs.forEach((r, i) => {
+    if (r.type === "turn_boundary") items.push({ kind: "rule", y: i * ROW_H, label: `Turn ${r.turn}` });
+    items.push({ kind: "row", rec: r, i, y: i * ROW_H });
+  });
+  const totalH = rs.length * ROW_H + RULE_H * items.filter(x=>x.kind==="rule").length;
+  spacer.style.height = Math.max(totalH, scroll.clientHeight) + "px";
+
+  // 虚拟窗口：只挂可见 ± overscan（VS1）
+  const st = followTail ? scroll.scrollHeight : scroll.scrollTop;
+  const viewTop = followTail ? totalH - scroll.clientHeight : scroll.scrollTop;
+  let accY = 0;
+  for (const it of items) {
+    const y = it.y + (it.kind === "rule" ? 0 : 0);
+    if (it.kind === "rule") {
+      if (y > viewTop - 40 && y < viewTop + scroll.clientHeight + 40) {
+        const el = document.createElement("div");
+        el.className = "turn-rule";
+        el.style.top = y + "px";
+        el.innerHTML = `<span class="turn-label">${it.label}</span>`;
+        spacer.appendChild(el);
+      }
+      continue;
+    }
+    if (y < viewTop - OVERSCAN*ROW_H || y > viewTop + scroll.clientHeight + OVERSCAN*ROW_H) continue;
+    const el = buildRow(it.rec, it.i);
+    el.style.top = y + "px";
+    spacer.appendChild(el);
+    rowEls.set(it.i, el);
+  }
+  document.getElementById("load-older").classList.toggle("on", scroll.scrollTop > 0 && scroll.scrollTop < 200);
+  document.getElementById("follow-banner").classList.toggle("on", !followTail && hasNewAtTail());
+}
+function hasNewAtTail(){ return true; }
+
+function buildRow(r, i) {
+  const el = document.createElement("div");
+  if (r.type === "turn_boundary") return el;
+  el.className = "lrow"; el.style.top = ""; el.dataset.rowIndex = i;
+  el.onclick = () => selectRow(r, el);
+  const ev = document.createElement("span"); ev.className = "idx"; ev.textContent = String(i+1).padStart(3," ");
+  const kind = document.createElement("span");
+  const content = document.createElement("span"); content.className = "content";
+  if (r.type === "user_message") {
+    kind.className = "ev user"; kind.textContent = "USER";
+    content.textContent = r.text;
+  } else if (r.type === "assistant_span") {
+    kind.className = "ev assistant"; kind.textContent = "ASSISTANT";
+    content.textContent = `${r.textPreview}  ·  TTFT ${(r.ttftMs/1000).toFixed(2)}s + 解码 ${(r.decodeMs/1000).toFixed(2)}s`;
+  } else if (r.type === "tool_call") {
+    const running = r.status === "running", interrupted = r.status === "interrupted", error = r.isError;
+    kind.className = `ev tool${error?" error":""}${running?" running":""}`;
+    kind.textContent = running ? "TOOL…" : "TOOL";
+    el.classList.toggle("error-row", error);
+    el.classList.toggle("interrupted-row", interrupted);
+    const nm = document.createElement("span"); nm.className = "tname"; nm.textContent = r.name;
+    content.appendChild(nm);
+    const sum = document.createTextNode("  " + JSON.stringify(r.input).slice(0, 70));
+    content.appendChild(sum);
+    if (interrupted) content.append("  （已中断）");
+  }
+  el.append(ev, kind, content);
+  return el;
+}
+
+/* ============ 行选中 → Inspector（稳定块 5）============ */
+const inspector = document.getElementById("inspector");
+function selectRow(r, el) {
+  spacer.querySelectorAll(".lrow.selected").forEach((x)=>x.classList.remove("selected"));
+  el.classList.add("selected");
+  if (r.type !== "tool_call") { inspector.classList.remove("open"); return; }
+  document.getElementById("insp-title").textContent = `tool_call · ${r.name}`;
+  document.getElementById("insp-input").textContent = JSON.stringify(r.input, null, 2);
+  const out = typeof r.output === "string" ? r.output : JSON.stringify(r.output, null, 2);
+  document.getElementById("insp-output").textContent = out.slice(0, 400) + (out.length > 400 ? "\n…" : "");
+  document.getElementById("insp-truncated").style.display = r.outputLen > 400 ? "inline-block" : "none";
+  document.getElementById("insp-start").textContent = hhmmss(r.ts);
+  document.getElementById("insp-duration").textContent = r.durationMs != null ? (r.durationMs/1000).toFixed(2)+"s" : "—（运行中不伪造时长）";
+  const u = nearestUsage(r);
+  document.getElementById("insp-in").textContent = u.input;
+  document.getElementById("insp-out").textContent = u.output;
+  document.getElementById("insp-cache").textContent = u.cacheRead;
+  const wrap = document.getElementById("insp-subexec-wrap");
+  wrap.style.display = r.subExecutionId ? "block" : "none";
+  inspector.classList.add("open");
+}
+function nearestUsage(r) {
+  // 演示语义：取该回合 assistant_span 的 usage（实现=回合内最近前驱）
+  let best = null;
+  for (const x of records) {
+    if (x.type === "assistant_span" && x.ts <= r.ts) best = x;
+    if (x === r) break;
+  }
+  return best?.usage ?? { input: "-", output: "-", cacheRead: "-" };
+}
+document.getElementById("insp-close").onclick = () => inspector.classList.remove("open");
+document.getElementById("insp-subexec").onclick = () => alert("路由 → /executions/ex_2041 详情页（J1：子执行跳转入口）");
+
+/* ============ 滚动跟随 / 顶触加载（稳定块 7）============ */
+scroll.addEventListener("scroll", () => {
+  const nearBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 40;
+  if (nearBottom) followTail = true;
+  else if (followTail) followTail = false; // 上滑暂停跟随
+  document.getElementById("load-older").classList.toggle("on", scroll.scrollTop < 120);
+});
+document.getElementById("follow-banner").onclick = () => { followTail = true; toTail(); };
+document.getElementById("load-older").onclick = function () {
+  this.textContent = "加载中…"; this.classList.add("loading");
+  setTimeout(() => { // 演示：prepend 一页（语义行键保持——真实实现 prepend 后键不变）
+    this.textContent = "加载更早一页 ↑"; this.classList.remove("loading");
+    this.classList.remove("on");
+  }, 700);
+};
+function toTail() { scroll.scrollTop = scroll.scrollHeight; }
+
+/* ============ 实时接入演示（稳定块 8）：模拟一条 running → 完成 ============ */
+setTimeout(() => {
+  if (!switchTab) return;
+  records.push({ type: "tool_call", ts: T0 + 62000, toolCallId: "tc_04", name: "settings_get",
+    status: "running", input: { section: "agent" } });
+  renderLedger(); if (followTail) toTail();
+}, 2500);
+setTimeout(() => {
+  const r = records[records.length-1];
+  r.status = undefined; r.durationMs = 142; r.isError = false;
+  r.output = { agent: { providers: 2 } };
+  renderLedger(); if (followTail) toTail();
+}, 5200);
+
+/* ============ 演示状态开关（空态/损坏行）============ */
+const emptyState = document.getElementById("empty-state");
+document.getElementById("demo-empty").onclick = () => emptyState.classList.toggle("on");
+document.getElementById("demo-partial").onclick = () =>
+  document.getElementById("partial-note").classList.toggle("on");
+document.getElementById("demo-reset").onclick = () => {
+  emptyState.classList.remove("on");
+  document.getElementById("partial-note").classList.remove("on");
+};
+
+/* init */
+renderTimeline(); renderLedger(); toTail();
+window.addEventListener("resize", renderLedger);
+</script>
+</body>
+</html>
