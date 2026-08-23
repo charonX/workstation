@@ -14,11 +14,18 @@ import os from "node:os";
 
 // 动态载入待实现模块；在未实现时给出清晰 seam 提示
 let createTrajectoryRecorder;
+let projectMessagesFromJsonl;
 try {
   const mod = await import("../../../../../../src/agent/trajectoryRecorder.js");
   createTrajectoryRecorder = mod.createTrajectoryRecorder;
 } catch {
   createTrajectoryRecorder = null;
+}
+try {
+  const domainMod = await import("../../../../../../src/services/sessionDomain.js");
+  projectMessagesFromJsonl = domainMod.projectMessagesFromJsonl;
+} catch {
+  projectMessagesFromJsonl = null;
 }
 
 describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
@@ -76,10 +83,12 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     assert.ok(lines.length >= 6, "至少应包含 turn_boundary、user_message 与 2 个工具的完整记录行");
 
     // 检查每行通用 schema
+    let prevSeq = 0;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       assert.equal(line.v, 1, `第 ${i + 1} 行 schema 版本 v 必须为 1`);
-      assert.equal(line.seq, i + 1, `第 ${i + 1} 行 seq 必须单调递增（1..N）`);
+      assert.ok(line.seq >= prevSeq, `第 ${i + 1} 行 seq 必须单调递增/同 seq 原位更新（prev=${prevSeq}, curr=${line.seq}）`);
+      prevSeq = line.seq;
       assert.ok(typeof line.ts === "string" && !Number.isNaN(Date.parse(line.ts)), `第 ${i + 1} 行 ts 必须为合法 ISO 8601 时间戳`);
       assert.ok(typeof line.type === "string", `第 ${i + 1} 行必须包含合法 type 枚举`);
     }
@@ -88,10 +97,10 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     assert.ok(turnRow, "必须包含 turn_boundary 记录行");
     assert.equal(turnRow.turn, 1);
 
-    const toolRows = lines.filter((l) => l.type === "tool_call");
-    assert.equal(toolRows.length, 2, "预期恰有 2 行 completed 工具记录（T1 锚点）");
-    assert.equal(toolRows[0].status, "completed");
-    assert.equal(toolRows[1].status, "completed");
+    const completedTools = lines.filter((l) => l.type === "tool_call" && l.status === "completed");
+    assert.equal(completedTools.length, 2, "预期恰有 2 行 completed 工具记录（T1 锚点）");
+    const runningTools = lines.filter((l) => l.type === "tool_call" && l.status === "running");
+    assert.equal(runningTools.length, 2, "预期恰有 2 行 running 工具记录（L2 锚点）");
   });
 
   it("REQ-AGENT-127 AC2: 工具调用记录完整性（锚点 §6.3 T2）", () => {
@@ -109,7 +118,7 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     recorder.onToolEnd({ sessionKey, safeKey, toolCallId: "tc_list_01", result: { ok: true }, isError: false });
 
     const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
-    const toolRow = lines.find((l) => l.type === "tool_call" && l.toolCallId === "tc_list_01");
+    const toolRow = lines.findLast((l) => l.type === "tool_call" && l.toolCallId === "tc_list_01");
 
     assert.ok(toolRow, "应生成对应 tool_call 记录行");
     assert.equal(toolRow.toolCallId, "tc_list_01");
@@ -160,14 +169,48 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     recorder.onTurnAbort({ sessionKey, safeKey, reason: "stop" });
 
     const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
-    const toolRow = lines.find((l) => l.toolCallId === "tc_bash_01");
+    const toolRow = lines.findLast((l) => l.toolCallId === "tc_bash_01");
 
     assert.ok(toolRow, "中断的工具记录应存在");
     assert.equal(toolRow.status, "interrupted", "in-flight 工具在中断时状态应收尾为 interrupted（T4 锚点）");
     assert.equal(toolRow.durationMs, undefined, "中断路径恒不伪造 durationMs 字段");
   });
 
-  it("REQ-AGENT-127 AC5: 载体截断 ≤256KB 保护（PRD §10.4 接口 1）", () => {
+  it("REQ-AGENT-127 AC5: 历史投影零污染（锚点 §6.3 R1）", () => {
+    assert.ok(projectMessagesFromJsonl, "seam 未就绪：src/services/sessionDomain.js 尚未导出 projectMessagesFromJsonl");
+    const recorder = getRecorder();
+    const sessionKey = "ui:copilot:sess_r1";
+    const safeKey = "ui_copilot_sess_r1";
+    const mainJsonlPath = path.join(sessionDir, `${safeKey}.jsonl`);
+
+    // 写入主会话 JSONL（标准 user/assistant 消息）
+    const mainEntries = [
+      JSON.stringify({ type: "message", id: "m1", timestamp: "2026-08-23T08:00:00.000Z", message: { role: "user", content: "列出项目" } }),
+      JSON.stringify({ type: "message", id: "m2", timestamp: "2026-08-23T08:00:05.000Z", message: { role: "assistant", content: "已为您列出项目。" } }),
+    ];
+    fs.writeFileSync(mainJsonlPath, mainEntries.join("\n") + "\n", "utf8");
+
+    // 触发轨迹记录器写入 sidecar 轨迹
+    recorder.onTurnStart({ sessionKey, safeKey, turn: 1 });
+    recorder.onUserMessage({ sessionKey, safeKey, text: "列出项目" });
+    recorder.onToolStart({ sessionKey, safeKey, toolCallId: "tc_r1", toolName: "project list", args: {} });
+    recorder.onToolEnd({ sessionKey, safeKey, toolCallId: "tc_r1", result: { ok: true }, isError: false });
+    recorder.onTurnEnd({ sessionKey, safeKey });
+
+    // 断言 sidecar 生成但主 JSONL 投影纯净，仅包含 user/assistant 文本，保持 BUG-009 契约
+    const sidecarLines = readSidecarLines(`${safeKey}.traj.jsonl`);
+    assert.ok(sidecarLines.length > 0, "sidecar 轨迹文件应正常写入");
+
+    const projected = projectMessagesFromJsonl(mainJsonlPath);
+    assert.equal(projected.length, 2, "历史投影应恰有 2 条消息");
+    assert.equal(projected[0].role, "user");
+    assert.equal(projected[0].text, "列出项目");
+    assert.equal(projected[1].role, "assistant");
+    assert.equal(projected[1].text, "已为您列出项目。");
+    assert.ok(projected.every((m) => m.role === "user" || m.role === "assistant"), "历史投影绝不能包含任何 tool 类型条目（BUG-009 纯净契约）");
+  });
+
+  it("REQ-AGENT-127 AC5 (附加): 载体截断 ≤256KB 保护（PRD §10.4 接口 1）", () => {
     const recorder = getRecorder();
     const sessionKey = "ui:copilot:sess_05";
     const safeKey = "ui_copilot_sess_05";
@@ -178,7 +221,7 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     recorder.onToolEnd({ sessionKey, safeKey, toolCallId: "tc_large_01", result: { content: largePayload }, isError: false });
 
     const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
-    const toolRow = lines.find((l) => l.toolCallId === "tc_large_01");
+    const toolRow = lines.findLast((l) => l.toolCallId === "tc_large_01");
 
     assert.ok(toolRow, "应生成工具记录行");
     assert.equal(toolRow.truncated, true, "超出 256KB 的载体写入时必须标注 truncated: true");
@@ -206,5 +249,92 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     assert.doesNotThrow(() => {
       recorder.onTurnStart({ sessionKey, safeKey, turn: 1 });
     }, "磁盘写异常必须 Fail-Safe 捕获，不能阻断主执行链路");
+    assert.equal(sendCalled, true, "写磁盘异常时出站 IPC 推送仍应执行");
+  });
+
+  it("REQ-AGENT-127 (C3 补强): watchdog 重启后惰性恢复 maxSeq 基线避免撞号", () => {
+    const sessionKey = "ui:copilot:sess_restart";
+    const safeKey = "ui_copilot_sess_restart";
+
+    // 世代 1 / 崩溃前 worker 写入 seq 1, 2
+    const recorder1 = getRecorder();
+    recorder1.onTurnStart({ sessionKey, safeKey, turn: 1 });
+    recorder1.onUserMessage({ sessionKey, safeKey, text: "第一次提问" });
+
+    const linesBefore = readSidecarLines(`${safeKey}.traj.jsonl`);
+    assert.equal(linesBefore.length, 2);
+    assert.equal(linesBefore[0].seq, 1);
+    assert.equal(linesBefore[1].seq, 2);
+
+    // 模拟 watchdog 重启 worker（新 recorder 实例，内存状态全空）
+    const recorder2 = getRecorder();
+    recorder2.onTurnStart({ sessionKey, safeKey, turn: 2 });
+    recorder2.onUserMessage({ sessionKey, safeKey, text: "重启后提问" });
+
+    const linesAfter = readSidecarLines(`${safeKey}.traj.jsonl`);
+    assert.equal(linesAfter.length, 4);
+    assert.equal(linesAfter[2].seq, 3, "重启后首写应从 maxSeq + 1 (3) 开始递增，不得从 1 重撞");
+    assert.equal(linesAfter[3].seq, 4);
+  });
+
+  it("REQ-AGENT-127 (C4 补强): onToolStart 产生 running 状态记录行（L2 锚点）且 end 时同 seq 回填", () => {
+    const recorder = getRecorder();
+    const sessionKey = "ui:copilot:sess_running";
+    const safeKey = "ui_copilot_sess_running";
+
+    recorder.onTurnStart({ sessionKey, safeKey, turn: 1 });
+    const runRec = recorder.onToolStart({
+      sessionKey,
+      safeKey,
+      toolCallId: "tc_run_01",
+      toolName: "fetch_data",
+      args: { url: "https://api.example.com" },
+    });
+
+    assert.equal(runRec.status, "running", "onToolStart 必须产出 status: running 记录");
+    assert.equal(runRec.durationMs, undefined, "running 状态不得包含 durationMs（in-flight 零伪造时长）");
+
+    const linesMid = readSidecarLines(`${safeKey}.traj.jsonl`);
+    const runningRow = linesMid.find((l) => l.toolCallId === "tc_run_01" && l.status === "running");
+    assert.ok(runningRow, "sidecar 中必须落盘 running 记录行");
+    assert.equal(runningRow.seq, runRec.seq);
+
+    // 工具完成，回填同 seq
+    const endRec = recorder.onToolEnd({
+      sessionKey,
+      safeKey,
+      toolCallId: "tc_run_01",
+      result: { data: 123 },
+      durationMs: 150,
+      isError: false,
+    });
+    assert.equal(endRec.seq, runRec.seq, "onToolEnd 必须保持与 onToolStart 相同的 seq 进行原位更新");
+    assert.equal(endRec.status, "completed");
+    assert.equal(endRec.durationMs, 150);
+  });
+
+  it("REQ-AGENT-127 (W1 补强): onToolError 产出 status: error 与 isError: true 记录行", () => {
+    const recorder = getRecorder();
+    const sessionKey = "ui:copilot:sess_error";
+    const safeKey = "ui_copilot_sess_error";
+
+    recorder.onTurnStart({ sessionKey, safeKey, turn: 1 });
+    recorder.onToolStart({ sessionKey, safeKey, toolCallId: "tc_err_01", toolName: "broken tool", args: {} });
+    recorder.onToolError({
+      sessionKey,
+      safeKey,
+      toolCallId: "tc_err_01",
+      errorCode: "E_TOOL_FAILED",
+      errorMessage: "Connection reset",
+      durationMs: 320,
+    });
+
+    const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
+    const errorRow = lines.find((l) => l.toolCallId === "tc_err_01" && l.status === "error");
+    assert.ok(errorRow, "应生成 status: error 的工具记录行");
+    assert.equal(errorRow.isError, true);
+    assert.equal(errorRow.errorCode, "E_TOOL_FAILED");
+    assert.equal(errorRow.errorMessage, "Connection reset");
+    assert.equal(errorRow.durationMs, 320);
   });
 });

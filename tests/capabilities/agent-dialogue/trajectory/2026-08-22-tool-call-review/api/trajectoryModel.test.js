@@ -2,7 +2,7 @@
 // REQ-VERSION: v1-hash:cd8088309c498ee02824a8f9ff74c5d454bcfe3496be20777990ce134a267fa6
 // CAPABILITY-TRACE: agent-dialogue
 // ENTITY-TRACE: trajectory
-// EXPECTED-TRACE: prd.md §6.3 S1, TL2, §10.2 trajectoryModel.js, §10.4 contract 3, §10.5 D4
+// EXPECTED-TRACE: prd.md §6.3 S1, TL1, TL2, §10.2 trajectoryModel.js, §10.4 contract 3, §10.5 D4
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: true
 

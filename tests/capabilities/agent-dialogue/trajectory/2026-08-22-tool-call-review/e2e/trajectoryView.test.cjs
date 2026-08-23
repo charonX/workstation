@@ -7,14 +7,13 @@
 // ASSERTIONS-SIGNED: true
 
 const { test, expect } = require("@playwright/test");
-const fsp = require("node:fs/promises");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 
 // UX 参照 locator（与 ux/trajectory.html 及 prd.md §6.3 对齐）
 const TAB_TRAJECTORY = "[data-testid='trajectory-tab']";
+const TAB_CONVERSATION = "[data-testid='conversation-tab']";
 const VIEW_TRAJECTORY = "[data-testid='trajectory-view']";
 const VIEW_MESSAGE_LIST = "[data-testid='message-list']";
 const TRAJ_EMPTY_STATE = "[data-testid='traj-empty-state']";
@@ -24,67 +23,77 @@ const TIMELINE_OVERVIEW = "[data-testid='timeline-overview']";
 const TIMELINE_SEG_TTFT = "[data-timeline-segment='ttft']";
 const TIMELINE_SEG_DECODE = "[data-timeline-segment='decode']";
 const SUBEXEC_LINK = "[data-testid='subexec-link']";
+const TRUNCATED_BADGE = "[data-testid='truncated-badge']";
+const BRUSH_BANNER = "[data-testid='timeline-brush-banner']";
 
 test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger）", () => {
-  let appCtx;
-  let workdir;
-  let sessionDir;
+  let electronApp;
+  let page;
+  let apiBaseUrl;
+  let userDataDir;
 
   test.beforeEach(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "traj-e2e-"));
-    sessionDir = path.join(workdir, "agent-sessions");
-    fs.mkdirSync(sessionDir, { recursive: true });
-
-    // 启动 Electron App 并传入测试配置目录
-    appCtx = await startElectronApp({
+    const ctx = await startElectronApp({
       extraEnv: {
-        OPC_WORKSTATION_CONFIG_DIR: workdir,
+        OPC_AGENT_FAUX: "1",
       },
     });
+    electronApp = ctx.electronApp;
+    page = ctx.firstWindow;
+    apiBaseUrl = ctx.apiBaseUrl;
+    userDataDir = ctx.userDataDir;
   });
 
   test.afterEach(async () => {
-    if (appCtx) {
-      await stopElectronApp(appCtx);
+    if (electronApp) {
+      await stopElectronApp(electronApp, userDataDir);
     }
-    fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  async function seedSessionWithTrajectory(safeKey, spaceKey, records = []) {
-    const sessionRef = path.join(sessionDir, `${safeKey}.jsonl`);
-    fs.writeFileSync(sessionRef, "", "utf8");
+  async function createSession() {
+    const res = await fetch(`${apiBaseUrl}/api/agent/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spaceKind: "general" }),
+    });
+    expect(res.ok).toBe(true);
+    const json = await res.json();
+    return json.spaceKey;
+  }
 
+  async function seedSessionWithTrajectory(records = []) {
+    const spaceKey = await createSession();
+    const safeKey = spaceKey.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const sessionDir = path.join(userDataDir, "agent-sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+
+    // 写入主会话 JSONL（提供 message-list 元素）
+    const mainJsonlPath = path.join(sessionDir, `${safeKey}.jsonl`);
+    const mainContent = [
+      JSON.stringify({ type: "message", id: "m1", timestamp: "2026-08-23T08:00:00.000Z", message: { role: "user", content: "hello" } }),
+      JSON.stringify({ type: "message", id: "m2", timestamp: "2026-08-23T08:00:02.000Z", message: { role: "assistant", content: "hi there" } }),
+    ].join("\n") + "\n";
+    fs.writeFileSync(mainJsonlPath, mainContent, "utf8");
+
+    // 写入侧车轨迹文件
     const trajPath = path.join(sessionDir, `${safeKey}.traj.jsonl`);
     const content = records.map((r) => (typeof r === "string" ? r : JSON.stringify(r))).join("\n") + "\n";
     fs.writeFileSync(trajPath, content, "utf8");
-
-    // 播种数据库记录
-    const dbPath = path.join(workdir, "agent-sessions.db");
-    const Database = require("better-sqlite3");
-    const db = new Database(dbPath);
-    db.prepare(`
-      INSERT OR REPLACE INTO agent_sessions (spaceKey, sessionRef, createdAt, lastActiveAt, title)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(spaceKey, sessionRef, "2026-08-23T08:00:00.000Z", "2026-08-23T08:30:00.000Z", "E2E 轨迹测试会话");
-    db.close();
+    return spaceKey;
   }
 
   test("REQ-AGENT-129: Tab 切换与视图显隐（锚点 §6.3 V1）", async () => {
-    const spaceKey = "ui:copilot:e2e_tab_01";
-    const safeKey = "ui_copilot_e2e_tab_01";
-    seedSessionWithTrajectory(safeKey, spaceKey, [
+    const spaceKey = await seedSessionWithTrajectory([
       { v: 1, seq: 1, ts: "2026-08-23T08:00:01.000Z", type: "turn_boundary", turn: 1 },
       { v: 1, seq: 2, ts: "2026-08-23T08:00:02.000Z", type: "user_message", text: "hello" },
     ]);
 
-    const page = appCtx.page;
     await page.reload();
 
     // 点击会话项并进入
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     // 默认展示对话消息列表
     await expect(page.locator(VIEW_MESSAGE_LIST)).toBeVisible();
@@ -95,20 +104,21 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
     // 预期：轨迹视图可见，对话列表隐藏（V1 锚点）
     await expect(page.locator(VIEW_TRAJECTORY)).toBeVisible();
     await expect(page.locator(VIEW_MESSAGE_LIST)).toBeHidden();
+
+    // 再点「对话」Tab 切回
+    await page.locator(TAB_CONVERSATION).click();
+    await expect(page.locator(VIEW_MESSAGE_LIST)).toBeVisible();
+    await expect(page.locator(VIEW_TRAJECTORY)).toBeHidden();
   });
 
   test("REQ-AGENT-129: 空态卡片呈现（PRD §6.2 异常 E-TRAJ-EMPTY）", async () => {
-    const spaceKey = "ui:copilot:e2e_empty_02";
-    const safeKey = "ui_copilot_e2e_empty_02";
     // 种子会话但 sidecar 为空
-    seedSessionWithTrajectory(safeKey, spaceKey, []);
+    const spaceKey = await seedSessionWithTrajectory([]);
 
-    const page = appCtx.page;
     await page.reload();
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     await page.locator(TAB_TRAJECTORY).click();
 
@@ -117,9 +127,7 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
     await expect(page.locator(TRAJ_EMPTY_STATE)).toContainText("没有轨迹记录");
   });
 
-  test("REQ-AGENT-130 & REQ-AGENT-131: Ledger 行渲染与 Inspector 展开（锚点 §6.3 L1, I1）", async () => {
-    const spaceKey = "ui:copilot:e2e_ledger_03";
-    const safeKey = "ui_copilot_e2e_ledger_03";
+  test("REQ-AGENT-130 & REQ-AGENT-131: Ledger 行渲染、Inspector 展开与截断徽章（锚点 §6.3 L1, I1）", async () => {
     const records = [
       { v: 1, seq: 1, ts: "2026-08-23T08:00:01.000Z", type: "turn_boundary", turn: 1 },
       { v: 1, seq: 2, ts: "2026-08-23T08:00:02.000Z", type: "user_message", text: "查看项目" },
@@ -140,20 +148,32 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
         v: 1,
         seq: 4,
         ts: "2026-08-23T08:00:45.000Z",
+        type: "tool_call",
+        toolCallId: "tc_trunc_1",
+        name: "file_read",
+        status: "completed",
+        durationMs: 120,
+        isError: false,
+        truncated: true,
+        input: { path: "huge.txt" },
+        output: { content: "huge payload preview..." },
+      },
+      {
+        v: 1,
+        seq: 5,
+        ts: "2026-08-23T08:00:50.000Z",
         type: "assistant_span",
         ttftMs: 800,
         decodeMs: 2000,
         usage: { input: 100, output: 50 },
       },
     ];
-    seedSessionWithTrajectory(safeKey, spaceKey, records);
+    const spaceKey = await seedSessionWithTrajectory(records);
 
-    const page = appCtx.page;
     await page.reload();
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     await page.locator(TAB_TRAJECTORY).click();
 
@@ -174,14 +194,17 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
     await expect(inspector).toContainText("输出");
     await expect(inspector).toContainText("耗时");
 
-    // 再次点击同一行收起 Inspector
-    await toolRow.click();
+    // 点击截断工具行验证截断徽章
+    const truncRow = ledger.locator("[data-record-type='tool_call']").nth(1);
+    await truncRow.click();
+    await expect(inspector.locator(TRUNCATED_BADGE).first()).toBeVisible();
+
+    // 再次点击同行收起 Inspector
+    await truncRow.click();
     await expect(inspector).toBeHidden();
   });
 
-  test("REQ-AGENT-132: Timeline Overview 分段渲染与 TTFT/decode 拆分（锚点 §6.3 TL1）", async () => {
-    const spaceKey = "ui:copilot:e2e_timeline_04";
-    const safeKey = "ui_copilot_e2e_timeline_04";
+  test("REQ-AGENT-132: Timeline Overview 分段渲染与选区过滤（锚点 §6.3 TL1, TL2）", async () => {
     const records = [
       { v: 1, seq: 1, ts: "2026-08-23T08:00:01.000Z", type: "turn_boundary", turn: 1 },
       { v: 1, seq: 2, ts: "2026-08-23T08:00:02.000Z", type: "user_message", text: "hi" },
@@ -189,20 +212,28 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
         v: 1,
         seq: 3,
         ts: "2026-08-23T08:00:03.000Z",
+        type: "tool_call",
+        toolCallId: "tc_time_1",
+        name: "tool_alpha",
+        status: "completed",
+        durationMs: 3000,
+      },
+      {
+        v: 1,
+        seq: 4,
+        ts: "2026-08-23T08:00:10.000Z",
         type: "assistant_span",
         ttftMs: 500,
         decodeMs: 1500,
         usage: { input: 20, output: 30 },
       },
     ];
-    seedSessionWithTrajectory(safeKey, spaceKey, records);
+    const spaceKey = await seedSessionWithTrajectory(records);
 
-    const page = appCtx.page;
     await page.reload();
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     await page.locator(TAB_TRAJECTORY).click();
 
@@ -210,12 +241,23 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
     await expect(page.locator(TIMELINE_OVERVIEW)).toBeVisible();
     await expect(page.locator(TIMELINE_SEG_TTFT)).toBeVisible();
     await expect(page.locator(TIMELINE_SEG_DECODE)).toBeVisible();
+
+    const ledger = page.locator(TRAJ_LEDGER);
+    await expect(ledger).toContainText("tool_alpha");
+
+    // 点击 Timeline 色块触发选区过滤（TL2 锚点）
+    const segment = page.locator(TIMELINE_SEG_TTFT).first();
+    await segment.click();
+
+    // 选区提示条出现
+    await expect(page.locator(BRUSH_BANNER)).toBeVisible();
+
+    // 右键空白区域清除选区
+    await page.locator(TIMELINE_OVERVIEW).click({ button: "right" });
+    await expect(page.locator(BRUSH_BANNER)).toBeHidden();
   });
 
   test("REQ-AGENT-133: 虚拟滚动长列表挂载上界约束（锚点 §6.3 VS1）", async () => {
-    const spaceKey = "ui:copilot:e2e_vscroll_05";
-    const safeKey = "ui_copilot_e2e_vscroll_05";
-
     // 注入 500 条轨迹记录
     const records = [];
     for (let i = 1; i <= 500; i++) {
@@ -227,14 +269,12 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
         text: `Message index ${i}`,
       });
     }
-    seedSessionWithTrajectory(safeKey, spaceKey, records);
+    const spaceKey = await seedSessionWithTrajectory(records);
 
-    const page = appCtx.page;
     await page.reload();
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     await page.locator(TAB_TRAJECTORY).click();
 
@@ -244,8 +284,6 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
   });
 
   test("REQ-AGENT-135: 子执行跳转入口与导航（锚点 §6.3 J1）", async () => {
-    const spaceKey = "ui:copilot:e2e_subexec_06";
-    const safeKey = "ui_copilot_e2e_subexec_06";
     const records = [
       { v: 1, seq: 1, ts: "2026-08-23T08:00:01.000Z", type: "turn_boundary", turn: 1 },
       {
@@ -260,14 +298,12 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
         output: { executionId: "ex_2041", status: "success" },
       },
     ];
-    seedSessionWithTrajectory(safeKey, spaceKey, records);
+    const spaceKey = await seedSessionWithTrajectory(records);
 
-    const page = appCtx.page;
     await page.reload();
     const sessionLocator = page.locator(`[data-session-item='${spaceKey}']`);
-    if (await sessionLocator.count() > 0) {
-      await sessionLocator.click();
-    }
+    await expect(sessionLocator).toBeVisible();
+    await sessionLocator.click();
 
     await page.locator(TAB_TRAJECTORY).click();
 
@@ -281,6 +317,7 @@ test.describe("会话轨迹账本 E2E 视图与交互验证（Trajectory Ledger�
 
     // 点击跳转
     await subexecLink.click();
-    await expect(page).toHaveURL(/.*\/executions\/ex_2041/);
+    await expect(page).toHaveURL(/.*\/executions\?highlight=ex_2041/);
   });
 });
+
