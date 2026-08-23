@@ -33,6 +33,7 @@ import {
   paginateMessages,
   projectIdOf,
   projectMessagesFromJsonl,
+  readTrajectoryRecords,
 } from "../../services/sessionDomain.js";
 
 // re-export 兼容面 1 名（REQ-AGENT-117 AC2 / ADR-030 决策 4）：historyToolFilter
@@ -106,6 +107,12 @@ export async function handleAgentSessions(req, res, body, subPath = [], context 
   if (tail.length === 1 && tail[0] === "provider") {
     if (req.method === "PUT" || req.method === "POST") return handlePutProvider(res, spaceKey, body ?? {}, store, context);
     if (req.method === "GET") return handleGetProvider(res, spaceKey, store, context);
+    return notFound(res);
+  }
+
+  // 会话轨迹账本读取（REQ-AGENT-128 / PRD §10.4 接口 2）：GET trajectory
+  if (tail.length === 1 && tail[0] === "trajectory") {
+    if (req.method === "GET") return handleGetTrajectory(req, res, spaceKey, store);
     return notFound(res);
   }
 
@@ -232,6 +239,30 @@ function handleGetMessages(req, res, spaceKey, store) {
   const { limit, before } = parsePaginationQuery(req);
   const messages = paginateMessages(projectMessagesFromJsonl(row.sessionRef), { limit, before });
   return ok(res, { messages });
+}
+
+function handleGetTrajectory(req, res, spaceKey, store) {
+  const row = store.get(spaceKey);
+  if (!row) return sendError(res, 404, "E-SESSION-NOT-FOUND", "会话不存在");
+  const { limit, before } = parseTrajectoryPaginationQuery(req);
+  const result = readTrajectoryRecords(row.sessionRef, { limit, before });
+  return ok(res, result);
+}
+
+function parseTrajectoryPaginationQuery(req) {
+  let limit;
+  let before;
+  try {
+    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+    const rawLimit = params.get("limit");
+    if (rawLimit !== null) {
+      limit = Number(rawLimit);
+    }
+    before = params.get("before") ?? undefined;
+  } catch {
+    // 非法 query → 默认值。
+  }
+  return { limit, before };
 }
 
 // 分页 query 解析（REQ-AGENT-029 标准 4）：limit 非法 → 默认 100；before 缺省/空 →

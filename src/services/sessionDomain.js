@@ -238,3 +238,82 @@ export function buildSessionConfig(spaceKey, store) {
     identity: resolved.identity,
   };
 }
+
+// —— 会话轨迹账本投影（ADR-038 / REQ-AGENT-128 / PRD §10.4 接口 2）——
+
+// 轨迹侧车文件路径推导：<sessionDir>/<safeKey>[.N].jsonl → <sessionDir>/<safeKey>[.N].traj.jsonl
+export function sidecarPathFor(sessionRef) {
+  if (typeof sessionRef !== "string" || !sessionRef) return "";
+  if (sessionRef.endsWith(".jsonl")) {
+    return sessionRef.slice(0, -".jsonl".length) + ".traj.jsonl";
+  }
+  return `${sessionRef}.traj.jsonl`;
+}
+
+// 轨迹 limit 归一化（PRD §7 / REQ-AGENT-128 AC3）：正整数，缺省 200，上界 1000。
+export function normalizeTrajectoryLimit(limit) {
+  const num = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isInteger(num) || num <= 0) return 200;
+  if (num > 1000) return 1000;
+  return num;
+}
+
+// 轨迹记录读取与分页投影（REQ-AGENT-128 / PRD §10.4 接口 2）：
+// 读 sidecar → 跳过损坏行（计入 meta.skipped）→ 过滤 before 游标（traj_<seq>）→ 升序截取最新窗口（至多 limit 条）→ 返回 { records, hasMore, meta: { skipped } }。
+export function readTrajectoryRecords(sessionRef, { limit = 200, before } = {}) {
+  const sidecarPath = sidecarPathFor(sessionRef);
+  if (!sidecarPath) {
+    return { records: [], hasMore: false, meta: { skipped: 0 } };
+  }
+  let raw;
+  try {
+    raw = fs.readFileSync(sidecarPath, "utf8");
+  } catch {
+    return { records: [], hasMore: false, meta: { skipped: 0 } };
+  }
+
+  const lines = raw.split("\n");
+  const records = [];
+  let skipped = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        records.push(parsed);
+      } else {
+        skipped++;
+      }
+    } catch {
+      skipped++;
+    }
+  }
+
+  records.sort((a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0));
+
+  let beforeSeq;
+  if (typeof before === "string") {
+    const match = /^traj_(\d+)$/.exec(before);
+    if (match) {
+      beforeSeq = Number(match[1]);
+    }
+  }
+
+  let candidates = records;
+  if (beforeSeq !== undefined) {
+    candidates = records.filter((r) => typeof r?.seq === "number" && r.seq < beforeSeq);
+  }
+
+  const normalizedLimit = normalizeTrajectoryLimit(limit);
+  const window = candidates.slice(-normalizedLimit);
+  const hasMore = window.length > 0 && records.some((r) => typeof r?.seq === "number" && r.seq < window[0].seq);
+
+  return {
+    records: window,
+    hasMore,
+    meta: { skipped },
+  };
+}
+

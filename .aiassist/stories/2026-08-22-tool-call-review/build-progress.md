@@ -12,7 +12,7 @@
 | 切片 | 名称 | 涉及 REQ-ID | 涉及模块 | 契约测试 | 状态 |
 |---|---|---|---|---|---|
 | **Slice 1** | Worker 侧轨迹落盘与 IPC 出站 | REQ-AGENT-127 | `src/agent/trajectoryRecorder.js`, `src/agent/worker.js`, `src/services/agentService.js` | `api/trajectoryRecorder.test.js` | `COMPLETED` |
-| **Slice 2** | 领域模型投影与 HTTP 轨迹 API | REQ-AGENT-128 | `src/services/sessionDomain.js`, `src/http/routes/agentSessions.js` | `api/trajectoryApi.test.js` | `NOT_STARTED` |
+| **Slice 2** | 领域模型投影与 HTTP 轨迹 API | REQ-AGENT-128 | `src/services/sessionDomain.js`, `src/http/routes/agentSessions.js` | `api/trajectoryApi.test.js` | `COMPLETED` |
 | **Slice 3** | 归一记录纯函数模型与时间域计算 | REQ-AGENT-134, REQ-AGENT-132 | `src/renderer/components/trajectory/trajectoryModel.js` | `api/trajectoryModel.test.js` | `NOT_STARTED` |
 | **Slice 4** | UI 组件渲染与交互集成 | REQ-AGENT-129, REQ-AGENT-130, REQ-AGENT-131, REQ-AGENT-132, REQ-AGENT-133, REQ-AGENT-135 | `src/renderer/components/trajectory/*`, `src/renderer/components/Assistant.jsx`, `src/renderer/api/agentSessions.js` | `e2e/trajectoryView.test.cjs` | `NOT_STARTED` |
 
@@ -40,3 +40,22 @@
 | §10.4 接口 1 (256KB 截断) | REQ-AGENT-127 AC5 | `src/agent/trajectoryRecorder.js` (`truncateRecord`, `truncateCarrierField`) | `trajectoryRecorder.test.js` (AC5: 载体截断 ≤256KB 保护) |
 | §8 错误状态 (写异常降级) | REQ-AGENT-127 AC6 | `src/agent/trajectoryRecorder.js` (`writeRecord` try/catch + log) | `trajectoryRecorder.test.js` (AC6: 写入异常优雅降级) |
 | §10.4 接口 3 (IPC 出站) | REQ-AGENT-134 | `src/agent/trajectoryRecorder.js` (`send trajectory-record`), `src/services/agentService.js` (`case "trajectory-record"`) | `trajectoryRecorder.test.js` (AC1/AC6 send 验证) |
+
+### 2026-08-23: Slice 2: 领域模型投影与 HTTP 轨迹 API (REQ-AGENT-128)
+
+- **状态**: `COMPLETED`
+- **契约测试**: `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/api/trajectoryApi.test.js`（5/5 PASS）
+- **变更模块**:
+  - `src/services/sessionDomain.js`: 新增 `sidecarPathFor(sessionRef)` 推导侧车路径、`normalizeTrajectoryLimit(limit)` 轨迹 limit 归一化（默认 200，上界 1000）、`readTrajectoryRecords(sessionRef, { limit, before })` 实现游标分页（`traj_<seq>` 格式、排序、`hasMore`、坏行 `skipped` 统计）。
+  - `src/http/routes/agentSessions.js`: 新增 `trajectory` 路由分发（`GET /api/agent/sessions/:spaceKey/trajectory`）、`handleGetTrajectory()` 处理函数、`parseTrajectoryPaginationQuery()` query 解析。未知 spaceKey → 404 `E-SESSION-NOT-FOUND`。
+
+#### PRD → 代码可追溯性表
+
+| PRD 锚点 / 条款 | REQ 条款 | 实现代码位置 | 验证测试 |
+|---|---|---|---|
+| §4 稳定块 2 / §6.3 A1 | REQ-AGENT-128 AC1 | `sessionDomain.readTrajectoryRecords`, `agentSessions.handleGetTrajectory` | `trajectoryApi.test.js` (AC1: 游标分页基础读取) |
+| §4 稳定块 2 / §6.3 A2 | REQ-AGENT-128 AC2 | `sessionDomain.readTrajectoryRecords` (before 游标过滤窗口) | `trajectoryApi.test.js` (AC2: 游标 before 分页窗口) |
+| §7 输入验证 (limit 归一化) | REQ-AGENT-128 AC3 | `sessionDomain.normalizeTrajectoryLimit` | `trajectoryApi.test.js` (AC3: 查询参数校验与归一化) |
+| §6.2 异常 / §8 错误状态 (坏行跳过) | REQ-AGENT-128 AC4 | `sessionDomain.readTrajectoryRecords` (try/catch skipped++) | `trajectoryApi.test.js` (AC4: 缺失文件空态与损坏行容错) |
+| §8 错误状态 (404) | REQ-AGENT-128 AC5 | `agentSessions.handleGetTrajectory` (store.get → 404) | `trajectoryApi.test.js` (AC5: 未知会话 404) |
+
