@@ -58,10 +58,11 @@ export default function ChatView({
         <h2 className="chat-title" data-testid="chat-title">{chatTitle}</h2>
         <span className="status-badge badge-muted" data-testid="chat-space-badge">{spaceBadge}</span>
         {/* 视图 Tab 切换器（REQ-AGENT-129 / §4 稳定块 3）*/}
-        <div className="view-tabs" style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+        <div className="view-tabs" data-testid="view-tabs" style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
           <button
             type="button"
             className={`view-tab${activeTab === "messages" ? " active" : ""}`}
+            data-testid="conversation-tab"
             onClick={() => setActiveTab("messages")}
           >
             对话

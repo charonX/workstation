@@ -493,7 +493,13 @@ export default function Assistant() {
         setStreamingBoth(false);
       } else if (ev.type === "trajectory-record") {
         // 轨迹 live 事件（REQ-AGENT-134 / ADR-038）：trajectory-record SSE 转发给 TrajectoryView。
-        if (ev.event) setLiveTrajectoryRecord(ev.event);
+        const rec = ev.record ?? ev.event;
+        if (rec) {
+          setLiveTrajectoryRecord({
+            ...rec,
+            sessionKey: ev.sessionKey || rec.sessionKey || selectedKey,
+          });
+        }
       }
     };
 

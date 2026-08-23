@@ -93,7 +93,12 @@ export function filterRecordsByTimeRange(records, rangeStart, rangeEnd) {
     } else if (r.type === "assistant_span") {
       const ttft = typeof r.ttftMs === "number" && r.ttftMs >= 0 ? r.ttftMs : 0;
       const decode = typeof r.decodeMs === "number" && r.decodeMs >= 0 ? r.decodeMs : 0;
-      endMs = tsMs + ttft + decode;
+      if (r.startTs) {
+        startMs = new Date(r.startTs).getTime();
+        endMs = startMs + ttft + decode;
+      } else {
+        endMs = tsMs + ttft + decode;
+      }
     }
 
     // 重叠判断：[startMs, endMs] 与 [rangeStart, rangeEnd] 有重叠

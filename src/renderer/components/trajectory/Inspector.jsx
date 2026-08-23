@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 
 function TruncatedBadge({ truncated }) {
   if (!truncated) return null;
-  return <span className="traj-truncated-badge" title="载体超 256KB，内容已截断">截断</span>;
+  return <span className="traj-truncated-badge" data-testid="truncated-badge" title="载体超 256KB，内容已截断">截断</span>;
 }
 
 function JsonBlock({ label, value, truncated }) {
@@ -68,7 +68,7 @@ function SubexecLink({ record }) {
         type="button"
         className="traj-subexec-link"
         data-testid="subexec-link"
-        onClick={() => navigate(`/executions/${executionId}`)}
+        onClick={() => navigate(`/executions?highlight=${executionId}`)}
       >
         {executionId}
       </button>
@@ -86,8 +86,8 @@ export default function Inspector({ record, onClose }) {
         <button type="button" className="insp-close" onClick={onClose} aria-label="关闭">×</button>
       </div>
       <div className="insp-body">
-        <JsonBlock label="输入" value={record.input} truncated={record.inputTruncated} />
-        <JsonBlock label="输出" value={record.output} truncated={record.outputTruncated} />
+        <JsonBlock label="输入" value={record.input} truncated={Boolean(record.truncated || record.inputTruncated)} />
+        <JsonBlock label="输出" value={record.output} truncated={Boolean(record.truncated || record.outputTruncated)} />
         <TimingSection record={record} />
         <UsageSection record={record} />
         <SubexecLink record={record} />

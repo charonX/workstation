@@ -259,7 +259,7 @@ export function normalizeTrajectoryLimit(limit) {
 }
 
 // 轨迹记录读取与分页投影（REQ-AGENT-128 / PRD §10.4 接口 2）：
-// 读 sidecar → 跳过损坏行（计入 meta.skipped）→ 过滤 before 游标（traj_<seq>）→ 升序截取最新窗口（至多 limit 条）→ 返回 { records, hasMore, meta: { skipped } }。
+// 读 sidecar → 跳过损坏行（计入 meta.skipped）→ 按 seq 幂等去重（保留最新状态）→ 过滤 before 游标（traj_<seq>）→ 升序截取最新窗口（至多 limit 条）→ 返回 { records, hasMore, meta: { skipped } }。
 export function readTrajectoryRecords(sessionRef, { limit = 200, before } = {}) {
   const sidecarPath = sidecarPathFor(sessionRef);
   if (!sidecarPath) {
@@ -273,7 +273,7 @@ export function readTrajectoryRecords(sessionRef, { limit = 200, before } = {}) 
   }
 
   const lines = raw.split("\n");
-  const records = [];
+  const recordsMap = new Map();
   let skipped = 0;
 
   for (const line of lines) {
@@ -282,7 +282,11 @@ export function readTrajectoryRecords(sessionRef, { limit = 200, before } = {}) 
     try {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === "object") {
-        records.push(parsed);
+        if (typeof parsed.seq === "number") {
+          recordsMap.set(parsed.seq, parsed);
+        } else {
+          recordsMap.set(Symbol(), parsed);
+        }
       } else {
         skipped++;
       }
@@ -291,7 +295,9 @@ export function readTrajectoryRecords(sessionRef, { limit = 200, before } = {}) 
     }
   }
 
-  records.sort((a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0));
+  const records = Array.from(recordsMap.values()).sort(
+    (a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0)
+  );
 
   let beforeSeq;
   if (typeof before === "string") {
