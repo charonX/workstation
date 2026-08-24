@@ -6,91 +6,110 @@
 
 import { useNavigate } from "react-router-dom";
 
-function TruncatedBadge({ truncated }) {
-  if (!truncated) return null;
-  return <span className="traj-truncated-badge" data-testid="truncated-badge" title="载体超 256KB，内容已截断">截断</span>;
-}
-
-function JsonBlock({ label, value, truncated }) {
-  if (value === undefined || value === null) return null;
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return (
-    <div className="insp-section">
-      <div className="insp-section-label">{label}<TruncatedBadge truncated={truncated} /></div>
-      <pre className="insp-code">{text}</pre>
-    </div>
-  );
-}
-
-function TimingSection({ record }) {
-  const parts = [];
-  if (typeof record.ttftMs === "number") {
-    parts.push(`首字延迟（TTFT）: ${record.ttftMs} ms`);
+function formatTs(ts) {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return String(ts);
   }
-  if (typeof record.decodeMs === "number") {
-    parts.push(`解码: ${record.decodeMs} ms`);
-  }
-  if (typeof record.durationMs === "number") {
-    parts.push(`耗时: ${record.durationMs} ms`);
-  }
-  if (parts.length === 0) return null;
-  return (
-    <div className="insp-section">
-      <div className="insp-section-label">耗时</div>
-      <div className="insp-timing">{parts.map((p) => <div key={p}>{p}</div>)}</div>
-    </div>
-  );
 }
 
-function UsageSection({ record }) {
-  const u = record.usage;
-  if (!u) return null;
-  return (
-    <div className="insp-section">
-      <div className="insp-section-label">Token 用量</div>
-      <div className="insp-timing">
-        {typeof u.input === "number" && <div>in: {u.input}</div>}
-        {typeof u.output === "number" && <div>out: {u.output}</div>}
-      </div>
-    </div>
-  );
-}
-
-function SubexecLink({ record }) {
-  const navigate = useNavigate();
-  const executionId = record?.output?.executionId;
-  if (!executionId) return null;
-  if (record.name !== "task run" && record.name !== "task_run") return null;
-  return (
-    <div className="insp-section">
-      <div className="insp-section-label">子执行</div>
-      <button
-        type="button"
-        className="traj-subexec-link"
-        data-testid="subexec-link"
-        onClick={() => navigate(`/executions?highlight=${executionId}`)}
-      >
-        {executionId}
-      </button>
-    </div>
-  );
+function formatDurMs(ms) {
+  if (typeof ms !== "number") return "—";
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${ms}ms`;
 }
 
 export default function Inspector({ record, onClose }) {
+  const navigate = useNavigate();
   if (!record) return null;
 
+  const executionId = record?.output?.executionId;
+  const isTaskRun = (record.name === "task run" || record.name === "task_run" || Boolean(executionId));
+  const isTruncated = Boolean(record.truncated || record.inputTruncated || record.outputTruncated);
+
+  const u = record.usage;
+  const hasTiming = typeof record.durationMs === "number" || typeof record.ttftMs === "number" || typeof record.decodeMs === "number" || Boolean(record.ts);
+  const hasUsage = Boolean(u && (typeof u.input === "number" || typeof u.output === "number" || typeof u.cacheRead === "number"));
+
+  const inputJson = record.input !== undefined ? (typeof record.input === "string" ? record.input : JSON.stringify(record.input, null, 2)) : null;
+  const outputJson = record.output !== undefined ? (typeof record.output === "string" ? record.output : JSON.stringify(record.output, null, 2)) : (record.errorMessage ? `Error: ${record.errorMessage}` : null);
+
   return (
-    <aside className="traj-inspector" data-testid="inspector-panel">
-      <div className="insp-header">
-        <span className="insp-title">{record.name ?? record.type}</span>
-        <button type="button" className="insp-close" onClick={onClose} aria-label="关闭">×</button>
+    <aside className="inspector" data-testid="inspector-panel">
+      <div className="inspector-head">
+        <span className="insp-title">{record.type === "tool_call" ? `tool_call · ${record.name ?? "tool"}` : (record.type === "assistant_span" ? "assistant_span" : (record.type ?? "record"))}</span>
+        <button type="button" className="close" onClick={onClose} aria-label="收起">收起 ✕</button>
       </div>
-      <div className="insp-body">
-        <JsonBlock label="输入" value={record.input} truncated={Boolean(record.truncated || record.inputTruncated)} />
-        <JsonBlock label="输出" value={record.output} truncated={Boolean(record.truncated || record.outputTruncated)} />
-        <TimingSection record={record} />
-        <UsageSection record={record} />
-        <SubexecLink record={record} />
+      <div className="inspector-body">
+        <div className="insp-main">
+          {inputJson !== null && (
+            <div className="insp-section">
+              <div className="insp-label">输入 Input</div>
+              <pre className="insp-content">{inputJson}</pre>
+            </div>
+          )}
+          {outputJson !== null && (
+            <div className="insp-section">
+              <div className="insp-label">
+                输出 Output
+                {isTruncated && (
+                  <span className="truncated-badge" data-testid="truncated-badge">已截断 truncated</span>
+                )}
+              </div>
+              <pre className="insp-content">{outputJson}</pre>
+            </div>
+          )}
+          {isTaskRun && executionId && (
+            <div className="insp-section">
+              <button
+                type="button"
+                className="subexec-link"
+                data-testid="subexec-link"
+                onClick={() => navigate(`/executions?highlight=${executionId}`)}
+              >
+                ↗ 打开子执行详情 {executionId}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="insp-side">
+          {hasTiming && (
+            <div className="insp-section">
+              <div className="insp-label">Timing 耗时</div>
+              {record.ts && (
+                <div className="kv"><span className="k">开始</span><span className="v">{formatTs(record.ts)}</span></div>
+              )}
+              {typeof record.durationMs === "number" && (
+                <div className="kv"><span className="k">耗时</span><span className="v">{formatDurMs(record.durationMs)}</span></div>
+              )}
+              {typeof record.ttftMs === "number" && (
+                <div className="kv"><span className="k">TTFT 首字</span><span className="v">{record.ttftMs}ms</span></div>
+              )}
+              {typeof record.decodeMs === "number" && (
+                <div className="kv"><span className="k">解码时长</span><span className="v">{record.decodeMs}ms</span></div>
+              )}
+            </div>
+          )}
+
+          {hasUsage && (
+            <div className="insp-section">
+              <div className="insp-label">Tokens 用量</div>
+              {typeof u.input === "number" && (
+                <div className="kv"><span className="k">input</span><span className="v">{u.input}</span></div>
+              )}
+              {typeof u.output === "number" && (
+                <div className="kv"><span className="k">output</span><span className="v">{u.output}</span></div>
+              )}
+              {typeof u.cacheRead === "number" && (
+                <div className="kv"><span className="k">cacheRead</span><span className="v">{u.cacheRead}</span></div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );

@@ -9,19 +9,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 
-const ROW_HEIGHT = 36; // 估算行高 px
+const ROW_HEIGHT = 28; // 行高 px（与 ux/trajectory.html 一致）
 const OVERSCAN = 10;   // 额外挂载行数（上下各）
 const MOUNT_MAX = 50;  // VS1 锚点：最多挂载节点数
-
-function formatTs(ts) {
-  if (!ts) return "";
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  } catch {
-    return "";
-  }
-}
 
 function formatDurMs(ms) {
   if (typeof ms !== "number") return "";
@@ -29,49 +19,92 @@ function formatDurMs(ms) {
   return `${ms}ms`;
 }
 
-function rowLabel(r) {
-  switch (r.type) {
-    case "turn_boundary": return `— Turn ${r.turn ?? ""} —`;
-    case "user_message": return `👤 ${String(r.text ?? "").slice(0, 80)}`;
-    case "tool_call": return `🔧 ${r.name ?? "tool"}`;
-    case "assistant_span": return `🤖 Assistant`;
-    case "compaction": return `⊕ Compaction`;
-    default: return r.type ?? "record";
-  }
-}
-
-function rowMeta(r) {
-  const parts = [];
-  if (r.type === "tool_call") {
-    if (r.status) parts.push(r.status);
-    if (typeof r.durationMs === "number") parts.push(formatDurMs(r.durationMs));
-  }
-  if (r.type === "assistant_span") {
-    if (typeof r.ttftMs === "number") parts.push(`TTFT ${r.ttftMs}ms`);
-    if (typeof r.decodeMs === "number") parts.push(`decode ${r.decodeMs}ms`);
-  }
-  return parts.join(" · ");
-}
-
 function LedgerRow({ record, selected, onClick }) {
-  const isTurn = record.type === "turn_boundary";
+  if (record.type === "turn_boundary") {
+    return (
+      <div
+        className="turn-rule"
+        data-record-type="turn_boundary"
+        data-record-seq={record.seq}
+        style={{ height: ROW_HEIGHT }}
+      >
+        <span className="turn-label">Turn {record.turn ?? ""}</span>
+      </div>
+    );
+  }
+
+  const isSelected = selected;
+  const isError = Boolean(record.isError || record.status === "error");
+  const isRunning = record.status === "running";
+  const isInterrupted = record.status === "interrupted";
+
+  let evClass = "ev";
+  let evText = record.type ?? "RECORD";
+  let contentNode = null;
+
+  if (record.type === "user_message") {
+    evClass = "ev user";
+    evText = "USER";
+    contentNode = (
+      <>
+        <span>{String(record.text ?? "")}</span>
+      </>
+    );
+  } else if (record.type === "assistant_span") {
+    evClass = "ev assistant";
+    evText = "ASSISTANT";
+    const preview = record.textPreview ? String(record.textPreview).slice(0, 70) : "Assistant 响应";
+    const metaParts = [];
+    if (typeof record.ttftMs === "number") metaParts.push(`TTFT ${record.ttftMs}ms`);
+    if (typeof record.decodeMs === "number") metaParts.push(`decode ${record.decodeMs}ms`);
+    contentNode = (
+      <>
+        <span>{preview}</span>
+        {metaParts.length > 0 && <span className="tmeta">{metaParts.join(" · ")}</span>}
+      </>
+    );
+  } else if (record.type === "tool_call") {
+    evClass = `ev tool${isError ? " error" : ""}${isRunning ? " running" : ""}`;
+    evText = isRunning ? "TOOL…" : "TOOL";
+    const inputStr = record.input ? (typeof record.input === "string" ? record.input : JSON.stringify(record.input)) : "";
+    const metaParts = [];
+    if (record.status && record.status !== "completed") metaParts.push(record.status);
+    if (typeof record.durationMs === "number") metaParts.push(formatDurMs(record.durationMs));
+
+    contentNode = (
+      <>
+        <span className="tname">{record.name ?? "tool"}</span>
+        {inputStr && <span style={{ opacity: 0.75 }}>{inputStr.slice(0, 60)}</span>}
+        {isInterrupted && <span className="running-mark">（已中断）</span>}
+        {metaParts.length > 0 && <span className="tmeta">{metaParts.join(" · ")}</span>}
+      </>
+    );
+  } else if (record.type === "compaction") {
+    evClass = "ev compaction";
+    evText = "COMPACT";
+    contentNode = (
+      <>
+        <span>{record.reason ?? "上下文压缩"}</span>
+      </>
+    );
+  }
+
+  let rowClass = "lrow";
+  if (isSelected) rowClass += " selected";
+  if (isError) rowClass += " error-row";
+  if (isInterrupted) rowClass += " interrupted-row";
+
   return (
     <div
-      className={`traj-row traj-row-${record.type}${isTurn ? " traj-turn-boundary" : ""}${selected ? " traj-row-selected" : ""}`}
-      style={{ height: ROW_HEIGHT, display: "flex", alignItems: "center", cursor: isTurn ? "default" : "pointer" }}
+      className={rowClass}
+      style={{ height: ROW_HEIGHT }}
       data-record-type={record.type}
       data-record-seq={record.seq}
-      onClick={isTurn ? undefined : onClick}
+      onClick={onClick}
     >
-      <span className="traj-row-ts" style={{ width: 64, flex: "none", fontSize: "var(--ch-text-xs)", color: "var(--ch-text-tertiary)", paddingLeft: 8 }}>
-        {formatTs(record.ts)}
-      </span>
-      <span className="traj-row-label" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--ch-text-sm)", paddingLeft: 8 }}>
-        {rowLabel(record)}
-      </span>
-      <span className="traj-row-meta" style={{ flex: "none", fontSize: "var(--ch-text-xs)", color: "var(--ch-text-tertiary)", paddingRight: 12 }}>
-        {rowMeta(record)}
-      </span>
+      <span className="idx">{String(record.seq ?? "").padStart(3, " ")}</span>
+      <span className={evClass}>{evText}</span>
+      <span className="content">{contentNode}</span>
     </div>
   );
 }
@@ -143,24 +176,16 @@ export default function Ledger({
   const paddingBottom = Math.max(0, (records.length - endIdx) * ROW_HEIGHT);
 
   return (
-    <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="ledger-area">
       {/* 顶部加载更早一页按钮 */}
       {hasMore && (
-        <div style={{ padding: "4px 8px", textAlign: "center", background: "var(--ch-surface, #0f172a)", borderBottom: "1px solid var(--ch-border, #334155)" }}>
+        <div className="load-older-wrap">
           <button
             type="button"
+            className={`load-older${loadingOlder ? " loading" : ""}`}
             data-testid="load-older-btn"
             disabled={loadingOlder}
             onClick={onLoadOlder}
-            style={{
-              fontSize: "11px",
-              padding: "2px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--ch-border, #475569)",
-              background: "var(--ch-surface-high, #1e293b)",
-              color: "var(--ch-text-secondary, #cbd5e1)",
-              cursor: loadingOlder ? "wait" : "pointer",
-            }}
           >
             {loadingOlder ? "加载中…" : "加载更早一页 ↑"}
           </button>
@@ -169,9 +194,8 @@ export default function Ledger({
 
       <div
         ref={containerRef}
-        className="traj-ledger-scroll"
+        className="ledger-scroll"
         data-testid="trajectory-ledger"
-        style={{ flex: 1, overflow: "auto", minHeight: 0 }}
         onScroll={handleScroll}
       >
         <div style={{ height: totalHeight, position: "relative" }}>
@@ -191,24 +215,9 @@ export default function Ledger({
       {/* 跟随暂停提示条 */}
       {!followTail && (
         <div
+          className="follow-banner"
           data-testid="follow-banner"
           onClick={scrollToBottom}
-          style={{
-            position: "absolute",
-            bottom: 12,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "var(--ch-surface-highest, #334155)",
-            border: "1px solid var(--ch-border-strong, #64748b)",
-            borderRadius: 16,
-            padding: "4px 14px",
-            fontSize: "11px",
-            color: "var(--ch-accent, #38bdf8)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-            cursor: "pointer",
-            zIndex: 10,
-            userSelect: "none",
-          }}
         >
           跟随已暂停 — 点击回到最新 ↓
         </div>

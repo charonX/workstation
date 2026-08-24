@@ -9,7 +9,6 @@ import { useState, useRef, useMemo, useCallback } from "react";
 import { calculateTimelineSegments } from "./trajectoryModel.js";
 
 const MIN_SEGMENT_WIDTH_PX = 4; // 最小段宽（避免完全不可见）
-const OVERVIEW_HEIGHT = 40; // 条带高度 px
 
 function toMs(ts) {
   try {
@@ -75,13 +74,6 @@ function buildSegments(records) {
 
   return { segments: raw, tmin, tmax, totalMs };
 }
-
-const KIND_COLORS = {
-  ttft: "var(--ch-info, #38bdf8)",
-  decode: "var(--ch-accent, #3b82f6)",
-  tool: "var(--ch-warning, #f59e0b)",
-  "tool-error": "var(--ch-error, #ef4444)",
-};
 
 export default function TimelineOverview({ records, brushRange, onBrushChange }) {
   const containerRef = useRef(null);
@@ -190,111 +182,75 @@ export default function TimelineOverview({ records, brushRange, onBrushChange })
 
   return (
     <div
-      className="traj-timeline-wrap"
+      className="timeline-wrap"
       data-testid="timeline-overview"
-      style={{
-        flex: "none",
-        padding: "8px 16px",
-        background: "var(--ch-surface, #0f172a)",
-        borderBottom: "1px solid var(--ch-border, #334155)",
-        position: "relative",
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         if (onBrushChange) onBrushChange(null);
       }}
     >
-      <div
-        className="traj-timeline-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: "11px",
-          color: "var(--ch-text-tertiary)",
-          marginBottom: 4,
-        }}
-      >
+      <div className="timeline-label">
         <span>
           时间线总览：{formatClockTime(tmin + panFrac * totalMs)} – {formatClockTime(tmin + (panFrac + 1 / zoom) * totalMs)}
         </span>
-        <span style={{ opacity: 0.8 }}>滚轮缩放 · 拖拽选区 · 右键清除</span>
+        <span className="zoom-hint">滚轮缩放 · 拖拽区间过滤 · 右键清除/平移</span>
       </div>
 
       <div
         ref={containerRef}
-        className="traj-timeline-canvas"
+        className="timeline-canvas"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        style={{
-          position: "relative",
-          height: OVERVIEW_HEIGHT,
-          background: "var(--ch-bg, #020617)",
-          border: "1px solid var(--ch-border, #334155)",
-          borderRadius: 4,
-          cursor: "crosshair",
-          overflow: "hidden",
-        }}
       >
-        {/* 段渲染 */}
-        {segments.map((seg, i) => {
-          const leftPct = calcLeftPct(seg.startMs);
-          const widthPct = calcWidthPct(seg.startMs, seg.durationMs);
-          const isSelected =
-            brushRange &&
-            seg.startMs >= brushRange.startMs &&
-            seg.startMs + seg.durationMs <= brushRange.endMs;
-          const colorKey = seg.isError ? "tool-error" : seg.kind;
+        <div className="tl-track">
+          {/* 段渲染 */}
+          {segments.map((seg, i) => {
+            const leftPct = calcLeftPct(seg.startMs);
+            const widthPct = calcWidthPct(seg.startMs, seg.durationMs);
+            const isSelected =
+              brushRange &&
+              seg.startMs >= brushRange.startMs &&
+              seg.startMs + seg.durationMs <= brushRange.endMs;
+            const segClass = `tl-seg ${seg.kind}${seg.isError ? " err" : ""}`;
 
-          return (
-            <div
-              key={`${seg.record?.seq ?? i}-${seg.kind}-${seg.startMs}`}
-              data-timeline-segment={seg.kind}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onBrushChange) {
-                  onBrushChange({
-                    startMs: seg.startMs,
-                    endMs: seg.startMs + (seg.durationMs || 1),
-                  });
-                }
-              }}
-              onMouseEnter={() => handleSegmentMouseEnter(seg, leftPct)}
-              onMouseLeave={handleSegmentMouseLeave}
-              style={{
-                position: "absolute",
-                left: `${leftPct}%`,
-                width: `${widthPct}%`,
-                top: seg.kind === "tool" ? 22 : 6,
-                height: seg.kind === "tool" ? 12 : 12,
-                background: KIND_COLORS[colorKey] ?? "var(--ch-border, #475569)",
-                borderRadius: 2,
-                minWidth: MIN_SEGMENT_WIDTH_PX,
-                outline: isSelected ? "2px solid var(--ch-accent, #3b82f6)" : "none",
-                cursor: "pointer",
-                zIndex: 2,
-              }}
-            />
-          );
-        })}
+            return (
+              <div
+                key={`${seg.record?.seq ?? i}-${seg.kind}-${seg.startMs}`}
+                className={segClass}
+                data-timeline-segment={seg.kind}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onBrushChange) {
+                    onBrushChange({
+                      startMs: seg.startMs,
+                      endMs: seg.startMs + (seg.durationMs || 1),
+                    });
+                  }
+                }}
+                onMouseEnter={() => handleSegmentMouseEnter(seg, leftPct)}
+                onMouseLeave={handleSegmentMouseLeave}
+                style={{
+                  left: `${leftPct}%`,
+                  width: `${widthPct}%`,
+                  minWidth: MIN_SEGMENT_WIDTH_PX,
+                  outline: isSelected ? "2px solid var(--ch-accent)" : "none",
+                }}
+              />
+            );
+          })}
+        </div>
 
         {/* 拖拽选区指示框 */}
         {dragState && dragBoxWidthPct > 0 && (
           <div
-            className="traj-timeline-brush"
+            className="tl-brush"
             data-testid="timeline-brush"
             style={{
-              position: "absolute",
               left: `${dragBoxLeftPct}%`,
               width: `${dragBoxWidthPct}%`,
-              top: 0,
-              bottom: 0,
-              background: "rgba(59, 130, 246, 0.25)",
-              borderLeft: "1px solid var(--ch-accent, #3b82f6)",
-              borderRight: "1px solid var(--ch-accent, #3b82f6)",
-              pointerEvents: "none",
-              zIndex: 10,
+              display: "block",
             }}
           />
         )}
@@ -302,22 +258,12 @@ export default function TimelineOverview({ records, brushRange, onBrushChange })
         {/* 500ms Hover 提示浮层 */}
         {hoverInfo && (
           <div
-            className="traj-timeline-tip"
+            className="tl-tip"
             data-testid="timeline-tooltip"
             style={{
-              position: "absolute",
               left: `${Math.min(80, Math.max(5, hoverInfo.leftPct))}%`,
-              top: 2,
-              zIndex: 20,
-              pointerEvents: "none",
-              background: "var(--ch-surface-highest, #334155)",
-              border: "1px solid var(--ch-border-strong, #64748b)",
-              borderRadius: 3,
-              padding: "2px 6px",
-              fontSize: "10px",
-              color: "var(--ch-text, #f8fafc)",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-              whiteSpace: "nowrap",
+              top: 4,
+              display: "block",
             }}
           >
             {hoverInfo.label} {formatClockTime(hoverInfo.startMs)} ·{" "}

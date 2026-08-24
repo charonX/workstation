@@ -21,6 +21,7 @@ import Ledger from "./Ledger.jsx";
 import TimelineOverview from "./TimelineOverview.jsx";
 import Inspector from "./Inspector.jsx";
 import { getTrajectoryRecords } from "../../api/agentSessions.js";
+import "./trajectory.css";
 
 export default function TrajectoryView({ spaceKey, liveRecord }) {
   const [state, setState] = useState(() => createTrajectoryState([]));
@@ -107,17 +108,20 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
 
   if (loading) {
     return (
-      <div className="traj-view" data-testid="trajectory-view" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ color: "var(--ch-text-tertiary)" }}>加载轨迹中…</span>
+      <div className="trajectory-view" data-testid="trajectory-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ color: "var(--ch-text-tertiary)", fontSize: "var(--ch-text-sm)" }}>加载轨迹中…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="traj-view" data-testid="trajectory-view" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="traj-empty" data-testid="traj-empty-state">
-          <div>加载失败：{error}</div>
+      <div className="trajectory-view" data-testid="trajectory-view">
+        <div className="traj-empty-state-card" data-testid="traj-empty-state">
+          <div className="empty-card">
+            <h3>加载失败</h3>
+            <p>{error}</p>
+          </div>
         </div>
       </div>
     );
@@ -125,10 +129,12 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
 
   if (state.records.length === 0) {
     return (
-      <div className="traj-view" data-testid="trajectory-view" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="traj-empty" data-testid="traj-empty-state">
-          <div className="traj-empty-title">没有轨迹记录</div>
-          <div className="traj-empty-sub">工具调用与 Assistant 响应将在此实时呈现</div>
+      <div className="trajectory-view" data-testid="trajectory-view">
+        <div className="traj-empty-state-card" data-testid="traj-empty-state">
+          <div className="empty-card">
+            <h3>该会话没有轨迹记录</h3>
+            <p>功能启用前的会话不追溯。新会话的工具调用将自动记录在此。</p>
+          </div>
         </div>
       </div>
     );
@@ -139,18 +145,19 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
     : state.records;
 
   return (
-    <div className="traj-view" data-testid="trajectory-view" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+    <section className="trajectory-view" data-testid="trajectory-view">
       {/* 损坏行提示（E-TRAJ-PARTIAL）*/}
       {skippedCount > 0 && (
         <div
-          className="traj-partial-note"
+          className="partial-note"
           data-testid="partial-note"
           style={{
-            padding: "2px 12px",
-            fontSize: "11px",
-            background: "var(--ch-warning-soft, rgba(245, 158, 11, 0.15))",
-            color: "var(--ch-warning, #f59e0b)",
-            borderBottom: "1px solid var(--ch-border, #334155)",
+            padding: "4px var(--ch-space-5)",
+            fontSize: "var(--ch-text-xs)",
+            background: "var(--ch-warning-soft)",
+            color: "var(--ch-warning)",
+            borderBottom: "1px solid var(--ch-border)",
+            display: "block",
           }}
         >
           跳过 {skippedCount} 条损坏记录（E-TRAJ-PARTIAL）
@@ -164,55 +171,40 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
         onBrushChange={setBrushRange}
       />
 
+      {/* 选区提示条 */}
       {brushRange && (
         <div
-          className="traj-brush-banner"
+          className="filter-banner"
           data-testid="timeline-brush-banner"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "4px 12px",
-            fontSize: "11px",
-            background: "var(--ch-surface-high, #1e293b)",
-            borderBottom: "1px solid var(--ch-border, #334155)",
-            color: "var(--ch-text-secondary)",
-          }}
         >
           <span>已过滤时间范围（共 {displayRecords.length} / {state.records.length} 条记录）</span>
           <button
             type="button"
+            className="clear-btn"
             onClick={() => setBrushRange(null)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--ch-accent, #3b82f6)",
-              cursor: "pointer",
-              fontSize: "11px",
-            }}
           >
             清除过滤
           </button>
         </div>
       )}
 
-      {/* 主体：Ledger + Inspector */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
-        <Ledger
-          records={displayRecords}
-          selectedSeq={selectedRecord?.seq}
-          onSelectRecord={handleSelectRecord}
-          hasMore={hasMore}
-          onLoadOlder={handleLoadOlder}
-          loadingOlder={loadingOlder}
+      {/* Ledger 账本 */}
+      <Ledger
+        records={displayRecords}
+        selectedSeq={selectedRecord?.seq}
+        onSelectRecord={handleSelectRecord}
+        hasMore={hasMore}
+        onLoadOlder={handleLoadOlder}
+        loadingOlder={loadingOlder}
+      />
+
+      {/* Inspector 详情检查器（底部抽屉，选中时展开）*/}
+      {selectedRecord && (
+        <Inspector
+          record={selectedRecord}
+          onClose={handleCloseInspector}
         />
-        {selectedRecord && (
-          <Inspector
-            record={selectedRecord}
-            onClose={handleCloseInspector}
-          />
-        )}
-      </div>
-    </div>
+      )}
+    </section>
   );
 }
