@@ -3,7 +3,15 @@ import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-nati
 
 const config = {
   packagerConfig: {
-    asar: true
+    asar: true,
+    ignore: (file) => {
+      if (!file) return false;
+      if (file.startsWith("/.vite")) return false;
+      if (file.startsWith("/node_modules")) return false;
+      if (file.startsWith("/agent-policy")) return false;
+      if (file === "/package.json") return false;
+      return true;
+    }
   },
   rebuildConfig: {
     force: true
