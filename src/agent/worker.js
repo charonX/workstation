@@ -1190,12 +1190,25 @@ async function createSessionEntry(msg) {
         });
       }
     } else if (ev?.type === "message_end") {
-      trajectoryRecorder.onAssistantMessageEnd({
-        sessionKey,
-        safeKey,
-        usage: ev.message?.usage,
-        sessionRef: entry.sessionRef,
-      });
+      // 必须严格校验 role === "assistant"！
+      // SDK 的 message_end 会在 user 消息及每个 toolResult 消息入库时均触发，
+      // 若不判断 role，会导致每次工具返回甚至用户发消息时都被误当成一条 assistant_span 写入。
+      if (ev.message?.role === "assistant") {
+        const textContent = Array.isArray(ev.message?.content)
+          ? ev.message.content
+              .filter((c) => c?.type === "text")
+              .map((c) => c.text ?? "")
+              .join(" ")
+              .trim()
+          : (typeof ev.message?.content === "string" ? ev.message.content.trim() : "");
+        trajectoryRecorder.onAssistantMessageEnd({
+          sessionKey,
+          safeKey,
+          usage: ev.message?.usage,
+          textPreview: textContent || undefined,
+          sessionRef: entry.sessionRef,
+        });
+      }
     } else if (ev?.type === "tool_execution_start") {
       trajectoryRecorder.onToolStart({
         sessionKey,

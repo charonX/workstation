@@ -112,6 +112,7 @@ export function createTrajectoryRecorder({
         seqRecovered: false,
         turn: 0,
         turnStartTime: null,
+        stepStartTime: null,
         firstDeltaTime: null,
         textPreview: null,
         runningTools: new Map(),
@@ -170,6 +171,7 @@ export function createTrajectoryRecorder({
     const state = getSessionState(sessionKey, { sessionKey, safeKey, sessionRef, generation });
     state.turn = typeof turn === "number" ? turn : state.turn + 1;
     state.turnStartTime = now();
+    state.stepStartTime = now();
     state.firstDeltaTime = null;
     state.textPreview = null;
     state.assistantSpanWritten = false;
@@ -199,31 +201,39 @@ export function createTrajectoryRecorder({
       state.firstDeltaTime = now();
     }
     if (textPreview && !state.textPreview) {
-      state.textPreview = String(textPreview);
+      state.textPreview = String(textPreview).trim();
     }
   }
 
   function onAssistantMessageEnd({ sessionKey, safeKey, usage, textPreview, sessionRef, generation }) {
     const state = getSessionState(sessionKey, { sessionKey, safeKey, sessionRef, generation });
     state.assistantSpanWritten = true;
-    const turnStart = state.turnStartTime ?? now();
+    const stepStart = state.stepStartTime ?? state.turnStartTime ?? now();
     const firstDelta = state.firstDeltaTime ?? now();
-    const ttftMs = Math.max(0, firstDelta - turnStart);
+    const ttftMs = Math.max(0, firstDelta - stepStart);
     const decodeMs = Math.max(0, now() - firstDelta);
     const usageObj = usage && typeof usage === "object" ? usage : { input: 0, output: 0 };
-    const preview = textPreview || state.textPreview;
+    const rawPreview = textPreview || state.textPreview;
+    const preview = rawPreview ? String(rawPreview).trim().slice(0, 100) : undefined;
 
-    return writeRecord(
+    const record = writeRecord(
       { sessionKey, safeKey, sessionRef, generation },
       {
         type: "assistant_span",
-        startTs: new Date(turnStart).toISOString(),
+        startTs: new Date(stepStart).toISOString(),
         ttftMs,
         decodeMs,
         usage: usageObj,
         ...(preview ? { textPreview: preview } : {}),
       }
     );
+
+    // 重置下一个 assistant step 的状态
+    state.stepStartTime = now();
+    state.firstDeltaTime = null;
+    state.textPreview = null;
+
+    return record;
   }
 
   function onToolStart({ sessionKey, safeKey, toolCallId, toolName, args, sessionRef, generation }) {
@@ -286,6 +296,11 @@ export function createTrajectoryRecorder({
     const targetSeq = running?.seq;
     const targetTs = running?.ts;
 
+    // 工具完成，重置后续 assistant step 的起点
+    state.stepStartTime = now();
+    state.firstDeltaTime = null;
+    state.textPreview = null;
+
     return writeRecord(
       { sessionKey, safeKey, sessionRef, generation },
       {
@@ -335,6 +350,11 @@ export function createTrajectoryRecorder({
     const msg = errorMessage || error?.message || (typeof error === "string" ? error : undefined);
     const targetSeq = running?.seq;
     const targetTs = running?.ts;
+
+    // 工具异常，重置后续 assistant step 的起点
+    state.stepStartTime = now();
+    state.firstDeltaTime = null;
+    state.textPreview = null;
 
     return writeRecord(
       { sessionKey, safeKey, sessionRef, generation },
