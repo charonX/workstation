@@ -16,6 +16,9 @@ let prependTrajectoryRecords;
 let filterRecordsByTimeRange;
 let calculateTimelineSegments;
 
+let filterVisibleLedgerRecords;
+let extractTurnNumbers;
+
 try {
   const mod = await import("../../../../../../src/renderer/components/trajectory/trajectoryModel.js");
   createTrajectoryState = mod.createTrajectoryState;
@@ -23,12 +26,16 @@ try {
   prependTrajectoryRecords = mod.prependTrajectoryRecords;
   filterRecordsByTimeRange = mod.filterRecordsByTimeRange;
   calculateTimelineSegments = mod.calculateTimelineSegments;
+  filterVisibleLedgerRecords = mod.filterVisibleLedgerRecords;
+  extractTurnNumbers = mod.extractTurnNumbers;
 } catch {
   createTrajectoryState = null;
   applyTrajectoryRecord = null;
   prependTrajectoryRecords = null;
   filterRecordsByTimeRange = null;
   calculateTimelineSegments = null;
+  filterVisibleLedgerRecords = null;
+  extractTurnNumbers = null;
 }
 
 describe("REQ-AGENT-134 & REQ-AGENT-132 trajectoryModel 纯函数数据模型与状态演化", () => {
@@ -169,5 +176,37 @@ describe("REQ-AGENT-134 & REQ-AGENT-132 trajectoryModel 纯函数数据模型与
     assert.equal(segments[0].durationMs, 500);
     assert.equal(segments[1].type, "decode");
     assert.equal(segments[1].durationMs, 1500);
+  });
+
+  it("长对话性能优化: filterVisibleLedgerRecords 支持按回合收起与展开", () => {
+    checkSeam();
+    const records = [
+      // Turn 1 (含 3 条子记录)
+      { v: 1, seq: 1, ts: "2026-08-23T08:00:00.000Z", type: "turn_boundary", turn: 1 },
+      { v: 1, seq: 2, ts: "2026-08-23T08:00:01.000Z", type: "user_message", text: "提问 1" },
+      { v: 1, seq: 3, ts: "2026-08-23T08:00:02.000Z", type: "tool_call", toolCallId: "tc_1" },
+      { v: 1, seq: 4, ts: "2026-08-23T08:00:03.000Z", type: "assistant_span" },
+      // Turn 2 (含 2 条子记录)
+      { v: 1, seq: 5, ts: "2026-08-23T08:05:00.000Z", type: "turn_boundary", turn: 2 },
+      { v: 1, seq: 6, ts: "2026-08-23T08:05:01.000Z", type: "user_message", text: "提问 2" },
+      { v: 1, seq: 7, ts: "2026-08-23T08:05:02.000Z", type: "assistant_span" },
+    ];
+
+    const allTurns = extractTurnNumbers(records);
+    assert.deepEqual(allTurns, [1, 2]);
+
+    // 1. 无折叠时，全量输出
+    const full = filterVisibleLedgerRecords(records, new Set());
+    assert.equal(full.length, 7);
+
+    // 2. 收起 Turn 1，仅保留 Turn 1 的 boundary 单行，跳过其 3 条子记录
+    const collapsedTurn1 = filterVisibleLedgerRecords(records, new Set([1]));
+    assert.equal(collapsedTurn1.length, 4, "Turn 1 折叠后应只有 boundary 1 行 + Turn 2 的 3 行");
+    assert.equal(collapsedTurn1[0].type, "turn_boundary");
+    assert.equal(collapsedTurn1[0].isCollapsed, true);
+    assert.equal(collapsedTurn1[0].subRecordCount, 3);
+    assert.equal(collapsedTurn1[1].type, "turn_boundary");
+    assert.equal(collapsedTurn1[1].turn, 2);
+    assert.equal(collapsedTurn1[1].isCollapsed, false);
   });
 });
