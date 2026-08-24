@@ -10,12 +10,14 @@
 //   3. Live：SSE trajectory-record 事件（通过 liveRecord prop 传入）
 // 状态管理：使用 trajectoryModel.js 纯函数 reducer。
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   createTrajectoryState,
   applyTrajectoryRecord,
   prependTrajectoryRecords,
   filterRecordsByTimeRange,
+  filterVisibleLedgerRecords,
+  extractTurnNumbers,
 } from "./trajectoryModel.js";
 import Ledger from "./Ledger.jsx";
 import TimelineOverview from "./TimelineOverview.jsx";
@@ -32,6 +34,7 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
   const [brushRange, setBrushRange] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [collapsedTurns, setCollapsedTurns] = useState(() => new Set());
 
   // 初始化：加载历史快照
   useEffect(() => {
@@ -44,14 +47,23 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
     setBrushRange(null);
     setHasMore(false);
     setSkippedCount(0);
+    setCollapsedTurns(new Set());
 
     getTrajectoryRecords(spaceKey, { limit: 200 })
       .then((result) => {
         if (cancelled) return;
-        setState(createTrajectoryState(result.records ?? []));
+        const newState = createTrajectoryState(result.records ?? []);
+        setState(newState);
         setHasMore(Boolean(result.hasMore));
         if (result.meta?.skipped) {
           setSkippedCount(result.meta.skipped);
+        }
+
+        // 多回合时，默认收起历史回合，仅展开最新一轮，优化长对话性能与视线聚焦
+        const turns = extractTurnNumbers(newState.records);
+        if (turns.length > 1) {
+          const pastTurns = turns.slice(0, turns.length - 1);
+          setCollapsedTurns(new Set(pastTurns));
         }
       })
       .catch((err) => {
@@ -76,7 +88,21 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
     setLoadingOlder(true);
     getTrajectoryRecords(spaceKey, { limit: 200, before: `traj_${earliestSeq}` })
       .then((result) => {
-        setState((prev) => prependTrajectoryRecords(prev, result.records ?? []));
+        setState((prev) => {
+          const updated = prependTrajectoryRecords(prev, result.records ?? []);
+          // 如果新拉取了历史回合，将新拉取出的历史回合默认加入收起集合
+          const allTurns = extractTurnNumbers(updated.records);
+          if (allTurns.length > 1) {
+            setCollapsedTurns((prevSet) => {
+              const nextSet = new Set(prevSet);
+              for (let i = 0; i < allTurns.length - 1; i++) {
+                nextSet.add(allTurns[i]);
+              }
+              return nextSet;
+            });
+          }
+          return updated;
+        });
         setHasMore(Boolean(result.hasMore));
         if (result.meta?.skipped) {
           setSkippedCount((prev) => prev + result.meta.skipped);
@@ -105,6 +131,32 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
   }, []);
 
   const handleCloseInspector = useCallback(() => setSelectedRecord(null), []);
+
+  // 回合折叠切换
+  const handleToggleTurn = useCallback((turnNumber) => {
+    if (typeof turnNumber !== "number") return;
+    setCollapsedTurns((prev) => {
+      const next = new Set(prev);
+      if (next.has(turnNumber)) {
+        next.delete(turnNumber);
+      } else {
+        next.add(turnNumber);
+      }
+      return next;
+    });
+  }, []);
+
+  const allTurnNumbers = useMemo(() => extractTurnNumbers(state.records), [state.records]);
+
+  const handleExpandAll = useCallback(() => {
+    setCollapsedTurns(new Set());
+  }, []);
+
+  const handleCollapsePast = useCallback(() => {
+    if (allTurnNumbers.length <= 1) return;
+    const past = allTurnNumbers.slice(0, allTurnNumbers.length - 1);
+    setCollapsedTurns(new Set(past));
+  }, [allTurnNumbers]);
 
   if (loading) {
     return (
@@ -140,9 +192,15 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
     );
   }
 
-  const displayRecords = brushRange
+  // 1. 时间范围过滤（Brush 选区）
+  const timeFilteredRecords = brushRange
     ? filterRecordsByTimeRange(state.records, brushRange.startMs, brushRange.endMs)
     : state.records;
+
+  // 2. 回合折叠过滤（收起的回合仅保留 turn_boundary 单行，内部记录不进入虚拟滚动，极大减少 DOM 开销）
+  const displayRecords = filterVisibleLedgerRecords(timeFilteredRecords, collapsedTurns);
+
+  const hasCollapsedTurns = collapsedTurns.size > 0;
 
   return (
     <section className="trajectory-view" data-testid="trajectory-view">
@@ -188,11 +246,41 @@ export default function TrajectoryView({ spaceKey, liveRecord }) {
         </div>
       )}
 
+      {/* 回合折叠管理工具栏（多回合时长对话性能与视图切换）*/}
+      {allTurnNumbers.length > 1 && (
+        <div className="turn-toolbar">
+          <span>
+            共 {allTurnNumbers.length} 个交互回合
+            {hasCollapsedTurns ? `（已收起 ${collapsedTurns.size} 个历史回合）` : "（全部展开）"}
+          </span>
+          <div className="turn-toolbar-actions">
+            {hasCollapsedTurns ? (
+              <button
+                type="button"
+                className="turn-tool-btn"
+                onClick={handleExpandAll}
+              >
+                展开全部回合
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="turn-tool-btn"
+                onClick={handleCollapsePast}
+              >
+                仅展开最新回合
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Ledger 账本 */}
       <Ledger
         records={displayRecords}
         selectedSeq={selectedRecord?.seq}
         onSelectRecord={handleSelectRecord}
+        onToggleTurn={handleToggleTurn}
         hasMore={hasMore}
         onLoadOlder={handleLoadOlder}
         loadingOlder={loadingOlder}

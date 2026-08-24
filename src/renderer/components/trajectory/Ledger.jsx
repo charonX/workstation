@@ -19,16 +19,28 @@ function formatDurMs(ms) {
   return `${ms}ms`;
 }
 
-function LedgerRow({ record, selected, onClick }) {
+function LedgerRow({ record, selected, onClick, onToggleTurn }) {
   if (record.type === "turn_boundary") {
+    const isCollapsed = Boolean(record.isCollapsed);
     return (
       <div
-        className="turn-rule"
+        className={`turn-rule${isCollapsed ? " collapsed" : " expanded"}`}
         data-record-type="turn_boundary"
         data-record-seq={record.seq}
+        data-turn-number={record.turn}
         style={{ height: ROW_HEIGHT }}
+        onClick={() => onToggleTurn?.(record.turn)}
+        title={isCollapsed ? "点击展开该回合" : "点击收起该回合"}
       >
-        <span className="turn-label">Turn {record.turn ?? ""}</span>
+        <span className="turn-label">
+          <span className="turn-chevron">{isCollapsed ? "▶" : "▼"}</span>
+          <span>Turn {record.turn ?? ""}</span>
+          {record.subRecordCount > 0 && isCollapsed && (
+            <span className="turn-summary-pill">
+              （已收起 {record.subRecordCount} 条记录{record.toolCount > 0 ? ` · ${record.toolCount}个工具` : ""}）
+            </span>
+          )}
+        </span>
       </div>
     );
   }
@@ -113,6 +125,7 @@ export default function Ledger({
   records,
   selectedSeq,
   onSelectRecord,
+  onToggleTurn,
   hasMore = false,
   onLoadOlder,
   loadingOlder = false,
@@ -206,6 +219,7 @@ export default function Ledger({
                 record={r}
                 selected={r.seq === selectedSeq}
                 onClick={() => onSelectRecord?.(r)}
+                onToggleTurn={onToggleTurn}
               />
             ))}
           </div>

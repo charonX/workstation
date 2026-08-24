@@ -125,6 +125,85 @@ export function calculateTimelineSegments(record) {
   return segments;
 }
 
+/**
+ * 依据折叠状态列表生成实际需要展示给 Ledger 的行列表。
+ * 折叠的回合仅保留 turn_boundary 这一行（附加 isCollapsed: true 及统计元数据），其内部记录不输出。
+ * @param {Array} records
+ * @param {Set<number>} collapsedTurns - 折叠的回合号集合
+ * @returns {Array}
+ */
+export function filterVisibleLedgerRecords(records, collapsedTurns) {
+  if (!records || records.length === 0) return [];
+  if (!collapsedTurns || collapsedTurns.size === 0) {
+    return records;
+  }
+
+  // 统计各回合内的记录数与工具数
+  const turnStats = new Map();
+  let currentTurnNumber = null;
+  for (const r of records) {
+    if (r.type === "turn_boundary") {
+      currentTurnNumber = r.turn ?? 1;
+      if (!turnStats.has(currentTurnNumber)) {
+        turnStats.set(currentTurnNumber, { recordCount: 0, toolCount: 0 });
+      }
+    } else if (currentTurnNumber !== null) {
+      const s = turnStats.get(currentTurnNumber);
+      if (s) {
+        s.recordCount += 1;
+        if (r.type === "tool_call") s.toolCount += 1;
+      }
+    }
+  }
+
+  const result = [];
+  currentTurnNumber = null;
+  let isCurrentCollapsed = false;
+
+  for (const r of records) {
+    if (r.type === "turn_boundary") {
+      currentTurnNumber = r.turn ?? 1;
+      isCurrentCollapsed = collapsedTurns.has(currentTurnNumber);
+      const stat = turnStats.get(currentTurnNumber) || { recordCount: 0, toolCount: 0 };
+      result.push({
+        ...r,
+        isCollapsed: isCurrentCollapsed,
+        subRecordCount: stat.recordCount,
+        toolCount: stat.toolCount,
+      });
+      continue;
+    }
+
+    if (currentTurnNumber !== null && isCurrentCollapsed) {
+      // 当前回合被收起，跳过内部记录以节省渲染开销
+      continue;
+    }
+
+    result.push(r);
+  }
+
+  return result;
+}
+
+/**
+ * 提取记录中出现的所有回合号。
+ * @param {Array} records
+ * @returns {Array<number>}
+ */
+export function extractTurnNumbers(records) {
+  const turns = [];
+  const seen = new Set();
+  for (const r of records) {
+    if (r.type === "turn_boundary" && typeof r.turn === "number") {
+      if (!seen.has(r.turn)) {
+        seen.add(r.turn);
+        turns.push(r.turn);
+      }
+    }
+  }
+  return turns;
+}
+
 // —— 私有工具函数 ——
 
 /** 为记录附加稳定的 React key（traj_<seq>）。 */
