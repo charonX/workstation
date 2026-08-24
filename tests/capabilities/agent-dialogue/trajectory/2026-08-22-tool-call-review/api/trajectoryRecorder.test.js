@@ -313,28 +313,57 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     assert.equal(endRec.durationMs, 150);
   });
 
-  it("REQ-AGENT-127 (W1 补强): onToolError 产出 status: error 与 isError: true 记录行", () => {
-    const recorder = getRecorder();
-    const sessionKey = "ui:copilot:sess_error";
-    const safeKey = "ui_copilot_sess_error";
+  it("REQ-AGENT-127: 多步 Assistant 交互回合中各步骤 assistant_span 独立且预览文本正确", () => {
+    let currentTime = 1787472000000;
+    const recorder = getRecorder({
+      getTime: () => currentTime,
+    });
+    const sessionKey = "ui:copilot:sess_multistep";
+    const safeKey = "ui_copilot_sess_multistep";
 
+    // 1. 用户提问
     recorder.onTurnStart({ sessionKey, safeKey, turn: 1 });
-    recorder.onToolStart({ sessionKey, safeKey, toolCallId: "tc_err_01", toolName: "broken tool", args: {} });
-    recorder.onToolError({
+    recorder.onUserMessage({ sessionKey, safeKey, text: "帮我查询系统状态并分析" });
+
+    // 2. 第一步 Assistant 思考与调用工具
+    currentTime += 500;
+    recorder.onFirstTextDelta({ sessionKey, safeKey, textPreview: "我先查询一下系统状态" });
+    currentTime += 1000;
+    recorder.onAssistantMessageEnd({
       sessionKey,
       safeKey,
-      toolCallId: "tc_err_01",
-      errorCode: "E_TOOL_FAILED",
-      errorMessage: "Connection reset",
-      durationMs: 320,
+      usage: { input: 100, output: 20 },
+      textPreview: "我先查询一下系统状态：",
     });
 
+    // 3. 执行工具
+    recorder.onToolStart({ sessionKey, safeKey, toolCallId: "tc_status_01", toolName: "dashboard_stats", args: {} });
+    currentTime += 800;
+    recorder.onToolEnd({ sessionKey, safeKey, toolCallId: "tc_status_01", result: { ok: true }, isError: false });
+
+    // 4. 第二步 Assistant 根据工具结果给出最终回复
+    currentTime += 400; // TTFT 400ms 从工具完成起算
+    recorder.onFirstTextDelta({ sessionKey, safeKey, textPreview: "摸底完成，状态良好。" });
+    currentTime += 1500;
+    recorder.onAssistantMessageEnd({
+      sessionKey,
+      safeKey,
+      usage: { input: 200, output: 80 },
+      textPreview: "摸底完成，状态良好。以下是分析方案...",
+    });
+    recorder.onTurnEnd({ sessionKey, safeKey });
+
     const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
-    const errorRow = lines.find((l) => l.toolCallId === "tc_err_01" && l.status === "error");
-    assert.ok(errorRow, "应生成 status: error 的工具记录行");
-    assert.equal(errorRow.isError, true);
-    assert.equal(errorRow.errorCode, "E_TOOL_FAILED");
-    assert.equal(errorRow.errorMessage, "Connection reset");
-    assert.equal(errorRow.durationMs, 320);
+    const assistantSpans = lines.filter((l) => l.type === "assistant_span");
+    assert.equal(assistantSpans.length, 2, "多步调用中应恰好生成 2 个独立的 assistant_span");
+
+    assert.equal(assistantSpans[0].textPreview, "我先查询一下系统状态：");
+    assert.equal(assistantSpans[0].ttftMs, 500);
+    assert.equal(assistantSpans[0].decodeMs, 1000);
+
+    assert.equal(assistantSpans[1].textPreview, "摸底完成，状态良好。以下是分析方案...");
+    assert.equal(assistantSpans[1].ttftMs, 400);
+    assert.equal(assistantSpans[1].decodeMs, 1500);
   });
 });
+
