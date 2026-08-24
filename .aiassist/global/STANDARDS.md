@@ -43,6 +43,17 @@
 - 业务错误映射统一走 `mapError(res, err, defaultStatus = 400)`；错误状态码优先取 `err.status`，业务错误体为 `{ error: err.code || ..., message }`，`invalidAgents`、`issues`、`existing` 等结构化上下文自动透传。
 - 严禁路由间反向导入响应助手（例如 `routes/plugins.js -> routes/mcp.js`）。
 
+## 高频遥测与侧车日志规范（2026-08-24，2026-08-22-tool-call-review /reflect）
+
+- **历史会话投影与执行遥测必须物理隔离**：主会话 JSONL 只允许存储对话语义实体（`user`/`assistant` 最终文本），高频/大载荷遥测（工具入参出参、TTFT/decode 时钟、Token 细分）必须写入同名的 append-only 侧车文件（`*.traj.jsonl`）。
+- **侧车写入单向非阻塞与优雅降级**：侧车落盘失败（权限/磁盘满）仅记录 stderr 日志，绝不阻断或导致主 Agent Worker 崩溃。
+- **单行载荷上限约束**：轨迹单行记录总大小上限不得超过 256KB，对超大工具输出执行结构化截断（`truncated: true`），防止长文本击穿 IPC 与虚拟滚动。
+
+## 虚拟滚动与长列表手风琴裁剪规范（2026-08-24，2026-08-22-tool-call-review /reflect）
+
+- **DOM 挂载树必须在虚拟滚动之上叠加回合/分组折叠**：长列表不仅要在视口内做行级虚拟滚动（如 `react-window` / `useVirtualizer`），多回合/多分组合并场景必须支持将历史折叠为单行摘要栏（$O(1)$ 节点），折叠子项在数据层直接过滤，绝不进入虚拟滚动的高度计算与测量树中。
+- **纯函数状态归约（Model Reducer）必须与 JSX 视图解耦**：时间线投影、区间过滤、回合规整与去重等复杂逻辑必须实现为纯 JS 模块（如 `trajectoryModel.js`），保证在 Node.js 无 DOM 环境中可进行 100% 覆盖的单元测试。
+
 
 ## 目录结构约定
 

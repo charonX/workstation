@@ -27,8 +27,9 @@
 | 发布物 | Release | 一次应用分发的版本发布（GitHub Release + tag，含 dmg/zip 资产），驱动检查更新与手动重装 | GitHub Release（无 DB 表） | 版本发布 |
 | 嵌套执行 | Nested Execution | 子流程被调用时产生的 execution，通过 parentExecutionId/parentNodeId/depth 与父执行关联 | `executions` 表 | — |
 | 对话空间 | Conversation Space | 对话的上下文容器，**空间 = 会话**（2026-08-06 ADR-016 修订）：每条 chat 一个独立空间，上下文互不串扰；spaceKey 语法 `feishu:<chatId>`（世代制沿用）、`ui:copilot:<sessionId>`、`ui:project:<projectId>:<sessionId>` | `agent_sessions` 表 + PI session | 聊天（"会话"在 UI 语境 = 对话空间本身，是规范说法；禁止用它指代 execution 等其他概念） |
-| 模型配置 | Model Config | 对话与 auto 判断的模型来源条目：provider + apiKey + 可选模型覆盖 + 默认标记；可配置多条、默认唯一；会话级切换选择的对象；存量单条配置迁移为第一条 + 默认 | settings.json `agent` 段（列表形态） | provider 设置、模型条目（UI 文案「模型」= 模型配置，provider · 模型一体呈现） |
-| 服务容器 | Service Container | 内聚 8 个核心服务的惰性单例工厂、跨服务接线（imRouter/eventBus）、日志清理定时调度与安全销毁的统一管理容器（ADR-035）；挂载于 `server.services` 作为唯一正规 DI 接缝 | `src/services/serviceContainer.js` | DI 容器、Server 闭包（禁止在路由或 server 中手写隐式单例闭包） |
+| 飞书归档条目 | Feishu Archive Entry | 飞书空间 /reset 后保留的历史会话行（ADR-037，2026-08-19）：spaceKey `feishu:<chatId>:gen<N>`，title/sessionRef/lastActiveAt/createdAt 冻结原值，只读可回看；写端点 403 E-SESSION-READONLY；displayName 为空时逆解析活跃键查 agent_space_meta fallback | 对话空间 | 会话列表「飞书」分组历史回看 |
+| 会话轨迹 | Trajectory | 伴随 Agent 会话生成的全量执行账本（含 TTFT/decode 细粒度耗时、Token 用量、工具入参及出参、大载荷截断标记等），以 append-only 侧车文件落盘，可独立回看与时间线过滤（ADR-038） | `*.traj.jsonl` 侧车文件 + `GET /api/agent/sessions/:spaceKey/trajectory` | 轨迹账本、执行日志 |
+| 侧车文件 | Sidecar File | 伴随主会话存在、记录全量高频/大载荷遥测与工具调用的 append-only 本地 JSONL 文件（`ui_project_<pid>_<sid>.traj.jsonl`），实现历史投影与轨迹账本物理隔离 | `src/agent/trajectoryRecorder.js` | 轨迹文件、侧车 |
 
 ## 业务概念
 
@@ -77,6 +78,8 @@
 | 活跃行 | Active Row | spaceKey 无 `:gen<N>` 后缀的当前会话行：飞书空间 = 唯一可写可交互行；/reset 时被改名为归档键并插入新活跃行（title/provider/model=NULL 回落默认） | 对话空间 | reset 归档事务 / 写面守护 |
 | 世代编号 | Generation Number | 飞书空间 JSONL 文件的世代序数 N（`feishu_<chatId>.<N+1>.jsonl` / 归档键 `:gen<N>`）：归档时从旧 sessionRef 解析并 +1 延续，防碰撞；空世代不归档但换代照常递增 | 对话空间 | 归档键命名 / 孤儿世代文件判定 |
 | 空世代 | Empty Generation | 活跃行消息投影为空的世代（JSONL 空文件或无有效 user/assistant 消息）：/reset 不产生归档行，原地换代——「没聊过的会话不留历史」 | 对话空间 | reset 分支语义 |
+| 回合边界 | Turn Boundary | 轨迹记录中标识对话轮次起点的分隔行（`type="turn_boundary"`）；在前端账本中呈现为可交互折叠手风琴条（Turn Rule），支持多回合收起与展开 | 会话轨迹 | 轨迹账本渲染与回合手风琴 |
+| 时间线总览 | Timeline Overview | 轨迹视图顶部的时钟与耗时投影图表，按比例呈现 Assistant 思考/生成、工具调用与空闲区间；支持智能长空闲折叠（Gap Compression）、滚轮缩放与选区拖拽联动 | 会话轨迹 | 轨迹总览与选区过滤 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 

@@ -8,24 +8,26 @@ intention: >-
   用户需要一个可回看的会话轨迹账本（deepseek ui-trajectory 式），
   让工具/subtool 调用成为可浏览的记录。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: QA               # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT               # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 4    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-22
-status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
-completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+status: completed # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed: true
+completed_at: "2026-08-24T17:39:00+08:00"
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
   - {at: 2026-08-22, from: -, to: THINK, note: "创建 story（初衷：工具调用可回看）"}
   - {at: 2026-08-22, from: THINK, to: PRD, note: "十问访谈收敛，方向 C 全量对标 ui-trajectory（分阶段：嵌套内部展开剥离后续），参考 pi-observability；interview-notes.md 完成"}
-  - {at: 2026-08-23, from: PRD, to: DESIGN, note: "prd.md v0.1 合成（complex：9 稳定块/17 锚点/§10 九条已锁约束）；待 /tech-design 深潜 §10"}
   - {at: 2026-08-23, from: DESIGN, to: DOMAIN-MODEL, note: "trajectory.html 单屏一体原型完成（调试密度变体/真实语义假数据/内置状态开关），编译+check 绿，preview 66KB 1 card；待用户 review"}
   - {at: 2026-08-23, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "领域术语核对：轨迹=新增实体，无 CONTEXT.md 冲突（术语待 /reflect 沉淀 trajectory 实体条目）"}
   - {at: 2026-08-23, from: TECH-DESIGN, to: CRYSTALLIZE, note: "§10 深潜完成（四问四答 D1-D6 + 三接口契约 golden values），ADR-038 落地；进入自动链"}
   - {at: 2026-08-23, from: CRYSTALLIZE, to: BUILD, note: "自动链完成：结晶 REQ-AGENT-127~135、编写 4 份测试契约（单元/集成/E2E）、门 1 断言签核通过；解锁实现"}
   - {at: 2026-08-23, from: BUILD, to: QA, note: "4 切片全部实现：Slice1(trajectoryRecorder,6/6绿) Slice2(trajectoryApi,5/5绿) Slice3(trajectoryModel,6/6绿) Slice4(UI,1068全量回归0失败)；commits e384aa5,2780c7d,c205ffb,da7b331；lint 0 errors；进入 QA 阶段"}
+  - {at: 2026-08-24, from: QA, to: REFLECT, note: "QA 全量验证通过：全单元 1072/1072 绿、E2E 242/242 绿；review 阻塞与警告项全部闭环；无 open bug，进入 /reflect 阶段"}
+  - {at: 2026-08-24, from: REFLECT, to: -, note: "完成验收与知识沉淀：沉淀 Gap Compression / Turn 手风琴性能经验、更新 CONTEXT/STANDARDS/业务能力地图；story 正式完结"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

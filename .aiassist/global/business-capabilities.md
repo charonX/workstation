@@ -112,7 +112,7 @@
 | conversation-space (session-domain) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-16-deepen-session-domain/api/` | REQ-AGENT-112~117（2026-08-18 验收） | `sessionDomainConfig/Projection/Keys/Attachments/SseRegistry/DependencyDirection.test.js` + `sseRegistryFailFast/attachPendingCleanup.test.js`（BUG-001/002 回归）：sessionDomain 纯函数收编（config 装配/投影分页/key 解析/附件规则/gitState）+ SSE 注册表 per-instance 三方法 + 依赖方向回正静态断言 + 路由瘦身 ≤650 行（实测 650 零余量）（ADR-030；2026-08-17 review 复核修订：~300/≤350 算术不可行，人拍板重定 ≤650；2026-08-18 /code-review 修正 fail-fast 落点 + attachPending 清理，见 engineering-lessons） |
 | conversation-space (feishu-reset-history-archive) | `tests/capabilities/agent-dialogue/conversation-space/2026-08-19-feishu-reset-history-archive/api/` | REQ-AGENT-123~126（2026-08-19 结晶；REQ v2 2026-08-22 勘误表名/403 字段） | `feishuResetArchive.test.js`（123/124）, `feishuArchiveSessions.test.js`（125/126）, `feishuResetReceipt.test.js`（123 回执）, `feishuArchiveHydration.test.js`（BUG-001 回归）：飞书 /reset 归档事务（旧行改名 …:gen<N> + 新活跃行）+ 异常退化分支 + 列表可见与 displayName fallback + 归档只读回看与 403 守护 + 重启水合跳过归档键（ADR-037；2026-08-22 /reflect 验收，BUG-001 已修） |
 | agent-security (permission-adjudication) | `tests/capabilities/agent-security/permission/2026-08-16-deepen-permission-adjudication/api/` | REQ-AGENT-118~122（2026-08-18 验收） | `permissionPolicy.test.js`, `permissionAdjudicator.test.js`, `permissionBridge.test.js`, `serverPermissionWiring.test.js`：权限裁决域工厂 + Promise 状态机 + 纯函数 Fail-Closed + 唯一执行者零 execute + 消除 20ms 轮询与全局 Map（ADR-032） |
-| trajectory (2026-08-22-tool-call-review) | `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/api/`, `.../e2e/` | REQ-AGENT-127~135（2026-08-23 结晶） | `trajectoryRecorder.test.js`, `trajectoryApi.test.js`, `trajectoryModel.test.js`, `trajectoryView.test.cjs` (E2E) |
+| trajectory (2026-08-22-tool-call-review) | `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/api/`, `.../e2e/` | REQ-AGENT-127~135（2026-08-23 结晶，2026-08-24 验收） | `trajectoryRecorder.test.js`（11 用例：多步 span/重启 maxTurn/截断保护）, `trajectoryApi.test.js`（5 用例：游标分页/before 窗口/损坏容错）, `trajectoryModel.test.js`（8 用例：乱序合并/选区/空闲折叠/Turn 手风琴）, `trajectoryView.test.cjs`（6 E2E 用例：Tab/空态/Inspector/时间线选区/虚拟滚动/子执行跳转） |
 
 ### plugin-management
 > PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）。（2026-08-12-pi-mcp-plugin 登记）
@@ -152,5 +152,5 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
 | command-interface | 1 | 8 | 2026-08-16 |
-| agent-dialogue | 7 | 393 | 2026-08-23 |
+| agent-dialogue | 8 | 423 | 2026-08-24 |
 | plugin-management | 2 | 82 | 2026-08-16 |

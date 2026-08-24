@@ -5,6 +5,23 @@
 - 在项目演进过程中补充踩坑记录、最佳实践、性能调优等。
 - 保持简洁，优先记录可复用的结论，而非一次性细节。
 
+## 会话轨迹与时间线交互设计：多步 SDK 事件过滤、断点间隙压缩与回合级性能折叠（2026-08-24，2026-08-22-tool-call-review）
+
+- **工具调用结果导致的多余 `message_end` 必须严格过滤 `role === "assistant"`**：
+  - 现象：Claude / PI Agent SDK 在每个 toolResult 完成时都会发送 `message_end` 事件（`ev.message.role === "toolResult"`）。如果录制器直接监听 `message_end` 而不校验 `role === "assistant"`，会导致单个多工具回合生成大量的伪造 assistant span，且带有陈旧的 textPreview 与暴涨的 decodeMs 伪造时长。
+  - 结论：录制器必须严格依据 `ev.message?.role === "assistant"` 与首个 `text_delta` 的到达时间切分 assistant 步骤，并在每个工具启动/结束与 assistant step 结束时显式重置 step 时钟。
+- **长空闲静默与非连续稀疏时钟必须引入智能空闲压缩（Gap Compression / Broken-Axis）**：
+  - 现象：多轮对话之间往往间隔数十分钟甚至数天，线性绝对时钟映射会导致 98% 以上的视口是空白，两侧的执行段被挤压成 2px 细线。
+  - 结论：引入分段投影与空闲上限压缩（当静默时间超过 20s 时视觉上折叠收敛为 10s 虚拟宽度），配合轻量折叠标记（`.tl-gap`）与真实绝对时钟 tooltip，坐标逆映射与 brush 选区精准对齐真实时间域，兼顾微观执行耗时细节与宏观真实时间。
+- **侧车状态跨进程恢复必须完整覆盖 `maxSeq` 与 `maxTurn`，禁止回合起止双写 `turn_boundary`**：
+  - 现象：录制器在每轮开始与结束时都写了一次 `turn_boundary`，且重启后仅恢复了 `seq` 没有恢复 `turn` 计数，导致历史数据中出现大量恒为 1 的重复 boundary 分隔行。
+  - 结论：一个交互回合只在起点写入唯一 `turn_boundary`；从磁盘初始化时完整恢复 `maxSeq` 与 `maxTurn`；前端数据层引入 `normalizeRecordsTurns` 自动容错清洗历史数据，确保老旧会话也能平滑渲染为标准 Turn 1、Turn 2 手风琴。
+- **长列表轨迹渲染必须在虚拟滚动之上叠加回合折叠（Turn Accordion）实现 $O(1)$ 回合聚焦**：
+  - 现象：即使有虚拟滚动，长会话存在成百上千行记录时滚动与选区计算依然会消耗大量资源，且历史信息混杂。
+  - 结论：默认仅展开最新一轮，历史回合自动折叠为单行摘要栏（28px），内部记录不进入虚拟滚动视口计算树，实现 $O(1)$ 复杂度的极致性能与清晰视线聚焦。
+
+---
+
 ## 服务容器独立化与测试资源泄漏防御：惰性工厂、兼容代理与故障注入的资源恢复（2026-08-19，2026-08-16-deepen-service-container）
 
 - **故障注入测试（Fault Injection）必须保证底层系统资源的彻底恢复**：
