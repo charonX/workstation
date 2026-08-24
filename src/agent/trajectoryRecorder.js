@@ -80,12 +80,13 @@ export function createTrajectoryRecorder({
   // sessionKey -> { seq, seqRecovered, turn, turnStartTime, firstDeltaTime, textPreview, runningTools }
   const sessionStates = new Map();
 
-  function recoverMaxSeqFromSidecar(sidecarPath) {
+  function recoverStateFromSidecar(sidecarPath) {
     try {
-      if (!fs.existsSync(sidecarPath)) return 0;
+      if (!fs.existsSync(sidecarPath)) return { maxSeq: 0, maxTurn: 0 };
       const content = fs.readFileSync(sidecarPath, "utf8");
       const lines = content.trim().split("\n");
       let maxSeq = 0;
+      let maxTurn = 0;
       for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i].trim();
         if (!line) continue;
@@ -94,13 +95,16 @@ export function createTrajectoryRecorder({
           if (typeof parsed?.seq === "number") {
             maxSeq = Math.max(maxSeq, parsed.seq);
           }
+          if (typeof parsed?.turn === "number") {
+            maxTurn = Math.max(maxTurn, parsed.turn);
+          }
         } catch {
           // 跳过损坏行
         }
       }
-      return maxSeq;
+      return { maxSeq, maxTurn };
     } catch {
-      return 0;
+      return { maxSeq: 0, maxTurn: 0 };
     }
   }
 
@@ -121,7 +125,9 @@ export function createTrajectoryRecorder({
     }
     if (!state.seqRecovered && sidecarOpts) {
       const sidecarPath = getSidecarPath(sessionDir, sidecarOpts, path);
-      state.seq = Math.max(state.seq, recoverMaxSeqFromSidecar(sidecarPath));
+      const recovered = recoverStateFromSidecar(sidecarPath);
+      state.seq = Math.max(state.seq, recovered.maxSeq);
+      state.turn = Math.max(state.turn, recovered.maxTurn);
       state.seqRecovered = true;
     }
     return state;
@@ -400,13 +406,10 @@ export function createTrajectoryRecorder({
     if (!state.assistantSpanWritten) {
       onAssistantMessageEnd({ sessionKey, safeKey, sessionRef, generation });
     }
-    return writeRecord(
-      { sessionKey, safeKey, sessionRef, generation },
-      {
-        type: "turn_boundary",
-        turn: state.turn,
-      }
-    );
+    state.turnStartTime = null;
+    state.stepStartTime = null;
+    state.firstDeltaTime = null;
+    state.textPreview = null;
   }
 
   function onCompaction({ sessionKey, safeKey, reason, phase, sessionRef, generation }) {

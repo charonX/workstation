@@ -126,6 +126,59 @@ export function calculateTimelineSegments(record) {
 }
 
 /**
+ * 规范化与清洗记录中的回合边界（去除历史冗余尾部 turn_boundary、重复空边界，并重新校准为严格单调递增的 Turn 序号）。
+ * @param {Array} records
+ * @returns {Array}
+ */
+export function normalizeRecordsTurns(records) {
+  if (!records || records.length === 0) return [];
+
+  const normalized = [];
+  let currentTurnNumber = 0;
+  let hasRecordsInCurrentTurn = false;
+
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+
+    if (r.type === "turn_boundary") {
+      // 检查后续是否有实际记录（如果紧接着又是 turn_boundary，忽略连续空 boundary）
+      if (!hasRecordsInCurrentTurn && currentTurnNumber > 0) {
+        continue;
+      }
+      currentTurnNumber += 1;
+      hasRecordsInCurrentTurn = false;
+      normalized.push({
+        ...r,
+        turn: currentTurnNumber,
+      });
+      continue;
+    }
+
+    if (currentTurnNumber === 0) {
+      currentTurnNumber = 1;
+      normalized.push({
+        v: 1,
+        seq: r.seq !== undefined ? r.seq - 0.5 : 0,
+        ts: r.ts,
+        type: "turn_boundary",
+        turn: 1,
+        key: "traj_turn_1",
+      });
+    }
+
+    hasRecordsInCurrentTurn = true;
+    normalized.push(r);
+  }
+
+  // 若末尾残留未包含任何子记录的悬空 turn_boundary，将其移除
+  if (normalized.length > 0 && normalized[normalized.length - 1].type === "turn_boundary" && !hasRecordsInCurrentTurn) {
+    normalized.pop();
+  }
+
+  return normalized;
+}
+
+/**
  * 依据折叠状态列表生成实际需要展示给 Ledger 的行列表。
  * 折叠的回合仅保留 turn_boundary 这一行（附加 isCollapsed: true 及统计元数据），其内部记录不输出。
  * @param {Array} records
@@ -134,14 +187,15 @@ export function calculateTimelineSegments(record) {
  */
 export function filterVisibleLedgerRecords(records, collapsedTurns) {
   if (!records || records.length === 0) return [];
+  const normalizedRecords = normalizeRecordsTurns(records);
   if (!collapsedTurns || collapsedTurns.size === 0) {
-    return records;
+    return normalizedRecords;
   }
 
   // 统计各回合内的记录数与工具数
   const turnStats = new Map();
   let currentTurnNumber = null;
-  for (const r of records) {
+  for (const r of normalizedRecords) {
     if (r.type === "turn_boundary") {
       currentTurnNumber = r.turn ?? 1;
       if (!turnStats.has(currentTurnNumber)) {
@@ -160,7 +214,7 @@ export function filterVisibleLedgerRecords(records, collapsedTurns) {
   currentTurnNumber = null;
   let isCurrentCollapsed = false;
 
-  for (const r of records) {
+  for (const r of normalizedRecords) {
     if (r.type === "turn_boundary") {
       currentTurnNumber = r.turn ?? 1;
       isCurrentCollapsed = collapsedTurns.has(currentTurnNumber);
@@ -191,9 +245,10 @@ export function filterVisibleLedgerRecords(records, collapsedTurns) {
  * @returns {Array<number>}
  */
 export function extractTurnNumbers(records) {
+  const normalized = normalizeRecordsTurns(records);
   const turns = [];
   const seen = new Set();
-  for (const r of records) {
+  for (const r of normalized) {
     if (r.type === "turn_boundary" && typeof r.turn === "number") {
       if (!seen.has(r.turn)) {
         seen.add(r.turn);
