@@ -209,4 +209,39 @@ describe("REQ-AGENT-134 & REQ-AGENT-132 trajectoryModel 纯函数数据模型与
     assert.equal(collapsedTurn1[1].turn, 2);
     assert.equal(collapsedTurn1[1].isCollapsed, false);
   });
+
+  it("容错与规范化: 重复连续 turn_boundary 与恒为 1 的老数据自动校准为正确序号", () => {
+    checkSeam();
+    // 模拟真实用户数据：Turn 1 开头、Turn 1 结尾残留 boundary、Turn 2 开头连续 boundary（均标为 turn:1）
+    const legacyRecords = [
+      { v: 1, seq: 1, ts: "2026-08-24T06:50:46.000Z", type: "turn_boundary", turn: 1 },
+      { v: 1, seq: 2, ts: "2026-08-24T06:50:47.000Z", type: "user_message", text: "第一问" },
+      { v: 1, seq: 3, ts: "2026-08-24T06:50:48.000Z", type: "tool_call", toolCallId: "t1" },
+      // 旧版 onTurnEnd 产生的冗余 boundary
+      { v: 1, seq: 4, ts: "2026-08-24T06:51:40.000Z", type: "turn_boundary", turn: 1 },
+      // 新一轮 onTurnStart 产生的 boundary（因未从文件恢复 turn 计数，也为 1）
+      { v: 1, seq: 5, ts: "2026-08-24T07:58:10.000Z", type: "turn_boundary", turn: 1 },
+      { v: 1, seq: 6, ts: "2026-08-24T07:58:11.000Z", type: "user_message", text: "第二问" },
+      { v: 1, seq: 7, ts: "2026-08-24T07:58:12.000Z", type: "tool_call", toolCallId: "t2" },
+      // 尾部悬空 boundary
+      { v: 1, seq: 8, ts: "2026-08-24T07:59:00.000Z", type: "turn_boundary", turn: 1 },
+    ];
+
+    const turns = extractTurnNumbers(legacyRecords);
+    assert.deepEqual(turns, [1, 2], "两轮真实对话应且仅应提取出 [1, 2] 两个回合");
+
+    // 默认折叠历史（收起 Turn 1）
+    const visible = filterVisibleLedgerRecords(legacyRecords, new Set([1]));
+    // Turn 1 折叠为 1 行；Turn 2 展开（boundary + user_message + tool_call 共 3 行）
+    assert.equal(visible.length, 4, "预期输出 4 行：Turn 1 摘要行 + Turn 2 展开的 3 行");
+    assert.equal(visible[0].turn, 1);
+    assert.equal(visible[0].isCollapsed, true);
+    assert.equal(visible[0].subRecordCount, 2);
+    assert.equal(visible[0].toolCount, 1);
+
+    assert.equal(visible[1].turn, 2);
+    assert.equal(visible[1].isCollapsed, false);
+    assert.equal(visible[2].type, "user_message");
+    assert.equal(visible[3].type, "tool_call");
+  });
 });

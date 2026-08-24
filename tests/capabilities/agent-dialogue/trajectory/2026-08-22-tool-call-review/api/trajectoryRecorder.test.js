@@ -365,5 +365,30 @@ describe("REQ-AGENT-127 轨迹落盘（sidecar 写入链）", () => {
     assert.equal(assistantSpans[1].ttftMs, 400);
     assert.equal(assistantSpans[1].decodeMs, 1500);
   });
+
+  it("REQ-AGENT-127: 重启/恢复后从既有侧车恢复 maxTurn，多回合序号单调递增且不重复发 turn_boundary", () => {
+    const sessionKey = "ui:copilot:session_turn_recovery";
+    const safeKey = "ui_copilot_session_turn_recovery";
+
+    // 实例 1：运行 Turn 1
+    const rec1 = getRecorder();
+    rec1.onTurnStart({ sessionKey, safeKey });
+    rec1.onUserMessage({ sessionKey, safeKey, text: "第一回合" });
+    rec1.onAssistantMessageEnd({ sessionKey, safeKey, textPreview: "第一回合完成" });
+    rec1.onTurnEnd({ sessionKey, safeKey });
+
+    // 模拟 Worker 重启，实例化全新的 recorder
+    const rec2 = getRecorder();
+    rec2.onTurnStart({ sessionKey, safeKey });
+    rec2.onUserMessage({ sessionKey, safeKey, text: "第二回合" });
+    rec2.onAssistantMessageEnd({ sessionKey, safeKey, textPreview: "第二回合完成" });
+    rec2.onTurnEnd({ sessionKey, safeKey });
+
+    const lines = readSidecarLines(`${safeKey}.traj.jsonl`);
+    const turnBoundaries = lines.filter((l) => l.type === "turn_boundary");
+    assert.equal(turnBoundaries.length, 2, "两轮回合应恰好有 2 个 turn_boundary，不应多余生成");
+    assert.equal(turnBoundaries[0].turn, 1);
+    assert.equal(turnBoundaries[1].turn, 2, "重启后第二轮必须正确递增为 turn: 2");
+  });
 });
 
