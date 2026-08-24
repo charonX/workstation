@@ -1,199 +1,126 @@
-# OPC Workstation Desktop
+# OPC Workstation
 
-> Story: `codex-harness-desktop` — 把需要人类判断的环节交给 agent/codex 节点，把流程化步骤交给应用稳定执行，实现可定时触发、可远程观察的自动化工作流。
+> **你的本地个人 AI 自动化工作台** —— 把需要 AI 思考和判断的事交给 Agent，把繁琐固定的流程交给系统自动跑。支持多模型对话、可视化工作流拖拽、定时任务调度与飞书等消息通道联动。
 
-OPC Workstation Desktop 是一个基于 **Electron + React** 的本地桌面应用，提供工作流编排、任务执行、Skill 管理、项目管理和仪表盘观测能力。
+---
 
-## 功能概览
+## 🌟 核心功能（人话版）
 
-- **Workspace / Projects**：本地项目与 Git 项目创建、列表筛选、详情管理。
-- **Flows**：可视化 Flow 编辑器（基于 React Flow），支持节点拖拽、属性编辑、导入/导出。
-- **Tasks / Executions**：手动触发任务、查看执行历史、日志、变量与输出。
-- **Schedules**：基于 cron 表达式的定时调度。
-- **Skills**：支持 npm、Claude Plugin 与本地文件三种来源安装，并在项目详情中关联 Skills。
-- **Dashboard**：关键指标卡片、最近执行记录、快捷项目链接。
-- **Settings**：工作区根目录、Skill 仓库路径、主题、语言、密度偏好；关于/更新区展示当前版本号、提供"检查更新"入口。
-- **分发**：`npm run release` 一条命令发版到公开 GitHub Release（未签名分发路线，ADR-012）；应用内检查更新引导用户下载新版。
-- **CLI**：独立的命令行入口 `src/cli/opc-workstation.js`，支持与桌面端共享同一本地 HTTP API。
+### 1. 🤖 灵活的 AI 智能对话（会话区）
+- **多模型自由切换**：支持主流大模型（Claude、OpenAI、DeepSeek、Gemini 及各类兼容接口），随时无缝切换不同厂商和端点。
+- **看得见的工具调用**：AI 不仅能聊天，还能读写本地文件、查阅代码、执行终端命令，执行了什么一目了然。
+- **高危操作安全拦截**：遇到删除文件、修改重要配置或危险脚本时，会自动弹出授权确认卡片，必须你点头才执行，绝不擅自越界。
+- **长会话智能折叠**：长对话自动按轮次折叠收起，代码高亮、Markdown 排版、公式与 Mermaid 流程图原生精美渲染。
 
-## 技术栈
+### 2. ⚡ 可视化工作流编排（Flows）
+- **像搭积木一样连线**：提供可视化画布（React Flow），自由拖拽触发器、输入变量、AI 节点、脚本执行器和输出节点。
+- **复杂任务链式流转**：把“读取内容源 -> AI 翻译总结 -> 数据清洗 -> 生成报告 -> 发送到飞书”串成一条自动化流水线。
 
-- **桌面壳**：Electron + Electron Forge + Vite
-- **前端**：React 19 + React Router DOM + i18next + React Flow
-- **后端**：Node.js 原生 HTTP 服务器（内嵌于主进程）
-- **持久化**：JSON 文件（settings）+ SQLite（项目/流程/任务/执行/日志）
-- **自动化测试**：Node.js 原生 `node --test`（API/CLI）+ Playwright Electron（E2E）
-- **原生依赖**：`better-sqlite3`（需要按目标运行时重建）
+### 3. ⏰ 定时调度与自动化（Schedules & Tasks）
+- **无人值守定时跑**：设置标准的 Cron 表达式（如每天早 8 点、每隔 2 小时），后台准时自动拉起对应的工作流。
+- **执行日志与轨迹回溯**：每次自动执行都有完整的日志记录、中间变量和输出结果，随时回查与排错。
 
-## 环境准备
+### 4. 📢 内容源与消息通道联动（Sources & Channels）
+- **多源数据摄取**：统一管理 RSS 订阅、Git 代码仓库、本地文件监听等多种内容源。
+- **飞书机器人长连对接**：内置飞书通道适配器，长连接接收群聊/私信指令，AI 处理后自动回传结果，在手机飞书上也能随时触发和查看。
 
-需要 Node.js 22+ 和 npm。发布新版本需要 [gh CLI](https://cli.github.com/) 且已登录（`gh auth login`）。
+### 5. 🧩 Skill 与 MCP 扩展生态
+- **技能一键安装**：支持从 Git 仓库、本地文件、Claude Plugin 等多种来源安装和挂载自定义 Skill。
+- **MCP 协议支持**：兼容 Model Context Protocol，即插即用各类外部 MCP Server 工具。
+
+### 6. 🔒 本地优先，隐私第一
+- **数据全在本地**：所有对话轨迹、工作流定义、项目配置均保存在本地 SQLite 数据库，不上传第三方服务器。
+- **系统级密钥加密**：所有 API Key 均接入 macOS Keychain / 系统安全加密区保存，绝不明文裸露。
+
+### 7. 💻 极客友好的 CLI 命令行工具
+- **免图形界面运行**：提供独立命令行工具 `opc-workstation`，与桌面应用共享底层数据，适合脚本调用或服务器后台运行。
+
+---
+
+## 🚀 快速安装与使用（macOS）
+
+### 下载与安装
+
+1. 前往 [GitHub Releases](https://github.com/charonX/workstation/releases) 页面下载最新版本的 `.dmg` 安装镜像（如 `opc-workstation-0.2.0-arm64.dmg`）。
+2. 双击打开 DMG，将 **OPC Workstation** 拖入系统的 **Applications（应用程序）** 文件夹。
+3. **首次打开提示拦截处理**：
+   - 首次启动若提示“无法验证开发者”，请打开 macOS **系统设置 > 隐私与安全性**（System Settings > Privacy & Security）。
+   - 在页面下方的安全性区域，点击 **「仍要打开」(Open Anyway)** 即可正常启动。
+
+---
+
+## 🛠️ 开发者指南
+
+### 环境要求
+- Node.js 22+
+- npm 11+
+- [GitHub CLI (gh)](https://cli.github.com/)（仅发布新版本时需要，需先 `gh auth login`）
+
+### 安装依赖与启动开发
 
 ```bash
+# 1. 克隆代码并安装依赖
+git clone https://github.com/charonX/workstation.git
+cd workstation
 npm install
-```
 
-`better-sqlite3` 需要为当前 Node/Electron 版本重建二进制。测试脚本会自动处理；手动操作时：
-
-```bash
-# 为单元测试 / CLI 运行重建（Node 运行时）
-npm run rebuild:node
-
-# 为 Electron 运行 / E2E 测试重建
-npm run rebuild:electron
-```
-
-## 启动应用
-
-### 开发模式
-
-```bash
+# 2. 启动开发模式（支持热重载）
 npm start
 ```
 
-Electron Forge 会启动 Vite 开发服务器，并打开 Electron 主窗口。主进程会自动启动本地 HTTP API，渲染进程通过 preload 脚本发现 API 地址。
-
-### 本地 HTTP API（主进程内）
-
-应用启动后，主进程会在一个随机端口启动 HTTP 服务，并将地址写入 `app.getPath('userData')/server.json`，同时注册到 `~/.opc-workstation/server.json` 供 CLI 发现。无需手动启动。
-
-### CLI
+### 测试
 
 ```bash
-# 查看帮助
-node src/cli/opc-workstation.js --help
-
-# 示例：设置工作区根目录
-node src/cli/opc-workstation.js settings set workspaceRoot /path/to/workspace
-
-# 示例：列出项目
-node src/cli/opc-workstation.js projects list
-```
-
-CLI 会优先复用已运行的桌面 HTTP 服务；若未找到，会启动一个独立的无头服务，并在父进程退出后自动关闭。
-
-## 测试
-
-```bash
-# 运行全部测试（单元 + E2E）
-npm test
-
-# 仅运行单元测试（API + CLI）
+# 运行全部单元测试与集成测试
 npm run test:unit
 
-# 仅运行 E2E 测试
+# 运行 Playwright E2E 测试
 npm run test:e2e
 ```
 
-当前测试覆盖：
-
-- 单元测试：400+ 个（`tests/capabilities/**/api|cli/*.test.js`），覆盖 HTTP API、CLI、FlowEngine、检查更新服务等。
-- E2E 测试：116 个 Playwright Electron 用例，覆盖主题/语言/密度、Dashboard、Flow 编辑与执行、Skill 安装、Project 配置、Settings 关于/更新区等关键路径。
-
-## 构建与打包
+### 本地打包构建
 
 ```bash
-# 打包当前平台
+# 打包桌面应用可执行文件
 npm run package
 
-# 制作安装包（DMG / ZIP / Squirrel 等，取决于平台）
+# 生成 DMG 与 ZIP 完整分发安装包（产物位于 out/make 目录）
 npm run make
 ```
 
-构建产物输出到 `out/` 目录。macOS 下实际产物命名（forge 默认）：
-
-- `out/opc-workstation-<version>-<arch>.dmg`（如 `opc-workstation-1.1.0-arm64.dmg`）
-- `out/zip/<platform>/<arch>/opc-workstation-darwin-arm64-<version>.zip`
-
-## 从 Release 安装（macOS）
-
-> Story：`2026-08-01-macos-distribution` — 未签名分发路线（ADR-012），经公开 GitHub Release 零成本分发。首次安装需在系统设置中批准一次。
-
-1. 在 [GitHub Releases](https://github.com/charonX/workstation/releases) 页下载最新 `.dmg` 安装包（文件形如 `opc-workstation-<version>-<arch>.dmg`）。
-2. 打开 dmg，把应用拖入 **/Applications**（建议）：直接从 Downloads 启动会触发 App Translocation，应用被放入只读卷而无法正常读写数据。
-3. 首次启动被 Gatekeeper 拦截（“无法验证开发者”）时：打开 **System Settings > Privacy & Security**，在 Security 区域点击「仍要打开」(Open Anyway) 批准。macOS 15+ 没有右键打开入口（Sequoia 起 Control-click 覆盖已被移除）。
-4. 批准后重新启动应用即可正常使用。
-
-### 发布新版本
+### 发布新版本（自动化）
 
 ```bash
-# 需要 gh CLI 已认证（gh auth login）；仅允许在 main 分支执行
-npm run release -- 1.1.0
+# 发布预检（dry-run，不产生任何副作用）
+node src/cli/opc-workstation.js release 0.2.0 --dry-run
 
-# 预检：只打印步骤序列与校验结果，不产生任何副作用
-npm run release -- 1.1.0 --dry-run
+# 正式发布（自动 bump 版本、编译打包、git commit & push、创建 GitHub Release 并上传 dmg/zip）
+node src/cli/opc-workstation.js release 0.2.0
 ```
 
-该命令依次：校验版本号（必须为 `X.Y.Z` 且高于当前版本）→ 更新 `package.json` → 打包（dmg + zip）→ 自动提交并推送版本变更 → 创建 GitHub Release（`v1.1.0`）并上传资产。发布成功后使用者在 Releases 页即可看到新版。
+---
 
-## 项目目录说明
+## 📂 项目结构概览
 
 ```
 .
 ├── src/
-│   ├── cli/              # 命令行入口与命令实现
-│   │   ├── opc-workstation.js   # CLI 入口
-│   │   ├── server.js            # 服务发现 / 无头服务生命周期
-│   │   ├── headless-server.js   # 无头服务进程
-│   │   └── commands/            # 各子命令实现
-│   ├── flowEngine/       # 流程执行引擎（纯函数）
-│   │   └── executors/    # 各类节点执行器
-│   ├── http/             # 本地 HTTP API 与路由
-│   │   └── routes/
-│   ├── main/             # Electron 主进程
-│   │   ├── main.js
-│   │   └── updates.js    # 检查更新服务（GitHub 查询 + 版本比较，纯 Node 模块）
-│   ├── preload/          # Electron preload 脚本
-│   ├── renderer/         # Electron 渲染进程（React 应用）
-│   │   ├── api/          # 前端 API 调用封装
-│   │   ├── components/   # React 组件（按领域分子目录）
-│   │   ├── hooks/        # 自定义 Hooks
-│   │   ├── i18n/         # 国际化配置
-│   │   └── pages/        # 页面组件
-│   └── services/         # 业务服务（settings/project/flow/task/skill/schedule）
-├── tests/
-│   └── capabilities/     # 按 capability / entity / story 组织的契约测试
-│       └── .../codex-harness-desktop/
-│           ├── api/      # API 单元测试
-│           ├── cli/      # CLI 单元测试
-│           └── e2e/      # Playwright Electron E2E 测试
-├── .aiassist/
-│   ├── stories/codex-harness-desktop/   # 当前 story 的设计与契约产物
-│   │   ├── prd.md
-│   │   ├── requirements.md
-│   │   ├── tech-design.md
-│   │   ├── ux/           # HTML 高保真原型与预览页
-│   │   ├── qa-report.md
-│   │   └── workflow-state.yaml
-│   └── global/           # 项目级设计系统、CONTEXT、ADR
-├── playwright.config.cjs # Playwright 配置
-├── forge.config.js       # Electron Forge 配置
-├── vite.*.config.js      # Vite 配置（main / preload / renderer）
-└── README.md
+│   ├── main/             # Electron 主进程与系统级集成
+│   ├── renderer/         # 前端 React 页面与组件
+│   │   ├── pages/        # 页面（对话区、仪表盘、项目、流程、技能、设置等）
+│   │   └── components/   # 可复用组件（会话流、Flow 画布、节点配置等）
+│   ├── agent/            # AI Agent 运行时、工具适配与事件流调度
+│   ├── flowEngine/       # 工作流执行引擎
+│   ├── http/             # 本地内置 HTTP API 服务与路由
+│   ├── services/         # 核心业务逻辑（会话、配置、模型、密钥等）
+│   └── cli/              # 命令行工具 opc-workstation
+├── out/                  # 打包构建产物目录
+├── tests/                # 自动化测试用例集
+└── forge.config.js       # Electron 打包分发配置
 ```
 
-## 注意事项
+---
 
-- 数据隔离：Electron 运行时，`OPC_WORKSTATION_CONFIG_DIR` 与 `DB_PATH` 会被指向 `app.getPath('userData')`，避免与全局 CLI 配置冲突。
-- 测试隔离：E2E 测试会为每个用例创建独立的临时 `userData` 目录，并写入独立的 `server.json`。
-- 生成的测试产物（`test-results/`、`playwright-report/`、`coverage/`）已加入 `.gitignore`，无需提交。
+## 📄 开源协议
 
-## 工作流状态
-
-当前 story：`2026-08-01-macos-distribution`（macOS 分发：GitHub Release 发布 + 应用内检查更新）。BUILD 已完成（业务测试 17/17 绿），处于 **QA** 阶段，等待 /qa-runner 回归与 /reflect 最终验收。
-
-## 相关命令速查
-
-| 命令 | 说明 |
-|---|---|
-| `npm install` | 安装依赖 |
-| `npm run rebuild:node` | 为 Node 重建 better-sqlite3 |
-| `npm run rebuild:electron` | 为 Electron 重建 better-sqlite3 |
-| `npm start` | 开发模式启动 Electron |
-| `npm test` | 运行全部测试 |
-| `npm run test:unit` | 运行 API/CLI 单元测试 |
-| `npm run test:e2e` | 运行 Playwright Electron E2E |
-| `npm run package` | 打包 Electron 应用 |
-| `npm run make` | 制作安装包 |
-| `npm run release -- <version>` | 发布新版本到 GitHub Release（需 gh 已认证、main 分支） |
-| `node src/cli/opc-workstation.js --help` | 查看 CLI 帮助 |
+本项目基于 MIT 协议分发。
