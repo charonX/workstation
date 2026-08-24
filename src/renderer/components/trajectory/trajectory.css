@@ -148,6 +148,45 @@
   border-right: 1px solid var(--ch-accent);
 }
 
+/* 长空闲折叠断点指示器 */
+.tl-gap {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-left: 1px dashed var(--ch-border-strong);
+  border-right: 1px dashed var(--ch-border-strong);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    var(--ch-surface-high) 4px,
+    var(--ch-surface-high) 8px
+  );
+  opacity: 0.65;
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+  border-radius: 2px;
+}
+.tl-gap:hover {
+  opacity: 1;
+  background: var(--ch-surface-highest);
+}
+.tl-gap-mark {
+  font-size: 10px;
+  font-family: var(--ch-font-mono);
+  color: var(--ch-text-tertiary);
+  user-select: none;
+  pointer-events: none;
+  background: var(--ch-bg);
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--ch-border);
+}
+
 /* ==================== Ledger（稳定块 4/7）==================== */
 .ledger-area {
   flex: 1;
