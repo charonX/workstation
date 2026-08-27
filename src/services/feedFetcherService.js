@@ -140,9 +140,12 @@ export async function fetchFeed(url, { accessKey } = {}) {
   try {
     resp = await fetch(url, {
       headers,
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(25000)
     });
   } catch (err) {
+    if (err.name === "TimeoutError" || err.message?.includes("aborted due to timeout")) {
+      throw parseError("抓取请求超时（超过 25 秒），请检查目标源或 RSSHub 实例是否可正常访问上游平台", "E-FEED-TIMEOUT", 504);
+    }
     throw parseError(`抓取失败: ${err.message}`, "E-FEED-NETWORK-FAILED", 500);
   }
 
