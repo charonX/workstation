@@ -1,5 +1,6 @@
 import * as contentSourceService from "../../services/contentSourceService.js";
 import * as feedFetcherService from "../../services/feedFetcherService.js";
+import { ok, noContent, notFound, mapError, badRequest } from "../responders.js";
 
 export async function handleContentSources(req, res, body, pathParts) {
   if (pathParts.length === 0) {
@@ -36,7 +37,7 @@ function handleRoot(req, res, body) {
   if (req.method === "POST") {
     try {
       const source = contentSourceService.create(body);
-      return created(res, source);
+      return ok(res, source, 201);
     } catch (err) {
       return handleServiceError(res, err);
     }
@@ -77,51 +78,20 @@ function handleById(req, res, body, sourceId) {
 function handleServiceError(res, err) {
   const code = err.code || "VALIDATION_ERROR";
   if (code === "E-SRC-DUP") {
-    return conflict(res, err.message, code);
+    res.writeHead(409, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: code, code, message: err.message }));
   }
   if (code === "E-SRC-NOT-FOUND") {
     return notFound(res, err.message);
   }
   if (["E-SRC-NAME", "E-SRC-TYPE", "E-SRC-TAG", "E-SRC-CONFIG", "E-FEED-PARSE-FAILED", "E-FEED-URL-INVALID", "E-RSSHUB-NOT-CONFIGURED"].includes(code)) {
-    return badRequest(res, err.message, code);
+    res.writeHead(400, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: code, code, message: err.message }));
   }
   const status = err.status || 500;
   if (status >= 400 && status < 500) {
-    return badRequest(res, err.message, code);
+    res.writeHead(status, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: code, code, message: err.message }));
   }
-  return internalError(res, err.message);
-}
-
-function sendJson(res, status, data) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function ok(res, data) {
-  return sendJson(res, 200, data);
-}
-
-function created(res, data) {
-  return sendJson(res, 201, data);
-}
-
-function noContent(res) {
-  res.writeHead(204);
-  res.end();
-}
-
-function badRequest(res, message, code = "VALIDATION_ERROR") {
-  return sendJson(res, 400, { error: code, code, message });
-}
-
-function conflict(res, message, code = "CONFLICT") {
-  return sendJson(res, 409, { error: code, message });
-}
-
-function notFound(res, message = "Not found") {
-  return sendJson(res, 404, { error: "NOT_FOUND", message });
-}
-
-function internalError(res, message) {
-  return sendJson(res, 500, { error: "INTERNAL_ERROR", message });
+  return mapError(res, err, 500);
 }
