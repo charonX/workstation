@@ -1,0 +1,41 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-26-rsshub-integration
+intention: >-
+  用户希望在工作台中便捷接入各类社交媒体与资讯动态（如 X、公众号、B站等），但目前手动寻找与拼装 RSSHub 路由繁琐，且缺乏对外部服务地址及访问凭据（AccessKey）的可扩展受保护配置与自动路由转换支持。
+
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1
+created: 2026-08-26
+status: active    # active / completed
+completed_at: ""
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-26, from: -, to: THINK, note: "创建 story，进入 demand-insight 需求洞察"}
+  - {at: 2026-08-27, from: THINK, to: PRD, note: "完成需求洞察并生成 PRD"}
+  - {at: 2026-08-27, from: PRD, to: DESIGN, note: "PRD 完整性自检通过，进入 DESIGN 阶段"}
+  - {at: 2026-08-27, from: DESIGN, to: CRYSTALLIZE, note: "启动结晶自动链"}
+  - {at: 2026-08-27, from: CRYSTALLIZE, to: TEST, note: "结晶 REQ 并生成要求哈希"}
+  - {at: 2026-08-27, from: TEST, to: ASSERTION-SIGNOFF, note: "编写验收测试骨架与测试计划"}
+  - {at: 2026-08-27, from: ASSERTION-SIGNOFF, to: BUILD, note: "断言签核完成，进入实现阶段"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定
+design_system:
+  slug: ""
+  compiled: false
+  preview: ""
+
+assets:
+  recorded: []
+
+variants:
+  active: []

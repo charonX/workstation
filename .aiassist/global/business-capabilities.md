@@ -14,6 +14,7 @@
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `bootstrapEnv.test.js`, `settingsServiceLazy.test.js`, `themeLanguage.spec.js` (E2E) |
+| credentials | `tests/capabilities/workspace-management/credentials/2026-08-26-rsshub-integration/api/` | REQ-CRED-001~002 | `credentials.test.js` |
 | project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/e2e/` | REQ-WORKSPACE-003~006, REQ-WORKSPACE-011~013 | `project.test.js`, `onboarding.spec.js` (E2E), `projectAgents.test.js`, `agentTypes.test.cjs` (E2E) |
 | server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-db-per-path-cache/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-service-container/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-shallow-residue-sweep/api/` | REQ-WORKSPACE-008~010, REQ-WORKSPACE-014~016, REQ-WORKSPACE-017~019, REQ-WORKSPACE-020 | `server.test.js`, `dbPerPathCache.test.js`, `notificationDbPattern.test.js`（BUG-001 回归）, `serviceContainer.test.js`, `serverAssembly.test.js`, `responders.test.js` |
 
@@ -57,7 +58,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| content-source | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/`, `.../cli/`, `.../e2e/` | REQ-SRC-001~003 | `contentSources.test.js` (api), `contentSources.test.js` (cli), `sourcesPage.test.cjs` |
+| content-source | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/`, `.../cli/`, `.../e2e/`, `tests/capabilities/collection-pipeline/content-source/2026-08-26-rsshub-integration/api/` | REQ-SRC-001~006 | `contentSources.test.js` (api), `contentSources.test.js` (cli), `sourcesPage.test.cjs`, `rsshubRouting.test.js`, `feedFetcher.test.js` |
 | collection | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-COLL-001~002 | `dailyDigest.test.js`, `linkCapture.test.js` |
 
 ### information-aggregation
