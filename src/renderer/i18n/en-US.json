@@ -124,7 +124,9 @@
       "saved": "Credentials saved",
       "configured": "Configured",
       "unconfigured": "Not Configured",
-      "expandCustom": "More service integrations coming soon"
+      "expandCustom": "More service integrations coming soon",
+      "rsshubTipTitle": "💡 Social Platform Fetching Tips",
+      "rsshubTipContent": "Platforms like Bilibili and X/Twitter have strict anti-crawler mechanisms. When running a self-hosted RSSHub instance, please configure corresponding environment variables (e.g. BILIBILI_COOKIE, TWITTER_COOKIE) in your deployment to avoid rate-limiting or timeouts."
     },
     "saving": "Saving...",
     "saved": "Saved",
@@ -188,15 +190,21 @@
     "typeHelp": {
       "webpage": "Fetch the page body and convert it to Markdown.",
       "rss": "Subscribe to the latest entries from the RSS / Atom feed.",
-      "bilibili": "Enter the numeric UID of the uploader to auto-convert to an RSS feed via RSSHub.",
-      "x": "Enter the username (e.g. @elonmusk) to auto-convert to an RSS feed via RSSHub.",
+      "bilibili": "Enter the numeric UID of the uploader. Tip: Bilibili anti-crawler is strict; self-hosted RSSHub needs BILIBILI_COOKIE configured in environment.",
+      "x": "Enter the username (e.g. @elonmusk). Tip: Self-hosted RSSHub requires Twitter credentials/Cookies and network proxy.",
       "wechat": "Enter the official account ID to auto-convert to an RSS feed via RSSHub."
     },
     "fetchPreview": "Test Fetch",
     "fetching": "Fetching...",
-    "fetchSuccess": "Fetched {{count}} items successfully",
+    "fetchSuccess": "Successfully fetched {{count}} entries",
     "fetchError": "Fetch failed: {{error}}",
-    "previewTitle": "Feed Preview"
+    "previewTitle": "Content Feed Preview",
+    "troubleshooting": {
+      "tipTitle": "Troubleshooting & Tips",
+      "bilibili": "Bilibili enforces strict WBI anti-crawler checks on server IPs. If requests time out, please configure BILIBILI_COOKIE (with SESSDATA and bili_jct) in your RSSHub docker-compose/.env environment.",
+      "x": "If X/Twitter requests time out, please check your RSSHub proxy connectivity or configure Twitter authorization cookies.",
+      "general": "If connection times out, please inspect your RSSHub server logs to verify connectivity with upstream platforms."
+    }
   },
   "notifications": {
     "title": "Notifications",

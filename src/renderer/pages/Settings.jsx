@@ -1401,6 +1401,25 @@ export default function Settings() {
                   {credSaving ? t("settings.credentialsModule.saving") : t("settings.credentialsModule.save")}
                 </button>
               </div>
+
+              {/* Social Platform Tips */}
+              <div
+                style={{
+                  marginTop: "var(--ch-space-4)",
+                  padding: "var(--ch-space-3)",
+                  background: "var(--ch-surface)",
+                  border: "1px solid var(--ch-border)",
+                  borderRadius: "var(--ch-radius-md)",
+                  fontSize: "var(--ch-text-xs)",
+                  color: "var(--ch-text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong style={{ color: "var(--ch-text)", display: "block", marginBottom: "2px" }}>
+                  {t("settings.credentialsModule.rsshubTipTitle")}
+                </strong>
+                {t("settings.credentialsModule.rsshubTipContent")}
+              </div>
             </div>
 
             {/* Extensible placeholder card */}

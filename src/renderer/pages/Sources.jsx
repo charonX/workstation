@@ -589,16 +589,57 @@ export default function Sources() {
           <div className="table-empty">{t("sources.fetching")}</div>
         )}
         {previewError && (
-          <div
-            className="alert-error show"
-            style={{
-              padding: "var(--ch-space-3)",
-              color: "var(--ch-error)",
-              background: "var(--ch-error-soft)",
-              borderRadius: "var(--ch-radius-md)",
-            }}
-          >
-            {previewError}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--ch-space-3)" }}>
+            <div
+              className="alert-error show"
+              style={{
+                padding: "var(--ch-space-3)",
+                color: "var(--ch-error)",
+                background: "var(--ch-error-soft)",
+                borderRadius: "var(--ch-radius-md)",
+                fontSize: "var(--ch-text-sm)",
+                lineHeight: 1.5,
+              }}
+            >
+              {previewError}
+            </div>
+
+            {previewSource?.type === "bilibili" && (
+              <div
+                style={{
+                  padding: "var(--ch-space-3)",
+                  background: "var(--ch-surface)",
+                  border: "1px dashed var(--ch-border)",
+                  borderRadius: "var(--ch-radius-md)",
+                  fontSize: "var(--ch-text-xs)",
+                  color: "var(--ch-text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ fontWeight: "var(--ch-weight-medium)", color: "var(--ch-text)", marginBottom: "4px" }}>
+                  💡 {t("sources.troubleshooting.tipTitle")}
+                </div>
+                <div>{t("sources.troubleshooting.bilibili")}</div>
+              </div>
+            )}
+            {previewSource?.type === "x" && (
+              <div
+                style={{
+                  padding: "var(--ch-space-3)",
+                  background: "var(--ch-surface)",
+                  border: "1px dashed var(--ch-border)",
+                  borderRadius: "var(--ch-radius-md)",
+                  fontSize: "var(--ch-text-xs)",
+                  color: "var(--ch-text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ fontWeight: "var(--ch-weight-medium)", color: "var(--ch-text)", marginBottom: "4px" }}>
+                  💡 {t("sources.troubleshooting.tipTitle")}
+                </div>
+                <div>{t("sources.troubleshooting.x")}</div>
+              </div>
+            )}
           </div>
         )}
         {!previewLoading && !previewError && previewItems && (

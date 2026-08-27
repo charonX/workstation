@@ -170,5 +170,18 @@ export async function fetchContentSource(sourceId) {
   }
 
   const resolved = resolveSourceFeedUrl(source);
-  return fetchFeed(resolved.url, { accessKey: resolved.accessKey });
+  try {
+    return await fetchFeed(resolved.url, { accessKey: resolved.accessKey });
+  } catch (err) {
+    if (err.code === "E-FEED-TIMEOUT" || err.status === 504) {
+      if (source.type === "bilibili") {
+        err.message = "抓取超时（超过 25 秒）：B 站对服务器请求启用了反爬拦截。提示：请在自建 RSSHub 服务端环境变量（docker-compose 或 .env）中配置 BILIBILI_COOKIE（填入 SESSDATA 与 bili_jct）以解除访问限制。";
+      } else if (source.type === "x") {
+        err.message = "抓取超时（超过 25 秒）：X/Twitter 接口响应超时。提示：请检查自建 RSSHub 服务端的 Twitter 访问凭据/Cookies 配置及外网代理。";
+      } else if (source.type === "wechat") {
+        err.message = "抓取超时（超过 25 秒）：微信公众号服务响应超时。提示：请检查自建 RSSHub 端的微信数据源插件配置。";
+      }
+    }
+    throw err;
+  }
 }

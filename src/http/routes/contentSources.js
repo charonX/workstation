@@ -1,6 +1,6 @@
 import * as contentSourceService from "../../services/contentSourceService.js";
 import * as feedFetcherService from "../../services/feedFetcherService.js";
-import { ok, noContent, notFound, mapError, badRequest } from "../responders.js";
+import { ok, noContent, notFound, mapError } from "../responders.js";
 
 export async function handleContentSources(req, res, body, pathParts) {
   if (pathParts.length === 0) {

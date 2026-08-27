@@ -124,7 +124,9 @@
       "saved": "凭据已保存",
       "configured": "已配置",
       "unconfigured": "未配置",
-      "expandCustom": "更多外部服务凭据支持正在扩展中"
+      "expandCustom": "更多外部服务凭据支持正在扩展中",
+      "rsshubTipTitle": "💡 社交平台抓取提示",
+      "rsshubTipContent": "B站、Twitter 等平台具备反爬防护。若使用自建 RSSHub 实例，建议在服务端（docker-compose / .env）中配置对应环境变量（如 BILIBILI_COOKIE、TWITTER_COOKIE），以避免上游拦截导致抓取超时。"
     },
     "saving": "保存中...",
     "saved": "已保存",
@@ -188,15 +190,21 @@
     "typeHelp": {
       "webpage": "抓取该网页正文并转为 Markdown。",
       "rss": "订阅 RSS / Atom 源的最新条目。",
-      "bilibili": "输入 UP 主的纯数字 UID，通过 RSSHub 自动转换为视频订阅流。",
-      "x": "输入 X/Twitter 用户名（如 @elonmusk），通过 RSSHub 自动转换订阅流。",
-      "wechat": "输入公众号历史消息 ID，通过 RSSHub 转换为订阅流。"
+      "bilibili": "输入 UP 主纯数字 UID。提示：B 站反爬严格，自建 RSSHub 服务端通常需配置 BILIBILI_COOKIE 环境变量方可稳定访问。",
+      "x": "输入 X/Twitter 用户名。提示：自建 RSSHub 需在服务端配置 Twitter 访问凭据/Cookies 及网络代理。",
+      "wechat": "输入公众号历史消息 ID。提示：依赖 RSSHub 微信公众号相关扩展支持。"
     },
     "fetchPreview": "抓取测试",
     "fetching": "抓取中...",
     "fetchSuccess": "成功抓取到 {{count}} 篇条目",
     "fetchError": "抓取失败：{{error}}",
-    "previewTitle": "订阅源最新内容预览"
+    "previewTitle": "订阅源最新内容预览",
+    "troubleshooting": {
+      "tipTitle": "排查与配置指引",
+      "bilibili": "B 站对机房 IP 启用了反爬风控与 WBI 验证。若持续超时，请在自建 RSSHub 服务端（docker-compose 或 .env）中配置环境变量 BILIBILI_COOKIE（包含 SESSDATA 与 bili_jct）以解除限制。",
+      "x": "若 X/Twitter 请求超时，请检查自建 RSSHub 实例的外网代理连通性或在服务端配置 Twitter Cookie 授权。",
+      "general": "若出现连接超时，请检查 RSSHub 服务端日志以确认是否能正常访问上游网站。"
+    }
   },
   "notifications": {
     "title": "通知",
