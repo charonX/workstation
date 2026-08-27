@@ -104,7 +104,7 @@ describe("REQ-SRC-005: 带鉴权的 Feed 抓取与标准化 XML 解析", () => {
     const item = result.items[0];
     assert.equal(item.title, "Hello RSS");
     assert.equal(item.link, "https://example.com/hello");
-    assert.ok(item.pubDate);
+    assert.match(item.pubDate, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     assert.equal(item.content, "World description");
   });
 
@@ -130,6 +130,9 @@ describe("REQ-SRC-005: 带鉴权的 Feed 抓取与标准化 XML 解析", () => {
     assert.equal(result.count, 1);
     assert.equal(result.items[0].title, "Hello Atom");
     assert.equal(result.items[0].link, "https://example.com/atom-entry");
+    assert.equal(result.items[0].content, "Atom description");
+    assert.equal(result.items[0].author, "Alice");
+    assert.match(result.items[0].pubDate, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   it("自动注入已配置的 RSSHub AccessKey 请求头", async () => {

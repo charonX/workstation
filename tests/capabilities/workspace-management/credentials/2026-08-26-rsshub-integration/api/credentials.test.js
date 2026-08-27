@@ -137,6 +137,35 @@ describe("REQ-CRED-001 & REQ-CRED-002: 服务凭据管理与连通性测试", ()
     }
   });
 
+  it("REQ-CRED-002: 测试连接目标返回 401/403 鉴权失败时返回 E-CRED-AUTH-FAILED", async () => {
+    // EXPECTED-TRACE: prd.md §8 E3
+    const mockServer = http.createServer((req, res) => {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized access" }));
+    });
+    await new Promise((resolve) => mockServer.listen(0, resolve));
+    const mockPort = mockServer.address().port;
+    const mockUrl = `http://localhost:${mockPort}`;
+
+    try {
+      const testRes = await fetch(`${serverCtx.baseUrl}/api/settings/credentials/rsshub/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: mockUrl,
+          accessKey: "invalid-key",
+        }),
+      });
+      assert.equal(testRes.status, 200);
+      const testData = await testRes.json();
+      assert.equal(testData.ok, false);
+      assert.equal(testData.error, "E-CRED-AUTH-FAILED");
+      assert.ok(typeof testData.latencyMs === "number");
+    } finally {
+      mockServer.close();
+    }
+  });
+
   it("REQ-CRED-002: 测试连接目标不可达返回错误", async () => {
     // EXPECTED-TRACE: prd.md §8 E2
     const testRes = await fetch(`${serverCtx.baseUrl}/api/settings/credentials/rsshub/test`, {
@@ -149,6 +178,6 @@ describe("REQ-CRED-001 & REQ-CRED-002: 服务凭据管理与连通性测试", ()
     assert.equal(testRes.status, 200);
     const testData = await testRes.json();
     assert.equal(testData.ok, false);
-    assert.ok(testData.error);
+    assert.ok(testData.error === "ECONNREFUSED" || testData.error === "E-CRED-CONN-FAILED");
   });
 });
