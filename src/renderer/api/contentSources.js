@@ -19,3 +19,7 @@ export function toggleContentSource(id) {
 export function deleteContentSource(id) {
   return del(`/api/content-sources/${id}`);
 }
+
+export function fetchContentSourceItems(id) {
+  return post(`/api/content-sources/${id}/fetch`);
+}

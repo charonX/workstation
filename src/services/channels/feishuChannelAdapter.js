@@ -110,7 +110,7 @@ export function createFeishuChannelAdapter({ domain, credentials, notificationSe
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body)
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {})
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok && data.code === 0, status: res.status, data };

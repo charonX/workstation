@@ -1,12 +1,22 @@
 import * as contentSourceService from "../../services/contentSourceService.js";
+import * as feedFetcherService from "../../services/feedFetcherService.js";
 
-export function handleContentSources(req, res, body, pathParts) {
+export async function handleContentSources(req, res, body, pathParts) {
   if (pathParts.length === 0) {
     return handleRoot(req, res, body);
   }
 
   if (pathParts.length === 1) {
     return handleById(req, res, body, pathParts[0]);
+  }
+
+  if (pathParts.length === 2 && pathParts[1] === "fetch" && req.method === "POST") {
+    try {
+      const result = await feedFetcherService.fetchContentSource(pathParts[0]);
+      return ok(res, result);
+    } catch (err) {
+      return handleServiceError(res, err);
+    }
   }
 
   return notFound(res);
@@ -65,11 +75,18 @@ function handleById(req, res, body, sourceId) {
 }
 
 function handleServiceError(res, err) {
-  const code = err.code;
+  const code = err.code || "VALIDATION_ERROR";
   if (code === "E-SRC-DUP") {
     return conflict(res, err.message, code);
   }
-  if (["E-SRC-NAME", "E-SRC-TYPE", "E-SRC-TAG", "E-SRC-CONFIG"].includes(code)) {
+  if (code === "E-SRC-NOT-FOUND") {
+    return notFound(res, err.message);
+  }
+  if (["E-SRC-NAME", "E-SRC-TYPE", "E-SRC-TAG", "E-SRC-CONFIG", "E-FEED-PARSE-FAILED", "E-FEED-URL-INVALID", "E-RSSHUB-NOT-CONFIGURED"].includes(code)) {
+    return badRequest(res, err.message, code);
+  }
+  const status = err.status || 500;
+  if (status >= 400 && status < 500) {
     return badRequest(res, err.message, code);
   }
   return internalError(res, err.message);
@@ -94,7 +111,7 @@ function noContent(res) {
 }
 
 function badRequest(res, message, code = "VALIDATION_ERROR") {
-  return sendJson(res, 400, { error: code, message });
+  return sendJson(res, 400, { error: code, code, message });
 }
 
 function conflict(res, message, code = "CONFLICT") {

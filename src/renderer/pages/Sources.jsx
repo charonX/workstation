@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useContentSources } from "../hooks/useContentSources.js";
+import { fetchContentSourceItems } from "../api/contentSources.js";
 import Modal from "../components/shared/Modal.jsx";
 import ConfirmDialog from "../components/shared/ConfirmDialog.jsx";
 
@@ -24,6 +25,15 @@ function getTypeMeta(t) {
       kind: "url",
       desc: t("sources.typeDescriptions.rss"),
     },
+    bilibili: {
+      label: t("sources.typeLabels.bilibili"),
+      badgeClass: "badge-bilibili",
+      configLabel: t("sources.configLabels.bilibili"),
+      placeholder: "2267573",
+      help: t("sources.typeHelp.bilibili"),
+      kind: "account",
+      desc: t("sources.typeDescriptions.bilibili"),
+    },
     x: {
       label: t("sources.typeLabels.x"),
       badgeClass: "badge-x",
@@ -45,7 +55,7 @@ function getTypeMeta(t) {
   };
 }
 
-const TYPE_ORDER = ["webpage", "rss", "x", "wechat"];
+const TYPE_ORDER = ["webpage", "rss", "bilibili", "x", "wechat"];
 
 function isValidHttpUrl(value) {
   if (!/^https?:\/\//i.test(value)) return false;
@@ -78,6 +88,10 @@ export default function Sources() {
   const [submitting, setSubmitting] = useState(false);
 
   const [deleteSource, setDeleteSource] = useState(null);
+  const [previewSource, setPreviewSource] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewItems, setPreviewItems] = useState(null);
+  const [previewError, setPreviewError] = useState(null);
 
   const nameInputRef = useRef(null);
   const tagInputRef = useRef(null);
@@ -116,6 +130,21 @@ export default function Sources() {
   const closeForm = useCallback(() => {
     setIsFormOpen(false);
   }, []);
+
+  async function handleTestFetch(source) {
+    setPreviewSource(source);
+    setPreviewLoading(true);
+    setPreviewItems(null);
+    setPreviewError(null);
+    try {
+      const res = await fetchContentSourceItems(source.id);
+      setPreviewItems(res.items || []);
+    } catch (err) {
+      setPreviewError(err.message || t("sources.fetchError", { error: "Unknown" }));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (isFormOpen && nameInputRef.current) {
@@ -177,7 +206,11 @@ export default function Sources() {
       errors.tags = t("sources.tagsRequired");
     }
 
-    if (selectedMeta.kind === "url") {
+    if (selectedType === "bilibili") {
+      if (!trimmedConfig || !/^\d+$/.test(trimmedConfig)) {
+        errors.config = t("sources.bilibiliUidRequired");
+      }
+    } else if (selectedMeta.kind === "url") {
       if (!isValidHttpUrl(trimmedConfig)) {
         errors.config = t("sources.urlRequired");
       }
@@ -345,6 +378,14 @@ export default function Sources() {
                   </span>
                 </span>
                 <span className="action-cell">
+                  <button
+                    type="button"
+                    className="action-link"
+                    onClick={() => handleTestFetch(source)}
+                    data-testid={`fetch-source-${source.id}`}
+                  >
+                    {t("sources.fetchPreview")}
+                  </button>
                   <button
                     type="button"
                     className="action-link"
@@ -527,6 +568,111 @@ export default function Sources() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteSource(null)}
       />
+
+      <Modal
+        isOpen={!!previewSource}
+        onClose={() => setPreviewSource(null)}
+        title={previewSource ? `${t("sources.previewTitle")} - ${previewSource.name}` : ""}
+        size="md"
+        testid="source-preview-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setPreviewSource(null)}
+          >
+            {t("common.close")}
+          </button>
+        }
+      >
+        {previewLoading && (
+          <div className="table-empty">{t("sources.fetching")}</div>
+        )}
+        {previewError && (
+          <div
+            className="alert-error show"
+            style={{
+              padding: "var(--ch-space-3)",
+              color: "var(--ch-error)",
+              background: "var(--ch-error-soft)",
+              borderRadius: "var(--ch-radius-md)",
+            }}
+          >
+            {previewError}
+          </div>
+        )}
+        {!previewLoading && !previewError && previewItems && (
+          <div
+            style={{
+              maxHeight: "400px",
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--ch-space-3)",
+            }}
+          >
+            {previewItems.length === 0 ? (
+              <div className="cell-dim" style={{ textAlign: "center", padding: "var(--ch-space-4)" }}>
+                （暂无条目）
+              </div>
+            ) : (
+              previewItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    border: "1px solid var(--ch-border)",
+                    borderRadius: "var(--ch-radius-md)",
+                    padding: "var(--ch-space-3)",
+                    background: "var(--ch-surface)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: "var(--ch-weight-semibold)",
+                      fontSize: "var(--ch-text-sm)",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {item.link ? (
+                      <a
+                        href={item.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "var(--ch-accent)", textDecoration: "none" }}
+                      >
+                        {item.title}
+                      </a>
+                    ) : (
+                      item.title
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "var(--ch-text-xs)",
+                      color: "var(--ch-text-tertiary)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    {item.pubDate} {item.author ? `· ${item.author}` : ""}
+                  </div>
+                  {item.content && (
+                    <div
+                      style={{
+                        fontSize: "var(--ch-text-xs)",
+                        color: "var(--ch-text-secondary)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {item.content.slice(0, 150)}
+                      {item.content.length > 150 ? "..." : ""}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

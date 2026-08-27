@@ -1,7 +1,8 @@
 import { getDb } from "../db.js";
 import crypto from "node:crypto";
+import { getCredential } from "./credentialsService.js";
 
-const VALID_TYPES = new Set(["webpage", "rss", "x", "wechat"]);
+const VALID_TYPES = new Set(["webpage", "rss", "x", "wechat", "bilibili"]);
 
 function rowToSource(row) {
   return {
@@ -18,6 +19,7 @@ function rowToSource(row) {
 function validationError(message, code) {
   const err = new Error(message);
   err.code = code;
+  err.status = 400;
   return err;
 }
 
@@ -68,12 +70,58 @@ function validateFields({ name, type, tags, config }, { partial = false } = {}) 
       if (typeof config !== "string" || !isValidHttpUrl(config.trim())) {
         throw validationError("请提供合法 URL", "E-SRC-CONFIG");
       }
-    } else if (effectiveType === "x" || effectiveType === "wechat") {
+    } else if (effectiveType === "bilibili") {
+      if (typeof config !== "string" || !/^\d+$/.test(config.trim())) {
+        throw validationError("B站配置必须为纯数字 UID", "E-SRC-CONFIG");
+      }
+    } else if (effectiveType === "x") {
+      const clean = typeof config === "string" ? config.trim().replace(/^@/, "") : "";
+      if (!clean || !/^[a-zA-Z0-9_]{1,32}$/.test(clean)) {
+        throw validationError("请输入合法的 X 用户名", "E-SRC-CONFIG");
+      }
+    } else if (effectiveType === "wechat") {
       if (typeof config !== "string" || config.trim().length === 0) {
         throw validationError("请提供账号标识", "E-SRC-CONFIG");
       }
     }
   }
+}
+
+export function resolveSourceFeedUrl(source) {
+  if (!source) throw validationError("无效的内容源", "E-SRC-INVALID");
+
+  if (source.type === "rss" || source.type === "webpage") {
+    return { url: source.config, isRsshub: false };
+  }
+
+  const rsshub = getCredential("rsshub");
+  if (!rsshub || !rsshub.baseUrl) {
+    const err = validationError("未配置 RSSHub 服务地址，暂无法抓取社交媒体内容源", "E-RSSHUB-NOT-CONFIGURED");
+    err.unconfigured = true;
+    throw err;
+  }
+
+  const baseUrl = rsshub.baseUrl;
+  let path = "";
+
+  if (source.type === "x") {
+    const username = source.config.trim().replace(/^@/, "");
+    path = `/twitter/user/${encodeURIComponent(username)}`;
+  } else if (source.type === "bilibili") {
+    const uid = source.config.trim();
+    path = `/bilibili/user/video/${encodeURIComponent(uid)}`;
+  } else if (source.type === "wechat") {
+    const mpId = source.config.trim();
+    path = `/wechat/mp/msghistory/${encodeURIComponent(mpId)}`;
+  } else {
+    path = `/${source.type}/${encodeURIComponent(source.config.trim())}`;
+  }
+
+  return {
+    url: `${baseUrl}${path}`,
+    isRsshub: true,
+    accessKey: rsshub.accessKey
+  };
 }
 
 export function create({ name, type, tags, config, enabled } = {}) {

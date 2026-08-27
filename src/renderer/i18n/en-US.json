@@ -104,6 +104,28 @@
       "apiKeyPlaceholder": "Encrypted and stored; enter a new key to replace it",
       "saveIdentity": "Save identity"
     },
+    "credentials": "Credentials",
+    "credentialsSubtitle": "Manage external service endpoints and access keys (e.g. RSSHub)",
+    "credentialsModule": {
+      "title": "Service Credentials",
+      "subtitle": "Securely manage external service endpoints and access keys, encrypted with system keychain",
+      "rsshubTitle": "RSSHub Instance Configuration",
+      "rsshubDesc": "Configure RSSHub base URL and optional AccessKey to automatically convert X/Twitter, Bilibili, and WeChat into structured feeds.",
+      "baseUrl": "Base URL",
+      "baseUrlPlaceholder": "e.g. http://localhost:1200 or https://rsshub.app",
+      "accessKey": "Access Key",
+      "accessKeyPlaceholder": "Encrypted and stored; enter to replace (optional)",
+      "testConnection": "Test Connection",
+      "testing": "Testing...",
+      "testSuccess": "Connected successfully ({{latency}}ms latency)",
+      "testFailed": "Connection failed: {{reason}}",
+      "save": "Save Credentials",
+      "saving": "Saving...",
+      "saved": "Credentials saved",
+      "configured": "Configured",
+      "unconfigured": "Not Configured",
+      "expandCustom": "More service integrations coming soon"
+    },
     "saving": "Saving...",
     "saved": "Saved",
     "tabsAriaLabel": "Settings sections"
@@ -138,33 +160,43 @@
     "tagsHelp": "At least 1. Flows reference sources by tag (e.g. all enabled sources with tag=AI), not one by one.",
     "urlRequired": "Please provide a valid URL",
     "accountRequired": "Please provide an account identifier",
-    "xWechatDisclaimer": "x / wechat sources are best-effort and not covered by acceptance guarantees",
+    "bilibiliUidRequired": "Please provide a numeric UID",
+    "xWechatDisclaimer": "x / wechat / bilibili sources rely on configured RSSHub instance for route resolution",
     "deleteTitle": "Delete Content Source",
     "deleteMessage": "Are you sure you want to delete content source \"{{name}}\"? This cannot be undone; flows referencing this source by tag will naturally skip it on next run.",
     "typeLabels": {
       "webpage": "Webpage",
       "rss": "RSS",
+      "bilibili": "Bilibili",
       "x": "X Account",
       "wechat": "WeChat Official Account"
     },
     "configLabels": {
       "webpage": "Page URL",
       "rss": "Feed URL",
+      "bilibili": "Uploader UID",
       "x": "X Account",
       "wechat": "WeChat Official Account ID"
     },
     "typeDescriptions": {
       "webpage": "Single-page capture",
       "rss": "Feed subscription",
+      "bilibili": "Uploader videos",
       "x": "Account timeline",
       "wechat": "Official account articles"
     },
     "typeHelp": {
       "webpage": "Fetch the page body and convert it to Markdown.",
       "rss": "Subscribe to the latest entries from the RSS / Atom feed.",
-      "x": "Best-effort fetch of the account timeline; quality not guaranteed.",
-      "wechat": "Best-effort fetch of official account articles; quality not guaranteed."
-    }
+      "bilibili": "Enter the numeric UID of the uploader to auto-convert to an RSS feed via RSSHub.",
+      "x": "Enter the username (e.g. @elonmusk) to auto-convert to an RSS feed via RSSHub.",
+      "wechat": "Enter the official account ID to auto-convert to an RSS feed via RSSHub."
+    },
+    "fetchPreview": "Test Fetch",
+    "fetching": "Fetching...",
+    "fetchSuccess": "Fetched {{count}} items successfully",
+    "fetchError": "Fetch failed: {{error}}",
+    "previewTitle": "Feed Preview"
   },
   "notifications": {
     "title": "Notifications",

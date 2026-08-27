@@ -1,4 +1,5 @@
 import * as settingsService from "../../services/settingsService.js";
+import * as credentialsService from "../../services/credentialsService.js";
 import { fetchModels, listCatalog, isApiKeyProvider, providerProbe } from "../../services/modelCatalogService.js";
 import {
   broadcastAgentConfigChange,
@@ -13,6 +14,28 @@ function hasOwn(obj, key) {
 
 export async function handleSettings(req, res, body, subPath = [], context = {}) {
   const { agentRouter } = context;
+  if (subPath[0] === "credentials") {
+    if (req.method === "GET" && subPath.length === 1) {
+      return ok(res, credentialsService.listCredentials());
+    }
+    if (req.method === "PUT" && subPath[1]) {
+      try {
+        const saved = credentialsService.saveCredential(subPath[1], body);
+        return ok(res, saved);
+      } catch (err) {
+        if (err.code === "E-CONFIG-INVALID") {
+          return invalid(res, err.code, err.message);
+        }
+        return badRequest(res, err.message);
+      }
+    }
+    if (req.method === "POST" && subPath[1] && subPath[2] === "test") {
+      const result = await credentialsService.testCredential(subPath[1], body);
+      return ok(res, result);
+    }
+    return notFound(res);
+  }
+
   if (subPath[0] === "agent") {
     if (subPath[1] === "test-connection" && req.method === "POST") {
       return handleAgentTestConnection(req, res, body);
@@ -94,6 +117,9 @@ function runBindingAction(res, agentRouter, method) {
 // 明文 apiKey 同剥（测试 fixture 直写未加密 key 的容错，键值不回传）。
 function loadPublicSettings() {
   const settings = settingsService.loadSettings();
+  if (settings.credentials && typeof settings.credentials === "object") {
+    settings.credentials = credentialsService.listCredentials().credentials;
+  }
   if (settings.agent && typeof settings.agent === "object") {
     // loadSettings 是浅拷贝，agent 子对象仍指向内部状态——先复制再剥离，避免污染。
     settings.agent = { ...settings.agent };
@@ -229,5 +255,6 @@ function handleCatalog(res) {
 }
 
 function invalid(res, code, message) {
-  return badRequest(res, message, code);
+  res.writeHead(400, { "Content-Type": "application/json" });
+  return res.end(JSON.stringify({ error: code, code, message }));
 }

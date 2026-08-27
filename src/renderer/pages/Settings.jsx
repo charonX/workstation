@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "../hooks/useSettings.jsx";
 import DirectoryInput from "../components/shared/DirectoryInput.jsx";
 import { getChannelStatus, saveChannelCredentials, reconnectChannel } from "../api/channel.js";
+import { getCredentials, saveCredential, testCredential } from "../api/credentials.js";
 import {
   getAgentConfig,
   saveAgentConfig,
@@ -34,6 +35,15 @@ const FALLBACK_PROVIDER_OPTIONS = [
   { value: "deepseek", label: "DeepSeek（api.deepseek.com）" },
   { value: "moonshotai", label: "Moonshot AI（api.moonshot.ai）" },
   { value: "moonshotai-cn", label: "Moonshot AI 中国站（api.moonshot.cn）" },
+];
+
+// Settings 页 Tab 列表
+const SETTINGS_TABS = [
+  { name: "general", labelKey: "settings.general" },
+  { name: "agent", labelKey: "settings.agent.title" },
+  { name: "credentials", labelKey: "settings.credentials" },
+  { name: "channel", labelKey: "settings.channel" },
+  { name: "about", labelKey: "settings.aboutUpdate" },
 ];
 
 // 内置模型目录展示副本（REQ-AGENT-092 回退源 = pi-ai 静态目录；本表为 renderer
@@ -114,15 +124,6 @@ const UPDATE_STATUS_ROW_STYLE = {
   fontSize: "var(--ch-text-sm)",
 };
 
-// Settings 页四 tab（REQ-AGENT-023 AC1/AC2，ux/settings-tabs.html 拍板）：
-// 通用 / Agent 配置 / 飞书通道 / 关于与更新；label 复用既有 i18n 键。
-const SETTINGS_TABS = [
-  { name: "general", labelKey: "settings.general" },
-  { name: "agent", labelKey: "settings.agent.title" },
-  { name: "channel", labelKey: "settings.channel" },
-  { name: "about", labelKey: "settings.aboutUpdate" },
-];
-
 // 面板容器（REQ-AGENT-023 AC1）：role=tabpanel + aria-labelledby 关联对应 tab；
 // 未选中 hidden 但保持 DOM 挂载（REQ-AGENT-025：切换保留未保存编辑、不触发请求）。
 // 四个面板共用此容器，契约属性（data-tab-panel / aria-labelledby）只写一份。
@@ -188,6 +189,78 @@ export default function Settings() {
   // 绑定状态派生（GET binding 形态：{ bound, openId?, pendingBind? }，未接线 agentRouter 时兜底未绑定）。
   const agentBinding = agentConfig?.binding;
   const agentIsBound = agentBinding?.bound === true;
+
+  // 服务凭据（Credentials）状态
+  const [credentials, setCredentials] = useState({});
+  const [rsshubBaseUrl, setRsshubBaseUrl] = useState("");
+  const [rsshubAccessKey, setRsshubAccessKey] = useState("");
+  const [credTesting, setCredTesting] = useState(false);
+  const [credTestResult, setCredTestResult] = useState(null);
+  const [credSaving, setCredSaving] = useState(false);
+  const [credSuccess, setCredSuccess] = useState(false);
+  const [credError, setCredError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCredentials()
+      .then((data) => {
+        if (!cancelled && data?.credentials) {
+          setCredentials(data.credentials);
+          if (data.credentials.rsshub?.baseUrl) {
+            setRsshubBaseUrl(data.credentials.rsshub.baseUrl);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleTestRsshub = async () => {
+    setCredTesting(true);
+    setCredTestResult(null);
+    setCredError(null);
+    try {
+      const res = await testCredential("rsshub", {
+        baseUrl: rsshubBaseUrl,
+        accessKey: rsshubAccessKey || undefined,
+      });
+      setCredTestResult(res);
+    } catch (err) {
+      setCredTestResult({ ok: false, error: err.message });
+    } finally {
+      setCredTesting(false);
+    }
+  };
+
+  const handleSaveRsshub = async () => {
+    setCredSaving(true);
+    setCredSuccess(false);
+    setCredError(null);
+    try {
+      const res = await saveCredential("rsshub", {
+        baseUrl: rsshubBaseUrl,
+        accessKey: rsshubAccessKey || undefined,
+      });
+      setCredentials((prev) => ({
+        ...prev,
+        rsshub: {
+          baseUrl: res.baseUrl,
+          configured: res.configured,
+          updatedAt: res.updatedAt,
+        },
+      }));
+      setRsshubBaseUrl(res.baseUrl);
+      setRsshubAccessKey("");
+      setCredSuccess(true);
+      setTimeout(() => setCredSuccess(false), 3000);
+    } catch (err) {
+      setCredError(err.message || t("settings.agent.saveFailed"));
+    } finally {
+      setCredSaving(false);
+    }
+  };
   const agentBindingPending = !agentIsBound && !!agentBinding?.pendingBind;
 
   // —— catalog（REQ-AGENT-101，v0.6）—— 添加表单 provider 下拉 = catalog 端点数据
@@ -1172,6 +1245,176 @@ export default function Settings() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      </TabPanel>
+
+      <TabPanel name="credentials" activeTab={activeTab}>
+        <div className="card" data-testid="credentials-settings-card">
+          <div className="card-header">
+            <h2 className="card-title">{t("settings.credentialsModule.title")}</h2>
+            <p className="card-subtitle">{t("settings.credentialsModule.subtitle")}</p>
+          </div>
+          <div className="card-body">
+            {/* RSSHub Service Card */}
+            <div className="credentials-service-card" data-testid="rsshub-credential-card">
+              <div className="credentials-service-header">
+                <div className="credentials-service-title">
+                  <span>RSSHub</span>
+                  <span
+                    className={`status ${credentials.rsshub?.configured ? "status-success" : "status-warning"}`}
+                    data-testid="rsshub-status-badge"
+                    style={{ fontSize: "var(--ch-text-xs)" }}
+                  >
+                    <span className="status-dot"></span>
+                    <span>
+                      {credentials.rsshub?.configured
+                        ? t("settings.credentialsModule.configured")
+                        : t("settings.credentialsModule.unconfigured")}
+                    </span>
+                  </span>
+                </div>
+                {credentials.rsshub?.updatedAt && (
+                  <span style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-text-tertiary)" }}>
+                    {new Date(credentials.rsshub.updatedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <p className="credentials-service-desc">{t("settings.credentialsModule.rsshubDesc")}</p>
+
+              {credError && (
+                <div
+                  className="alert-error show"
+                  data-testid="cred-status-error"
+                  style={{
+                    background: "var(--ch-error-soft)",
+                    border: "1px solid var(--ch-error)",
+                    borderRadius: "var(--ch-radius-md)",
+                    padding: "var(--ch-space-3)",
+                    fontSize: "var(--ch-text-sm)",
+                    color: "var(--ch-text)",
+                    marginBottom: "var(--ch-space-4)",
+                  }}
+                >
+                  <strong style={{ color: "var(--ch-error)" }}>{credError}</strong>
+                </div>
+              )}
+
+              {credSuccess && (
+                <div
+                  className="alert-success show"
+                  data-testid="cred-status-success"
+                  style={{
+                    background: "var(--ch-success-soft)",
+                    border: "1px solid var(--ch-success)",
+                    borderRadius: "var(--ch-radius-md)",
+                    padding: "var(--ch-space-3)",
+                    fontSize: "var(--ch-text-sm)",
+                    color: "var(--ch-text)",
+                    marginBottom: "var(--ch-space-4)",
+                  }}
+                >
+                  {t("settings.credentialsModule.saved")}
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: "var(--ch-space-4)" }}>
+                <label className="form-label" htmlFor="rsshub-base-url-input">
+                  {t("settings.credentialsModule.baseUrl")}
+                </label>
+                <input
+                  id="rsshub-base-url-input"
+                  data-testid="rsshub-base-url-input"
+                  type="text"
+                  className="form-control"
+                  placeholder={t("settings.credentialsModule.baseUrlPlaceholder")}
+                  value={rsshubBaseUrl}
+                  onChange={(e) => setRsshubBaseUrl(e.target.value)}
+                  disabled={credSaving || credTesting}
+                  style={{ fontFamily: "var(--ch-font-mono)" }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: "var(--ch-space-4)" }}>
+                <label className="form-label" htmlFor="rsshub-access-key-input">
+                  {t("settings.credentialsModule.accessKey")}
+                </label>
+                <input
+                  id="rsshub-access-key-input"
+                  data-testid="rsshub-access-key-input"
+                  type="password"
+                  className="form-control"
+                  placeholder={
+                    credentials.rsshub?.configured
+                      ? t("settings.credentialsModule.accessKeyPlaceholder")
+                      : "AccessKey"
+                  }
+                  value={rsshubAccessKey}
+                  onChange={(e) => setRsshubAccessKey(e.target.value)}
+                  disabled={credSaving || credTesting}
+                  style={{ fontFamily: "var(--ch-font-mono)" }}
+                />
+              </div>
+
+              {credTestResult && (
+                <div
+                  style={{
+                    padding: "var(--ch-space-3)",
+                    borderRadius: "var(--ch-radius-md)",
+                    fontSize: "var(--ch-text-sm)",
+                    marginBottom: "var(--ch-space-4)",
+                    background: credTestResult.ok ? "var(--ch-success-soft)" : "var(--ch-error-soft)",
+                    border: `1px solid ${credTestResult.ok ? "var(--ch-success)" : "var(--ch-error)"}`,
+                    color: "var(--ch-text)",
+                  }}
+                >
+                  {credTestResult.ok ? (
+                    <span style={{ color: "var(--ch-success)" }}>
+                      ✓ {t("settings.credentialsModule.testSuccess", { latency: credTestResult.latencyMs || 0 })}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--ch-error)" }}>
+                      ✗ {t("settings.credentialsModule.testFailed", { reason: credTestResult.error || "Network Error" })}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "var(--ch-space-3)", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  data-testid="test-rsshub-button"
+                  onClick={handleTestRsshub}
+                  disabled={credTesting || credSaving || !rsshubBaseUrl}
+                >
+                  {credTesting ? t("settings.credentialsModule.testing") : t("settings.credentialsModule.testConnection")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  data-testid="save-rsshub-button"
+                  onClick={handleSaveRsshub}
+                  disabled={credSaving || credTesting || !rsshubBaseUrl}
+                >
+                  {credSaving ? t("settings.credentialsModule.saving") : t("settings.credentialsModule.save")}
+                </button>
+              </div>
+            </div>
+
+            {/* Extensible placeholder card */}
+            <div
+              style={{
+                border: "1px dashed var(--ch-border)",
+                borderRadius: "var(--ch-radius-lg)",
+                padding: "var(--ch-space-4)",
+                textAlign: "center",
+                color: "var(--ch-text-tertiary)",
+                fontSize: "var(--ch-text-sm)",
+              }}
+            >
+              + {t("settings.credentialsModule.expandCustom")}
             </div>
           </div>
         </div>

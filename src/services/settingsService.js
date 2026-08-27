@@ -153,6 +153,13 @@ export function loadSettings() {
   return normalizeSettings({ ...settings });
 }
 
+export function saveSettingsRaw(nextSettings) {
+  ensureLoaded();
+  settings = { ...nextSettings };
+  writeSettingsRestricted(settings);
+  return loadSettings();
+}
+
 export function saveSettings(partial) {
   ensureLoaded();
   if (partial && Object.prototype.hasOwnProperty.call(partial, "workspaceRoot") && partial.workspaceRoot === "") {

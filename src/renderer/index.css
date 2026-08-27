@@ -1882,9 +1882,51 @@ body {
   color: var(--ch-codex);
 }
 
+.badge-bilibili {
+  background: rgba(251, 114, 153, 0.15);
+  color: #fb7299;
+  border: 1px solid rgba(251, 114, 153, 0.3);
+}
+
 .badge-wechat {
   background: var(--ch-success-soft);
   color: var(--ch-success);
+}
+
+.credentials-service-card {
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-lg);
+  padding: var(--ch-space-5);
+  margin-bottom: var(--ch-space-4);
+  transition: border-color 0.15s ease;
+}
+
+.credentials-service-card:hover {
+  border-color: var(--ch-border-strong);
+}
+
+.credentials-service-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ch-space-3);
+}
+
+.credentials-service-title {
+  font-size: var(--ch-text-md);
+  font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text);
+  display: flex;
+  align-items: center;
+  gap: var(--ch-space-2);
+}
+
+.credentials-service-desc {
+  font-size: var(--ch-text-sm);
+  color: var(--ch-text-secondary);
+  line-height: var(--ch-leading-normal);
+  margin-bottom: var(--ch-space-4);
 }
 
 /* Toggle switch */
