@@ -1,0 +1,346 @@
+# 内置浏览器面板与 agent 受控浏览器
+
+> 状态：探索期
+> 故事 ID：`2026-08-24-embedded-browser`
+> 最后更新：2026-08-24
+
+---
+
+## 1. 问题陈述
+
+agent 在 workstation 里起了 web 服务或产出页面后，用户要切到外部浏览器、手动找端口输地址才能验证效果，「对话 → 看结果」的闭环被打断；agent 访问网页只有无头抓取——用户看不到它在看什么，agent 自己也没有可视化浏览器可用（无法操作需要渲染/交互的页面）。
+
+## 2. 解决方案
+
+在会话区右侧内置一个可收起的浏览器面板（`WebContentsView` 主进程托管）：用户可手动输 URL 交互浏览；同一浏览器实例作为 agent 的工具面——agent 通过声明了风险等级的 CLI 工具导航/读取/操作页面，用户实时看到 agent 的操作过程，提交类动作走现有确认队列。浏览器既是人的预览窗口，也是 agent 的眼睛和手。
+
+## 3. 用户故事
+
+1. 作为用户，我想要在 app 内直接打开 agent 产出的 web 页面并交互操作，以便不打断对话就能验证效果。
+2. 作为用户，我想要手动输入任意 URL 在面板内浏览（含外网），以便查资料不离开 workstation。
+3. 作为用户，我想要看到 agent 正在浏览的页面画面，以便监督它在看什么。
+4. 作为用户，我想要随时接管面板（我的操作永远生效）并能一键停止 agent 控制，以便 agent 乱导航时立刻夺回浏览器。
+5. 作为 agent，我想要一组浏览器读取工具（导航/读取/滚动/截图），以便完成需要真实渲染的网页查看任务。
+6. 作为用户与 Agent，我想要在内置浏览器中手动扫码/登录目标站点（如 B站、X/Twitter、知乎、GitHub），系统自动持久化 Cookie 并允许本地数据采集与后台 Agent 跨模块安全复用该登录态，以便在不手动抓包、不泄露明文密码的情况下完成带鉴权的数据分析与内容采集。
+
+## 4. 稳定块（已稳定，可结晶为 REQ）
+
+| # | 稳定块 | 为什么不再推翻 |
+|---|---|---|
+| 1 | 浏览器面板骨架与手动浏览：会话区右侧内嵌、可收起/展开、地址栏导航（协议自动补全）、页面可交互、外链/弹窗拦截（target=_blank 转面板内导航，绝不劫持主窗口） | 访谈三轮确认；方向 B（WebContentsView 主进程托管）已拍板 |
+| 2 | agent 浏览器读取工具集：navigate/read/scroll/screenshot + 面板展开/收起控制，经 toolAdapter 声明 riskLevel=query 接入现有工具面；**无写入动作**（click/type 本期砍，见 §12） | 访谈 Q3 确认「工具由 agent 自主调用、自主决定是否展开面板」；TECH-DESIGN 裁决本期只做预览/读取 |
+| 3 | 人机共驾与可见性规则：人操作永远优先（不加锁）；「agent 控制中」指示 + 一键停止控制（断控制后 agent 工具返回 E-BROWSER-DENIED，页面保持当前状态）；收起面板浏览器不断连 | 访谈 Q2/Q3（第三轮）显式确认 |
+| 4 | 聊天链接集成：会话消息中 http(s) 链接默认在面板打开，提供「在系统浏览器打开」入口 | 访谈 Q5（第三轮）确认 |
+| 5 | 登录态持久化、Cookie 导出与身份桥接：指定 `persist:browser` 隔离存储，提供 `/api/browser/cookies` 读取与清理接口，提供 `browser auth-check` 供 Agent 检测登录态并在需要时展开面板引导用户扫码/登录 | ADR-039 决策 7/8 确立 |
+
+## 5. 移动块（还在动，暂不入 REQ）
+
+| # | 还在动的块 | 不确定什么 |
+|---|---|---|
+| 1 | read 快照的格式细节与截断策略（元素清单字段、体积上限） | §10 深潜定（实现方向已定：executeJavaScript 自包含序列化器） |
+
+## 6. 用户操作流（Operation Flows）
+
+### 6.1 主流程 / Happy Path
+
+**流程 A：手动浏览（稳定块 1）**
+
+| 步骤 | 用户动作 | 系统响应 | 验收锚点 |
+|---|---|---|---|
+| 1 | 点击会话区「浏览器」按钮 | 面板展开，地址栏聚焦 | 面板可见，初始为空白页 + 地址栏 |
+| 2 | 地址栏输入 `example.com` 回车 | 自动补协议并加载 | 实际加载 URL = `https://example.com/` |
+| 3 | 在页面上点击、滚动、填表 | 页面正常交互 | 交互未被拦截 |
+| 4 | 点击页面上 target=_blank 链接 | 面板内导航到目标 URL | 无新窗口、主窗口不跳转 |
+| 5 | 点击收起 | 面板隐藏，浏览器实例保留 | 重新展开仍为原页面 |
+
+**流程 B：agent 驱动浏览（稳定块 2/3）**
+
+| 步骤 | 用户动作 | 系统响应 | 验收锚点 |
+|---|---|---|---|
+| 1 | 对话中要求 agent「看一下 http://localhost:3000 的效果」 | agent 调用 `browser navigate` | 工具返回 `{ok:true, url, title}` |
+| 2 | （agent 决定展开面板） | 面板自动展开并加载该 URL | 面板可见且地址栏显示最终 URL |
+| 3 | 无 | 面板顶部显示「agent 控制中」指示 | 指示可见，含「停止控制」按钮 |
+| 4 | agent 调用 `browser read` | 返回当前页结构化快照 | 返回含 title/url/可交互元素列表 |
+| 5 | 用户在面板里点击别处 | 用户操作生效，agent 下次操作前重读快照适应 | 用户点击不被拒绝 |
+
+**流程 C：停止控制（稳定块 3）**
+
+| 步骤 | 用户动作 | 系统响应 | 验收锚点 |
+|---|---|---|---|
+| 1 | 点击「停止控制」 | 控制指示消失，页面保持当前状态 | 页面 URL 不变，指示条消失 |
+| 2 | agent 再调用任何 browser 工具 | 返回拒绝错误 | 错误码 E-BROWSER-DENIED |
+| 3 | 用户手动在面板导航一次 | 控制状态解除，agent 工具恢复可用 | 后续 `browser read` 返回 ok:true |
+
+**流程 D：人机协同登录与 Cookie 导出（稳定块 5）**
+
+| 步骤 | 参与方 | 动作与响应 | 验收锚点 |
+|---|---|---|---|
+| 1 | Agent / 采集服务 | 调用 `browser auth-check --domain .bilibili.com` | 返回 `{authenticated: false}` |
+| 2 | Agent | 调 `browser navigate --url "https://passport.bilibili.com/login" --expand` 并发送引导卡片 | 面板自动展开，加载登录页 |
+| 3 | 用户 | 在内置浏览器中手动扫码/登录成功 | Chromium 原生持久化 Cookie 至 `persist:browser` |
+| 4 | 后台数据采集服务 | 调用 `GET /api/browser/cookies?domain=.bilibili.com` | 返回包含 `SESSDATA` 等完整 Cookie 字符串，直接发起本地 API 抓取 |
+
+### 6.2 分支与异常
+
+| 触发条件 | 分支结果 | 对应错误状态 |
+|---|---|---|
+| 地址栏输入非 http(s) 协议（如 `javascript:...`） | 拒绝导航，地址栏提示 | §8-E1 |
+| 导航失败（DNS/连接拒绝/超时） | 面板内错误页，显示失败原因，可重试 | §8-E2 |
+| agent 工具调用时浏览器实例未就绪 | 工具返回错误，agent 收到可读消息 | §8-E3 |
+| WebContents 崩溃（render process gone） | 面板显示崩溃态 + 重载按钮；agent 工具返回崩溃错误 | §8-E4 |
+| 面板收起时 agent 继续调用工具 | 正常执行（不断连），仅画面不可见 | 正常路径，非错误 |
+| 用户点击「停止控制」 | agent 后续工具调用直接失败（E-BROWSER-DENIED），页面保持当前状态；用户手动导航一次后解除 | §8-E5 |
+
+### 6.3 预期值锚点（Expected-Value Anchors）
+
+| 稳定块 | 输入 | 预期输出/结果 | 依据 |
+|---|---|---|---|
+| 1 | 地址栏输入 `example.com` | 加载 URL `https://example.com/`（补 https） | 访谈确认 + 浏览器惯例 |
+| 1 | 地址栏输入 `localhost:3000` | 加载 URL `http://localhost:3000/`（localhost 补 http） | 本地 dev server 主场景 |
+| 1 | 应用启动后面板初始状态 | 收起（不展示） | 面板按需出现，不抢主界面 |
+| 1 | 页面内 target=_blank 链接点击 | 面板内导航至目标 URL；`window.open`/新窗口事件被拦截 | 访谈 Q5：绝不劫持主窗口 |
+| 2 | `browser navigate --url http://localhost:3000` | 返回 JSON 含 `"ok":true`、`"url":"http://localhost:3000/"`、`"title":<页面标题>` | 工具面现有 JSON 回执先例（toolAdapter） |
+| 2 | toolAdapter 声明 | `browser navigate`/`browser read`/`browser scroll`/`browser screenshot`/`browser auth-check` riskLevel 均=`query`（本期无 confirm 级工具） | §7.2 风险映射先例 + TECH-DESIGN 裁决（砍 click/type） |
+| 3 | 面板收起状态下 `browser read` | 返回 `ok:true`（浏览器不断连） | 访谈 Q3：可见性解耦 |
+| 3 | agent 工具驱动中面板指示 | 可见「agent 控制中」+「停止控制」按钮 | 访谈 Q2（第三轮） |
+| 3 | 停止控制后 agent 调 `browser read` | 返回 `{"ok":false,"error":{"code":"E-BROWSER-DENIED"}}`；用户在面板手动导航一次后恢复 ok:true | 流程 C（用户手动导航解除 = 显式收回又归还控制） |
+| 4 | MarkdownRenderer 渲染 `[x](https://a.b/c)` 点击 | 面板打开并加载 `https://a.b/c`（非系统浏览器） | 访谈 Q5 |
+| 5 | `GET /api/browser/cookies?domain=.bilibili.com` | 返回 `{ok:true, cookieString:"SESSDATA=...; bili_jct=...", cookies:[...]}` | ADR-039 决策 7 |
+| 5 | `browser auth-check --domain .bilibili.com --required-cookies SESSDATA` | 存在对应有效 Cookie 返回 `{authenticated:true}`，不存在返回 `{authenticated:false}` | ADR-039 决策 8 |
+
+## 7. 表单与输入验证（Form / Input Validation）
+
+| 输入字段 | 规则 | 有效例子 | 无效例子（→错误提示） | 错误状态 |
+|---|---|---|---|---|
+| 地址栏 URL | 仅允许 http/https 协议（缺省自动补全：localhost/127.0.0.1 补 http，其余补 https）；去空白后非空 | `example.com` → `https://example.com/`；`localhost:3000` → `http://localhost:3000/`；`https://a.b/c?d=e` 原样 | `javascript:alert(1)` → 拒绝，提示「仅支持 http/https 地址」；``（空）→ 不导航；`http://`（无主机）→ 提示「地址不完整」 | §8-E1 |
+
+### 7.1 跨字段/业务规则
+
+| 规则 | 触发时机 | 例子（触发 → 期望结果） | 错误状态 |
+|---|---|---|---|
+| agent 工具 url 参数同样过协议白名单 | 每次 navigate | `browser navigate --url "file:///etc/passwd"` → 拒绝，E-BROWSER-BAD-URL | §8-E1 |
+
+## 8. 错误状态与失败响应（Error States / Failure Responses）
+
+| 场景 | 触发条件 | 错误码/消息 | 用户可见状态 | 副作用/回滚 |
+|---|---|---|---|---|
+| E1 非法 URL | 协议不在白名单/无主机/空 | E-BROWSER-BAD-URL | 地址栏内联提示（手动）；agent 收到错误回执（工具） | 无导航，当前页不变 |
+| E2 导航失败 | DNS 失败/连接拒绝/超时 | 透传 Chromium 错误（如 ERR_CONNECTION_REFUSED） | 面板内错误页 + 重试按钮 | 无 |
+| E3 浏览器未就绪 | 工具调用时实例未创建/已销毁 | E-BROWSER-NOT-READY | agent 收到错误回执 | 无 |
+| E4 WebContents 崩溃 | render-process-gone | E-BROWSER-CRASHED | 面板崩溃态 + 「重新加载」按钮 | 浏览器实例可重建，登录态依 partition 策略 |
+| E5 停止控制后工具调用 | 用户已点「停止控制」，agent 再调任何 browser 工具 | E-BROWSER-DENIED | agent 收到拒绝回执并自然语言告知用户 | 动作不执行，浏览器状态不变；用户手动导航一次后解除 |
+| E6 主/渲染进程 bounds 同步异常 | resize/收起时视图定位失败 | 日志记录 | 面板内容暂时隐藏而非错位遮挡 | 下帧重算恢复 |
+
+## 9. 复杂度分级
+
+| 维度 | 取值/说明 |
+|---|---|
+| 复杂度 | **complex** |
+| 判断理由 | 触及 5 个模块（主进程视图管理、HTTP 路由、worker 工具面、渲染面板、Markdown 渲染），跨三进程（main/renderer/worker）；分支多（崩溃/未就绪/停止控制/共驾）；有安全信任边界（agent 驱动用户可见浏览器、协议白名单）。（2026-08-26 范围收敛：砍 click/type 后确认队列不再涉及，复杂度从 6 模块降为 5，仍 complex） |
+
+结晶路径：`PRD → DESIGN → DOMAIN-MODEL → TECH-DESIGN（必走）→ CRYSTALLIZE`。
+
+## 10. 技术方案（Implementation Decisions）
+
+> complex story：本节由 `/tech-design` 深潜完整填充（2026-08-26，四问四答 + 范围收敛）。
+
+### 10.1 设计目标
+
+- 单一浏览器实例同时服务「人的预览/浏览」与「agent 的读取工具面」：主进程直持 WebContents 保控制保真，可见性与实例生命周期解耦（收起不断连），布局真相归渲染进程。
+
+### 10.2 模块与边界
+
+| 模块 | 职责 | 是否新增 |
+|---|---|---|
+| browserViewManager（main） | WebContentsView 生命周期（懒创建/崩溃重建）、bounds 哑执行（渲染进程推送）、导航执行 + 协议白名单（will-navigate/setWindowOpenHandler 双闸）、弹窗拦截、agentControlRevoked 状态与导航来源标记 | 是 |
+| browser 路由（http） | `/api/browser/*` REST：worker 工具面与渲染进程共用（ADR-001 先例） | 是 |
+| toolAdapter browser 命令（agent worker） | `browser navigate/read/scroll/screenshot` 声明，riskLevel 均=query | 是 |
+| BrowserPanel（renderer） | 面板 UI：地址栏（协议白名单前置校验）、控制中指示、收起/展开、崩溃/错误页；布局真相持有（ResizeObserver → 节流 IPC 推 bounds） | 是 |
+| MarkdownRenderer（renderer） | http(s) 链接默认面板打开（改） | 否 |
+
+#### 模块关系图
+
+```
+[agent worker: toolAdapter "browser navigate"]          [用户: BrowserPanel 地址栏]
+        │ HTTP /api/browser/navigate                            │ HTTP /api/browser/navigate
+        ▼                                                       ▼
+[main: browser 路由] ──────────────► [main: browserViewManager ─ WebContentsView]
+        │                                   │  ▲ setBounds（哑执行）
+        │ 事件转发                            │  │ opc-browser-bounds（节流 IPC）
+        ▼                                   ▼  │
+[mainWindow.webContents.send "opc-browser-event"] ◄── [renderer: BrowserPanel（布局真相）]
+        │
+        ▼
+[worker 工具 JSON 回执]（经 CLI HTTP 客户端，OPC_AGENT_SERVER_BASE_URL 直连，BUG-007 先例）
+```
+
+### 10.3 数据流
+
+**agent 驱动浏览（流程 B）**：
+1. **触发**：agent 调 `browser navigate --url <u>`（toolAdapter → CLI HTTP 客户端）。
+2. **输入校验**：路由层过协议白名单（http/https only），非法 → E-BROWSER-BAD-URL。
+3. **核心处理**：browserViewManager 检查 agentControlRevoked（true → E-BROWSER-DENIED）→ 懒创建 WebContentsView（partition `persist:browser`，无 preload，nodeIntegration 关）→ 标记本次导航来源=agent → loadURL → 等 did-finish-load / did-fail-load。
+4. **副作用**：若面板当前收起且工具带 expand 意图 → `mainWindow.webContents.send("opc-browser-event", {type:"panel-request-open"})`，渲染进程展开面板并开始推 bounds；导航完成 → send `{type:"navigated", url, title, source:"agent"}`（渲染进程显示控制指示）。
+5. **输出**：工具回执 `{ok:true, url, title}`；导航失败 → `{ok:false, error:{code:"E-BROWSER-NAV-FAILED", reason:"ERR_*"}}`。
+
+**手动浏览（流程 A）**：渲染进程地址栏前置校验（同白名单，共享 normalize 逻辑下沉到主进程路由）→ 同一 `/api/browser/navigate`（source=user）→ 导航来源=user → 若 agentControlRevoked 为 true 则清除（停止控制解除契约）。
+
+**read/scroll/screenshot**：read → executeJavaScript 注入自包含序列化器 → 裁剪 JSON；scroll → executeJavaScript scrollBy；screenshot → `webContents.capturePage` → PNG 落会话目录 → 回执含文件路径（agent 可经 REQ-AGENT-097 附件机制读图）。
+
+### 10.4 接口契约
+
+#### 接口 1：HTTP `POST /api/browser/navigate`
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | worker CLI 工具（source=agent）/ 渲染进程地址栏（source=user） |
+| 被调用方 | browserViewManager |
+| 输入 | `{url: string, source: "agent"\|"user", expand?: boolean}` |
+| 输出 | `{ok:true, url, title}` / `{ok:false, error:{code, reason}}` |
+| 业务错误 | E-BROWSER-BAD-URL（协议白名单外/无主机）；E-BROWSER-DENIED（agentControlRevoked 且 source=agent）；E-BROWSER-NAV-FAILED（did-fail-load，reason 透传 Chromium 错误码） |
+| 系统错误 | E-BROWSER-CRASHED（实例崩溃中） |
+| 副作用 | 懒创建实例；source=agent 且 expand → 通知渲染进程展开面板；source=user → 清除 agentControlRevoked |
+| 幂等性 | 否（导航是状态迁移） |
+
+**样例（golden values）**：
+
+| 场景 | 请求/输入 | 期望响应/输出 |
+|---|---|---|
+| 正常 | `{url:"http://localhost:3000", source:"agent", expand:true}` | `{ok:true, url:"http://localhost:3000/", title:"My App"}` |
+| 协议补全（渲染进程前置） | 地址栏输入 `example.com` | 实际请求 url=`https://example.com/`；localhost/127.0.0.1 补 `http://` |
+| 白名单拒绝 | `{url:"file:///etc/passwd", source:"agent"}` | `{ok:false, error:{code:"E-BROWSER-BAD-URL"}}` |
+| 停止控制中 | `{url:"https://a.b", source:"agent"}`（revoked=true） | `{ok:false, error:{code:"E-BROWSER-DENIED"}}` |
+| 连接失败 | `{url:"http://localhost:59999", source:"user"}`（无监听） | `{ok:false, error:{code:"E-BROWSER-NAV-FAILED", reason:"ERR_CONNECTION_REFUSED"}}` |
+
+#### 接口 2：HTTP `POST /api/browser/read`
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | worker CLI 工具 |
+| 被调用方 | browserViewManager → executeJavaScript 自包含序列化器 |
+| 输入 | `{}` |
+| 输出 | `{ok:true, url, title, text, elements, truncated}` |
+| 业务错误 | E-BROWSER-DENIED；E-BROWSER-NOT-READY（实例未创建/无页面） |
+| 系统错误 | E-BROWSER-CRASHED；注入被 CSP 拒 → 退化返回 `{url, title, text:"", elements:[], truncated:false}` 不报错 |
+| 副作用 | 无 |
+| 幂等性 | 是 |
+
+**样例（golden values）**：
+
+| 场景 | 请求/输入 | 期望响应/输出 |
+|---|---|---|
+| 正常（stub 页） | `{}` | `{ok:true, url:"http://localhost:3000/", title:"My App", text:"<正文摘要>", elements:[{tag:"a", text:"立即开始", selector:".md-cta", rect:{x,y,width,height}}, …], truncated:false}` |
+| 截断 | 正文 >4000 字符或元素 >50 个 | `text` 截断至 4000 字符、`elements` 截断至 50 个，`truncated:true` |
+| 未就绪 | 实例从未导航 | `{ok:false, error:{code:"E-BROWSER-NOT-READY"}}` |
+
+#### 接口 3：HTTP `POST /api/browser/scroll` / `GET|POST /api/browser/screenshot` / `GET /api/browser/state`
+
+| 接口 | 输入 | 输出（golden） |
+|---|---|---|
+| scroll | `{dx?:number, dy?:number}` | `{ok:true, scrollX:0, scrollY:480}`；revoked → E-BROWSER-DENIED |
+| screenshot | `{}` | `{ok:true, path:"<sessionDir>/shots/browser-<n>.png", width, height}`（PNG 经 capturePage；agent 经附件机制读图） |
+| state | — | `{ok:true, open:true, url:"http://localhost:3000/", title:"My App", agentControl:true, agentControlRevoked:false, crashed:false}` |
+
+#### 接口 4：HTTP `GET|DELETE /api/browser/cookies`
+
+| 接口 | 输入 | 输出（golden） | 说明 |
+|---|---|---|---|
+| `GET /api/browser/cookies` | `?domain=.bilibili.com[&name=SESSDATA]` | `{ok:true, domain:".bilibili.com", cookieString:"SESSDATA=...; bili_jct=...", cookies:[{name, value, domain, path, expires, httpOnly, secure}]}` | 供本地数据采集引擎与 Agent 提取最新登录 Cookie |
+| `DELETE /api/browser/cookies` | `?domain=.bilibili.com` | `{ok:true, deletedCount: 12}` | 清除指定站点的会话/登录态 |
+
+#### 接口 5：IPC（渲染进程 ↔ 主进程，preload `window.opc.browser*`）
+
+| 通道 | 方向 | 载荷 | 语义 |
+|---|---|---|---|
+| `opc-browser-bounds` | renderer → main（send，rAF 节流） | `{x, y, width, height, visible}` | 布局真相推送；visible=false（收起/遮挡）时 main 隐藏视图但保活 webContents |
+| `opc-browser-event` | main → renderer（on） | `{type:"navigated"\|"panel-request-open"\|"cookie-updated"\|"crashed"\|"load-failed", …}` | 状态同步：地址栏回显、控制指示、Cookie 更新通知、崩溃页/错误页 |
+| `opc-browser-control` | renderer → main（invoke） | `{action:"stop-agent-control"}` → main 置 agentControlRevoked=true | 停止控制按钮 |
+
+#### 接口 6：toolAdapter CLI 声明
+
+| 命令 | riskLevel | 说明 |
+|---|---|---|
+| `browser navigate --url <u> [--expand]` | query | 接口 1，source=agent |
+| `browser read` | query | 接口 2 |
+| `browser scroll [--dx n] [--dy n]` | query | 接口 3 |
+| `browser screenshot` | query | 接口 3 |
+| `browser auth-check --domain <d> [--required-cookies <c1,c2>]` | query | 接口 4 包装：检查目标站点是否已具备有效登录态 |
+
+### 10.5 关键决策
+
+| 决策 | 选项 | 选择理由 | 风险 |
+|---|---|---|---|
+| 浏览器承载形态 | A `<webview>` / **B WebContentsView** / C 双实例 | 方向 B 已确认：控制保真最高（主进程直持 webContents、CDP 可用）、可见性解耦天然满足「收起不断连」 | bounds 手动同步成本 |
+| 工具接入形态 | 内置 MCP server / **CLI 工具面（toolAdapter）** | 复用「CLI 即控制面」先例与 riskLevel 映射（ADR-001 HTTP 通道） | 已验证：worker CLI 工具经 OPC_AGENT_SERVER_BASE_URL 直连主 server |
+| 布局真相归属 | **A 渲染进程持有** / B 主进程持有 | Q1 拍板 A：React 布局单一真相，ResizeObserver 节流推 bounds，主进程哑执行 setBounds；实例「就绪前不 attach」消首帧闪烁 | 高频 IPC 需节流；同步异常按 E6 兜底 |
+| agent 页面感知 | **A executeJavaScript 自包含快照** / B CDP 原生快照 | Q2 拍板 A：高频轮询语义下够用且截断可控；跨域 iframe 拿不到记为已知限制 | 严格 CSP 站点注入被拒 → 退化为 title/url only |
+| 写入动作（click/type） | **本期砍**（曾推演 CDP Input 方案） | 2026-08-26 人裁决：本期只做预览/读取；CDP debugger 生命周期管理复杂度不付 | 后续 story 恢复时重启此推演 |
+| session 分区与身份共享 | **persist:browser + 导出 API** / 内存 session | 登录态跨重启保留；人手动扫码后自动持久化并开放受控 API 给本地抓取服务与 Agent 复用 | 凭据面扩大 → 协议白名单 + 无 preload + 受控端点缓解 |
+| 停止控制解除 | **手动导航即解除** / 显式恢复按钮 | Q5 拍板：source=user 的导航清除 revoked；紧急刹车语义 + 零额外交互 | 用户误导航即恢复（可接受，agent 仍需自主决定继续） |
+
+### 10.6 风险与回流点
+
+| 假设 | 如果错了会怎样 | 回流到 | 能否快速验证 |
+|---|---|---|---|
+| WebContentsView 在 Electron 43 满足全部需求（嵌入、拦截、capturePage 截图） | 退回方向 A（webview） | TECH-DESIGN | 能（spike） |
+| 渲染进程 React 布局与主进程 bounds 同步可做到无感 | 面板错位/遮挡 bug 频发 | TECH-DESIGN | 能（spike） |
+| executeJavaScript 注入在常见站点不被 CSP 拒 | read 退化为 title/url，agent 感知变弱 | TECH-DESIGN | 能（spike 几个代表站点） |
+
+### 10.7 安全/性能/可观测性
+
+- 安全：协议白名单双闸（渲染进程前置校验 + 主进程 will-navigate/setWindowOpenHandler 兜底，覆盖重定向链）；视图无 preload、`nodeIntegration=false`、`contextIsolation=true`、webSecurity 默认开；不存支付凭据；persist:browser 分区与主窗口 session 隔离。
+- 性能：bounds 推送 rAF 节流；read 快照 4000 字符/50 元素硬截断；实例懒创建，停止控制不销毁实例。
+- 可观测性：实例生命周期事件（创建/崩溃/导航失败/停止控制切换）落 JSON 日志行（项目先例）；E6 同步异常记日志不弹错。
+
+## 11. 测试决策（Testing Decisions）
+
+### 11.1 覆盖接缝（coverage seams，CLI 优先）
+
+| 稳定块 | Seam | 测试类型 | 依赖处理 |
+|---|---|---|---|
+| 1 面板骨架/手动浏览 | HTTP API（`/api/browser/*`：navigate/state）+ Playwright Electron E2E（面板展开/地址栏/拦截） | 集成 + E2E | 真实（本地 http stub 页面） |
+| 2 agent 工具集 | CLI（toolAdapter browser 命令 JSON 回执 + riskLevel 声明） | 单元/集成 | HTTP 层 stub |
+| 3 共驾/可见性规则 | HTTP API（收起状态 read 仍 ok；停止控制后 read 返 E-BROWSER-DENIED；手动导航解除）+ E2E（控制中指示/停止控制按钮） | 集成 + E2E | 真实 |
+| 4 聊天链接集成 | 组件测试（MarkdownRenderer 链接点击 → 面板打开回调） | 单元/组件 | mock |
+
+测试目录按 `tests/capabilities/embedded-browser/<entity>/2026-08-24-embedded-browser/` 组织（entity 拟 `browser-panel` / `browser-tools`）。
+
+### 11.2 测试策略与先例
+
+- 只测外部行为：URL 规范化结果、工具 JSON 回执、面板可见性、停止控制状态机；不测 WebContentsView 内部。
+- 先例：toolAdapter 命令声明测试（riskLevel 映射）、Playwright Electron E2E（既有 `npm run test:e2e`）。
+
+## 12. 范围外
+
+- **提交类动作 click/type（含确认队列集成、CDP Input 保真方案）**——2026-08-26 TECH-DESIGN 中用户裁决本期砍，后续 story 再立；届时重启「提交类细粒度判定」推演
+- 标签页、书签、历史记录页、下载管理、多账号分区、移动端模拟
+- agent 持续视觉流理解（截图仅按需工具）
+- 浏览器内支付/凭据管理器
+- 多浏览器实例并存
+
+## 13. 补充说明
+
+- 访谈笔记：`interview-notes.md`（三轮 frontier，方向 B 已确认）。
+- 2026-08-26 范围收敛：TECH-DESIGN Q3 推演 CDP Input 方案后，用户裁决本期只做预览/读取（navigate/read/scroll/screenshot），click/type 及其确认集成移入范围外。稳定块从 5 个收敛为 4 个（原块 4「提交类确认」移除，原块 5 改号 4）。
+- 后续 story 伏笔：提交类动作 + 确认集成；agent 浏览跟随增强（语义级风险分级、站点级白名单）。
+
+## 14. PRD 完整性自检查
+
+| 检查项 | 状态 | 备注 |
+|---|---|---|
+| 操作流 | PASS | §6.1 三条流程覆盖全部 4 个稳定块；§6.2 分支异常完整 |
+| 输入验证 | PASS | §7 地址栏 + 工具 url 参数，均有有效/无效例子 |
+| 错误状态 | PASS | §8 六类失败模式（E1-E6），含跨进程调用 |
+| 预期值锚点 | PASS | §6.3 每稳定块 ≥1 条字面值锚点 |
+| 复杂度分级 | complex | §9 理由已给 |
+| 技术方案（§10） | PASS | 2026-08-26 /tech-design 深潜完成：10.1-10.7 完整，接口契约含 golden values |
+| 覆盖接缝 | PASS | §11.1 每稳定块 ≥1 seam |
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 变更 | 作者 |
+|---|---|---|---|
+| v0.1 | 2026-08-24 | 初稿 | AI + 人 |
+| v0.2 | 2026-08-26 | TECH-DESIGN 深潜：范围收敛（砍 click/type，稳定块 5→4）；§10 完整填充（5 接口契约 + golden values）；ADR-039 落地 | AI + 人 |
