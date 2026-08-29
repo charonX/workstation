@@ -288,6 +288,90 @@ ipcMain.handle("opc-show-artifact-in-folder", async (_event, { projectRoot, arti
   shell.showItemInFolder(resolveArtifactPath(projectRoot, artifactPath));
 });
 
+// ---- 内置浏览器面板 IPC（REQ-BROWSER-001/003/004，PRD §10.4 接口 5，GAP-2 裁决）----
+// 渲染进程经 preload window.opc.browser* 到达本组 handler，不直接依赖 HTTP 面；
+// navigate 的 source 在本进程固定为 "user"（渲染进程无 agent 来源面——agent 走
+// toolAdapter → HTTP 路由）。serverCtx/manager 未就绪时全部安全降级（NOT-READY 或丢弃）。
+
+function getBrowserManager() {
+  try {
+    return serverCtx?.server?.services?.getBrowserViewManager?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// 布局真相推送（渲染侧已 rAF 节流）：bounds 哑执行 + visible=false 隐藏保活。
+ipcMain.on("opc-browser-bounds", (_event, payload) => {
+  const manager = getBrowserManager();
+  if (!manager || !payload || typeof payload !== "object") return;
+  manager.setBounds({
+    x: Number(payload.x) || 0,
+    y: Number(payload.y) || 0,
+    width: Number(payload.width) || 0,
+    height: Number(payload.height) || 0,
+    visible: payload.visible !== false,
+  });
+});
+
+ipcMain.handle("opc-browser-control", async (_event, payload) => {
+  const manager = getBrowserManager();
+  if (!manager) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+  if (payload?.action !== "stop-agent-control") {
+    return { ok: false, error: { code: "E-BROWSER-BAD-ACTION" } };
+  }
+  return manager.stopAgentControl();
+});
+
+// 渲染进程地址栏导航（source="user" 固定）：错误回传与 HTTP 面同构 {ok:false,error:{code,reason}}。
+ipcMain.handle("opc-browser-navigate", async (_event, payload) => {
+  const manager = getBrowserManager();
+  if (!manager) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+  try {
+    return await manager.navigate({ url: payload?.url, source: "user" });
+  } catch (err) {
+    if (err?.code && String(err.code).startsWith("E-BROWSER-")) {
+      const error = { code: err.code };
+      if (err.reason) error.reason = err.reason;
+      return { ok: false, error };
+    }
+    throw err;
+  }
+});
+
+ipcMain.handle("opc-browser-state", async () => {
+  const manager = getBrowserManager();
+  if (!manager) {
+    return { ok: true, open: false, url: null, title: null, agentControl: false, agentControlRevoked: false, crashed: false };
+  }
+  return manager.getState();
+});
+
+// 「在系统浏览器打开」（REQ-BROWSER-004 关联菜单 + 面板外链按钮）：http/https 白名单，
+// 防 shell 协议（file:/javascript: 等）经 openExternal 滥用。
+ipcMain.handle("opc-open-external", async (_event, { url } = {}) => {
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+// dev-only seam（E2E 弹窗拦截流程）：驱动面板 WebContentsView 内真实点击——渲染进程
+// 不可直接触达视图 webContents（Playwright 只见 BrowserWindow），经本 handler 到 manager。
+// 与下方 opc-seed-* 同规：仅 development 注册，生产构建无此面。
+if (process.env.NODE_ENV === "development") {
+  ipcMain.handle("opc-browser-test-click", async (_event, { selector } = {}) => {
+    const manager = getBrowserManager();
+    if (!manager || typeof manager._testClick !== "function") {
+      return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+    }
+    return manager._testClick(selector);
+  });
+}
+
 // ---- 检查更新（REQ-DIST-002）----
 
 // 从 package.json repository 字段解析 {owner, repo}。

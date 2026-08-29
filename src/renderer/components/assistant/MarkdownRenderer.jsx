@@ -54,6 +54,7 @@
 //                        项目 ID（主进程按 projects 表 registry 解析实际目录，renderer
 //                        不持有绝对路径）；通用/飞书/孤儿空间 = undefined（无解析根）。
 import { Component, createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -61,6 +62,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import hljs from "highlight.js/lib/core";
 import { fetchProjectImage } from "../../api/agentSessions.js";
+import { openBrowserPanelWithUrl } from "../browser/browserPanelStore.js";
 
 // —— highlight.js：core + 常用语言注册（tech-design 性能：按语言加载，不整包引入）——
 // 别名（库自带）：js/jsx/mjs/cjs（javascript）、ts/tsx/mts/cts（typescript）、py（python）、
@@ -485,6 +487,79 @@ function MdImage({ src, alt, "data-bare-path": bare, ..._rest }) {
   return null; // loading：不占位不闪烁（最终态快速到达；流式路径闭合即渲染）
 }
 
+// —— 链接（REQ-BROWSER-004，story 2026-08-24-embedded-browser）——
+// http(s) 链接：左键点击 → 内置浏览器面板打开并加载（openBrowserPanelWithUrl →
+// 模块级总线 → BrowserPanel 经 opc.browser.navigate 加载，不在系统浏览器打开、
+// 不跳转主窗口）；右键 → 关联菜单（「在面板中打开」/「在系统浏览器打开」，
+// 后者经 opc.openExternal，主进程 http/https 白名单兜底）。
+// 非 http(s)（mailto: 等）保持现有行为（默认锚点，不拦截）。
+const HTTP_LINK_RE = /^https?:\/\//i;
+
+function MdLink({ node: _node, href, children, ...props }) {
+  const { t } = useTranslation();
+  const [menu, setMenu] = useState(null); // { x, y } | null（关联菜单锚点）
+
+  // 菜单关闭：任意点击 / Escape（菜单打开期间全局监听，卸载清理）
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = () => setMenu(null);
+    const onKey = (e) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  if (typeof href !== "string" || !HTTP_LINK_RE.test(href)) {
+    // 非 http(s) 协议（mailto: 等）保持现有行为
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  }
+
+  const openInPanel = (e) => {
+    e.preventDefault();
+    setMenu(null);
+    openBrowserPanelWithUrl(href);
+  };
+  const openInSystemBrowser = () => {
+    setMenu(null);
+    window.opc?.openExternal?.(href);
+  };
+
+  return (
+    <span className="md-link-wrap">
+      <a
+        href={href}
+        {...props}
+        onClick={openInPanel}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        {children}
+      </a>
+      {menu && (
+        <span className="md-link-menu" style={{ left: menu.x, top: menu.y }}>
+          <button type="button" onClick={openInPanel}>
+            {t("browser.openInPanel")}
+          </button>
+          <button type="button" onClick={openInSystemBrowser}>
+            {t("browser.openExternal")}
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function MdPre({ node: _node, children, ...props }) {
   // ```mermaid 围栏：MdCode 输出 MermaidBlock（自包含容器）/字面量 code——
   // 不套 pre 包裹（避免 pre 内嵌 div / 嵌套 pre 的非法结构；MermaidBlock 自带容器）。
@@ -588,7 +663,7 @@ class MarkdownErrorBoundary extends Component {
 }
 
 // react-markdown components（模块级常量：memo 缓存下引用稳定，避免每帧重建对象）
-const MD_COMPONENTS = { pre: MdPre, code: MdCode, img: MdImage };
+const MD_COMPONENTS = { pre: MdPre, code: MdCode, img: MdImage, a: MdLink };
 
 // remark/rehype 插件（模块级常量，同上；remarkBareImagePaths = I-4 裸路径识别）
 const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBareImagePaths];

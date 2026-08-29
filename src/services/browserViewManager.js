@@ -352,7 +352,19 @@ export function createBrowserViewManager(options = {}) {
     wc.on("will-navigate", (event, target) => {
       if (!normalizeBrowserUrl(target)) event.preventDefault();
     });
+    // did-fail-load 与 Chromium 错误页配对（E2 修复，Slice 3 实证）：加载失败后 Chromium
+    // 会提交内置错误页并触发一次 did-finish-load——若按成功导航处理会错误覆盖
+    // currentUrl/清错误页。loadFailed 标记配对抑制：did-start-navigation 清标记（新导航
+    // 开始），did-fail-load 置标记，紧随的 did-finish-load（错误页）被抑制并清标记。
+    let loadFailed = false;
+    wc.on("did-start-navigation", () => {
+      loadFailed = false;
+    });
     wc.on("did-finish-load", () => {
+      if (loadFailed) {
+        loadFailed = false; // Chromium 错误页的完成事件：非成功导航，不通知不覆盖状态
+        return;
+      }
       crashed = false;
       currentUrl = safeCurrentUrl(wc);
       wc.executeJavaScript("document.title").then((t) => {
@@ -361,7 +373,11 @@ export function createBrowserViewManager(options = {}) {
       }).catch(() => notify({ type: "navigated", url: currentUrl }));
     });
     wc.on("did-fail-load", (_e, errorCode, errorDesc) => {
-      notify({ type: "load-failed", url: currentUrl, reason: extractErrCode(errorDesc, errorCode) });
+      const reason = extractErrCode(errorDesc, errorCode);
+      // ERR_ABORTED = 加载被新导航打断（快速连续导航），非失败语义——不置标记不通知
+      if (reason === "ERR_ABORTED") return;
+      loadFailed = true;
+      notify({ type: "load-failed", url: currentUrl, reason });
     });
     // 崩溃监听（§8-E4）：置 crashed 状态 + 通知渲染进程显示崩溃页
     wc.on("render-process-gone", (_e, details) => {
@@ -650,6 +666,19 @@ export function createBrowserViewManager(options = {}) {
         await cookieStore.set(c);
       }
       return { ok: true, count: list.length };
+    },
+
+    // dev/test-only seam（E2E 弹窗拦截流程，经 main 的 development 门控 IPC
+    // "opc-browser-test-click" 到达——渲染进程/Playwright 不可直接触达视图
+    // webContents）：在面板视图内对 selector 执行真实 click（target=_blank 拦截验证）。
+    // 生产语义不开（main.js 侧 development 门控；本方法本身不创建实例）。
+    async _testClick(selector) {
+      if (!view || crashed) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+      const found = await view.webContents.executeJavaScript(
+        `(() => { const el = document.querySelector(${JSON.stringify(String(selector ?? ""))}); if (!el) return false; el.click(); return true; })()`,
+        true
+      );
+      return found ? { ok: true } : { ok: false, error: { code: "E-BROWSER-NOT-READY", reason: "selector-not-found" } };
     },
 
     // 注入 seam（Slice 2/3 与测试用）：运行期替换导航执行器

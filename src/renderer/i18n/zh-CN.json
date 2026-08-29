@@ -521,5 +521,25 @@
     },
     "expandGroup": "展开分组 {{group}}",
     "collapseGroup": "收起分组 {{group}}"
+  },
+  "browser": {
+    "panel": "浏览器",
+    "omniboxPlaceholder": "输入地址，如 localhost:3000 或 example.com",
+    "back": "后退",
+    "forward": "前进",
+    "reload": "刷新",
+    "openExternal": "在系统浏览器打开",
+    "openInPanel": "在面板中打开",
+    "collapse": "收起面板",
+    "agentControl": "agent 控制中",
+    "stopControl": "停止控制",
+    "navErrorTitle": "无法访问此页面",
+    "retry": "重试",
+    "crashTitle": "页面渲染进程已崩溃",
+    "crashDesc": "浏览器实例可重建；agent 工具调用将返回 E-BROWSER-CRASHED。",
+    "reloadPage": "重新加载",
+    "emptyHint": "输入地址开始浏览",
+    "httpOnly": "仅支持 http/https 地址",
+    "invalidUrl": "地址不完整"
   }
 }

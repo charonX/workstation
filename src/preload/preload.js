@@ -102,6 +102,43 @@ contextBridge.exposeInMainWorld("opc", {
   openReleasesPage: () => ipcRenderer.invoke("opc-open-releases-page"),
 
   /**
+   * 在系统浏览器打开任意 http(s) URL（REQ-BROWSER-004「在系统浏览器打开」入口）。
+   * 主进程侧做 http/https 白名单（防 shell 协议滥用）。
+   * @param {string} url
+   * @returns {Promise<boolean>} 是否成功打开。
+   */
+  openExternal: (url) => ipcRenderer.invoke("opc-open-external", { url }),
+
+  /**
+   * 内置浏览器面板桥（REQ-BROWSER-001/003/004，PRD §10.4 接口 5，GAP-2 裁决：
+   * 渲染进程 ↔ 主进程走 preload IPC，不直接依赖 HTTP 面）。
+   * - bounds 用 send（渲染侧 rAF 节流后推送，布局真相归渲染进程）；
+   * - stop-agent-control / navigate / getState 用 invoke；
+   * - navigate 的 source 由主进程固定为 "user"（渲染进程无 agent 来源面）；
+   * - onEvent 订阅主进程转发事件（navigated/panel-request-open/crashed/load-failed/
+   *   agent-control-revoked/cookie-updated），返回退订函数。
+   */
+  browser: {
+    /** @param {{x:number,y:number,width:number,height:number,visible:boolean}} bounds */
+    sendBounds: (bounds) => ipcRenderer.send("opc-browser-bounds", bounds),
+    /** @returns {Promise<{ok:true, agentControlRevoked:boolean}|{ok:false,error:{code:string}}>} */
+    stopAgentControl: () => ipcRenderer.invoke("opc-browser-control", { action: "stop-agent-control" }),
+    /** @param {{url:string}} input @returns {Promise<{ok:true,url:string,title:string}|{ok:false,error:{code:string,reason?:string}}>} */
+    navigate: ({ url }) => ipcRenderer.invoke("opc-browser-navigate", { url }),
+    /** @returns {Promise<{ok:true,open:boolean,url:string|null,title:string|null,agentControl:boolean,agentControlRevoked:boolean,crashed:boolean}>} */
+    getState: () => ipcRenderer.invoke("opc-browser-state"),
+    /**
+     * @param {(payload: {type:string, url?:string, title?:string, source?:string, reason?:string}) => void} handler
+     * @returns {() => void} 退订函数
+     */
+    onEvent: (handler) => {
+      const wrapped = (_event, payload) => handler(payload);
+      ipcRenderer.on("opc-browser-event", wrapped);
+      return () => ipcRenderer.removeListener("opc-browser-event", wrapped);
+    },
+  },
+
+  /**
    * 订阅启动静默检查结果（仅在新版可用时触发一次）。
    * @param {(result: {currentVersion: string, latestVersion: string|null, hasUpdate: boolean, error: {code: string, message: string}|null}) => void} callback
    * @returns {() => void} 退订函数。
@@ -135,6 +172,15 @@ contextBridge.exposeInMainWorld("opc", {
    */
   __seedAgentConfirmations: (rows) =>
     ipcRenderer.invoke("opc-seed-agent-confirmations", rows),
+
+  /**
+   * Test-only seam: drive a real click inside the browser panel's WebContentsView
+   * (E2E popup-interception flow; main-process handler is development-gated).
+   * @param {string} selector
+   * @returns {Promise<{ok:boolean, error?:{code:string}}>}
+   */
+  __browserTestClick: (selector) =>
+    ipcRenderer.invoke("opc-browser-test-click", { selector }),
 
   /**
    * Test-only seam to seed agent sessions (feishu/orphan 会话无 HTTP 创建面，

@@ -7,11 +7,13 @@
 // 消息区隐藏（CSS display:none 保留 DOM 避免重建）；data-testid='trajectory-tab'。
 
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import MessageList from "./MessageList.jsx";
 import Composer from "./Composer.jsx";
 import StatusBar from "./StatusBar.jsx";
 import ModeToolbar from "./ModeToolbar.jsx";
 import TrajectoryView from "../trajectory/TrajectoryView.jsx";
+import { toggleBrowserPanel, useBrowserPanelOpen } from "../browser/browserPanelStore.js";
 
 export default function ChatView({
   chatTitle,
@@ -52,6 +54,11 @@ export default function ChatView({
   // 视图 Tab 状态（REQ-AGENT-129）：'messages' | 'trajectory'
   const [activeTab, setActiveTab] = useState("messages");
 
+  // 「⧉ 浏览器」切换按钮（REQ-BROWSER-001/004，ux/browser-panel.html icon-btn）：
+  // 开合状态走 browserPanelStore 模块级总线（与 BrowserPanel/MarkdownRenderer 共享）。
+  const { t } = useTranslation();
+  const browserOpen = useBrowserPanelOpen();
+
   return (
     <main className="assistant-chat">
       <header className="chat-header">
@@ -76,6 +83,14 @@ export default function ChatView({
             轨迹
           </button>
         </div>
+        <button
+          type="button"
+          className={`browser-toggle${browserOpen ? " active" : ""}`}
+          data-testid="open-browser"
+          onClick={toggleBrowserPanel}
+        >
+          ⧉ {t("browser.panel")}
+        </button>
       </header>
 
       {/* 轨迹视图（REQ-AGENT-129）：Tab 切换显隐 */}

@@ -36,6 +36,7 @@ import { getAgentConfig } from "../api/agent.js";
 import { ensureCatalog } from "../modelCatalog.js";
 import SessionList from "../components/assistant/SessionList.jsx";
 import ChatView from "../components/assistant/ChatView.jsx";
+import BrowserPanel from "../components/browser/BrowserPanel.jsx";
 import "../components/assistant/assistant.css";
 
 const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
@@ -831,6 +832,10 @@ export default function Assistant() {
         spaceKey={selectedKey}
         liveTrajectoryRecord={liveTrajectoryRecord}
       />
+      {/* 内置浏览器面板（REQ-BROWSER-001/003/004）：会话区右栏第三列，
+          默认收起；开合状态经 browserPanelStore 模块级总线共享（ChatView 头部
+          按钮 / MarkdownRenderer 链接 / agent panel-request-open 事件驱动） */}
+      <BrowserPanel />
     </div>
   );
 }

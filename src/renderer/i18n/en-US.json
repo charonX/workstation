@@ -511,5 +511,25 @@
     "agent": "Agent",
     "feishuSend": "Feishu Send",
     "setVariables": "Set Variables"
+  },
+  "browser": {
+    "panel": "Browser",
+    "omniboxPlaceholder": "Enter an address, e.g. localhost:3000 or example.com",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "openExternal": "Open in system browser",
+    "openInPanel": "Open in panel",
+    "collapse": "Collapse panel",
+    "agentControl": "Agent in control",
+    "stopControl": "Stop control",
+    "navErrorTitle": "This page can't be reached",
+    "retry": "Retry",
+    "crashTitle": "The page's render process has crashed",
+    "crashDesc": "The browser instance can be rebuilt; agent tool calls will return E-BROWSER-CRASHED.",
+    "reloadPage": "Reload",
+    "emptyHint": "Enter an address to start browsing",
+    "httpOnly": "Only http/https addresses are supported",
+    "invalidUrl": "The address is incomplete"
   }
 }
