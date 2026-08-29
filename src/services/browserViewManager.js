@@ -213,6 +213,16 @@ function buildReadScript() {
   return `
 (() => {
   const interactive = 'a[href], button, input, select, textarea, [role=button], [onclick], summary';
+  // 元素定位符：id 优先，否则取首个类名（锚点 §10.4 接口2 golden：selector 为
+  // ".md-cta" 形态——类选择器不带 tagName 前缀），兜底 tagName。
+  const pickSelector = (el) => {
+    if (el.id) return '#' + el.id;
+    if (el.className && typeof el.className === 'string') {
+      const cls = el.className.trim().split(/\\s+/)[0];
+      if (cls) return '.' + cls;
+    }
+    return el.tagName.toLowerCase();
+  };
   const seen = new Set();
   const elements = [];
   for (const el of document.querySelectorAll(interactive)) {
@@ -221,17 +231,10 @@ function buildReadScript() {
     seen.add(el);
     const text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 200);
     const r = el.getBoundingClientRect();
-    let selector = el.tagName.toLowerCase();
-    if (el.id) selector = '#' + el.id;
-    else if (el.className && typeof el.className === 'string') {
-      const cls = el.className.trim().split(/\\s+/)[0];
-      // 锚点 §10.4 接口2 golden：selector 为 ".md-cta" 形态（类选择器不带 tagName 前缀）
-      if (cls) selector = '.' + cls;
-    }
     elements.push({
       tag: el.tagName.toLowerCase(),
       text,
-      selector,
+      selector: pickSelector(el),
       rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
     });
   }

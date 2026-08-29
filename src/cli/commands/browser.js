@@ -9,8 +9,10 @@
 
 import { ensureServer } from "../server.js";
 
-async function postJson(baseUrl, path, body = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
+// 统一 POST 调用：ensureServer 发现主进程 server（ADR-001 本地 HTTP 通道）→ POST /api/browser/*。
+async function postBrowserApi(path, body = {}) {
+  const server = await ensureServer();
+  const res = await fetch(`${server.baseUrl}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -19,8 +21,7 @@ async function postJson(baseUrl, path, body = {}) {
 }
 
 export async function navigate(flags) {
-  const server = await ensureServer();
-  return postJson(server.baseUrl, "/api/browser/navigate", {
+  return postBrowserApi("/api/browser/navigate", {
     url: flags.url,
     source: "agent", // 工具面固定 agent 来源（接口 1 契约）
     ...(flags.expand === true ? { expand: true } : {}),
@@ -28,21 +29,18 @@ export async function navigate(flags) {
 }
 
 export async function read() {
-  const server = await ensureServer();
-  return postJson(server.baseUrl, "/api/browser/read", {});
+  return postBrowserApi("/api/browser/read");
 }
 
 export async function scroll(flags) {
-  const server = await ensureServer();
-  return postJson(server.baseUrl, "/api/browser/scroll", {
+  return postBrowserApi("/api/browser/scroll", {
     dx: Number(flags.dx) || 0,
     dy: Number(flags.dy) || 0,
   });
 }
 
 export async function screenshot() {
-  const server = await ensureServer();
-  return postJson(server.baseUrl, "/api/browser/screenshot", {});
+  return postBrowserApi("/api/browser/screenshot");
 }
 
 // auth-check（ADR-039 决策 8 Human-in-the-Loop Auth）：经 GET /api/browser/cookies
