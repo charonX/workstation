@@ -125,6 +125,11 @@ export default function BrowserPanel() {
         if (s.agentControl && !s.agentControlRevoked) setAgentBar(true);
         if (s.crashed) setViewState("crash");
         if (s.open) openBrowserPanel(); // 渲染进程重载后恢复展开（初次启动 open=false → 保持收起）
+        // agent expand 对账兜底（Slice 3 E2E 实证修复）：agent navigate expand=true
+        // 先于本组件挂载/订阅完成时 panel-request-open 事件被静默丢弃——expandPending
+        // 是主进程持有的可恢复状态，挂载时发现即展开；清除由展开后的 open=true
+        // bounds 推送捎带（主进程 setBounds 闭环），无需新增 IPC。
+        if (s.expandPending) openBrowserPanel();
       })
       .catch(() => {});
     return () => {

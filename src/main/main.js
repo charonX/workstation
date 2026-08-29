@@ -201,7 +201,6 @@ async function createWindow() {
     if (server.services?.getBrowserViewManager) {
       server.services.getBrowserViewManager().setNotifier(forwardBrowserEventToWindow);
     }
-
     // Write server.json into userData so E2E fixtures can discover the port
     const serverJsonPath = path.join(userData, "server.json");
     await fs.mkdir(userData, { recursive: true });
@@ -243,8 +242,15 @@ async function createWindow() {
   // 浏览器面板 notifier 重挂（headless→有窗口切换）：notifier 闭包引用 mainWindow
   // 模块级变量，此处仅确保 server 侧 manager notifier 已接线（createWindow 早退分支
   // 与 server 先于窗口创建的时序兜底）。
+  // 同时注入宿主窗口解析器（Slice 3 实证修复：serviceContainer 创建 manager 时无
+  // getWindow，视图 attach/屏外停靠/截图全部静默失效）——闭包惰性读 mainWindow，
+  // 窗口销毁后自动降级 no-op。
   if (serverCtx?.server?.services?.getBrowserViewManager) {
-    serverCtx.server.services.getBrowserViewManager().setNotifier(forwardBrowserEventToWindow);
+    const manager = serverCtx.server.services.getBrowserViewManager();
+    manager.setNotifier(forwardBrowserEventToWindow);
+    if (typeof manager.setWindowResolver === "function") {
+      manager.setWindowResolver(() => mainWindow);
+    }
   }
 
   // 启动静默检查（REQ-DIST-002 AC7）：窗口创建/加载后异步触发一次

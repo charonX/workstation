@@ -269,6 +269,10 @@ function htmlToText(html) {
 
 export function createBrowserViewManager(options = {}) {
   const notifierRef = { fn: null };
+  // 宿主窗口解析器（Slice 3 E2E 实证修复：serviceContainer 创建时无 getWindow，
+  // 视图从未真正 attach——attach/detach/截图全部静默失效）。与 notifierRef 同规：
+  // main.js 在窗口创建后经 setWindowResolver 注入 () => mainWindow。
+  const windowResolverRef = { fn: null };
   function notify(payload) {
     try {
       if (notifierRef.fn) notifierRef.fn(payload);
@@ -319,6 +323,12 @@ export function createBrowserViewManager(options = {}) {
   let agentControl = false; // agent 曾驱动且未 revoked → 渲染进程显示「agent 控制中」
   let agentControlRevoked = false;
   let open = false; // 面板可见性（渲染进程 bounds 推送镜像）
+  // agent navigate expand=true 的待消化展开意图（Slice 3 E2E 实证修复：渲染进程尚未
+  // 挂载/订阅时 panel-request-open 事件被静默丢弃——事件是瞬时的，状态可恢复）。
+  // 置位：agent expand 导航；消费：BrowserPanel 挂载对账 getState() 展开面板；
+  // 清除：面板打开后的首个 open=true bounds 推送（无需新增 IPC 通道）。
+  let expandPending = false;
+  let lastViewport = { width: 1280, height: 800 }; // 最近一次可见 bounds 尺寸（沉底隐藏时保持可绘制尺寸）
   let screenshotSeq = 0;
   let fallbackSnapshot = null; // headless 退化：最近一次 fallback 导航的静态快照（truncateSnapshot 结果）
   let navigateExecutor = typeof options.navigateExecutor === "function" ? options.navigateExecutor : null;
@@ -335,6 +345,10 @@ export function createBrowserViewManager(options = {}) {
         sandbox: true,
         nodeIntegration: false,
         contextIsolation: true,
+        // 收起态沉底隐藏时 compositor 仍须合成（backgroundThrottling 关）：否则被主 UI
+        // 完全覆盖的视图无 display surface，capturePage 报 "surface not available"——
+        // 收起态截图契约（§6.3 块3 + §10.4 接口3 golden width>0）依赖此项。
+        backgroundThrottling: false,
         // 无 preload：视图内页面不获得任何宿主桥（§10.7 安全基线）
       },
     });
@@ -405,30 +419,68 @@ export function createBrowserViewManager(options = {}) {
   }
 
   function resolveHostWindow() {
+    if (windowResolverRef.fn) {
+      try {
+        const w = windowResolverRef.fn();
+        if (w && !(typeof w.isDestroyed === "function" && w.isDestroyed())) return w;
+      } catch {
+        // fall through 到 options.getWindow
+      }
+    }
     return typeof options.getWindow === "function" ? options.getWindow() : null;
   }
 
-  function attachView(v) {
+  // —— 视图挂载（Slice 3 E2E 实证修复 ×2）——
+  // 1. serviceContainer 创建 manager 时无 getWindow → 视图从未真正 attach（attach/detach/
+  //    截图静默失效）：main.js 窗口创建后经 setWindowResolver 注入解析器兜底。
+  // 2. 收起态可见性表达：detach 或屏外负坐标都会让 capturePage 返回 0×0 空图（compositor
+  //    表面对屏外/未挂载视图裁剪为零），破坏「收起状态截图照常工作」契约（§6.3 块3
+  //    可见性解耦 + §10.4 接口3 golden width>0）。改为 z-order 隐藏：恒 attach，
+  //    隐藏 = 沉到 contentView 最底层（被不透明主 UI 覆盖，视觉等价隐藏）+ 窗内
+  //    lastViewport 尺寸 bounds——compositor 照常合成，capturePage/read/scroll 全可用。
+  // attachMode: "none" | "top"（面板展开，顶层按渲染进程 bounds 绘制）| "bottom"（收起，
+  // 沉底隐藏保活）。
+  let attachMode = "none";
+
+  function mountView(v, mode) {
+    if (attachMode === mode) return;
     const win = resolveHostWindow();
-    if (win && win.contentView && typeof win.contentView.addChildView === "function") {
-      try {
-        win.contentView.addChildView(v);
-        return;
-      } catch (err) {
-        // E6 兜底：attach 失败只记日志，面板内容暂时隐藏而非错位遮挡
-        console.error(JSON.stringify({ event: "browser-view-attach-failed", error: err?.message }));
+    if (!win || !win.contentView || typeof win.contentView.addChildView !== "function") return;
+    try {
+      if (attachMode !== "none") win.contentView.removeChildView(v);
+      if (mode === "bottom") {
+        win.contentView.addChildView(v, 0); // 沉底：主 webContents 视图在其上覆盖
+      } else {
+        win.contentView.addChildView(v); // 顶层
       }
+      attachMode = mode;
+    } catch (err) {
+      // E6 兜底：attach 失败只记日志，面板内容暂时隐藏而非错位遮挡
+      console.error(JSON.stringify({ event: "browser-view-attach-failed", error: err?.message }));
     }
   }
 
   function detachView(v) {
+    if (attachMode === "none") return;
     const win = resolveHostWindow();
     if (win && win.contentView && typeof win.contentView.removeChildView === "function") {
       try {
         win.contentView.removeChildView(v);
+        attachMode = "none";
       } catch {
         // ignore：视图可能从未 attach
       }
+    }
+  }
+
+  // 收起态沉底隐藏（幂等）：窗内原点 + lastViewport 尺寸——保持非零可绘制尺寸，
+  // capturePage 收起态返回真实画面；视觉隐藏由主 UI 覆盖保证。
+  function parkViewHidden(v) {
+    mountView(v, "bottom");
+    try {
+      v.setBounds({ x: 0, y: 0, width: lastViewport.width, height: lastViewport.height });
+    } catch {
+      // E6 同规：同步异常只记日志
     }
   }
 
@@ -499,7 +551,8 @@ export function createBrowserViewManager(options = {}) {
       }
       if (!view) {
         view = createView();
-        if (view) attachView(view);
+        // 恒 attach：可见性由 z-order 表达（展开=顶层，收起=沉底隐藏），不做 detach
+        if (view) mountView(view, open ? "top" : "bottom");
       }
       const { title, snapshot } = await runNavigation(normalized);
       currentUrl = normalized;
@@ -512,7 +565,12 @@ export function createBrowserViewManager(options = {}) {
         agentControl = false;
       } else if (source === "agent") {
         agentControl = true;
-        if (expand === true) notify({ type: "panel-request-open" });
+        if (expand === true) {
+          // 事件 + 状态双写：在线渲染进程走事件即时展开；未就绪/重载场景由
+          // BrowserPanel 挂载对账 getState().expandPending 兜底（清除在 bounds 推送）
+          expandPending = true;
+          notify({ type: "panel-request-open" });
+        }
       }
       notify({ type: "navigated", url: currentUrl, title: currentTitle, source });
       return { ok: true, url: currentUrl, title: currentTitle };
@@ -565,7 +623,38 @@ export function createBrowserViewManager(options = {}) {
     async screenshot({ source } = {}) {
       assertAgentAllowed(source);
       ensureReady();
-      const image = await view.webContents.capturePage();
+      // 收起态截图契约（§6.3 块3 可见性解耦 + §10.4 接口3 golden width>0），Slice 3 E2E
+      // 实证：detached / 屏外 / 沉底被完全覆盖的视图都没有 compositor display surface
+      // （capturePage 返回 0×0 或报 "surface not available"）。唯一可靠路径：临时挂到
+      // 顶层（窗内 0,0 + lastViewport 尺寸）→ 等 compositor 出帧（重试吸收 viz 时序
+      // 错误与 0×0 空帧）→ capture → 恢复沉底隐藏。顶层覆盖主 UI 的瞬间闪烁是契约
+      // 要求的代价（截图优先）；open 时无任何额外动作。
+      const wasOpen = open;
+      if (!wasOpen) {
+        mountView(view, "top");
+        try {
+          view.setBounds({ x: 0, y: 0, width: lastViewport.width, height: lastViewport.height });
+        } catch { /* E6 同规 */ }
+      }
+      let image = null;
+      let lastErr = null;
+      try {
+        for (let attempt = 0; attempt < 15; attempt += 1) {
+          if (!wasOpen) await new Promise((r) => setTimeout(r, 100));
+          try {
+            image = await view.webContents.capturePage();
+            const s = image.getSize ? image.getSize() : { width: 0, height: 0 };
+            if (s.width > 0 && s.height > 0) break; // 非空帧才接受（空帧 = surface 未就绪）
+          } catch (err) {
+            lastErr = err; // "display surface not available" / viz 时序错误：重试
+          }
+        }
+      } finally {
+        if (!wasOpen) parkViewHidden(view); // 恢复沉底隐藏（含异常路径）
+      }
+      if (!image || (image.getSize && image.getSize().width === 0)) {
+        throw lastErr || new Error("E-BROWSER-CAPTURE-EMPTY");
+      }
       const png = image.toPNG ? image.toPNG() : image;
       screenshotSeq += 1;
       await fs.mkdir(shotsDir, { recursive: true });
@@ -575,18 +664,20 @@ export function createBrowserViewManager(options = {}) {
       return { ok: true, path: filePath, width: size.width, height: size.height };
     },
 
-    // —— REQ-BROWSER-001：bounds 哑执行（visible=false 只隐藏，webContents 保活，ADR-039 决策 3）——
+    // —— REQ-BROWSER-001：bounds 哑执行（visible=false 沉底隐藏保活，ADR-039 决策 3）——
     setBounds({ x, y, width, height, visible } = {}) {
-      const wasOpen = open;
       open = visible !== false;
+      if (open) expandPending = false; // 展开意图已被面板消费（对账闭环）
       if (!view) return { ok: true, open };
       try {
-        if (open && typeof width === "number" && typeof height === "number") {
+        if (open && typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
+          lastViewport = { width, height };
+          mountView(view, "top"); // 幂等：仅 z-order 变化时重挂
           view.setBounds({ x: Number(x) || 0, y: Number(y) || 0, width, height });
-        }
-        if (open !== wasOpen) {
-          if (open) attachView(view);
-          else detachView(view); // 隐藏 = 从窗口摘除视图，实例与 webContents 保活
+        } else if (!open) {
+          // 隐藏 = 沉到 contentView 最底层（主 UI 覆盖，幂等）：实例与 webContents
+          // 保活且保持可绘制尺寸，capturePage 收起态仍返回真实画面
+          parkViewHidden(view);
         }
       } catch (err) {
         // E6：bounds 同步异常只记日志不弹错，下帧重算恢复
@@ -613,6 +704,7 @@ export function createBrowserViewManager(options = {}) {
         agentControl,
         agentControlRevoked,
         crashed,
+        expandPending, // agent expand 待消化意图（渲染进程挂载对账用，事件丢失兜底）
       };
     },
 
@@ -689,6 +781,13 @@ export function createBrowserViewManager(options = {}) {
     // 事件回调注入（main.js 接线：mainWindow.webContents.send("opc-browser-event", …)）
     setNotifier(fn) {
       notifierRef.fn = typeof fn === "function" ? fn : null;
+    },
+
+    // 宿主窗口解析器注入（main.js 接线：() => mainWindow）。server 侧创建 manager 时
+    // 窗口尚不存在，attach/detach/park 全部经 resolveHostWindow 惰性解析——窗口创建
+    // 后注入即生效，窗口销毁后解析器返回 null/已销毁窗口自动降级 no-op。
+    setWindowResolver(fn) {
+      windowResolverRef.fn = typeof fn === "function" ? fn : null;
     },
 
     dispose() {
