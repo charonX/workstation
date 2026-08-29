@@ -225,7 +225,8 @@ function buildReadScript() {
     if (el.id) selector = '#' + el.id;
     else if (el.className && typeof el.className === 'string') {
       const cls = el.className.trim().split(/\\s+/)[0];
-      if (cls) selector = el.tagName.toLowerCase() + '.' + cls;
+      // 锚点 §10.4 接口2 golden：selector 为 ".md-cta" 形态（类选择器不带 tagName 前缀）
+      if (cls) selector = '.' + cls;
     }
     elements.push({
       tag: el.tagName.toLowerCase(),

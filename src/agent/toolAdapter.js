@@ -44,6 +44,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { setServerBaseUrlOverride, getServerBaseUrlOverride } from "../cli/server.js";
 import { comparisonKey, isInsideOrEqual, realpathBestEffort } from "../services/pathUtils.js";
 import * as channel from "../cli/commands/channel.js";
+import * as browser from "../cli/commands/browser.js";
 import * as dashboard from "../cli/commands/dashboard.js";
 import * as flow from "../cli/commands/flow.js";
 import * as notify from "../cli/commands/notify.js";
@@ -68,12 +69,14 @@ const COMMAND_MODULES = {
   notify,
   source,
   channel,
+  browser,
   plugin,
   mcp,
 };
 
 // —— argsSchema 工具 ——
 const str = (description) => ({ type: "string", description });
+const num = (description) => ({ type: "number", description });
 const boolean = (description) => ({ type: "boolean", description });
 const enumOf = (values, description) => ({ type: "string", enum: values, description });
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -83,7 +86,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 // riskLevel 与 PRD §7.2 映射一致；positionalFrom = 从参数中取位置参数（如
 // `skill update <slug>` 的 slug）。PRD 表未列出的删除类命令（project/flow/
 // schedule delete）按 §7.2 注「删除/配置变更类归高危」取向归入 confirm。
-const TOOL_DEFS = [
+export const TOOL_DEFS = [
   // task
   { name: "task run", module: "task", fn: "run", riskLevel: "dispatch",
     // PRD §6.1 对话下发 / REQ-AGENT-017 接替声明：工具路径（对话场景）缺省
@@ -264,8 +267,7 @@ const TOOL_DEFS = [
     positionalFrom: ["name"] },
 
   // mcp（REQ-AGENT-090，agent 自用）
-  { name: "mcp list", module: "mcp", fn: "list", riskLevel: "query",
-    description: "列出已配置的 MCP server",
+  { name: "mcp list", module: "mcp", fn: "list", riskLevel: "query",    description: "列出已配置的 MCP server",
     argsSchema: obj({}) },
   { name: "mcp add", module: "mcp", fn: "add", riskLevel: "confirm",
     description: "添加 MCP server（stdio/http，高危-确认）；name 为位置参数",
@@ -288,6 +290,26 @@ const TOOL_DEFS = [
     description: "停用 MCP server 的项目启用（高危-确认）；name 为位置参数",
     argsSchema: obj({ name: str("server 名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
     positionalFrom: ["name"] },
+
+  // browser（REQ-BROWSER-002/006，story 2026-08-24-embedded-browser，PRD §10.4 接口6：
+  // agent 浏览器读取工具集 + 登录探测；riskLevel 均=query——本期只做预览/读取，无写入
+  // 动作（click/type 砍，2026-08-26 裁决）。回执与 /api/browser/* 契约同构；
+  // E-BROWSER-DENIED（停止控制）由 browserViewManager 判定，工具面透传）
+  { name: "browser navigate", module: "browser", fn: "navigate", riskLevel: "query",
+    description: "导航内置浏览器到指定 URL（agent 来源；--expand 请求展开面板）",
+    argsSchema: obj({ url: str("目标 URL（必填，仅 http/https；缺省自动补协议）"), expand: boolean("请求展开浏览器面板") }, ["url"]) },
+  { name: "browser read", module: "browser", fn: "read", riskLevel: "query",
+    description: "读取当前页结构化快照（url/title/text/elements/truncated）",
+    argsSchema: obj({}) },
+  { name: "browser scroll", module: "browser", fn: "scroll", riskLevel: "query",
+    description: "滚动当前页（dx/dy 像素偏移）",
+    argsSchema: obj({ dx: num("横向滚动像素"), dy: num("纵向滚动像素") }) },
+  { name: "browser screenshot", module: "browser", fn: "screenshot", riskLevel: "query",
+    description: "截取当前页 PNG（回执含落盘路径与宽高）",
+    argsSchema: obj({}) },
+  { name: "browser auth-check", module: "browser", fn: "authCheck", riskLevel: "query",
+    description: "探测目标域登录态（非错误语义：{authenticated, missing?}；未登录据此引导用户面板内手动登录）",
+    argsSchema: obj({ domain: str("目标域（必填，前导点域后缀语义，如 .bilibili.com）"), "required-cookies": str("必需 Cookie 名单，逗号分隔（缺省=域下任意 Cookie 即已登录）") }, ["domain"]) },
 ];
 
 // —— 命令层错误（统一 code：E-AGENT-CLI-ERROR，REQ-AGENT-012 错误契约）——
@@ -405,6 +427,39 @@ function errorResult(errorCode, errorMessage) {
   return { output: undefined, errorCode, errorMessage };
 }
 
+// —— CLI 命令行字符串解析（surface.invoke 用）——
+// 工具名为 "<module> <subcommand>" 词组形态（含连字符子命令如 auth-check）——按
+// TOOL_DEFS 最长前缀匹配切出命令名；余下 token 走 CLI 先例（opc-workstation parseArgs）：
+// --key value / --key=value / --flag（boolean true）/ 裸位置参数。
+function parseCommandLine(commandLine) {
+  const tokens = String(commandLine ?? "").trim().split(/\s+/).filter(Boolean);
+  for (let n = Math.min(3, tokens.length); n >= 1; n--) {
+    const tool = TOOL_DEFS.find((t) => t.name === tokens.slice(0, n).join(" "));
+    if (!tool) continue;
+    const flags = {};
+    const positional = [];
+    const rest = tokens.slice(n);
+    for (let i = 0; i < rest.length; i++) {
+      const tok = rest[i];
+      if (tok.startsWith("--")) {
+        const eq = tok.indexOf("=");
+        if (eq !== -1) {
+          flags[tok.slice(2, eq)] = tok.slice(eq + 1);
+        } else if (rest[i + 1] !== undefined && !rest[i + 1].startsWith("--")) {
+          flags[tok.slice(2)] = rest[i + 1];
+          i++;
+        } else {
+          flags[tok.slice(2)] = true;
+        }
+      } else {
+        positional.push(tok);
+      }
+    }
+    return { tool, flags, positional };
+  }
+  return { tool: null, flags: {}, positional: [] };
+}
+
 // 工具错误事件（REQ-AGENT-012 标准 4：结构化错误事件，含工具名与状态）。
 // BUG-006：携带 toolCallId（PI 调用形态可知）——并行工具调用时渲染层按 id
 // 精确归块；无 id 时回退「最近 running 块」关联（系统性错配：错误挂到相邻
@@ -516,6 +571,29 @@ export function createToolSurface(options = {}) {
         const errorMessage = err?.message ?? String(err);
         emitToolError(surface.emit, name, errorCode, errorMessage, toolCallId);
         return errorResult(errorCode, errorMessage);
+      }
+    },
+    // CLI 命令行字符串调用形态（REQ-BROWSER-002/006 契约 seam：`browser navigate --url …`
+    // 原样执行并返回 JSON 回执字符串）——解析 → 同一 TOOL_DEFS 注册表 → C2 命令模块。
+    // 业务错误以 {ok:false, error:{code, reason}} 数据形态由命令模块透传（不抛异常）；
+    // 仅未知异常/未知命令落入 catch/拒绝分支，回执同构为 {ok:false, error:{code, reason}}。
+    async invoke(commandLine) {
+      const { tool, flags, positional } = parseCommandLine(commandLine);
+      if (!tool) {
+        const message = `不支持该操作：${String(commandLine ?? "").trim()} 不在 agent 工具面内`;
+        surface.emit({ type: "tool_execution_error", name: String(commandLine ?? ""), status: "error", errorCode: "E-AGENT-UNSUPPORTED", errorMessage: message });
+        return JSON.stringify({ ok: false, error: { code: "E-AGENT-UNSUPPORTED", reason: message } });
+      }
+      surface.emit({ type: "tool_execution_start", name: tool.name, status: "running" });
+      try {
+        const data = await invokeCommandHandler(tool, flags, positional, baseUrl);
+        surface.emit({ type: "tool_execution_end", name: tool.name, status: "completed" });
+        return typeof data === "string" ? data : JSON.stringify(data);
+      } catch (err) {
+        const errorCode = err?.code || "E-AGENT-CLI-ERROR";
+        const errorMessage = err?.message ?? String(err);
+        emitToolError(surface.emit, tool.name, errorCode, errorMessage);
+        return JSON.stringify({ ok: false, error: { code: errorCode, reason: errorMessage } });
       }
     },
     // PI 工具注入形态（REQ-AGENT-012 标准 1：CLI 命令作为 PI 工具注入 agent；
