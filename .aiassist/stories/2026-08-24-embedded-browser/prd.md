@@ -2,7 +2,7 @@
 
 > 状态：探索期
 > 故事 ID：`2026-08-24-embedded-browser`
-> 最后更新：2026-08-24
+> 最后更新：2026-08-28
 
 ---
 
@@ -12,7 +12,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 
 ## 2. 解决方案
 
-在会话区右侧内置一个可收起的浏览器面板（`WebContentsView` 主进程托管）：用户可手动输 URL 交互浏览；同一浏览器实例作为 agent 的工具面——agent 通过声明了风险等级的 CLI 工具导航/读取/操作页面，用户实时看到 agent 的操作过程，提交类动作走现有确认队列。浏览器既是人的预览窗口，也是 agent 的眼睛和手。
+在会话区右侧内置一个可收起的浏览器面板（`WebContentsView` 主进程托管）：用户可手动输 URL 交互浏览；同一浏览器实例作为 agent 的读取工具面——agent 通过 query 级 CLI 工具导航/读取/滚动/截图，用户实时看到 agent 在看什么。`persist:browser` 分区的登录态同时作为工作台统一身份池，经受控 Cookie 导出接口供本地采集引擎与 Agent 复用（人机协同登录引导见流程 D）。浏览器既是人的预览窗口，也是 agent 的眼睛。
 
 ## 3. 用户故事
 
@@ -31,7 +31,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 2 | agent 浏览器读取工具集：navigate/read/scroll/screenshot + 面板展开/收起控制，经 toolAdapter 声明 riskLevel=query 接入现有工具面；**无写入动作**（click/type 本期砍，见 §12） | 访谈 Q3 确认「工具由 agent 自主调用、自主决定是否展开面板」；TECH-DESIGN 裁决本期只做预览/读取 |
 | 3 | 人机共驾与可见性规则：人操作永远优先（不加锁）；「agent 控制中」指示 + 一键停止控制（断控制后 agent 工具返回 E-BROWSER-DENIED，页面保持当前状态）；收起面板浏览器不断连 | 访谈 Q2/Q3（第三轮）显式确认 |
 | 4 | 聊天链接集成：会话消息中 http(s) 链接默认在面板打开，提供「在系统浏览器打开」入口 | 访谈 Q5（第三轮）确认 |
-| 5 | 登录态持久化、Cookie 导出与身份桥接：指定 `persist:browser` 隔离存储，提供 `/api/browser/cookies` 读取与清理接口，提供 `browser auth-check` 供 Agent 检测登录态并在需要时展开面板引导用户扫码/登录 | ADR-039 决策 7/8 确立 |
+| 5 | 登录态持久化、Cookie 导出与身份桥接：`persist:browser` 隔离持久存储；`GET/DELETE /api/browser/cookies` 受控导出与清理；`browser auth-check` 供 Agent 检测登录态并在需要时展开面板引导用户手动登录（Human-in-the-Loop Auth） | 2026-08-28 用户增补；ADR-039 决策 7/8 确立 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
@@ -95,6 +95,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 
 | 稳定块 | 输入 | 预期输出/结果 | 依据 |
 |---|---|---|---|
+|---|---|---|---|
 | 1 | 地址栏输入 `example.com` | 加载 URL `https://example.com/`（补 https） | 访谈确认 + 浏览器惯例 |
 | 1 | 地址栏输入 `localhost:3000` | 加载 URL `http://localhost:3000/`（localhost 补 http） | 本地 dev server 主场景 |
 | 1 | 应用启动后面板初始状态 | 收起（不展示） | 面板按需出现，不抢主界面 |
@@ -107,6 +108,9 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 4 | MarkdownRenderer 渲染 `[x](https://a.b/c)` 点击 | 面板打开并加载 `https://a.b/c`（非系统浏览器） | 访谈 Q5 |
 | 5 | `GET /api/browser/cookies?domain=.bilibili.com` | 返回 `{ok:true, cookieString:"SESSDATA=...; bili_jct=...", cookies:[...]}` | ADR-039 决策 7 |
 | 5 | `browser auth-check --domain .bilibili.com --required-cookies SESSDATA` | 存在对应有效 Cookie 返回 `{authenticated:true}`，不存在返回 `{authenticated:false}` | ADR-039 决策 8 |
+| 5 | `GET /api/browser/cookies?domain=.bilibili.com`（实例从未导航过该域） | `{ok:true, domain:".bilibili.com", cookieString:"", cookies:[]}`（空态合法，不报错） | 接口 4 空态 |
+| 5 | `DELETE /api/browser/cookies?domain=.bilibili.com`（该域有 12 条 Cookie） | `{ok:true, deletedCount:12}`；再次 GET 同域返回空态 | 接口 4 清理幂等 |
+| 5 | Cookie 导出值脱敏底线 | 回执中 `value` 字段为**完整明文**（采集引擎直用）；JSON 日志行/工具折叠块展示时 cookieString 一律脱敏为 `SESSDATA=<redacted>`（禁止全值入日志） | ADR-039 决策 7 安全边界 |
 
 ## 7. 表单与输入验证（Form / Input Validation）
 
@@ -119,6 +123,8 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 规则 | 触发时机 | 例子（触发 → 期望结果） | 错误状态 |
 |---|---|---|---|
 | agent 工具 url 参数同样过协议白名单 | 每次 navigate | `browser navigate --url "file:///etc/passwd"` → 拒绝，E-BROWSER-BAD-URL | §8-E1 |
+| cookies 接口 domain 参数必填且以 `.` 开头（域后缀语义） | GET/DELETE cookies | `?domain=.bilibili.com` → 有效；`?domain=`（空）/`?domain=bilibili.com`（无前导点）→ E-BROWSER-BAD-DOMAIN | §8-E7 |
+| auth-check required-cookies 逗号分隔名单可为空 | auth-check | 空 = 仅检查该域下是否存在任意 Cookie；非空 = 名单内全部存在才算 authenticated | §8-E8 |
 
 ## 8. 错误状态与失败响应（Error States / Failure Responses）
 
@@ -130,13 +136,15 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | E4 WebContents 崩溃 | render-process-gone | E-BROWSER-CRASHED | 面板崩溃态 + 「重新加载」按钮 | 浏览器实例可重建，登录态依 partition 策略 |
 | E5 停止控制后工具调用 | 用户已点「停止控制」，agent 再调任何 browser 工具 | E-BROWSER-DENIED | agent 收到拒绝回执并自然语言告知用户 | 动作不执行，浏览器状态不变；用户手动导航一次后解除 |
 | E6 主/渲染进程 bounds 同步异常 | resize/收起时视图定位失败 | 日志记录 | 面板内容暂时隐藏而非错位遮挡 | 下帧重算恢复 |
+| E7 cookies 接口 domain 参数非法 | 缺失/空/无前导点 | E-BROWSER-BAD-DOMAIN | agent 收到错误回执 | 无 |
+| E8 auth-check 判定失败 | required-cookies 名单内任一 Cookie 不存在 | 非错误：`{authenticated:false, missing:["SESSDATA"]}` | agent 据此决定引导登录 | 无 |
 
 ## 9. 复杂度分级
 
 | 维度 | 取值/说明 |
 |---|---|
 | 复杂度 | **complex** |
-| 判断理由 | 触及 5 个模块（主进程视图管理、HTTP 路由、worker 工具面、渲染面板、Markdown 渲染），跨三进程（main/renderer/worker）；分支多（崩溃/未就绪/停止控制/共驾）；有安全信任边界（agent 驱动用户可见浏览器、协议白名单）。（2026-08-26 范围收敛：砍 click/type 后确认队列不再涉及，复杂度从 6 模块降为 5，仍 complex） |
+| 判断理由 | 触及 6 个模块（主进程视图管理、HTTP 路由、worker 工具面、渲染面板、Markdown 渲染、Cookie/身份桥接），跨三进程（main/renderer/worker）；分支多（崩溃/未就绪/停止控制/共驾/登录引导）；有安全信任边界（agent 驱动用户可见浏览器、协议白名单、**登录凭据导出**）。（2026-08-26 范围收敛：砍 click/type 后确认队列不涉及；2026-08-28 增补稳定块 5 登录态身份桥接，模块数回升为 6，仍 complex） |
 
 结晶路径：`PRD → DESIGN → DOMAIN-MODEL → TECH-DESIGN（必走）→ CRYSTALLIZE`。
 
@@ -152,10 +160,10 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 
 | 模块 | 职责 | 是否新增 |
 |---|---|---|
-| browserViewManager（main） | WebContentsView 生命周期（懒创建/崩溃重建）、bounds 哑执行（渲染进程推送）、导航执行 + 协议白名单（will-navigate/setWindowOpenHandler 双闸）、弹窗拦截、agentControlRevoked 状态与导航来源标记 | 是 |
-| browser 路由（http） | `/api/browser/*` REST：worker 工具面与渲染进程共用（ADR-001 先例） | 是 |
-| toolAdapter browser 命令（agent worker） | `browser navigate/read/scroll/screenshot` 声明，riskLevel 均=query | 是 |
-| BrowserPanel（renderer） | 面板 UI：地址栏（协议白名单前置校验）、控制中指示、收起/展开、崩溃/错误页；布局真相持有（ResizeObserver → 节流 IPC 推 bounds） | 是 |
+| browserViewManager（main） | WebContentsView 生命周期（懒创建/崩溃重建）、bounds 哑执行（渲染进程推送）、导航执行 + 协议白名单（will-navigate/setWindowOpenHandler 双闸）、弹窗拦截、agentControlRevoked 状态与导航来源标记、`persist:browser` 分区持有与 Cookie 读写 | 是 |
+| browser 路由（http） | `/api/browser/*` REST（含 `/api/browser/cookies` GET/DELETE）：worker 工具面与渲染进程共用（ADR-001 先例）；日志脱敏收口 | 是 |
+| toolAdapter browser 命令（agent worker） | `browser navigate/read/scroll/screenshot/auth-check` 声明，riskLevel 均=query | 是 |
+| BrowserPanel（renderer） | 面板 UI：地址栏（协议白名单前置校验）、控制中指示、收起/展开、崩溃/错误页、登录引导提示；布局真相持有（ResizeObserver → 节流 IPC 推 bounds） | 是 |
 | MarkdownRenderer（renderer） | http(s) 链接默认面板打开（改） | 否 |
 
 #### 模块关系图
@@ -185,7 +193,13 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 
 **手动浏览（流程 A）**：渲染进程地址栏前置校验（同白名单，共享 normalize 逻辑下沉到主进程路由）→ 同一 `/api/browser/navigate`（source=user）→ 导航来源=user → 若 agentControlRevoked 为 true 则清除（停止控制解除契约）。
 
-**read/scroll/screenshot**：read → executeJavaScript 注入自包含序列化器 → 裁剪 JSON；scroll → executeJavaScript scrollBy；screenshot → `webContents.capturePage` → PNG 落会话目录 → 回执含文件路径（agent 可经 REQ-AGENT-097 附件机制读图）。
+**read/scroll/screenshot**：read → executeJavaScript 注入自包含序列化器 → 裁剪 JSON；scroll → executeJavaScript scrollBy；screenshot → `webContents.capturePage` → PNG 落**应用配置目录** `<configDir>/browser-shots/browser-<n>.png`（n 跨会话全局递增——浏览器为跨会话单例，截图不归 agent 会话目录；2026-08-29 人裁决修订）→ 回执含文件路径（agent 按路径读图）。
+
+**登录引导与 Cookie 桥接（流程 D）**：
+1. **探测**：agent 调 `browser auth-check --domain <d> [--required-cookies <c1,c2>]` → 主进程从 `persist:browser` session 读该域 Cookie → `{authenticated, missing[]}`（非错误语义，E8）。
+2. **引导**：未登录 → agent 自主决定 `browser navigate --url <登录页> --expand`（面板展开）+ 对话内发引导文案；用户在面板内手动扫码/登录（人操作优先契约不变）。
+3. **持久化**：登录成功 → Chromium 原生写入 `persist:browser`（零自研持久层）；`opc-browser-event {type:"cookie-updated"}` 通知渲染进程刷新状态。
+4. **导出**：采集引擎/Agent 调 `GET /api/browser/cookies?domain=.bilibili.com[&name=SESSDATA]` → 回执含完整明文 cookieString；日志与工具折叠块展示一律脱敏。`DELETE` 清理指定域会话。
 
 ### 10.4 接口契约
 
@@ -238,15 +252,32 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 接口 | 输入 | 输出（golden） |
 |---|---|---|
 | scroll | `{dx?:number, dy?:number}` | `{ok:true, scrollX:0, scrollY:480}`；revoked → E-BROWSER-DENIED |
-| screenshot | `{}` | `{ok:true, path:"<sessionDir>/shots/browser-<n>.png", width, height}`（PNG 经 capturePage；agent 经附件机制读图） |
+| screenshot | `{}` | `{ok:true, path:"<configDir>/browser-shots/browser-<n>.png", width, height}`（PNG 经 capturePage；跨会话单例全局序号；agent 按路径读图） |
 | state | — | `{ok:true, open:true, url:"http://localhost:3000/", title:"My App", agentControl:true, agentControlRevoked:false, crashed:false}` |
 
 #### 接口 4：HTTP `GET|DELETE /api/browser/cookies`
 
-| 接口 | 输入 | 输出（golden） | 说明 |
-|---|---|---|---|
-| `GET /api/browser/cookies` | `?domain=.bilibili.com[&name=SESSDATA]` | `{ok:true, domain:".bilibili.com", cookieString:"SESSDATA=...; bili_jct=...", cookies:[{name, value, domain, path, expires, httpOnly, secure}]}` | 供本地数据采集引擎与 Agent 提取最新登录 Cookie |
-| `DELETE /api/browser/cookies` | `?domain=.bilibili.com` | `{ok:true, deletedCount: 12}` | 清除指定站点的会话/登录态 |
+| 项目 | GET | DELETE |
+|---|---|---|
+| 调用方 | 本地采集引擎 / worker CLI 工具（auth-check 后端） | 用户/agent 发起的会话清理 |
+| 被调用方 | browserViewManager（session.cookies.get） | browserViewManager（session.cookies.remove 逐条） |
+| 输入 | `?domain=.bilibili.com[&name=SESSDATA]`（domain 必填，前导点=域后缀语义） | `?domain=.bilibili.com` |
+| 输出 | `{ok:true, domain, cookieString, cookies:[{name, value, domain, path, expires, httpOnly, secure}]}` | `{ok:true, deletedCount}` |
+| 业务错误 | E-BROWSER-BAD-DOMAIN（缺/空/无前导点） | 同左 |
+| 系统错误 | 实例未创建 → 读分区 session（分区可无实例独立读取，非错误） | 同左 |
+| 副作用 | 无 | 删除该域全部匹配 Cookie（登录态失效） |
+| 幂等性 | 是 | 是（重复删返回 deletedCount:0） |
+| 安全 | value 为完整明文（采集直用）；JSON 日志/工具折叠块展示一律脱敏为 `NAME=<redacted>` | 删除动作落日志（域级，不含值） |
+
+**样例（golden values）**：
+
+| 场景 | 请求/输入 | 期望响应/输出 |
+|---|---|---|
+| 已登录 | `GET /api/browser/cookies?domain=.bilibili.com` | `{ok:true, domain:".bilibili.com", cookieString:"SESSDATA=...; bili_jct=...", cookies:[…]}` |
+| 空态 | 同上（从未访问过该域） | `{ok:true, domain:".bilibili.com", cookieString:"", cookies:[]}` |
+| 单名过滤 | `GET ...?domain=.bilibili.com&name=SESSDATA` | cookies 仅含 SESSDATA 一条；cookieString=`SESSDATA=...` |
+| 非法 domain | `GET ...?domain=bilibili.com`（无前导点） | `{ok:false, error:{code:"E-BROWSER-BAD-DOMAIN"}}` |
+| 清理幂等 | `DELETE ...?domain=.bilibili.com`（12 条）→ 再 DELETE | 第一次 `{ok:true, deletedCount:12}`；第二次 `{ok:true, deletedCount:0}` |
 
 #### 接口 5：IPC（渲染进程 ↔ 主进程，preload `window.opc.browser*`）
 
@@ -264,7 +295,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | `browser read` | query | 接口 2 |
 | `browser scroll [--dx n] [--dy n]` | query | 接口 3 |
 | `browser screenshot` | query | 接口 3 |
-| `browser auth-check --domain <d> [--required-cookies <c1,c2>]` | query | 接口 4 包装：检查目标站点是否已具备有效登录态 |
+| `browser auth-check --domain <d> [--required-cookies <c1,c2>]` | query | 接口 4 后端包装：检查目标站点是否已具备有效登录态；未登录回 `{authenticated:false, missing:[...]}`，agent 据此引导用户在面板内手动登录（流程 D） |
 
 ### 10.5 关键决策
 
@@ -275,7 +306,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 布局真相归属 | **A 渲染进程持有** / B 主进程持有 | Q1 拍板 A：React 布局单一真相，ResizeObserver 节流推 bounds，主进程哑执行 setBounds；实例「就绪前不 attach」消首帧闪烁 | 高频 IPC 需节流；同步异常按 E6 兜底 |
 | agent 页面感知 | **A executeJavaScript 自包含快照** / B CDP 原生快照 | Q2 拍板 A：高频轮询语义下够用且截断可控；跨域 iframe 拿不到记为已知限制 | 严格 CSP 站点注入被拒 → 退化为 title/url only |
 | 写入动作（click/type） | **本期砍**（曾推演 CDP Input 方案） | 2026-08-26 人裁决：本期只做预览/读取；CDP debugger 生命周期管理复杂度不付 | 后续 story 恢复时重启此推演 |
-| session 分区与身份共享 | **persist:browser + 导出 API** / 内存 session | 登录态跨重启保留；人手动扫码后自动持久化并开放受控 API 给本地抓取服务与 Agent 复用 | 凭据面扩大 → 协议白名单 + 无 preload + 受控端点缓解 |
+| session 分区与身份共享 | **persist:browser + 导出 API** / 内存 session | 登录态跨重启保留；人手动扫码后自动持久化并开放受控 API 给本地抓取服务与 Agent 复用 | 凭据面扩大 → 协议白名单 + 无 preload + 受控端点缓解 + 日志脱敏收口 |
 | 停止控制解除 | **手动导航即解除** / 显式恢复按钮 | Q5 拍板：source=user 的导航清除 revoked；紧急刹车语义 + 零额外交互 | 用户误导航即恢复（可接受，agent 仍需自主决定继续） |
 
 ### 10.6 风险与回流点
@@ -285,12 +316,13 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | WebContentsView 在 Electron 43 满足全部需求（嵌入、拦截、capturePage 截图） | 退回方向 A（webview） | TECH-DESIGN | 能（spike） |
 | 渲染进程 React 布局与主进程 bounds 同步可做到无感 | 面板错位/遮挡 bug 频发 | TECH-DESIGN | 能（spike） |
 | executeJavaScript 注入在常见站点不被 CSP 拒 | read 退化为 title/url，agent 感知变弱 | TECH-DESIGN | 能（spike 几个代表站点） |
+| session.cookies 可在无实例时从分区独立读取（auth-check 免创建实例） | auth-check 需先懒创建实例（重 but 正确） | TECH-DESIGN | 能（API 文档核实） |
 
 ### 10.7 安全/性能/可观测性
 
-- 安全：协议白名单双闸（渲染进程前置校验 + 主进程 will-navigate/setWindowOpenHandler 兜底，覆盖重定向链）；视图无 preload、`nodeIntegration=false`、`contextIsolation=true`、webSecurity 默认开；不存支付凭据；persist:browser 分区与主窗口 session 隔离。
-- 性能：bounds 推送 rAF 节流；read 快照 4000 字符/50 元素硬截断；实例懒创建，停止控制不销毁实例。
-- 可观测性：实例生命周期事件（创建/崩溃/导航失败/停止控制切换）落 JSON 日志行（项目先例）；E6 同步异常记日志不弹错。
+- 安全：协议白名单双闸（渲染进程前置校验 + 主进程 will-navigate/setWindowOpenHandler 兜底，覆盖重定向链）；视图无 preload、`nodeIntegration=false`、`contextIsolation=true`、webSecurity 默认开；persist:browser 分区与主窗口 session 隔离。**凭据边界**：Cookie 导出接口是本 story 最大新增信任面——明文只走 HTTP 本地回执（ADR-001 单机通道），绝入日志/工具折叠块全文（脱敏收口在 browser 路由）；DELETE 落域级审计日志；不做浏览器内支付/凭据管理器。
+- 性能：bounds 推送 rAF 节流；read 快照 4000 字符/50 元素硬截断；实例懒创建，停止控制不销毁实例；cookies 接口按域过滤后返回（不全量 dump）。
+- 可观测性：实例生命周期事件（创建/崩溃/导航失败/停止控制切换/cookie 域级删除）落 JSON 日志行（项目先例）；E6 同步异常记日志不弹错。
 
 ## 11. 测试决策（Testing Decisions）
 
@@ -302,6 +334,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 2 agent 工具集 | CLI（toolAdapter browser 命令 JSON 回执 + riskLevel 声明） | 单元/集成 | HTTP 层 stub |
 | 3 共驾/可见性规则 | HTTP API（收起状态 read 仍 ok；停止控制后 read 返 E-BROWSER-DENIED；手动导航解除）+ E2E（控制中指示/停止控制按钮） | 集成 + E2E | 真实 |
 | 4 聊天链接集成 | 组件测试（MarkdownRenderer 链接点击 → 面板打开回调） | 单元/组件 | mock |
+| 5 登录态/Cookie 桥接 | HTTP API（cookies GET 空态/单名过滤/BAD-DOMAIN、DELETE 幂等；auth-check authenticated/missing）+ 单元（domain 参数校验、日志脱敏函数） | 集成 + 单元 | 真实分区 session（stub 页种 Cookie） |
 
 测试目录按 `tests/capabilities/embedded-browser/<entity>/2026-08-24-embedded-browser/` 组织（entity 拟 `browser-panel` / `browser-tools`）。
 
@@ -322,13 +355,14 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 
 - 访谈笔记：`interview-notes.md`（三轮 frontier，方向 B 已确认）。
 - 2026-08-26 范围收敛：TECH-DESIGN Q3 推演 CDP Input 方案后，用户裁决本期只做预览/读取（navigate/read/scroll/screenshot），click/type 及其确认集成移入范围外。稳定块从 5 个收敛为 4 个（原块 4「提交类确认」移除，原块 5 改号 4）。
+- 2026-08-28 用户增补：新增稳定块 5「登录态持久化、Cookie 导出与身份桥接」（ADR-039 补决策 7/8；流程 D；接口 4 cookies GET/DELETE + `browser auth-check`；错误 E7/E8；凭据日志脱敏底线）。浏览器定位升级为「可视化预览 + 人机协同登录认证中心」。
 - 后续 story 伏笔：提交类动作 + 确认集成；agent 浏览跟随增强（语义级风险分级、站点级白名单）。
 
 ## 14. PRD 完整性自检查
 
 | 检查项 | 状态 | 备注 |
 |---|---|---|
-| 操作流 | PASS | §6.1 三条流程覆盖全部 4 个稳定块；§6.2 分支异常完整 |
+| 操作流 | PASS | §6.1 四条流程覆盖全部 5 个稳定块；§6.2 分支异常完整 |
 | 输入验证 | PASS | §7 地址栏 + 工具 url 参数，均有有效/无效例子 |
 | 错误状态 | PASS | §8 六类失败模式（E1-E6），含跨进程调用 |
 | 预期值锚点 | PASS | §6.3 每稳定块 ≥1 条字面值锚点 |
@@ -344,3 +378,4 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 |---|---|---|---|
 | v0.1 | 2026-08-24 | 初稿 | AI + 人 |
 | v0.2 | 2026-08-26 | TECH-DESIGN 深潜：范围收敛（砍 click/type，稳定块 5→4）；§10 完整填充（5 接口契约 + golden values）；ADR-039 落地 | AI + 人 |
+| v0.3 | 2026-08-28 | 用户增补稳定块 5「登录态持久化、Cookie 导出与身份桥接」：流程 D、接口 4 完整契约（含空态/幂等/脱敏 golden）、auth-check CLI、E7/E8 错误、§9 复杂度回升 6 模块、§11.1 补 seam；同步修订 §2 解决方案表述 | AI + 人 |
