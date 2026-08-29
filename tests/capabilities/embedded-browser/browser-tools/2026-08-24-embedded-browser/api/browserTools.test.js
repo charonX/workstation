@@ -150,6 +150,13 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
     assert.deepEqual(JSON.parse(out), { authenticated: false, missing: [] });
   });
 
+  it("空 required-cookies：有任意 Cookie → {authenticated:true}（§7.1 row3 正半支，PRD 对齐缺口 1 补全）", async () => {
+    // EXPECTED-TRACE: prd.md §7.1 row 3（空名单=存在任意 Cookie 即 true）
+    await seedCookie(["bili_jct"]);
+    const out = await surface.invoke("browser auth-check --domain .bilibili.com");
+    assert.deepEqual(JSON.parse(out), { authenticated: true });
+  });
+
   it("BAD-DOMAIN 透传：无前导点拒绝（REQ-006 标准5）", async () => {
     // EXPECTED-TRACE: prd.md §8-E7（E-BROWSER-BAD-DOMAIN）
     const out = await surface.invoke("browser auth-check --domain bilibili.com");
