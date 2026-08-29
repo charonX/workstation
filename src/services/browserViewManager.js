@@ -101,6 +101,8 @@ function chromiumReasonFromError(err) {
 
 // —— 内存 fallback session（纯 node 环境下替代 electron session，Map 存 Cookie）——
 // get/remove 语义与 electron session.cookies 对齐：入参 url 形态，domain 后缀匹配。
+// 注意：cookiesGet/cookiesSet/cookiesRemove 是本 fallback 的自定义命名，electron Session
+// 上没有这些方法——业务代码一律走 createCookieStore adapter，禁止直接触碰这些方法名。
 function createMemoryCookieSession() {
   const cookies = new Map(); // key: name|domain|path
   const keyOf = (c) => `${c.name}|${c.domain}|${c.path || "/"}`;
@@ -147,6 +149,51 @@ function createMemoryCookieSession() {
       }
       return removed;
     },
+  };
+}
+
+// —— Cookie adapter：归一 fallback session 与 Electron Session 两种形态到同一调用面 ——
+// 调用面：get({domain,name?}) → Cookie[]；remove(cookie, domain?) → 删除条数；set(cookie)。
+// Electron 分支走 session.cookies.get/remove/set：
+// - get 的 domain filter：Electron 语义为「域或其子域」，与 fallback 的后缀匹配对齐；
+//   契约入参 domain 以 "." 开头（域后缀语义，§7.1），喂给 Electron 前剥掉前导点。
+// - remove 需要 url 形态入参（无 {domain,name} 直删 API）：由 cookie 的 domain/path 构造。
+function buildCookieUrl(c) {
+  const proto = c.secure ? "https" : "http";
+  const host = String(c.domain || "").replace(/^\./, "");
+  return `${proto}://${host}${c.path || "/"}`;
+}
+
+function createCookieStore(session) {
+  if (session && session.isFallback) {
+    return {
+      get: ({ domain, name } = {}) => session.cookiesGet({ domain, name }),
+      remove: (cookie, domain) => session.cookiesRemove({ name: cookie.name, domain }),
+      set: (cookie) => session.cookiesSet(cookie),
+    };
+  }
+  const jar = session && session.cookies ? session.cookies : null;
+  return {
+    get: async ({ domain, name } = {}) => {
+      const filter = {};
+      if (domain) filter.domain = String(domain).replace(/^\./, ""); // 剥前导点：匹配域及子域
+      if (name) filter.name = name;
+      return jar.get(filter);
+    },
+    remove: async (cookie) => {
+      await jar.remove(buildCookieUrl(cookie), cookie.name);
+      return 1;
+    },
+    set: (cookie) =>
+      jar.set({
+        url: buildCookieUrl(cookie),
+        name: cookie.name,
+        value: cookie.value,
+        path: cookie.path || "/",
+        secure: cookie.secure === true,
+        httpOnly: cookie.httpOnly === true,
+        expirationDate: cookie.expirationDate ?? cookie.expires,
+      }),
   };
 }
 
@@ -249,6 +296,9 @@ export function createBrowserViewManager(options = {}) {
   if (!session) {
     session = createMemoryCookieSession();
   }
+  // 统一 cookie 调用面：fallback 自定义命名与 Electron session.cookies API 归一到同一
+  // adapter，业务代码只面向 adapter——fallback 命名不再泄漏进 Electron 路径。
+  const cookieStore = createCookieStore(session);
 
   // —— 状态（REQ-BROWSER-003 状态机 + state 契约字段）——
   let view = null; // WebContentsView 实例（懒创建）
@@ -360,13 +410,6 @@ export function createBrowserViewManager(options = {}) {
   // —— revoked 检查（REQ-BROWSER-003：revoked 期间 agent 来源一律 DENIED）——
   function assertAgentAllowed(source) {
     if (source === "agent" && agentControlRevoked) throw browserError("E-BROWSER-DENIED");
-  }
-
-  // electron session.cookies.remove 需要 url 形态入参：由 cookie 的 domain/path 构造
-  function buildCookieUrl(c) {
-    const proto = c.secure ? "https" : "http";
-    const host = String(c.domain || "").replace(/^\./, "");
-    return `${proto}://${host}${c.path || "/"}`;
   }
 
   // —— 无 Electron 退化导航执行器：HTTP GET 抓 <title>，node 错误码映射 ERR_*（§8-E2）——
@@ -551,7 +594,7 @@ export function createBrowserViewManager(options = {}) {
       if (typeof domain !== "string" || !domain.startsWith(".") || domain.length < 2) {
         throw browserError("E-BROWSER-BAD-DOMAIN");
       }
-      const list = await session.cookiesGet({ domain, name });
+      const list = await cookieStore.get({ domain, name });
       const cookies = list.map((c) => ({
         name: c.name,
         value: c.value,
@@ -572,16 +615,11 @@ export function createBrowserViewManager(options = {}) {
       if (typeof domain !== "string" || !domain.startsWith(".") || domain.length < 2) {
         throw browserError("E-BROWSER-BAD-DOMAIN");
       }
-      const list = await session.cookiesGet({ domain });
+      const list = await cookieStore.get({ domain });
       let deletedCount = 0;
       for (const c of list) {
         try {
-          if (session.isFallback) {
-            deletedCount += await session.cookiesRemove({ name: c.name, domain });
-          } else {
-            await session.cookies.remove(buildCookieUrl(c), c.name);
-            deletedCount += 1;
-          }
+          deletedCount += await cookieStore.remove(c, domain);
         } catch {
           // 单条删除失败（已失效/竞态）不计入，不阻断其余删除
         }
@@ -594,26 +632,15 @@ export function createBrowserViewManager(options = {}) {
     // dev/test-only seam（业务测试骨架注释约定「实现提供测试 seam（分区 session.cookies.set）」，
     // 经 POST /api/browser/_test/seed-cookies 到达，路由层 NODE_ENV=test 门控——生产语义不开
     // Cookie 写入面，REQ-BROWSER-005 安全边界：凭据唯一来源=用户在面板内真实登录）：
-    // fallback 走内存 session.cookiesSet；Electron 走分区 session.cookies.set（E2E 亦可用）。
-    // 入参 {cookies:[{name,value,domain,path?,expires?,httpOnly?,secure?}]} 或单个 cookie 对象。
+    // 经 cookieStore adapter 统一写入（fallback 走内存 Map，Electron 走分区 session.cookies.set，
+    // E2E 亦可用）。入参 {cookies:[{name,value,domain,path?,expires?,httpOnly?,secure?}]} 或单个 cookie 对象。
     async _seedCookiesForTest(details) {
       const list = Array.isArray(details?.cookies) ? details.cookies : details ? [details] : [];
+      if (!session.isFallback && !(session.cookies && typeof session.cookies.set === "function")) {
+        return { ok: false, error: { code: "E-BROWSER-SEED-UNAVAILABLE" } };
+      }
       for (const c of list) {
-        if (session.isFallback) {
-          await session.cookiesSet(c);
-        } else if (session.cookies && typeof session.cookies.set === "function") {
-          await session.cookies.set({
-            url: buildCookieUrl(c),
-            name: c.name,
-            value: c.value,
-            path: c.path || "/",
-            secure: c.secure === true,
-            httpOnly: c.httpOnly === true,
-            expirationDate: c.expirationDate ?? c.expires,
-          });
-        } else {
-          return { ok: false, error: { code: "E-BROWSER-SEED-UNAVAILABLE" } };
-        }
+        await cookieStore.set(c);
       }
       return { ok: true, count: list.length };
     },
