@@ -20,6 +20,7 @@ import { handleNotifications } from "./routes/notifications.js";
 import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
+import { handleBrowser } from "./routes/browser.js";
 import { handleAgentSessions, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
 
@@ -194,6 +195,10 @@ async function handleRequest(req, res, server) {
     case "notifications": return handleNotifications(req, res, body, subPath);
     case "content-sources": return handleContentSources(req, res, body, subPath);
     case "channel": return handleChannel(req, res, body, subPath);
+    case "browser":
+      return handleBrowser(req, res, body, subPath, {
+        getBrowserViewManager: () => services?.getBrowserViewManager(),
+      });
     case "server": return handleServer(req, res, server, subPath);
     default: return notFound(res);
   }

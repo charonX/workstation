@@ -186,6 +186,18 @@ async function createWindow() {
     const { port } = server.address();
     apiBaseUrl = baseUrl;
 
+    // 浏览器面板事件转发接线（REQ-BROWSER-001/002，PRD §10.3 副作用）：manager 的
+    // navigated/panel-request-open/crashed/load-failed 等事件 → mainWindow.webContents.send
+    // "opc-browser-event"。窗口尚未创建时安全 no-op（notifier 内部判空），createWindow
+    // 末尾统一重挂到当前窗口。
+    if (server.services?.getBrowserViewManager) {
+      server.services.getBrowserViewManager().setNotifier((payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("opc-browser-event", payload);
+        }
+      });
+    }
+
     // Write server.json into userData so E2E fixtures can discover the port
     const serverJsonPath = path.join(userData, "server.json");
     await fs.mkdir(userData, { recursive: true });
@@ -223,6 +235,17 @@ async function createWindow() {
   }
 
   mainWindow.maximize();
+
+  // 浏览器面板 notifier 重挂（headless→有窗口切换）：notifier 闭包引用 mainWindow
+  // 模块级变量，此处仅确保 server 侧 manager notifier 已接线（createWindow 早退分支
+  // 与 server 先于窗口创建的时序兜底）。
+  if (serverCtx?.server?.services?.getBrowserViewManager) {
+    serverCtx.server.services.getBrowserViewManager().setNotifier((payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("opc-browser-event", payload);
+      }
+    });
+  }
 
   // 启动静默检查（REQ-DIST-002 AC7）：窗口创建/加载后异步触发一次
   scheduleSilentUpdateCheck();

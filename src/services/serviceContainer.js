@@ -17,6 +17,7 @@ import { createPermissionBridge } from "./permissionBridge.js";
 import { createModeService } from "./modeService.js";
 import { buildSessionConfig } from "./sessionDomain.js";
 import { createSseSubscriptionRegistry } from "./sessionSseRegistry.js";
+import { createBrowserViewManager } from "./browserViewManager.js";
 import { executeToolCommand } from "../agent/toolAdapter.js";
 
 export const PURGE_CRON_SCHEDULE = "17 3 * * *";
@@ -53,6 +54,7 @@ export function createServiceContainer(options = {}) {
   let serverModeService = null;
   let serverAgentService = null;
   let serverCardRenderer = null;
+  let serverBrowserViewManager = null;
 
   // Lazy factories (can be overridden via setters or server._opcXxx proxies)
   let sessionStoreFactory = () => {
@@ -157,6 +159,18 @@ export function createServiceContainer(options = {}) {
     return serverCardRenderer;
   };
 
+  // 浏览器面板主进程托管（REQ-BROWSER-001/003/005，ADR-039）：惰性单例工厂。
+  // 事件转发接线由 main.js 在窗口创建后经 setNotifier 注入（mainWindow.webContents.send
+  // "opc-browser-event"）；headless/纯 node（无窗口）下 notifier 缺省 no-op，安全。
+  let browserViewManagerFactory = () => {
+    if (!serverBrowserViewManager) {
+      serverBrowserViewManager = createBrowserViewManager({
+        shotsDir: path.join(configDir, "browser-shots"),
+      });
+    }
+    return serverBrowserViewManager;
+  };
+
   async function start() {
     runExecutionLogPurge();
 
@@ -237,6 +251,10 @@ export function createServiceContainer(options = {}) {
   }
 
   async function dispose() {
+    if (serverBrowserViewManager) {
+      try { serverBrowserViewManager.dispose(); } catch { /* ignore */ }
+      serverBrowserViewManager = null;
+    }
     if (imRouterInstance && typeof imRouterInstance.stop === "function") {
       try {
         imRouterInstance.stop();
@@ -304,6 +322,7 @@ export function createServiceContainer(options = {}) {
     getModeService: () => modeServiceFactory(),
     getAgentService: async () => agentServiceFactory(),
     getCardRenderer: () => cardRendererFactory(),
+    getBrowserViewManager: () => browserViewManagerFactory(),
 
     // State peek
     peekAgentService: () => serverAgentService ?? null,
@@ -330,6 +349,8 @@ export function createServiceContainer(options = {}) {
     setAgentServiceFactory: (fn) => { agentServiceFactory = fn; },
     getCardRendererFactory: () => cardRendererFactory,
     setCardRendererFactory: (fn) => { cardRendererFactory = fn; },
+    getBrowserViewManagerFactory: () => browserViewManagerFactory,
+    setBrowserViewManagerFactory: (fn) => { browserViewManagerFactory = fn; },
     setAgentService: (svc) => { serverAgentService = svc; },
   };
 
