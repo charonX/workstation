@@ -41,6 +41,13 @@ function browserError(code, reason) {
   return err;
 }
 
+// cookie 域校验（REQ-BROWSER-005，§7.1：必填且以 "." 开头的域后缀语义）
+function assertValidCookieDomain(domain) {
+  if (typeof domain !== "string" || !domain.startsWith(".") || domain.length < 2) {
+    throw browserError("E-BROWSER-BAD-DOMAIN");
+  }
+}
+
 // —— 协议白名单 + normalize（锚点 §7 row1 / §6.3 块1 rows1-2）——
 // 仅 http/https；缺省补全：localhost/127.0.0.1 补 http://，其余补 https://；
 // 空/白名单外/无主机 → E-BROWSER-BAD-URL。返回 null 表示非法。
@@ -377,8 +384,12 @@ export function createBrowserViewManager(options = {}) {
     return errorCode ? `ERR_${errorCode}` : "ERR_FAILED";
   }
 
+  function resolveHostWindow() {
+    return typeof options.getWindow === "function" ? options.getWindow() : null;
+  }
+
   function attachView(v) {
-    const win = typeof options.getWindow === "function" ? options.getWindow() : null;
+    const win = resolveHostWindow();
     if (win && win.contentView && typeof win.contentView.addChildView === "function") {
       try {
         win.contentView.addChildView(v);
@@ -391,7 +402,7 @@ export function createBrowserViewManager(options = {}) {
   }
 
   function detachView(v) {
-    const win = typeof options.getWindow === "function" ? options.getWindow() : null;
+    const win = resolveHostWindow();
     if (win && win.contentView && typeof win.contentView.removeChildView === "function") {
       try {
         win.contentView.removeChildView(v);
@@ -419,10 +430,8 @@ export function createBrowserViewManager(options = {}) {
       const res = await fetch(normalizedUrl, { redirect: "follow", signal: AbortSignal.timeout(15000) });
       const html = await res.text();
       const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
-      return {
-        title: m ? m[1].trim() : "",
-        snapshot: { title: m ? m[1].trim() : "", text: htmlToText(html), elements: [] },
-      };
+      const title = m ? m[1].trim() : "";
+      return { title, snapshot: { title, text: htmlToText(html), elements: [] } };
     } catch (err) {
       throw browserError("E-BROWSER-NAV-FAILED", chromiumReasonFromError(err));
     }
@@ -539,9 +548,8 @@ export function createBrowserViewManager(options = {}) {
       const image = await view.webContents.capturePage();
       const png = image.toPNG ? image.toPNG() : image;
       screenshotSeq += 1;
-      const dir = shotsDir;
-      await fs.mkdir(dir, { recursive: true });
-      const filePath = path.join(dir, `browser-${screenshotSeq}.png`);
+      await fs.mkdir(shotsDir, { recursive: true });
+      const filePath = path.join(shotsDir, `browser-${screenshotSeq}.png`);
       await fs.writeFile(filePath, png);
       const size = image.getSize ? image.getSize() : { width: 0, height: 0 };
       return { ok: true, path: filePath, width: size.width, height: size.height };
@@ -590,10 +598,7 @@ export function createBrowserViewManager(options = {}) {
 
     // —— REQ-BROWSER-005：Cookie 受控导出（分区 session 独立于视图实例；ADR-039 决策 7）——
     async getCookies({ domain, name } = {}) {
-      // domain 校验：必填且以 "." 开头（域后缀语义，§7.1 → E-BROWSER-BAD-DOMAIN）
-      if (typeof domain !== "string" || !domain.startsWith(".") || domain.length < 2) {
-        throw browserError("E-BROWSER-BAD-DOMAIN");
-      }
+      assertValidCookieDomain(domain);
       const list = await cookieStore.get({ domain, name });
       const cookies = list.map((c) => ({
         name: c.name,
@@ -612,9 +617,7 @@ export function createBrowserViewManager(options = {}) {
     },
 
     async deleteCookies({ domain } = {}) {
-      if (typeof domain !== "string" || !domain.startsWith(".") || domain.length < 2) {
-        throw browserError("E-BROWSER-BAD-DOMAIN");
-      }
+      assertValidCookieDomain(domain);
       const list = await cookieStore.get({ domain });
       let deletedCount = 0;
       for (const c of list) {

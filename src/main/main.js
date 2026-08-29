@@ -125,6 +125,16 @@ let serverCtx = null;
 let apiBaseUrl = null;
 let isCleaningUp = false;
 
+// 浏览器面板事件转发（REQ-BROWSER-001/002，PRD §10.3 副作用）：manager 的
+// navigated/panel-request-open/crashed/load-failed 等事件 → mainWindow.webContents.send
+// "opc-browser-event"。窗口尚未创建/已销毁时安全 no-op；server 启动后与 createWindow
+// 末尾两处经 setNotifier 挂载同一回调。
+function forwardBrowserEventToWindow(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("opc-browser-event", payload);
+  }
+}
+
 async function cleanupServer() {
   if (isCleaningUp) return;
   isCleaningUp = true;
@@ -186,16 +196,10 @@ async function createWindow() {
     const { port } = server.address();
     apiBaseUrl = baseUrl;
 
-    // 浏览器面板事件转发接线（REQ-BROWSER-001/002，PRD §10.3 副作用）：manager 的
-    // navigated/panel-request-open/crashed/load-failed 等事件 → mainWindow.webContents.send
-    // "opc-browser-event"。窗口尚未创建时安全 no-op（notifier 内部判空），createWindow
-    // 末尾统一重挂到当前窗口。
+    // 浏览器面板事件转发接线：窗口尚未创建时 no-op（forwardBrowserEventToWindow 内部
+    // 判空），createWindow 末尾统一重挂到当前窗口。
     if (server.services?.getBrowserViewManager) {
-      server.services.getBrowserViewManager().setNotifier((payload) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("opc-browser-event", payload);
-        }
-      });
+      server.services.getBrowserViewManager().setNotifier(forwardBrowserEventToWindow);
     }
 
     // Write server.json into userData so E2E fixtures can discover the port
@@ -240,11 +244,7 @@ async function createWindow() {
   // 模块级变量，此处仅确保 server 侧 manager notifier 已接线（createWindow 早退分支
   // 与 server 先于窗口创建的时序兜底）。
   if (serverCtx?.server?.services?.getBrowserViewManager) {
-    serverCtx.server.services.getBrowserViewManager().setNotifier((payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("opc-browser-event", payload);
-      }
-    });
+    serverCtx.server.services.getBrowserViewManager().setNotifier(forwardBrowserEventToWindow);
   }
 
   // 启动静默检查（REQ-DIST-002 AC7）：窗口创建/加载后异步触发一次
