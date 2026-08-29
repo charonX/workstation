@@ -140,4 +140,41 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成）", () =
     // EXPECTED-TRACE: prd.md §6.3 块4 row 1（面板打开并加载 https://a.b/c，非系统浏览器）
     await expect(page.locator(PANEL)).toBeVisible();
   });
+
+  // —— 以下 4 用例自 api/browserTools.test.js 迁移（2026-08-29 req-gap 就地补全）：
+  // read 结构/截断、scroll、screenshot 需真实 WebContentsView（纯 node 无 DOM 执行面），
+  // 归 E2E。断言 expected 值未改动。
+
+  test("REQ-BROWSER-002 read 快照结构：elements 含 tag/text/selector/rect", async () => {
+    test.skip(true, "SKELETON: 真实 WebContentsView 集成（Slice 3）");
+    // EXPECTED-TRACE: prd.md §10.4 接口2 样例（elements:[{tag:"a",text:"立即开始",selector:".md-cta",rect:{…}}]）
+    await fetch(`${apiBaseUrl}/api/browser/navigate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `http://localhost:${STUB_PORT}`, source: "agent" }),
+    });
+    const r = await fetch(`${apiBaseUrl}/api/browser/read`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const body = await r.json();
+    expect(body.ok).toBe(true);
+    const el = body.elements.find((e) => e.selector === ".md-cta");
+    expect(el).toBeTruthy();
+    expect(el.tag).toBe("a");
+    expect(typeof el.rect.x).toBe("number");
+  });
+
+  test("REQ-BROWSER-002 read 截断：正文 >4000 字符截断且 truncated=true", async () => {
+    test.skip(true, "SKELETON: 真实 WebContentsView 集成（Slice 3）");
+    // EXPECTED-TRACE: prd.md §10.4 接口2 样例（text 截断至 4000 字符，truncated:true）
+    // 长页 stub 由实现提供（/long 路由或夹具页）
+  });
+
+  test("REQ-BROWSER-002 scroll 回执：{ok:true, scrollX, scrollY}", async () => {
+    test.skip(true, "SKELETON: 真实 WebContentsView 集成（Slice 3）");
+    // EXPECTED-TRACE: prd.md §10.4 接口3（{ok:true, scrollX:0, scrollY:480}）
+  });
+
+  test("REQ-BROWSER-002 screenshot 回执与落盘：PNG 文件存在且 n 递增", async () => {
+    test.skip(true, "SKELETON: 真实 WebContentsView 集成（Slice 3）");
+    // EXPECTED-TRACE: prd.md §10.4 接口3（{ok:true, path:"<sessionDir>/shots/browser-<n>.png", width>0, height>0}）
+  });
 });

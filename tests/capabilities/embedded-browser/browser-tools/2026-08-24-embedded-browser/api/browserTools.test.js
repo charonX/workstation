@@ -6,10 +6,10 @@
 // TEST-AUTHOR: agent
 // ASSERTIONS-SIGNED: false
 //
-// 骨架说明：业务测试骨架（ACCEPTANCE tests）。
+// 状态：哨兵已移除（2026-08-29，Slice 2 落地）。
 // 覆盖 seam：CLI 工具面（toolAdapter browser 命令声明）+ HTTP（/api/browser/*，工具后端）。
-// 标注 `skeletonPending()` 的用例依赖 toolAdapter browser 命令组与 browserViewManager 实现，
-// 实现落地后替换为真实断言（expected 值不得改动）。
+// read 结构/截断、scroll、screenshot 四用例为 Electron-only（需真实 WebContentsView），
+// 已迁移至 e2e/browserPanel.test.cjs（本文件不含）。
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -19,10 +19,6 @@ import os from "node:os";
 import http from "node:http";
 import { createToolSurface, TOOL_DEFS } from "../../../../../../src/agent/toolAdapter.js";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
-
-function skeletonPending() {
-  assert.fail("SKELETON: browser 工具尚未实现（REQ-BROWSER-002/006）");
-}
 
 describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与回执）", () => {
   it("riskLevel 声明：四个 browser 命令均为 query（锚点 §6.3 块2 row6）", () => {
@@ -38,7 +34,7 @@ describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与
   it("riskLevel 声明：browser auth-check 为 query（锚点 §6.3 块2 row6 / REQ-006 标准4）", () => {
     // EXPECTED-TRACE: prd.md §6.3 块2 row 6（auth-check riskLevel=query）
     const def = TOOL_DEFS.find((d) => d.name === "browser auth-check");
-    if (!def) skeletonPending();
+    assert.ok(def, "TOOL_DEFS 缺少 browser auth-check");
     assert.equal(def.riskLevel, "query");
   });
 
@@ -79,7 +75,6 @@ describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与
 
     it("navigate 回执：{ok:true, url, title}（锚点 §6.3 块2 row5）", async () => {
       // EXPECTED-TRACE: prd.md §6.3 块2 row 5（{ok:true,url:"http://localhost:<port>/",title:<stub标题>}）
-      skeletonPending();
       const out = await surface.invoke(`browser navigate --url http://localhost:${stubPort}`);
       const parsed = JSON.parse(out);
       assert.equal(parsed.ok, true);
@@ -87,69 +82,16 @@ describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与
       assert.equal(parsed.title, "My App");
     });
 
-    it("read 快照结构：elements 含 tag/text/selector/rect（锚点 §10.4 接口2 正常样例）", async () => {
-      // EXPECTED-TRACE: prd.md §10.4 接口2 样例（elements:[{tag:"a",text:"立即开始",selector:".md-cta",rect:{…}}]）
-      skeletonPending();
-      await surface.invoke(`browser navigate --url http://localhost:${stubPort}`);
-      const out = await surface.invoke("browser read");
-      const parsed = JSON.parse(out);
-      assert.equal(parsed.ok, true);
-      assert.equal(parsed.title, "My App");
-      const el = parsed.elements.find((e) => e.selector === ".md-cta");
-      assert.ok(el, "elements 缺 .md-cta 条目");
-      assert.equal(el.tag, "a");
-      assert.equal(el.text, "立即开始");
-      assert.equal(typeof el.rect.x, "number");
-    });
-
-    it("read 截断：正文 >4000 字符截断且 truncated=true（锚点 §6.3 块2 截断阈值）", async () => {
-      // EXPECTED-TRACE: prd.md §10.4 接口2 样例（text 截断至 4000 字符，truncated:true）
-      skeletonPending();
-      await surface.invoke(`browser navigate --url http://localhost:${stubPort}/long`);
-      const out = await surface.invoke("browser read");
-      const parsed = JSON.parse(out);
-      assert.equal(parsed.text.length, 4000);
-      assert.equal(parsed.truncated, true);
-    });
-
     it("read 未就绪：实例从未创建返回 E-BROWSER-NOT-READY（锚点 §8-E3）", async () => {
       // EXPECTED-TRACE: prd.md §10.4 接口2 样例（未就绪 → E-BROWSER-NOT-READY）
-      skeletonPending();
       const out = await surface.invoke("browser read");
       const parsed = JSON.parse(out);
       assert.equal(parsed.ok, false);
       assert.equal(parsed.error.code, "E-BROWSER-NOT-READY");
     });
 
-    it("scroll 回执：{ok:true, scrollX, scrollY}（§10.4 接口3 scroll golden）", async () => {
-      // EXPECTED-TRACE: prd.md §10.4 接口3（{ok:true, scrollX:0, scrollY:480}）
-      skeletonPending();
-      await surface.invoke(`browser navigate --url http://localhost:${stubPort}/tall`);
-      const out = await surface.invoke("browser scroll --dy 480");
-      const parsed = JSON.parse(out);
-      assert.equal(parsed.ok, true);
-      assert.equal(parsed.scrollX, 0);
-      assert.ok(parsed.scrollY > 0);
-    });
-
-    it("screenshot 回执与落盘：PNG 文件存在且 n 递增（§10.4 接口3 screenshot golden）", async () => {
-      // EXPECTED-TRACE: prd.md §10.4 接口3（{ok:true, path:"<sessionDir>/shots/browser-<n>.png", width>0, height>0}）
-      skeletonPending();
-      await surface.invoke(`browser navigate --url http://localhost:${stubPort}`);
-      const out1 = await surface.invoke("browser screenshot");
-      const p1 = JSON.parse(out1);
-      assert.equal(p1.ok, true);
-      assert.match(p1.path, /browser-1\.png$/);
-      assert.ok(fs.existsSync(p1.path));
-      const png = fs.readFileSync(p1.path);
-      assert.ok(png[0] === 0x89 && png[1] === 0x50, "非 PNG 魔数");
-      const out2 = await surface.invoke("browser screenshot");
-      assert.match(JSON.parse(out2).path, /browser-2\.png$/);
-    });
-
     it("expand 事件：面板收起时 navigate --expand 请求展开（REQ-002 标准8；E2E 深验证见 e2e/）", async () => {
       // EXPECTED-TRACE: prd.md §10.3 数据流副作用（expand → panel-request-open 事件）
-      skeletonPending();
       const out = await surface.invoke(`browser navigate --url http://localhost:${stubPort} --expand`);
       assert.equal(JSON.parse(out).ok, true);
       // 事件到达渲染进程的端到端验证归 E2E（e2e/browserPanel.test.cjs）。
@@ -170,7 +112,17 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
     serverCtx = await startServer({ port: 0 });
     baseUrl = serverCtx.baseUrl;
     surface = createToolSurface({ baseUrl, sessionKey: "ui:copilot:test" });
-    seedCookie = async () => skeletonPending(); // 测试 seam：分区种 Cookie（实现后接真实 session）
+    // 种 Cookie：dev-only seam POST /api/browser/_test/seed-cookies（仅 NODE_ENV=test）。
+    seedCookie = async (names = ["SESSDATA", "bili_jct"]) => {
+      const values = { SESSDATA: "abc123", bili_jct: "xyz" };
+      const cookies = names.map((name) => ({ name, value: values[name], domain: ".bilibili.com", path: "/" }));
+      const r = await fetch(`${baseUrl}/api/browser/_test/seed-cookies`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cookies }),
+      });
+      assert.equal((await r.json()).ok, true);
+    };
   });
 
   afterEach(async () => {
@@ -180,7 +132,6 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
 
   it("已登录：required-cookies 全部存在 → authenticated:true（锚点 §6.3 块5 row2）", async () => {
     // EXPECTED-TRACE: prd.md §6.3 块5 row 2（{authenticated:true}）
-    skeletonPending();
     await seedCookie();
     const out = await surface.invoke("browser auth-check --domain .bilibili.com --required-cookies SESSDATA");
     assert.deepEqual(JSON.parse(out), { authenticated: true });
@@ -188,22 +139,19 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
 
   it("未登录：缺失名单返回 missing 数组，非错误（锚点 §8-E8 / REQ-006 标准2）", async () => {
     // EXPECTED-TRACE: prd.md §8-E8（{authenticated:false, missing:["SESSDATA"]}）
-    skeletonPending();
-    await seedCookie(); // 仅种 bili_jct
+    await seedCookie(["bili_jct"]); // 仅种 bili_jct（SESSDATA 缺失）
     const out = await surface.invoke("browser auth-check --domain .bilibili.com --required-cookies SESSDATA");
     assert.deepEqual(JSON.parse(out), { authenticated: false, missing: ["SESSDATA"] });
   });
 
   it("空 required-cookies：无任何 Cookie → {authenticated:false, missing:[]}（§7.1 row3）", async () => {
     // EXPECTED-TRACE: prd.md §7.1 row 3（空名单=存在任意 Cookie）
-    skeletonPending();
     const out = await surface.invoke("browser auth-check --domain .bilibili.com");
     assert.deepEqual(JSON.parse(out), { authenticated: false, missing: [] });
   });
 
   it("BAD-DOMAIN 透传：无前导点拒绝（REQ-006 标准5）", async () => {
     // EXPECTED-TRACE: prd.md §8-E7（E-BROWSER-BAD-DOMAIN）
-    skeletonPending();
     const out = await surface.invoke("browser auth-check --domain bilibili.com");
     const parsed = JSON.parse(out);
     assert.equal(parsed.ok, false);
