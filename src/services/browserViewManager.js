@@ -565,14 +565,28 @@ export function createBrowserViewManager(options = {}) {
       const wc = view.webContents;
       await new Promise((resolve, reject) => {
         const onFinish = () => { cleanup(); resolve(); };
-        const onFail = (_e, _code, errorDesc) => { cleanup(); reject(browserError("E-BROWSER-NAV-FAILED", extractErrCode(errorDesc, _code))); };
+        const onFail = (_e, errorCode, errorDesc) => {
+          // ERR_ABORTED = 加载被新导航打断（快速连续导航），非失败语义——与持久监听
+          // did-fail-load 同规（extractErrCode 判定复用）：早退不 reject 伪失败回执
+          const reason = extractErrCode(errorDesc, errorCode);
+          cleanup();
+          if (reason === "ERR_ABORTED") { resolve(); return; }
+          reject(browserError("E-BROWSER-NAV-FAILED", reason));
+        };
         const cleanup = () => {
           wc.off("did-finish-load", onFinish);
           wc.off("did-fail-load", onFail);
         };
         wc.on("did-finish-load", onFinish);
         wc.on("did-fail-load", onFail);
-        wc.loadURL(normalizedUrl).catch((err) => { cleanup(); reject(browserError("E-BROWSER-NAV-FAILED", chromiumReasonFromError(err))); });
+        wc.loadURL(normalizedUrl).catch((err) => {
+          const reason = chromiumReasonFromError(err);
+          // loadURL 自身拒绝同样可能是 ERR_ABORTED（message 形如 "ERR_ABORTED (-3)…"），同规豁免
+          const aborted = reason === "ERR_ABORTED" || /ERR_ABORTED/.test(String(err?.message ?? ""));
+          cleanup();
+          if (aborted) { resolve(); return; }
+          reject(browserError("E-BROWSER-NAV-FAILED", reason));
+        });
       });
       let title = "";
       try { title = await wc.executeJavaScript("document.title"); } catch { /* CSP 退化 */ }
@@ -591,7 +605,12 @@ export function createBrowserViewManager(options = {}) {
         // E4 副作用：实例可重建；用户导航自动恢复，agent 导航报崩溃（agent 无权重建——
         // 重建即未经人确认复活崩溃面；人导航一次即隐式重建，人操作优先）
         if (source === "agent") throw browserError("E-BROWSER-CRASHED");
-        if (view) { detachView(view); view = null; }
+        if (view) {
+          detachView(view);
+          // 与 dispose 同规：detach 后 close 旧 webContents——已崩渲染进程不 close 会泄漏
+          try { view.webContents?.close?.(); } catch { /* ignore */ }
+          view = null;
+        }
         crashed = false;
       }
       if (!view) {
@@ -660,6 +679,11 @@ export function createBrowserViewManager(options = {}) {
         );
       } catch (err) {
         if (err?.code) throw err;
+        // 注入失败（CSP 拒等）不再静默吞：落域级 JSON 日志（无敏感值），
+        // {ok:true, scrollX:0, scrollY:0} 契约不变
+        let host = null;
+        try { host = currentUrl ? new URL(currentUrl).host : null; } catch { host = null; }
+        console.error(JSON.stringify({ event: "browser-scroll-inject-failed", host, error: err?.message }));
       }
       return { ok: true, scrollX: pos?.scrollX ?? 0, scrollY: pos?.scrollY ?? 0 };
     },
@@ -698,7 +722,9 @@ export function createBrowserViewManager(options = {}) {
         if (!wasOpen) parkViewHidden(view); // 恢复沉底隐藏（含异常路径）
       }
       if (!image || (image.getSize && imageSize(image).width === 0)) {
-        throw lastErr || new Error("E-BROWSER-CAPTURE-EMPTY");
+        // code 落 err.code（而非 err.message）：路由层契约形态 200+{ok:false,error:{code}}
+        // 才生效；裸 Error 会上抛成 500 INTERNAL_ERROR
+        throw lastErr || browserError("E-BROWSER-CAPTURE-EMPTY");
       }
       const png = image.toPNG ? image.toPNG() : image;
       await ensureScreenshotSeq(); // 跨会话递增：扫描已有 browser-<n>.png 取 max+1 起
@@ -713,7 +739,11 @@ export function createBrowserViewManager(options = {}) {
     // —— REQ-BROWSER-001：bounds 哑执行（visible=false 沉底隐藏保活，ADR-039 决策 3）——
     setBounds({ x, y, width, height, visible } = {}) {
       open = visible !== false;
-      if (open) expandPending = false; // 展开意图已被面板消费（对账闭环）
+      // 展开意图消费闭环：open=true 首帧清除（面板已展开消化）；visible=false 也清除——
+      // 用户抢先收起 = 明确意图，残留会在下次挂载时重展开（窄竞态修复）。open/!open
+      // 二分全覆盖，即任何 bounds 推送都结清待消化意图；E2E 流程 B（agent expand 时
+      // 面板已开）语义不变：面板开着时推送 visible=true，同路径清除。
+      expandPending = false;
       if (!view) return { ok: true, open };
       try {
         if (open && typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
