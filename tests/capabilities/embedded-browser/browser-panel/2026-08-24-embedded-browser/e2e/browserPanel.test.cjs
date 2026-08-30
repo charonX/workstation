@@ -23,6 +23,9 @@ const PANEL = "[data-testid='browser-panel']";
 const OMNIBOX = "[data-testid='omnibox']";
 const AGENT_BAR = "[data-testid='agent-control-bar']";
 const BTN_STOP = "[data-testid='stop-agent-control']";
+const NAV_ERROR_PAGE = "[data-testid='nav-error-page']";
+const CRASH_PAGE = "[data-testid='crash-page']";
+const CRASH_RELOAD = "[data-testid='crash-reload']";
 
 // 本测试套启动本地 stub 页服务（注入被测页面，避免外网依赖）
 const STUB_PORT = 38121; // 固定端口供面板地址栏输入用
@@ -45,7 +48,8 @@ function stubHtml(urlPath) {
   return (
     `<!doctype html><html><head><title>My App</title></head><body>` +
     `<h1>My App</h1><a class="md-cta" href="/next">立即开始</a>` +
-    `<a target="_blank" href="/next">新窗口链接</a></body></html>`
+    `<a target="_blank" href="/next">新窗口链接</a>` +
+    `<button class="js-open" onclick="window.open('/next')">window.open</button></body></html>`
   );
 }
 
@@ -124,6 +128,68 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     expect(electronApp.windows().length).toBe(windowCountBefore);
   });
 
+  test("流程A：window.open() 同样被拦截转面板内导航（REQ-001 AC5 第二触发面）", async () => {
+    // EXPECTED-TRACE: prd.md §6.3 块1 row 4（window.open/新窗口事件被拦截）
+    await page.locator(BTN_BROWSER).click();
+    await page.locator(OMNIBOX).fill(`localhost:${STUB_PORT}`);
+    await page.locator(OMNIBOX).press("Enter");
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+    const windowCountBefore = electronApp.windows().length;
+    const clickResult = await page.evaluate(() => window.opc.__browserTestClick("button.js-open"));
+    expect(clickResult.ok).toBe(true);
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/next`);
+    expect(electronApp.windows().length).toBe(windowCountBefore);
+  });
+
+  test("流程A：面板展开后地址栏聚焦（REQ-001 AC6 步骤1）", async () => {
+    // EXPECTED-TRACE: prd.md §6.1 流程A 步骤1（面板展开，地址栏聚焦）
+    await page.locator(BTN_BROWSER).click();
+    await expect(page.locator(PANEL)).toBeVisible();
+    await expect(page.locator(OMNIBOX)).toBeFocused();
+  });
+
+  test("E1：地址栏输入 javascript: 协议 → 内联提示且不导航（§7 row1 无效例子）", async () => {
+    // EXPECTED-TRACE: prd.md §7 row 1（javascript:alert(1) → 拒绝，提示「仅支持 http/https 地址」）
+    await page.locator(BTN_BROWSER).click();
+    await page.locator(OMNIBOX).fill("javascript:alert(1)");
+    await page.locator(OMNIBOX).press("Enter");
+    await expect(page.locator(".bp-omnibox-hint")).toBeVisible();
+    await expect(page.locator(".bp-omnibox-hint")).toContainText("http");
+    // 未导航：状态 url 保持空
+    const state = await (await fetch(`${apiBaseUrl}/api/browser/state`)).json();
+    expect(state.url).toBeFalsy();
+  });
+
+  test("E2：导航失败显示错误页含 ERR 码与重试按钮", async () => {
+    // EXPECTED-TRACE: prd.md §8-E2（面板内错误页，显示失败原因，可重试）
+    await page.locator(BTN_BROWSER).click();
+    await page.locator(OMNIBOX).fill("localhost:59999");
+    await page.locator(OMNIBOX).press("Enter");
+    await expect(page.locator(NAV_ERROR_PAGE)).toBeVisible();
+    await expect(page.locator(NAV_ERROR_PAGE)).toContainText("ERR_CONNECTION_REFUSED");
+    // 重试按钮存在且可点（stub 不通则仍错误页——重试行为本身即契约）
+    await page.locator(`${NAV_ERROR_PAGE} button`).click();
+    await expect(page.locator(NAV_ERROR_PAGE)).toBeVisible();
+  });
+
+  test("E4：渲染进程崩溃后面板显示崩溃页与重新加载按钮", async () => {
+    // EXPECTED-TRACE: prd.md §8-E4（render-process-gone → 崩溃态 + 重载按钮）
+    await apiPost(apiBaseUrl, "/api/browser/navigate", {
+      url: `http://localhost:${STUB_PORT}`,
+      source: "agent",
+      expand: true,
+    });
+    await expect(page.locator(PANEL)).toBeVisible();
+    const crashResult = await page.evaluate(() => window.opc.__browserTestCrash());
+    expect(crashResult.ok).toBe(true);
+    await expect(page.locator(CRASH_PAGE)).toBeVisible();
+    await expect(page.locator(CRASH_RELOAD)).toBeVisible();
+    // 重新加载 → 页面恢复（stub 页 title 回显）
+    await page.locator(CRASH_RELOAD).click();
+    await expect(page.locator(CRASH_PAGE)).toBeHidden();
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+  });
+
   test("流程B：agent navigate --expand 后面板自动展开并显示控制指示", async () => {
     // 经 API 以 agent 来源导航 + expand
     await apiPost(apiBaseUrl, "/api/browser/navigate", {
@@ -152,9 +218,8 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
   });
 
-  test("REQ-004：聊天消息 http(s) 链接点击后面板打开并加载目标 URL", async () => {
-    // FAUX 回声：用户消息原文回显为 agent 气泡 → markdown 链接可点击。
-    // EXPECTED-TRACE: prd.md §6.3 块4 row 1（面板打开并加载目标 URL，非系统浏览器）
+  // —— REQ-004 用例共享的会话种子：FAUX 回声（用户消息原文回显为 agent 气泡 → markdown 链接可点击）——
+  async function seedChatWithText(text) {
     await fetch(`${apiBaseUrl}/api/settings/agent`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -169,13 +234,46 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await page.reload();
     await expect(page.locator("[data-testid='screen-assistant']")).toBeVisible();
     await page.click(`[data-session-item='${spaceKey}']`);
-    await page.fill("[data-testid='composer-input']", `看一下这个 http://localhost:${STUB_PORT}`);
+    await page.fill("[data-testid='composer-input']", text);
     await page.click("[data-testid='send-button']");
+  }
+
+  test("REQ-004：聊天消息 http(s) 链接点击后面板打开并加载目标 URL", async () => {
+    // EXPECTED-TRACE: prd.md §6.3 块4 row 1（面板打开并加载目标 URL，非系统浏览器）
+    await seedChatWithText(`看一下这个 http://localhost:${STUB_PORT}`);
     const link = page.locator("[data-message-role='agent'] .md-link-wrap a");
     await expect(link).toBeVisible({ timeout: 120000 });
     await link.click();
     await expect(page.locator(PANEL)).toBeVisible();
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+  });
+
+  test("REQ-004 AC2：右键链接出现关联菜单，含「在面板中打开」与「在系统浏览器打开」两个入口", async () => {
+    // EXPECTED-TRACE: requirements.md REQ-BROWSER-004 AC2（系统浏览器入口）
+    await seedChatWithText(`看一下这个 http://localhost:${STUB_PORT}`);
+    const link = page.locator("[data-message-role='agent'] .md-link-wrap a");
+    await expect(link).toBeVisible({ timeout: 120000 });
+    await link.click({ button: "right" });
+    const menu = page.locator("[data-message-role='agent'] .md-link-menu");
+    await expect(menu).toBeVisible();
+    await expect(menu.locator("button")).toHaveCount(2);
+    // 系统浏览器入口存在（点击会真实唤起系统浏览器，E2E 不点——结构断言即契约面）
+    await expect(menu.locator("button").nth(1)).toBeVisible();
+    // 菜单项点击「在面板中打开」→ 面板打开（非系统浏览器路径）
+    await menu.locator("button").nth(0).click();
+    await expect(page.locator(PANEL)).toBeVisible();
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+  });
+
+  test("REQ-004 AC3：mailto: 链接不拦截（保持默认锚点，无 md-link-wrap，点击不开面板）", async () => {
+    // EXPECTED-TRACE: requirements.md REQ-BROWSER-004 AC3（非 http(s) 协议不走面板）
+    await seedChatWithText("联系我 [邮箱](mailto:a@b.c)");
+    const link = page.locator("[data-message-role='agent'] a", { hasText: "邮箱" });
+    await expect(link).toBeVisible({ timeout: 120000 });
+    // 非 http(s) 链接不经 MdLink 拦截：无 .md-link-wrap 包裹
+    await expect(page.locator("[data-message-role='agent'] .md-link-wrap a", { hasText: "邮箱" })).toHaveCount(0);
+    await link.click();
+    await expect(page.locator(PANEL)).toBeHidden();
   });
 
   // —— 以下 4 用例自 api/browserTools.test.js 迁移（2026-08-29 req-gap 就地补全）：
