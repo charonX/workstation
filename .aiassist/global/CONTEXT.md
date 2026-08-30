@@ -30,6 +30,7 @@
 | 飞书归档条目 | Feishu Archive Entry | 飞书空间 /reset 后保留的历史会话行（ADR-037，2026-08-19）：spaceKey `feishu:<chatId>:gen<N>`，title/sessionRef/lastActiveAt/createdAt 冻结原值，只读可回看；写端点 403 E-SESSION-READONLY；displayName 为空时逆解析活跃键查 agent_space_meta fallback | 对话空间 | 会话列表「飞书」分组历史回看 |
 | 会话轨迹 | Trajectory | 伴随 Agent 会话生成的全量执行账本（含 TTFT/decode 细粒度耗时、Token 用量、工具入参及出参、大载荷截断标记等），以 append-only 侧车文件落盘，可独立回看与时间线过滤（ADR-038） | `*.traj.jsonl` 侧车文件 + `GET /api/agent/sessions/:spaceKey/trajectory` | 轨迹账本、执行日志 |
 | 侧车文件 | Sidecar File | 伴随主会话存在、记录全量高频/大载荷遥测与工具调用的 append-only 本地 JSONL 文件（`ui_project_<pid>_<sid>.traj.jsonl`），实现历史投影与轨迹账本物理隔离 | `src/agent/trajectoryRecorder.js` | 轨迹文件、侧车 |
+| 浏览器面板 | Browser Panel | 会话区右侧可收起的内嵌浏览器视图（WebContentsView 主进程托管）：同一浏览器实例承载人的交互浏览与 agent 的浏览器工具面；**可见性解耦**——收起 ≠ 关闭，实例生命周期独立于面板可见性（agent 工具照常可用） | browserViewManager（main）+ BrowserPanel（renderer）+ `/api/browser/*` | 预览面板、webview（实现选型词，禁用于领域语言） |
 
 ## 业务概念
 
@@ -80,6 +81,13 @@
 | 空世代 | Empty Generation | 活跃行消息投影为空的世代（JSONL 空文件或无有效 user/assistant 消息）：/reset 不产生归档行，原地换代——「没聊过的会话不留历史」 | 对话空间 | reset 分支语义 |
 | 回合边界 | Turn Boundary | 轨迹记录中标识对话轮次起点的分隔行（`type="turn_boundary"`）；在前端账本中呈现为可交互折叠手风琴条（Turn Rule），支持多回合收起与展开 | 会话轨迹 | 轨迹账本渲染与回合手风琴 |
 | 时间线总览 | Timeline Overview | 轨迹视图顶部的时钟与耗时投影图表，按比例呈现 Assistant 思考/生成、工具调用与空闲区间；支持智能长空闲折叠（Gap Compression）、滚轮缩放与选区拖拽联动 | 会话轨迹 | 轨迹总览与选区过滤 |
+| 人机共驾 | Shared Control | 人与 agent 共享同一浏览器面板实例的控制规则：**不加锁、人操作永远优先**（用户点击即时生效），agent 每次操作前重读页面快照自行适应；面板提供「agent 控制中」指示与一键「停止控制」（断控制不关页面，此后**任何** browser 工具——含读取类——返回 E-BROWSER-DENIED）；**解除**：用户在地址栏/面板 chrome 发起一次导航（渲染进程 IPC，source=user）即解除，页内链接点击导航（will-navigate 路径）不解除 | 浏览器面板 | 浏览器面板共驾（2026-08-24-embedded-browser；2026-08-30 review 修订） |
+| 读取类动作 | Read-class Action | 浏览器工具面中无写入语义的动作：navigate/read/scroll/screenshot/auth-check，riskLevel=query，自由执行 | 浏览器面板 | 浏览器工具风险分级 |
+| 提交类动作 | Submit-class Action | 浏览器工具面中具有写入/不可逆语义的动作：click/type，规划为 riskLevel=confirm 经确认挂起队列批准；**2026-08-26 裁决：随范围收敛移出本期 story**（预览/读取先行），定义保留供后续 story 使用 | 浏览器面板, 确认挂起 | 浏览器工具风险分级（2026-08-24-embedded-browser，后续 story） |
+| 协议白名单 | URL Scheme Allowlist | 浏览器面板地址栏与 agent 工具 url 参数共用的输入规则：仅允许 http/https，localhost/127.0.0.1 缺省补 http、其余补 https；白名单外（file/javascript 等）拒绝导航 | 浏览器面板 | 地址栏验证 / 工具参数验证 |
+| 统一身份池 | Unified Identity Pool | `persist:browser` 分区持久化的目标站点登录态（Cookie/Session）：既供内置面板渲染，也经受控导出接口（`GET /api/browser/cookies`；Host=127.0.0.1/localhost 校验 + 跨源封锁 + 无 ACAO）供本地采集引擎与后台 Agent 复用 | 浏览器面板 | 登录态桥接 / Cookie 导出（ADR-039 决策 7/10） |
+| 人机协同登录引导 | Human-in-the-Loop Auth | agent 经 `browser auth-check` 探测目标站点登录态，缺失时导航登录页并展开面板，由用户在面板内手动扫码/登录，后续请求与采集任务无缝接续 | 浏览器面板 | 登录引导流程 D（ADR-039 决策 8） |
+| 本地采集引擎 | Local Collection Engine | workstation 内直连目标站点 API 做数据采集的服务（B站/X/微博等）；经统一身份池的 Cookie 受控导出接口复用登录态，自身不持有凭据 | 浏览器面板 | 采集场景的登录态消费方 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -130,6 +138,8 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-08-30 | 「人机共驾」修订（断控制后任何 browser 工具 DENIED；解除仅限地址栏/chrome 手势 IPC 导航，页内点击不解除）；「读取类动作」枚举补 auth-check；新增「统一身份池」「人机协同登录引导」「本地采集引擎」 | 2026-08-24-embedded-browser review 修订 |
+| 2026-08-25 | 新增实体「浏览器面板」（可见性解耦）；新增概念「人机共驾」「读取类/提交类动作」「协议白名单」 | 2026-08-24-embedded-browser /domain-model |
 | 2026-08-22 | 新增「飞书归档条目」「活跃行」「世代编号」「空世代」术语（ADR-037 归档语义沉淀） | 2026-08-19-feishu-reset-history-archive /reflect |
 | 2026-08-18 | 新增「权限裁决器」「Fail-Closed 安全降级」概念（架构深化候选 #3，收敛确认执行管道与四大安全不变量） | 2026-08-16-deepen-permission-adjudication /domain-model |
 | 2026-08-12 | 新增「模型配置」实体（provider 条目列表）；「默认模型」「动态模型列表」「会话级切换」「视觉模型」「附件」概念（附件 ≠ 产物） | 2026-08-12-conversation-toolbar-ext /domain-model |

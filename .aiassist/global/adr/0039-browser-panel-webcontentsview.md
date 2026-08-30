@@ -70,6 +70,28 @@ workstation 需要一个内置浏览器：既承载用户的手动预览/浏览�
 | CDP DOMSnapshot/AXTree 作 read 快照 | 快照体积大需主进程裁剪、session 生命周期管理复杂；高频轮询语义下收益不成比例 |
 | 内存 session | agent 无法访问任何需登录页面，用户每次重启重登录 |
 
+## 2026-08-30 增补决策（review 修订）
+
+9. **截图落盘 `<configDir>/browser-shots/`（跨会话单例语义，2026-08-29 人裁决正式收编）**：
+   浏览器为跨会话单例，截图不归 agent 会话目录；PNG 落应用配置目录
+   `browser-shots/browser-<n>.png`，n 跨会话全局递增——应用重启后扫描目录取 max+1
+   续号，不重置、不覆盖既有文件；screenshot 端点方法定 POST（落盘写文件是非幂等
+   副作用，GET 语义违规）。
+10. **Cookie 导出端点访问控制**：`/api/browser/cookies`（GET/DELETE）仅接受
+    Host=127.0.0.1/localhost 的本机请求；带跨源 `Origin` 或
+    `Sec-Fetch-Site: cross-site/cross-origin` 的请求一律 403；`/api/browser/*`
+    响应不输出 `Access-Control-Allow-Origin` 头。明文凭据首次放上 HTTP 面后，
+    决策 7 的「本地通道」前提必须显式强制，不能依赖「绑定 127.0.0.1」隐式假设
+    （DNS rebinding 可绕过）。token 认证/导出开关方案留作回流点（PRD §10.6 风险表）。
+11. **headless fallback fetch 直连任意 http(s) 属显式接受风险**：用户可见浏览器的
+    本质即请求任意站点，与安全清单 SSRF 条款的张力按显式豁免处理；私有 IP/元数据
+    地址（169.254.169.254 等）拦截留作后续 story。
+
+另随本增补明确（原决策 6 的收紧）：navigate 的 source 由调用通道决定——HTTP 面
+一律记为 agent（请求体 source 字段无效），source=user 仅来自渲染进程 IPC 导航；
+agentControlRevoked 仅由地址栏/面板 chrome 级手势导航解除，页内链接点击
+（will-navigate 路径）不解除。
+
 ## 相关文件
 
 - `.aiassist/stories/2026-08-24-embedded-browser/prd.md` §10（接口契约与 golden values）
