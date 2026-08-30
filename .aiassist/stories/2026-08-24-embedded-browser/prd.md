@@ -89,7 +89,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | agent 工具调用时浏览器实例未就绪 | 工具返回错误，agent 收到可读消息 | §8-E3 |
 | WebContents 崩溃（render process gone） | 面板显示崩溃态 + 重载按钮；agent 工具返回崩溃错误 | §8-E4 |
 | 面板收起时 agent 继续调用工具 | 正常执行（不断连），仅画面不可见 | 正常路径，非错误 |
-| 用户点击「停止控制」 | agent 后续工具调用直接失败（E-BROWSER-DENIED），页面保持当前状态；用户手动导航一次后解除 | §8-E5 |
+| 用户点击「停止控制」 | agent 后续工具调用直接失败（E-BROWSER-DENIED），页面保持当前状态；用户经地址栏手动导航一次后解除（页内链接点击不解除） | §8-E5 |
 
 ### 6.3 预期值锚点（Expected-Value Anchors）
 
@@ -104,7 +104,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | 2 | toolAdapter 声明 | `browser navigate`/`browser read`/`browser scroll`/`browser screenshot`/`browser auth-check` riskLevel 均=`query`（本期无 confirm 级工具） | §7.2 风险映射先例 + TECH-DESIGN 裁决（砍 click/type） |
 | 3 | 面板收起状态下 `browser read` | 返回 `ok:true`（浏览器不断连） | 访谈 Q3：可见性解耦 |
 | 3 | agent 工具驱动中面板指示 | 可见「agent 控制中」+「停止控制」按钮 | 访谈 Q2（第三轮） |
-| 3 | 停止控制后 agent 调 `browser read` | 返回 `{"ok":false,"error":{"code":"E-BROWSER-DENIED"}}`；用户在面板手动导航一次后恢复 ok:true | 流程 C（用户手动导航解除 = 显式收回又归还控制） |
+| 3 | 停止控制后 agent 调 `browser read` | 返回 `{"ok":false,"error":{"code":"E-BROWSER-DENIED"}}`；用户在地址栏手动导航一次后恢复 ok:true（页内链接点击不解除） | 流程 C（用户手动导航解除 = 显式收回又归还控制） |
 | 4 | MarkdownRenderer 渲染 `[x](https://a.b/c)` 点击 | 面板打开并加载 `https://a.b/c`（非系统浏览器） | 访谈 Q5 |
 | 4 | 链接「在系统浏览器打开」入口（右键菜单/外链按钮） | 调用 `shell.openExternal(<url>)` 在系统浏览器打开；面板状态不变 | 访谈 Q5 |
 | 4 | 非 http(s) 协议链接（`mailto:a@b.c`）点击 | 不触发面板导航、不拦截，保持系统默认处理 | 访谈 Q5 边界 |
@@ -137,7 +137,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | E2 导航失败 | DNS 失败/连接拒绝/超时 | E-BROWSER-NAV-FAILED（reason 透传 Chromium 错误码，如 ERR_CONNECTION_REFUSED） | 面板内错误页 + 重试按钮 | 无 |
 | E3 浏览器未就绪 | 工具调用时实例未创建/已销毁 | E-BROWSER-NOT-READY | agent 收到错误回执 | 无 |
 | E4 WebContents 崩溃 | render-process-gone | E-BROWSER-CRASHED | 面板崩溃态 + 「重新加载」按钮 | 浏览器实例可重建，登录态依 partition 策略 |
-| E5 停止控制后工具调用 | 用户已点「停止控制」，agent 再调任何 browser 工具 | E-BROWSER-DENIED | agent 收到拒绝回执并自然语言告知用户 | 动作不执行，浏览器状态不变；用户手动导航一次后解除 |
+| E5 停止控制后工具调用 | 用户已点「停止控制」，agent 再调任何 browser 工具 | E-BROWSER-DENIED | agent 收到拒绝回执并自然语言告知用户 | 动作不执行，浏览器状态不变；用户经地址栏手动导航一次后解除（页内链接点击不解除） |
 | E6 主/渲染进程 bounds 同步异常 | resize/收起时视图定位失败 | 日志记录 | 面板内容暂时隐藏而非错位遮挡 | 下帧重算恢复 |
 | E7 cookies 接口 domain 参数非法 | 缺失/空/无前导点 | E-BROWSER-BAD-DOMAIN | agent 收到错误回执 | 无 |
 | E8 auth-check 判定失败 | required-cookies 名单内任一 Cookie 不存在 | 非错误：`{authenticated:false, missing:["SESSDATA"]}` | agent 据此决定引导登录 | 无 |
