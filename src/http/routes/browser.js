@@ -2,7 +2,11 @@
 // 浏览器面板 HTTP 端点（REQ-BROWSER-001/003/005，ADR-039；story 2026-08-24-embedded-browser）：
 // worker 工具面（toolAdapter，Slice 2 接入）与渲染进程地址栏共用的真实边界（ADR-001 通道）。
 // 端点（server.js 剥掉 /api/ 后 resource="browser"，subPath 形如 ["navigate"]/["cookies"]）：
-//   - POST /api/browser/navigate   {url, source:"agent"|"user", expand?} → {ok,url,title} / {ok:false,error:{code,reason}}
+//   - POST /api/browser/navigate   {url, expand?} → {ok,url,title} / {ok:false,error:{code,reason}}
+//     （source 由通道决定、忽略请求体：HTTP 面一律 "agent"——security review 2026-08-30：
+//     信任请求体 source 会让本机任意进程以 source:"user" 解除 agentControlRevoked，
+//     削弱「一键停止控制」刹车语义；user 来源只来自渲染进程 IPC，main.js
+//     opc-browser-navigate handler 固定 source:"user"）
 //   - POST /api/browser/read       {} → {ok,url,title,text,elements,truncated}
 //   - POST /api/browser/scroll     {dx?,dy?} → {ok,scrollX,scrollY}
 //   - GET|POST /api/browser/screenshot {} → {ok,path,width,height}
@@ -25,9 +29,10 @@ export async function handleBrowser(req, res, body, subPath = [], context = {}) 
 
   try {
     if (action === "navigate" && req.method === "POST") {
+      // source 由通道决定（见文件头）：HTTP 面忽略请求体 source，一律按 agent 处理
       return ok(res, await manager.navigate({
         url: body?.url,
-        source: body?.source === "agent" ? "agent" : "user",
+        source: "agent",
         expand: body?.expand === true,
       }));
     }
