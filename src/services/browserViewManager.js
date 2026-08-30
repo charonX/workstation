@@ -282,7 +282,9 @@ export function createBrowserViewManager(options = {}) {
     }
   }
   const partition = options.partition || BROWSER_PARTITION;
-  const shotsDir = options.shotsDir || path.join(process.env.OPC_WORKSTATION_CONFIG_DIR || ".", "shots");
+  // PRD §10.3/§10.4（2026-08-29 人裁决）：截图落 <configDir>/browser-shots/browser-<n>.png，
+  // n 跨会话全局递增；纯 node fallback（CLI/单测）同规。
+  const shotsDir = options.shotsDir || path.join(process.env.OPC_WORKSTATION_CONFIG_DIR || ".", "browser-shots");
 
   // —— Electron 可用性探测（纯 node 单测/CLI 下走 fallback）——
   let electron = null;
@@ -330,6 +332,33 @@ export function createBrowserViewManager(options = {}) {
   let expandPending = false;
   let lastViewport = { width: 1280, height: 800 }; // 最近一次可见 bounds 尺寸（沉底隐藏时保持可绘制尺寸）
   let screenshotSeq = 0;
+  let screenshotSeqReady = false; // 跨会话持久化序号是否已完成目录扫描（惰性，首次截图时）
+
+  // 截图序号跨会话持久化（code review 2026-08-30：进程内内存计数重启后 browser-1.png
+  // 覆盖上一会话，PRD 人裁决语义 = 跨会话全局递增）：首次截图时扫描 shotsDir 已有
+  // browser-<n>.png，seq 从 max(n)+1 起（目录不存在/不可读 → 1 起）。惰性扫描避免
+  // 同步工厂函数变异步；并发首截图由 Node 单线程 + 同一 promise 归并。
+  let screenshotSeqInitPromise = null;
+  function ensureScreenshotSeq() {
+    if (screenshotSeqReady) return Promise.resolve();
+    if (!screenshotSeqInitPromise) {
+      screenshotSeqInitPromise = (async () => {
+        try {
+          const entries = await fs.readdir(shotsDir);
+          let max = 0;
+          for (const name of entries) {
+            const m = /^browser-(\d+)\.png$/.exec(name);
+            if (m) max = Math.max(max, Number(m[1]));
+          }
+          screenshotSeq = max;
+        } catch {
+          // 目录不存在/不可读 → 1 起（screenshotSeq 保持 0）
+        }
+        screenshotSeqReady = true;
+      })();
+    }
+    return screenshotSeqInitPromise;
+  }
   let fallbackSnapshot = null; // headless 退化：最近一次 fallback 导航的静态快照（truncateSnapshot 结果）
   let navigateExecutor = typeof options.navigateExecutor === "function" ? options.navigateExecutor : null;
 
@@ -635,7 +664,7 @@ export function createBrowserViewManager(options = {}) {
       return { ok: true, scrollX: pos?.scrollX ?? 0, scrollY: pos?.scrollY ?? 0 };
     },
 
-    // —— REQ-BROWSER-002：screenshot（capturePage → PNG 落 <sessionDir>/shots/browser-<n>.png，n 单调递增）——
+    // —— REQ-BROWSER-002：screenshot（capturePage → PNG 落 <configDir>/browser-shots/browser-<n>.png，n 跨会话全局递增）——
     async screenshot({ source } = {}) {
       assertAgentAllowed(source);
       ensureReady();
@@ -672,6 +701,7 @@ export function createBrowserViewManager(options = {}) {
         throw lastErr || new Error("E-BROWSER-CAPTURE-EMPTY");
       }
       const png = image.toPNG ? image.toPNG() : image;
+      await ensureScreenshotSeq(); // 跨会话递增：扫描已有 browser-<n>.png 取 max+1 起
       screenshotSeq += 1;
       await fs.mkdir(shotsDir, { recursive: true });
       const filePath = path.join(shotsDir, `browser-${screenshotSeq}.png`);
