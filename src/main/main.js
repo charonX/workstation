@@ -25,6 +25,7 @@ import { checkForUpdates, E_UPDATE_PARSE } from "./updates.js";
 import { setSecretBackend } from "../services/secretStore.js";
 import { configDir } from "../services/settingsService.js";
 import { safeKeyFor } from "../services/sessionStore.js";
+import { isHttpUrl } from "../shared/urlScheme.js";
 
 const require = createRequire(import.meta.url);
 
@@ -353,10 +354,11 @@ ipcMain.handle("opc-browser-state", async () => {
   return manager.getState();
 });
 
-// 「在系统浏览器打开」（REQ-BROWSER-004 关联菜单 + 面板外链按钮）：http/https 白名单，
+// 「在系统浏览器打开」（REQ-BROWSER-004 关联菜单 + 面板外链按钮）：http/https 白名单
+// （共享真源 src/shared/urlScheme.js isHttpUrl，与面板地址栏/normalize 同规），
 // 防 shell 协议（file:/javascript: 等）经 openExternal 滥用。
 ipcMain.handle("opc-open-external", async (_event, { url } = {}) => {
-  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
+  if (!isHttpUrl(url)) return false;
   try {
     await shell.openExternal(url);
     return true;

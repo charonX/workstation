@@ -28,6 +28,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
+import { schemeToPrepend } from "../shared/urlScheme.js";
 
 export const BROWSER_PARTITION = "persist:browser";
 export const READ_TEXT_LIMIT = 4000; // 锚点 §6.3 块2：正文截断阈值
@@ -51,21 +52,14 @@ function assertValidCookieDomain(domain) {
 // —— 协议白名单 + normalize（锚点 §7 row1 / §6.3 块1 rows1-2）——
 // 仅 http/https；缺省补全：localhost/127.0.0.1 补 http://，其余补 https://；
 // 空/白名单外/无主机 → E-BROWSER-BAD-URL。返回 null 表示非法。
-// scheme 判定陷阱：`localhost:3000` 会被裸 scheme 正则误判为 "localhost:" 协议——
-// 仅 `scheme://`（带授权符）算显式协议；`host:端口`（冒号后纯数字）按无协议补全；
-// `javascript:alert(1)` 这类 scheme-without-// 保留原样走白名单拒绝。
+// scheme 判定复用共享真源 src/shared/urlScheme.js（schemeToPrepend）——判定陷阱
+// （localhost:3000 误判、裸 scheme 拒绝）语义见该模块注释。
 export function normalizeBrowserUrl(rawInput) {
   const raw = typeof rawInput === "string" ? rawInput.trim() : "";
   if (!raw) return null;
   let candidate = raw;
-  const hasAuthorityScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(candidate);
-  const looksLikeHostPort = /^[^:/?#]+:\d+(?:[/?#]|$)/.test(candidate);
-  const hasBareScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate);
-  if (!hasAuthorityScheme && (looksLikeHostPort || !hasBareScheme)) {
-    // 缺协议：localhost / 127.0.0.1（含端口/路径）补 http，其余补 https（浏览器惯例）
-    const isLocal = /^(localhost|127\.0\.0\.1)([:/?#]|$)/i.test(candidate);
-    candidate = `${isLocal ? "http" : "https"}://${candidate}`;
-  }
+  const prepend = schemeToPrepend(candidate);
+  if (prepend) candidate = `${prepend}://${candidate}`;
   let parsed;
   try {
     parsed = new URL(candidate);

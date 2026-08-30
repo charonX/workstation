@@ -30,18 +30,13 @@ import {
   useBrowserPanelOpen,
   useBrowserPendingNav,
 } from "./browserPanelStore.js";
+import { hasForbiddenScheme } from "../../../shared/urlScheme.js";
 import "./browser.css";
 
-// 协议白名单前置校验（与主进程 normalizeBrowserUrl 的 scheme 判定同规——
-// 「host:端口」（冒号后纯数字）不算显式协议，避免 localhost:3000 被误判；
-// javascript:/file: 等裸 scheme 在此拦截，主进程 will-navigate 兜底重定向链）。
-function hasForbiddenScheme(value) {
-  const v = value.trim();
-  if (/^https?:\/\//i.test(v)) return false;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) return true; // 显式非 http(s) 协议
-  if (/^[^:/?#]+:\d+(?:[/?#]|$)/.test(v)) return false; // host:port 形态
-  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v); // 裸 scheme（javascript: 等）
-}
+// 协议白名单前置校验：hasForbiddenScheme 来自共享真源 src/shared/urlScheme.js
+// （与主进程 normalizeBrowserUrl 的 scheme 判定同规——「host:端口」不算显式协议，
+// 避免 localhost:3000 被误判；javascript:/file: 等裸 scheme 在此拦截，
+// 主进程 will-navigate 兜底重定向链）。
 
 export default function BrowserPanel() {
   const { t } = useTranslation();
