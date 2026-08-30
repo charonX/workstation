@@ -21,7 +21,7 @@ import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
 import { handleBrowser } from "./routes/browser.js";
-import { forbidden } from "./responders.js";
+import { denyBrowserApiIfUnsafe, applyDefaultCors } from "./browserApiGuard.js";
 import { handleAgentSessions, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
 
@@ -132,40 +132,18 @@ export function stopServer({ server }) {
   });
 }
 
-// /api/browser/* 访问控制（security review 2026-08-30，ADR-039 决策 7「本地通道」前提落地）：
-// Cookie 明文导出等凭据面曾被 ACAO:* + 无 Host 校验暴露给任意来源网页（含 agent 在面板内
-// 导航到的恶意站点；DNS rebinding 可绕过无 Host 校验的监听面）。本前缀统一收口：
-// 1. Host 头必须 127.0.0.1[:port]/localhost[:port]（封 DNS rebinding），否则 403；
-// 2. 跨源网页封锁：Origin 非 http://127.0.0.1:*/http://localhost:* → 403；
-//    Sec-Fetch-Site: cross-site|cross-origin → 403；
-// 3. 不输出 ACAO 头（跨源 fetch 读不到回执）；其余路由保持 ACAO:*（渲染进程 dev 期
-//    跨源依赖它们，不动全局 CORS）。
-// CLI/toolAdapter 调用路径（node fetch：无 Origin 头、Host=127.0.0.1）不受影响。
-const BROWSER_LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
-const BROWSER_LOOPBACK_ORIGIN_RE = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
-
-function browserApiAccessDenied(req) {
-  if (!BROWSER_LOOPBACK_HOST_RE.test(String(req.headers.host ?? ""))) return true;
-  const origin = req.headers.origin;
-  if (origin && !BROWSER_LOOPBACK_ORIGIN_RE.test(origin)) return true;
-  const fetchSite = req.headers["sec-fetch-site"];
-  return fetchSite === "cross-site" || fetchSite === "cross-origin";
-}
-
 async function handleRequest(req, res, server) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathParts = url.pathname.replace(/^\/api\//, "").split("/").filter(Boolean);
   const resource = pathParts[0];
   const subPath = pathParts.slice(1);
-  const isBrowserApi = resource === "browser";
 
-  if (isBrowserApi) {
-    if (browserApiAccessDenied(req)) return forbidden(res, "browser API is loopback-only");
-    // browser 前缀不输出任何 CORS 头（无合法跨源消费面）
+  // /api/browser/*：Host/Origin/Sec-Fetch-Site 闸 + 不输出 ACAO（browserApiGuard.js）；
+  // 其余路由保持 ACAO:*（渲染进程 dev 期跨源依赖，不动全局 CORS）。
+  if (resource === "browser") {
+    if (denyBrowserApiIfUnsafe(req, res)) return;
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    applyDefaultCors(res);
   }
 
   if (req.method === "OPTIONS") {
