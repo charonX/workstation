@@ -773,6 +773,16 @@ export function createBrowserViewManager(options = {}) {
       return found ? { ok: true } : { ok: false, error: { code: "E-BROWSER-NOT-READY", reason: "selector-not-found" } };
     },
 
+    // dev/test-only seam（E2E §8-E4 崩溃页流程，经 main 的 development 门控 IPC
+    // "opc-browser-test-crash" 到达——渲染进程/Playwright 不可直接触达视图
+    // webContents）：强制崩溃当前面板渲染进程，触发 render-process-gone 崩溃态。
+    // 生产语义不开（main.js 侧 development 门控；本方法本身不创建实例）。
+    _testCrash() {
+      if (!view) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+      view.webContents.forcefullyCrashRenderer();
+      return { ok: true };
+    },
+
     // 注入 seam（Slice 2/3 与测试用）：运行期替换导航执行器
     setNavigateExecutor(fn) {
       navigateExecutor = typeof fn === "function" ? fn : null;

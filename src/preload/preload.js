@@ -183,6 +183,14 @@ contextBridge.exposeInMainWorld("opc", {
     ipcRenderer.invoke("opc-browser-test-click", { selector }),
 
   /**
+   * Test-only seam: forcefully crash the browser panel's renderer process
+   * (E2E §8-E4 crash-page flow; main-process handler is development-gated).
+   * @returns {Promise<{ok:boolean, error?:{code:string}}>}
+   */
+  __browserTestCrash: () =>
+    ipcRenderer.invoke("opc-browser-test-crash"),
+
+  /**
    * Test-only seam to seed agent sessions (feishu/orphan 会话无 HTTP 创建面，
    * 2026-08-02-ui-copilot E2E 造数）。写 agent-sessions.db + JSONL 历史。
    * @param {Array<{spaceKey: string, title?: string, createdAt?: string, lastActiveAt?: string, messages?: Array<{role: string, text: string, time?: string}>}>} rows

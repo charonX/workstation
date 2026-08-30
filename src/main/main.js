@@ -376,6 +376,17 @@ if (process.env.NODE_ENV === "development") {
     }
     return manager._testClick(selector);
   });
+
+  // dev-only seam（E2E §8-E4 崩溃页流程）：强制崩溃面板渲染进程——渲染进程
+  // 不可直接触达视图 webContents，经本 handler 到 manager。仅 development 注册，
+  // 生产构建无此面。
+  ipcMain.handle("opc-browser-test-crash", async () => {
+    const manager = getBrowserManager();
+    if (!manager || typeof manager._testCrash !== "function") {
+      return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+    }
+    return manager._testCrash();
+  });
 }
 
 // ---- 检查更新（REQ-DIST-002）----
