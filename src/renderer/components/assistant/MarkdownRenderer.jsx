@@ -493,7 +493,8 @@ function MdImage({ src, alt, "data-bare-path": bare, ..._rest }) {
 // 不跳转主窗口）；右键 → 关联菜单（「在面板中打开」/「在系统浏览器打开」，
 // 后者经 opc.openExternal，主进程 http/https 白名单兜底）。
 // 非 http(s)（mailto: 等）保持现有行为（默认锚点，不拦截）。
-const HTTP_LINK_RE = /^https?:\/\//i;
+// 分发判定提取自纯模块 ./mdLinkDispatch.js（AC2/AC3 组件测试 seam：mock 桥断言调用）。
+import { dispatchLink, resolveLinkAction } from "./mdLinkDispatch.js";
 
 function MdLink({ node: _node, href, children, ...props }) {
   const { t } = useTranslation();
@@ -514,7 +515,7 @@ function MdLink({ node: _node, href, children, ...props }) {
     };
   }, [menu]);
 
-  if (typeof href !== "string" || !HTTP_LINK_RE.test(href)) {
+  if (resolveLinkAction(href) === "passthrough") {
     // 非 http(s) 协议（mailto: 等）保持现有行为
     return (
       <a href={href} {...props}>
@@ -526,11 +527,11 @@ function MdLink({ node: _node, href, children, ...props }) {
   const openInPanel = (e) => {
     e.preventDefault();
     setMenu(null);
-    openBrowserPanelWithUrl(href);
+    dispatchLink(href, { openPanel: openBrowserPanelWithUrl });
   };
   const openInSystemBrowser = () => {
     setMenu(null);
-    window.opc?.openExternal?.(href);
+    dispatchLink(href, { action: "external", openExternal: (u) => window.opc?.openExternal?.(u) });
   };
 
   return (
