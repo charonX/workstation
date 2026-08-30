@@ -110,9 +110,13 @@ function chromiumReasonFromError(err) {
 // get/remove 语义与 electron session.cookies 对齐：入参 url 形态，domain 后缀匹配。
 // 注意：cookiesGet/cookiesSet/cookiesRemove 是本 fallback 的自定义命名，electron Session
 // 上没有这些方法——业务代码一律走 createCookieStore adapter，禁止直接触碰这些方法名。
-function createMemoryCookieSession() {
+// onChanged(cookie)：对齐 Electron session.cookies "changed" 事件（cookie-updated 发射源）。
+function createMemoryCookieSession({ onChanged } = {}) {
   const cookies = new Map(); // key: name|domain|path
   const keyOf = (c) => `${c.name}|${c.domain}|${c.path || "/"}`;
+  const emitChanged = (cookie) => {
+    try { onChanged?.(cookie); } catch { /* 监听器异常不传染写入路径 */ }
+  };
   const domainSuffixMatch = (cookieDomain, filterDomain) => {
     if (!filterDomain) return true;
     const cd = String(cookieDomain || "").toLowerCase();
@@ -141,6 +145,7 @@ function createMemoryCookieSession() {
         httpOnly: details.httpOnly === true,
       };
       cookies.set(keyOf(cookie), cookie);
+      emitChanged(cookie);
       return cookie;
     },
     async cookiesRemove({ url, name, domain } = {}) {
@@ -152,6 +157,7 @@ function createMemoryCookieSession() {
         if (nameMatch && (domain ? domainMatch : urlMatch)) {
           cookies.delete(key);
           removed += 1;
+          emitChanged(c);
         }
       }
       return removed;
@@ -310,8 +316,21 @@ export function createBrowserViewManager(options = {}) {
       session = null;
     }
   }
+  // cookie-updated 事件发射源（PRD §10.4 接口5 事件表，code review 2026-08-30 补发射点）：
+  // persist:browser 分区 session 的 cookie 变更 → 主窗口 opc-browser-event
+  // {type:"cookie-updated", domain}（域级载荷，cookie 值禁入——脱敏收口同 §10.7）。
+  function emitCookieChanged(cookie) {
+    const domain = typeof cookie?.domain === "string" ? cookie.domain : "";
+    notify({ type: "cookie-updated", domain });
+  }
   if (!session) {
-    session = createMemoryCookieSession();
+    session = createMemoryCookieSession({ onChanged: emitCookieChanged });
+  } else if (session.cookies && typeof session.cookies.on === "function") {
+    try {
+      session.cookies.on("changed", (_event, cookie) => emitCookieChanged(cookie));
+    } catch {
+      // 监听挂载失败不阻断启动（事件面降级，导出/删除主路径不受影响）
+    }
   }
   // 统一 cookie 调用面：fallback 自定义命名与 Electron session.cookies API 归一到同一
   // adapter，业务代码只面向 adapter——fallback 命名不再泄漏进 Electron 路径。
