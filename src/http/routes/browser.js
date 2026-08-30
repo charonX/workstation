@@ -20,6 +20,8 @@
 // 日志脱敏收口（REQ-BROWSER-005 标准 7）：本路由层不落任何 cookie 值/cookieString 日志；
 // cookieString 明文只存在于 HTTP 响应体（ADR-001 单机通道），值类日志一律 NAME=<redacted>。
 
+import { ok, notFound } from "../responders.js";
+
 export async function handleBrowser(req, res, body, subPath = [], context = {}) {
   const { getBrowserViewManager } = context;
   const manager = getBrowserViewManager?.();
@@ -103,14 +105,4 @@ export async function handleBrowser(req, res, body, subPath = [], context = {}) 
     }
     throw err; // 未知异常上抛 → server.js 500 兜底
   }
-}
-
-function ok(res, data) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function notFound(res) {
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "NOT_FOUND", message: "Not found" }));
 }
