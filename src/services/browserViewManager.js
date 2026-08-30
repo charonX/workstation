@@ -756,12 +756,14 @@ export function createBrowserViewManager(options = {}) {
 
     // —— REQ-BROWSER-001：bounds 哑执行（visible=false 沉底隐藏保活，ADR-039 决策 3）——
     setBounds({ x, y, width, height, visible } = {}) {
+      const wasOpen = open;
       open = visible !== false;
-      // 展开意图消费闭环：open=true 首帧清除（面板已展开消化）；visible=false 也清除——
-      // 用户抢先收起 = 明确意图，残留会在下次挂载时重展开（窄竞态修复）。open/!open
-      // 二分全覆盖，即任何 bounds 推送都结清待消化意图；E2E 流程 B（agent expand 时
-      // 面板已开）语义不变：面板开着时推送 visible=true，同路径清除。
-      expandPending = false;
+      // 展开意图消费闭环（窄竞态修复）：open=true 首帧清除（面板已展开消化）；
+      // open→closed 跳变（visible=false 且此前开着 = 用户抢先收起，明确意图）也清除——
+      // 不残留到下次挂载重展开。但挂载初始的 visible=false（false→false 无跳变）
+      // 不清除：渲染进程重载场景下 BrowserPanel 挂载即推一次 visible=false，若清除会让
+      // 随后的 getState 对账读不到 pending——expandPending 的存在意义（事件丢失兜底）失效。
+      if (open || (wasOpen && !open)) expandPending = false;
       if (!view) return { ok: true, open };
       try {
         if (open && typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
