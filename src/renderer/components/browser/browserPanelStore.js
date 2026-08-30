@@ -38,23 +38,23 @@ export function getBrowserPendingNav() {
   return pendingNav;
 }
 
+// 开合状态统一入口：同值不重复通知（订阅者不因冗余 emit 重渲染）。
+function setOpen(next) {
+  if (open === next) return;
+  open = next;
+  emit();
+}
+
 export function openBrowserPanel() {
-  if (!open) {
-    open = true;
-    emit();
-  }
+  setOpen(true);
 }
 
 export function closeBrowserPanel() {
-  if (open) {
-    open = false;
-    emit();
-  }
+  setOpen(false);
 }
 
 export function toggleBrowserPanel() {
-  open = !open;
-  emit();
+  setOpen(!open);
 }
 
 // 打开面板并请求导航到 url（MarkdownRenderer http(s) 链接点击路径，REQ-BROWSER-004）。

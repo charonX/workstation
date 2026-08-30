@@ -475,10 +475,26 @@ export function createBrowserViewManager(options = {}) {
 
   // 收起态沉底隐藏（幂等）：窗内原点 + lastViewport 尺寸——保持非零可绘制尺寸，
   // capturePage 收起态返回真实画面；视觉隐藏由主 UI 覆盖保证。
+  function parkedBounds() {
+    return { x: 0, y: 0, width: lastViewport.width, height: lastViewport.height };
+  }
+
+  // capturePage 返回的 NativeImage 在非 Electron 注入路径可能无 getSize——归一为 {width,height}。
+  function imageSize(image) {
+    return image?.getSize ? image.getSize() : { width: 0, height: 0 };
+  }
+
+  // dev/test-only seam 的统一未就绪回执（_testClick/_testCrash）。
+  function notReadyResult(reason) {
+    const error = { code: "E-BROWSER-NOT-READY" };
+    if (reason) error.reason = reason;
+    return { ok: false, error };
+  }
+
   function parkViewHidden(v) {
     mountView(v, "bottom");
     try {
-      v.setBounds({ x: 0, y: 0, width: lastViewport.width, height: lastViewport.height });
+      v.setBounds(parkedBounds());
     } catch {
       // E6 同规：同步异常只记日志
     }
@@ -633,7 +649,7 @@ export function createBrowserViewManager(options = {}) {
       if (!wasOpen) {
         mountView(view, "top");
         try {
-          view.setBounds({ x: 0, y: 0, width: lastViewport.width, height: lastViewport.height });
+          view.setBounds(parkedBounds());
         } catch { /* E6 同规 */ }
       }
       let image = null;
@@ -643,7 +659,7 @@ export function createBrowserViewManager(options = {}) {
           if (!wasOpen) await new Promise((r) => setTimeout(r, 100));
           try {
             image = await view.webContents.capturePage();
-            const s = image.getSize ? image.getSize() : { width: 0, height: 0 };
+            const s = imageSize(image);
             if (s.width > 0 && s.height > 0) break; // 非空帧才接受（空帧 = surface 未就绪）
           } catch (err) {
             lastErr = err; // "display surface not available" / viz 时序错误：重试
@@ -652,7 +668,7 @@ export function createBrowserViewManager(options = {}) {
       } finally {
         if (!wasOpen) parkViewHidden(view); // 恢复沉底隐藏（含异常路径）
       }
-      if (!image || (image.getSize && image.getSize().width === 0)) {
+      if (!image || (image.getSize && imageSize(image).width === 0)) {
         throw lastErr || new Error("E-BROWSER-CAPTURE-EMPTY");
       }
       const png = image.toPNG ? image.toPNG() : image;
@@ -660,7 +676,7 @@ export function createBrowserViewManager(options = {}) {
       await fs.mkdir(shotsDir, { recursive: true });
       const filePath = path.join(shotsDir, `browser-${screenshotSeq}.png`);
       await fs.writeFile(filePath, png);
-      const size = image.getSize ? image.getSize() : { width: 0, height: 0 };
+      const size = imageSize(image);
       return { ok: true, path: filePath, width: size.width, height: size.height };
     },
 
@@ -765,12 +781,12 @@ export function createBrowserViewManager(options = {}) {
     // webContents）：在面板视图内对 selector 执行真实 click（target=_blank 拦截验证）。
     // 生产语义不开（main.js 侧 development 门控；本方法本身不创建实例）。
     async _testClick(selector) {
-      if (!view || crashed) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+      if (!view || crashed) return notReadyResult();
       const found = await view.webContents.executeJavaScript(
         `(() => { const el = document.querySelector(${JSON.stringify(String(selector ?? ""))}); if (!el) return false; el.click(); return true; })()`,
         true
       );
-      return found ? { ok: true } : { ok: false, error: { code: "E-BROWSER-NOT-READY", reason: "selector-not-found" } };
+      return found ? { ok: true } : notReadyResult("selector-not-found");
     },
 
     // dev/test-only seam（E2E §8-E4 崩溃页流程，经 main 的 development 门控 IPC
@@ -778,7 +794,7 @@ export function createBrowserViewManager(options = {}) {
     // webContents）：强制崩溃当前面板渲染进程，触发 render-process-gone 崩溃态。
     // 生产语义不开（main.js 侧 development 门控；本方法本身不创建实例）。
     _testCrash() {
-      if (!view) return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
+      if (!view) return notReadyResult();
       view.webContents.forcefullyCrashRenderer();
       return { ok: true };
     },

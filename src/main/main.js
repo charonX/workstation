@@ -365,28 +365,25 @@ ipcMain.handle("opc-open-external", async (_event, { url } = {}) => {
   }
 });
 
-// dev-only seam（E2E 弹窗拦截流程）：驱动面板 WebContentsView 内真实点击——渲染进程
-// 不可直接触达视图 webContents（Playwright 只见 BrowserWindow），经本 handler 到 manager。
+// dev-only seam（E2E 弹窗拦截 / §8-E4 崩溃页流程）：渲染进程不可直接触达视图
+// webContents（Playwright 只见 BrowserWindow），经本组 handler 到 manager 的 _test* seam。
 // 与下方 opc-seed-* 同规：仅 development 注册，生产构建无此面。
 if (process.env.NODE_ENV === "development") {
-  ipcMain.handle("opc-browser-test-click", async (_event, { selector } = {}) => {
+  const callBrowserTestSeam = (method, arg) => {
     const manager = getBrowserManager();
-    if (!manager || typeof manager._testClick !== "function") {
+    if (!manager || typeof manager[method] !== "function") {
       return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
     }
-    return manager._testClick(selector);
-  });
+    return manager[method](arg);
+  };
 
-  // dev-only seam（E2E §8-E4 崩溃页流程）：强制崩溃面板渲染进程——渲染进程
-  // 不可直接触达视图 webContents，经本 handler 到 manager。仅 development 注册，
-  // 生产构建无此面。
-  ipcMain.handle("opc-browser-test-crash", async () => {
-    const manager = getBrowserManager();
-    if (!manager || typeof manager._testCrash !== "function") {
-      return { ok: false, error: { code: "E-BROWSER-NOT-READY" } };
-    }
-    return manager._testCrash();
-  });
+  // 弹窗拦截流程：驱动面板 WebContentsView 内真实点击。
+  ipcMain.handle("opc-browser-test-click", async (_event, { selector } = {}) =>
+    callBrowserTestSeam("_testClick", selector)
+  );
+
+  // E4 崩溃页流程：强制崩溃面板渲染进程，触发 render-process-gone 崩溃态。
+  ipcMain.handle("opc-browser-test-crash", async () => callBrowserTestSeam("_testCrash"));
 }
 
 // ---- 检查更新（REQ-DIST-002）----
