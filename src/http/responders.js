@@ -21,6 +21,11 @@ export function notFound(res, message = "Not found") {
   return res.end(JSON.stringify({ error: "NOT_FOUND", message }));
 }
 
+export function forbidden(res, message = "Forbidden") {
+  res.writeHead(403, { "Content-Type": "application/json" });
+  return res.end(JSON.stringify({ error: "FORBIDDEN", message }));
+}
+
 export function mapError(res, err, defaultStatus = 400) {
   const status = err?.status || defaultStatus;
   const body = {
