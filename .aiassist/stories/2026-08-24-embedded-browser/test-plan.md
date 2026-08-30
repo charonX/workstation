@@ -3,7 +3,7 @@
 > 故事 ID：`2026-08-24-embedded-browser`
 > 生成：2026-08-28（/test-author 自动链）
 > 来源：`requirements.md` v2（REQ-BROWSER-001~006，2026-08-30 errata）、`prd.md` v0.4 §6/§7/§8/§10.4、`ux/browser-panel.html`
-> 骨架状态：**SKELETON**——单元/集成用例中标注 `skeletonPending()` 的断言依赖实现（REQ-BROWSER-001~006），E2E 用例以 `test.skip` 占位；实现落地后由 /implementer 替换为契约内真实断言（只读契约，不得改 expected 值）。
+> 骨架状态：**已落地**——骨架哨兵与 E2E skip 已全部移除（Slice 1-3，2026-08-30）；review 增补用例（组件 `/many` 流程D 访问控制 续号）由 2026-08-30 review 修复轮补齐。
 
 ---
 
