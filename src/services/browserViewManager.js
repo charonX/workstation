@@ -382,11 +382,14 @@ export function createBrowserViewManager(options = {}) {
       },
     });
     const wc = v.webContents;
-    // 弹窗拦截双闸之一：setWindowOpenHandler 一律 deny 并转面板内导航（锚点 §6.3 块1 row4）
+    // 弹窗拦截双闸之一：setWindowOpenHandler 一律 deny 并转面板内导航（锚点 §6.3 块1 row4）。
+    // 重定向走内部 navigate 状态机（source="user"：target=_blank 弹窗是页内用户意图延伸），
+    // 不直接对已崩 webContents loadURL——崩溃态下由 navigate 的重建分支处理
+    // （security review 2026-08-30：直调 loadURL 绕过状态机，崩溃态下静默失败）。
     wc.setWindowOpenHandler(({ url: target }) => {
       const normalized = normalizeBrowserUrl(target);
       if (normalized) {
-        wc.loadURL(normalized).catch(() => {});
+        api.navigate({ url: normalized, source: "user" }).catch(() => {});
         notify({ type: "navigated", url: normalized, source: "popup-redirect" });
       }
       return { action: "deny" };
@@ -595,7 +598,9 @@ export function createBrowserViewManager(options = {}) {
     return fallbackNavigateExecutor(normalizedUrl);
   }
 
-  return {
+  // 命名引用（非直接 return 字面量）：createView 内 setWindowOpenHandler 的弹窗重定向
+  // 需回调 api.navigate 走状态机；createView 只在 navigate() 内惰性调用，api 此时已存在。
+  const api = {
     // —— REQ-BROWSER-001：导航（协议白名单 → revoked → crashed → 执行）——
     async navigate({ url, source, expand } = {}) {
       const normalized = normalizeBrowserUrl(url);
@@ -884,4 +889,5 @@ export function createBrowserViewManager(options = {}) {
       }
     },
   };
+  return api;
 }
