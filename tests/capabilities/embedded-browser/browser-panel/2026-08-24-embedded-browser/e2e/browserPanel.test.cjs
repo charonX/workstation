@@ -117,6 +117,22 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
   });
 
+  test("流程A 回归：先展开面板后首次导航，原生视图 bounds 非零（2026-08-31 白屏回归）", async () => {
+    // 回归锚点：布局真相推送先于视图创建时不丢弃——setBounds 的 !view 早退曾静默丢弃
+    // 展开态 bounds，新建视图 0×0 白屏（真实 app 实证，DOM 断言照不出）。
+    await page.locator(BTN_BROWSER).click();
+    await expect(page.locator(PANEL)).toBeVisible();
+    await page.locator(OMNIBOX).fill(`localhost:${STUB_PORT}`);
+    await page.locator(OMNIBOX).press("Enter");
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+    const boundsList = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      return win.contentView.children.map((v) => (typeof v.getBounds === "function" ? v.getBounds() : null));
+    });
+    const painted = boundsList.find((b) => b && b.width > 0 && b.height > 0);
+    expect(painted, `原生视图应有非零 bounds（实际: ${JSON.stringify(boundsList)}）`).toBeTruthy();
+  });
+
   test("流程A：收起面板后重新展开，地址栏保留原 URL（实例保活）", async () => {
     await page.locator(BTN_BROWSER).click();
     await page.locator(OMNIBOX).fill(`localhost:${STUB_PORT}`);
