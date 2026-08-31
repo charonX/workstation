@@ -51,7 +51,7 @@
   /* === Layout === */
   --ch-topbar-height: 48px; /* @kind other */
   --ch-sidebar-width: 260px; /* @kind other */
-  --ch-right-panel-width: 320px; /* @kind other */
+  --ch-right-panel-width: 800px; /* @kind other */
   --ch-panel-padding: 16px; /* @kind other */
 }
 

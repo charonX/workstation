@@ -139,7 +139,7 @@ document.documentElement.setAttribute('data-theme', 'dark');
 |---|---|---|
 | `--ch-topbar-height` | 48px | 顶部工具栏高度 |
 | `--ch-sidebar-width` | 260px | 左侧边栏宽度 |
-| `--ch-right-panel-width` | 320px | 右侧面板宽度 |
+| `--ch-right-panel-width` | 800px | 右侧面板宽度（2026-08-31 人裁决：浏览器面板最少 800px） |
 | `--ch-panel-padding` | 16px | 面板内边距 |
 
 ## 组件约定
