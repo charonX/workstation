@@ -1,0 +1,26 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": ".aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "createdAt": "2026-08-24T14:48:33.784Z",
+  "updatedAt": "2026-08-24T14:53:11.451Z",
+  "assets": {
+    "浏览器面板（单屏一体）": {
+      "versions": [
+        {
+          "path": "browser-panel.html",
+          "createdAt": "2026-08-24T14:53:11.451Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  }
+}
