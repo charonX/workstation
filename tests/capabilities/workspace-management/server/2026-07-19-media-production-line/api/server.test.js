@@ -29,7 +29,10 @@ async function waitFor(condition, { timeoutMs = 8000, intervalMs = 150, descript
 
 function spawnHeadlessServer(homeDir, extraEnv = {}) {
   const child = spawn(process.execPath, [HEADLESS_SERVER], {
-    env: { ...process.env, HOME: homeDir, OPC_SERVER_OWNER: String(process.pid), ...extraEnv },
+    // ADR-0040（BUG-001）：注册表锚点固定机器级后，子进程经 $HOME 解析到
+    // homeDir/.opc-workstation/server.json（os.homedir 尊重 $HOME）——必须剥掉
+    // 父进程 unit 预载 seam 注入的 OPC_SERVER_REGISTRY_FILE，否则隔离失效。
+    env: { ...process.env, HOME: homeDir, OPC_SERVER_REGISTRY_FILE: undefined, OPC_SERVER_OWNER: String(process.pid), ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stderr = "";

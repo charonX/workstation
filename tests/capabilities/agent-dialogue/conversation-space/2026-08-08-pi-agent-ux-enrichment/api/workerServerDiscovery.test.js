@@ -127,6 +127,9 @@ describe("BUG-007 ②：ensureServer 在 worker 上下文禁止自起 server", (
   beforeEach(() => {
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "bug007-ensure-"));
     process.env.OPC_WORKSTATION_CONFIG_DIR = workdir; // 空注册表 → 发现必失败
+    // ADR-0040（BUG-001）：注册表锚点已与 configDir 解耦，空注册表隔离改由
+    // OPC_SERVER_REGISTRY_FILE 承载（修复前该变量被忽略、configDir 仍生效，两态等价）。
+    process.env.OPC_SERVER_REGISTRY_FILE = path.join(workdir, "server.json");
     process.env.OPC_AGENT_WORKER = "1";
   });
 
@@ -145,6 +148,7 @@ describe("BUG-007 ②：ensureServer 在 worker 上下文禁止自起 server", (
       // 清理尽力而为。
     }
     delete process.env.OPC_WORKSTATION_CONFIG_DIR;
+    delete process.env.OPC_SERVER_REGISTRY_FILE;
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 

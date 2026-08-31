@@ -87,6 +87,11 @@ async function startElectronApp(options = {}) {
       NODE_ENV: "development",
       DB_PATH: dbPath,
       OPC_WORKSTATION_CONFIG_DIR: userDataDir,
+      // ADR-0040（BUG-001）：注册表锚点固定机器级后，E2E app 实例必须注入
+      // per-instance 覆盖，否则写真实 ~/.opc-workstation/server.json（污染开发机
+      // 注册表 + 并行 E2E 实例/真实 app 互相发现、误 takeover）。userData/server.json
+      // 仍是 main.js 写的 {port, baseUrl} fixture（下方轮询不变），两文件已分离。
+      OPC_SERVER_REGISTRY_FILE: path.join(userDataDir, "server-registry.json"),
       ...(options.extraEnv ?? {}),
     },
   });
