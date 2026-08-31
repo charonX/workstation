@@ -345,6 +345,18 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await expect(link).toBeVisible({ timeout: 120000 });
     // 非 http(s) 链接不经 MdLink 拦截：无 .md-link-wrap 包裹
     await expect(page.locator("[data-message-role='agent'] .md-link-wrap a", { hasText: "邮箱" })).toHaveCount(0);
+    // 测试卫生（2026-08-31 实证）：真实点击 mailto 会让 Chromium 把外部协议交给系统
+    // 处理器（macOS 弹「邮件」app 添加账户界面）。契约断言点是「不触发面板导航」，
+    // 系统默认处理属 OS 面——在页面层拦掉默认动作，避免副作用漏出测试沙箱。
+    await page.evaluate(() => {
+      document.addEventListener(
+        "click",
+        (e) => {
+          if (e.target?.closest?.("a[href^='mailto:']")) e.preventDefault();
+        },
+        { capture: true }
+      );
+    });
     await link.click();
     await expect(page.locator(PANEL)).toBeHidden();
   });
