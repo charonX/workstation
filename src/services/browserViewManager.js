@@ -345,6 +345,7 @@ export function createBrowserViewManager(options = {}) {
   // 清除：面板打开后的首个 open=true bounds 推送（无需新增 IPC 通道）。
   let expandPending = false;
   let lastViewport = { width: 1280, height: 800 }; // 最近一次可见 bounds 尺寸（沉底隐藏时保持可绘制尺寸）
+  let lastOpenBounds = null; // 最近一次展开态完整 bounds（位置+尺寸）；视图未创建时的推送缓存在此，createView 时套用
   let screenshotSeq = 0;
   let screenshotSeqReady = false; // 跨会话持久化序号是否已完成目录扫描（惰性，首次截图时）
 
@@ -635,7 +636,17 @@ export function createBrowserViewManager(options = {}) {
       if (!view) {
         view = createView();
         // 恒 attach：可见性由 z-order 表达（展开=顶层，收起=沉底隐藏），不做 detach
-        if (view) mountView(view, open ? "top" : "bottom");
+        if (view) {
+          mountView(view, open ? "top" : "bottom");
+          // 视图创建即套用布局真相（2026-08-31 实证：面板先于导航展开时推送的 bounds
+          // 曾被 !view 早退静默丢弃 → 新建视图 0×0 白屏）。展开态套最近完整 bounds；
+          // 收起态给可绘制尺寸（capturePage/read 契约）；agent 先导航（无缓存）保持
+          // 0×0 等渲染进程首帧推送。
+          try {
+            if (open && lastOpenBounds) view.setBounds(lastOpenBounds);
+            else if (!open) view.setBounds(parkedBounds());
+          } catch { /* E6 同规：同步异常只记日志，下帧推送重算恢复 */ }
+        }
       }
       const { title, snapshot } = await runNavigation(normalized);
       currentUrl = normalized;
@@ -765,12 +776,18 @@ export function createBrowserViewManager(options = {}) {
       // 不清除：渲染进程重载场景下 BrowserPanel 挂载即推一次 visible=false，若清除会让
       // 随后的 getState 对账读不到 pending——expandPending 的存在意义（事件丢失兜底）失效。
       if (open || (wasOpen && !open)) expandPending = false;
+      const hasSize = typeof width === "number" && typeof height === "number" && width > 0 && height > 0;
+      // 布局真相缓存先于视图判空：视图未创建时推送不丢弃（实证：先展开面板后首次导航，
+      // 早退丢弃 → 新建视图 0×0 白屏无日志，2026-08-31 真实 app 复现）。
+      if (open && hasSize) {
+        lastViewport = { width, height };
+        lastOpenBounds = { x: Number(x) || 0, y: Number(y) || 0, width, height };
+      }
       if (!view) return { ok: true, open };
       try {
-        if (open && typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
-          lastViewport = { width, height };
+        if (open && hasSize) {
           mountView(view, "top"); // 幂等：仅 z-order 变化时重挂
-          view.setBounds({ x: Number(x) || 0, y: Number(y) || 0, width, height });
+          view.setBounds(lastOpenBounds);
         } else if (!open) {
           // 隐藏 = 沉到 contentView 最底层（主 UI 覆盖，幂等）：实例与 webContents
           // 保活且保持可绘制尺寸，capturePage 收起态仍返回真实画面
