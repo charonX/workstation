@@ -1,9 +1,9 @@
 # Requirements — 内置浏览器面板与 agent 受控浏览器（预览/读取）
 
 > 故事 ID：`2026-08-24-embedded-browser`
-> 版本：v2
-> 最后更新：2026-08-30
-> 修订记录：v2（2026-08-30 errata，依据 STANDARDS「hash 锁定契约的笔误勘误走版本化修订」）——REQ-BROWSER-002 截图路径/序号语义对齐 PRD v0.3 人裁决（`<configDir>/browser-shots/`、跨会话全局递增）与 review 增补 AC（REQ-001 AC8 崩溃态、REQ-002 AC6 断言确定性化 + AC9 跨会话续号、REQ-003 source 通道决定、REQ-005 AC8 导出端点访问控制）；版本哈希见 `requirements-v2.hash`（v1 文件保留）
+> 版本：v3
+> 最后更新：2026-08-31
+> 修订记录：v3（2026-08-31 BUG-001 req-gap 就地补全）——新增 REQ-BROWSER-007（server 发现通道：机器级注册表锚点 + app 固定 owner="app"），ADR-0040；版本哈希见 `requirements-v3.hash`（v1/v2 文件保留）；v2（2026-08-30 errata，依据 STANDARDS「hash 锁定契约的笔误勘误走版本化修订」）——REQ-BROWSER-002 截图路径/序号语义对齐 PRD v0.3 人裁决（`<configDir>/browser-shots/`、跨会话全局递增）与 review 增补 AC（REQ-001 AC8 崩溃态、REQ-002 AC6 断言确定性化 + AC9 跨会话续号、REQ-003 source 通道决定、REQ-005 AC8 导出端点访问控制）；版本哈希见 `requirements-v2.hash`（v1 文件保留）
 > 来源：`prd.md` v0.3（§4 五大稳定块、§10 技术方案、§10.4 六大接口契约）
 > 移动块：PRD §5 移动块 1（read 快照字段细节：元素清单字段名以 §10.4 接口 2 golden 为准，截断阈值 4000 字符/50 元素已锚定）随实现细化，不入独立 REQ
 > UX 参照：`ux/browser-panel.html`（单屏一体原型：面板 chrome、地址栏、agent 控制指示、停止控制、崩溃/错误页、六状态开关）
@@ -135,6 +135,27 @@
 4. **riskLevel 声明（锚点 §6.3 块2）**：`browser auth-check` 在 TOOL_DEFS 中 riskLevel=`"query"`（单元）。
 5. **BAD-DOMAIN 透传**：`browser auth-check --domain bilibili.com` 返回 E-BROWSER-BAD-DOMAIN（集成）。
 6. **引导流程 E2E（流程 D）**：stub 登录页场景——auth-check=false → agent navigate --expand 后面板展开且加载登录页 URL（E2E：面板可见 + 地址栏 = 登录页；用户手动登录后 auth-check 转真的完整闭环依赖真实站点，E2E 以 stub Cookie 种入替代登录动作）。
+
+---
+
+## REQ-BROWSER-007 server 发现通道（机器级注册表锚点）
+
+- 优先级 P0 / 必须 / cross-module / serverRegistry + cli/server(discoverServer/ensureServer) + main(app 注册) / embedded-browser / browser-tools / 单元 + 集成
+- ADR：`adr/0040-machine-level-server-registry.md`（注册表锚定机器级固定路径 + app 固定 owner；细化 ADR-001 发现机制）
+- 背景（BUG-001，2026-08-31 实证）：外部 AI/CLI 对运行中 app 的内置浏览器执行 `browser read` 返回 E-BROWSER-NOT-READY——注册表挂 per-configDir（app 与 CLI 分裂）、main.js 用 E2E fixture 格式覆盖注册记录（丢 pid/owner）、discoverServer owner 精确匹配不覆盖 app 场景，三层叠加导致外部发现永远失败、ensureServer 兜底 spawn 无视图 headless server。
+- 接口契约（PRD §10.5「server 发现通道」决策行 + ADR-0040）：
+  - 注册表锚点固定机器级 `~/.opc-workstation/server.json`，与 `OPC_WORKSTATION_CONFIG_DIR` 解耦；`OPC_SERVER_REGISTRY_FILE` 环境变量覆盖（测试/E2E 隔离 seam）；锁文件与注册表同路径（`<file>.lock`）。
+  - Electron app 以固定 owner=`"app"` 注册，记录含 port/pid（存活）/owner/startedAt；`userData/server.json`（`{port, baseUrl}`）仅为 E2E fixture seam，不再是注册表、不参与发现。
+  - discoverServer 匹配顺序：精确 owner 匹配（既有 headless/测试语义不变）> owner=`"app"` 的可达记录 > allowAnyOwner 兜底（不变）；死 pid/不可达记录修剪语义不变。
+  - app 重启保端口：仅从 owner=`"app"` 的记录取 preferredPort（机器级注册表混有 headless 记录，不过滤会复用他人端口）。
+
+验收标准：
+1. **锚点固定（ADR-0040 决策 1）**：无 `OPC_SERVER_REGISTRY_FILE` 时 getServerInfoFile() 返回 `<os.homedir()>/.opc-workstation/server.json`；设置 `OPC_WORKSTATION_CONFIG_DIR=<tmp>` 不改变该返回值（单元）。
+2. **env 覆盖（ADR-0040 决策 1）**：设 `OPC_SERVER_REGISTRY_FILE=<tmp>/reg.json` 后 registerServerRecord/readServerInfoRaw 均读写该路径，锁文件为 `<tmp>/reg.json.lock`（单元）。
+3. **外部发现 app（ADR-0040 决策 2，bug 复现路径）**：注册表含 `{port, pid:存活, owner:"app"}` 且该端口 `/api/settings` 可达时，owner 不匹配的调用方 discoverServer() 返回该 server 的 `{port, baseUrl}`（集成：以独立 owner 模拟外部 CLI 上下文）。
+4. **精确 owner 优先（ADR-0040 决策 2）**：同时存在可达的 owner=<当前 owner> 与 owner=`"app"` 两条记录时，discoverServer 返回精确 owner 匹配的记录（集成）。
+5. **app 注册形态（ADR-0040 决策 3）**：`startServer({owner:"app"})` 后注册记录含 port/pid（存活）/owner=`"app"`/startedAt；向另一路径写 `{port, baseUrl}` fixture 文件后注册记录保持完整可读（集成）。
+6. **保端口过滤（ADR-0040 决策 4）**：注册表同时含 owner=`"app"`（port A）与其他 owner（port B，更晚写入）记录时，app 侧 preferredPort 选择逻辑只考虑 owner=`"app"` 记录（单元：经抽出的选择函数 seam）。
 
 ---
 

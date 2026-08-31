@@ -312,6 +312,7 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 |---|---|---|---|
 | 浏览器承载形态 | A `<webview>` / **B WebContentsView** / C 双实例 | 方向 B 已确认：控制保真最高（主进程直持 webContents、CDP 可用）、可见性解耦天然满足「收起不断连」 | bounds 手动同步成本 |
 | 工具接入形态 | 内置 MCP server / **CLI 工具面（toolAdapter）** | 复用「CLI 即控制面」先例与 riskLevel 映射（ADR-001 HTTP 通道） | 已验证：worker CLI 工具经 OPC_AGENT_SERVER_BASE_URL 直连主 server |
+| server 发现通道 | **机器级注册表锚点（ADR-0040）** / per-configDir 注册表 | BUG-001 实证 per-configDir 锚点使 app 与外部 CLI 注册表分裂、发现永远失败；注册表本职即机器级发现。锚定 `~/.opc-workstation/server.json` + `OPC_SERVER_REGISTRY_FILE` 覆盖；app 固定 owner="app" 注册，discoverServer 精确 owner 优先、app 记录兜底；userData/server.json 降为纯 E2E fixture seam；重启保端口只取 owner="app" 记录 | 依赖 configDir 隔离注册表的既有测试需迁移到 env 覆盖 |
 | 布局真相归属 | **A 渲染进程持有** / B 主进程持有 | Q1 拍板 A：React 布局单一真相，ResizeObserver 节流推 bounds，主进程哑执行 setBounds；实例「就绪前不 attach」消首帧闪烁 | 高频 IPC 需节流；同步异常按 E6 兜底 |
 | agent 页面感知 | **A executeJavaScript 自包含快照** / B CDP 原生快照 | Q2 拍板 A：高频轮询语义下够用且截断可控；跨域 iframe 拿不到记为已知限制 | 严格 CSP 站点注入被拒 → 退化为 title/url only |
 | 写入动作（click/type） | **本期砍**（曾推演 CDP Input 方案） | 2026-08-26 人裁决：本期只做预览/读取；CDP debugger 生命周期管理复杂度不付 | 后续 story 恢复时重启此推演 |
@@ -389,4 +390,5 @@ agent 在 workstation 里起了 web 服务或产出页面后，用户要切到�
 | v0.1 | 2026-08-24 | 初稿 | AI + 人 |
 | v0.2 | 2026-08-26 | TECH-DESIGN 深潜：范围收敛（砍 click/type，稳定块 5→4）；§10 完整填充（5 接口契约 + golden values）；ADR-039 落地 | AI + 人 |
 | v0.3 | 2026-08-28 | 用户增补稳定块 5「登录态持久化、Cookie 导出与身份桥接」：流程 D、接口 4 完整契约（含空态/幂等/脱敏 golden）、auth-check CLI、E7/E8 错误、§9 复杂度回升 6 模块、§11.1 补 seam；同步修订 §2 解决方案表述 | AI + 人 |
+| v0.5 | 2026-08-31 | BUG-001 req-gap 就地补全：§10.5 补「server 发现通道」决策行（ADR-0040 机器级注册表锚点 + app 固定 owner="app"）；requirements v3 新增 REQ-BROWSER-007 | AI + 人 |
 | v0.4 | 2026-08-30 | review 修订：§1 补登录态/采集痛点（块 5 初衷记录）；§5 移动块 1 标注已稳定；§6.3 补块 4「系统浏览器打开/mailto 不拦截」与块 5 name 单名过滤锚点；§8-E2 登记 E-BROWSER-NAV-FAILED、§14 计数改 E1-E8；§10.2 补稳定块 4 契约（openBrowserPanelWithUrl → preload IPC）+ 第 6 模块口径 + ADR-035/036 路由约束；§10.3 手动浏览改 IPC 通道、cookie-updated 改分区变更监听语义；§10.4 接口 1 source 通道决定 + revoked 解除规则（页内点击不解除）、接口 3 补副作用/错误列且 screenshot 定 POST、接口 5 登记 opc-browser-navigate；§10.6 补凭据导出风险行 | AI + 人 |

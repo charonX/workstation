@@ -1,6 +1,6 @@
 # ADR-001: CLI 与前端通过本地 HTTP API 共享服务层
 
-- **状态**: 已接受
+- **状态**: 已接受（发现机制 2026-08-31 由 0040 细化：注册表锚定机器级固定路径，app 以固定 owner="app" 注册；HTTP 通道与本 ADR 其余条款不变）
 - **日期**: 2026-07-08
 - **相关 story**: codex-harness-desktop
 - **相关 REQ**: REQ-WORKSPACE-001~007、REQ-FLOW-001~010、REQ-SCHEDULE-001~003、REQ-SKILL-001~003、REQ-DASH-001、REQ-I18N-001~002、REQ-CLI-001
