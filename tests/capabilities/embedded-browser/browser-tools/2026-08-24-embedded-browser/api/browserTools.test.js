@@ -1,12 +1,14 @@
 // REQ-TRACE: 2026-08-24-embedded-browser/REQ-BROWSER-002, 2026-08-24-embedded-browser/REQ-BROWSER-006
-// REQ-VERSION: v1-hash:28b4d67858fda6ad607eac25ec8b9fe9abdd805baa59ba5c36f3d47e9e8b7b59
+// REQ-VERSION: v2-hash:1b26fe9dc10d23ac1d650a76dd952f2458c3492d4981e96c435e9fc819d7b622
 // CAPABILITY-TRACE: embedded-browser
 // ENTITY-TRACE: browser-tools
-// EXPECTED-TRACE: prd.md §6.3 块2 rows 5-6, §6.3 块5 rows 2/5, §10.4 接口2 golden values, §10.4 接口6 CLI 声明表, §8-E8
+// EXPECTED-TRACE: prd.md §6.3 块2 rows 1-2（块内编号）, §6.3 块5 row 3, §10.4 接口2 golden values, §10.4 接口3 screenshot 续号行, §10.4 接口6 CLI 声明表, §8-E8
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-08-28 assertion signoff，见 signoff.md）
 //
 // 状态：哨兵已移除（2026-08-29，Slice 2 落地）。
+// 2026-08-30 v2 同步：REQ-VERSION 升 v2 hash；§6.3 行号统一为块内编号约定；
+// 新增 REQ-002 AC9（截图序号跨会话续号，注入 seam：shotsDir + createView + navigateExecutor）。
 // 覆盖 seam：CLI 工具面（toolAdapter browser 命令声明）+ HTTP（/api/browser/*，工具后端）。
 // read 结构/截断、scroll、screenshot 四用例为 Electron-only（需真实 WebContentsView），
 // 已迁移至 e2e/browserPanel.test.cjs（本文件不含）。
@@ -19,10 +21,11 @@ import os from "node:os";
 import http from "node:http";
 import { createToolSurface, TOOL_DEFS } from "../../../../../../src/agent/toolAdapter.js";
 import { startServer, stopServer } from "../../../../../../src/http/server.js";
+import { createBrowserViewManager } from "../../../../../../src/services/browserViewManager.js";
 
 describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与回执）", () => {
-  it("riskLevel 声明：四个 browser 命令均为 query（锚点 §6.3 块2 row6）", () => {
-    // EXPECTED-TRACE: prd.md §6.3 块2 row 6（navigate/read/scroll/screenshot 均 query）
+  it("riskLevel 声明：四个 browser 命令均为 query（锚点 §6.3 块2 row2）", () => {
+    // EXPECTED-TRACE: prd.md §6.3 块2 row 2（navigate/read/scroll/screenshot 均 query）
     const defs = TOOL_DEFS.filter((d) => d.name.startsWith("browser "));
     const byName = Object.fromEntries(defs.map((d) => [d.name, d]));
     for (const name of ["browser navigate", "browser read", "browser scroll", "browser screenshot"]) {
@@ -31,8 +34,8 @@ describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与
     }
   });
 
-  it("riskLevel 声明：browser auth-check 为 query（锚点 §6.3 块2 row6 / REQ-006 标准4）", () => {
-    // EXPECTED-TRACE: prd.md §6.3 块2 row 6（auth-check riskLevel=query）
+  it("riskLevel 声明：browser auth-check 为 query（锚点 §6.3 块2 row2 / REQ-006 标准4）", () => {
+    // EXPECTED-TRACE: prd.md §6.3 块2 row 2（auth-check riskLevel=query）
     const def = TOOL_DEFS.find((d) => d.name === "browser auth-check");
     assert.ok(def, "TOOL_DEFS 缺少 browser auth-check");
     assert.equal(def.riskLevel, "query");
@@ -73,8 +76,8 @@ describe("REQ-BROWSER-002 agent 浏览器读取工具集（toolAdapter 声明与
       fs.rmSync(workdir, { recursive: true, force: true });
     });
 
-    it("navigate 回执：{ok:true, url, title}（锚点 §6.3 块2 row5）", async () => {
-      // EXPECTED-TRACE: prd.md §6.3 块2 row 5（{ok:true,url:"http://localhost:<port>/",title:<stub标题>}）
+    it("navigate 回执：{ok:true, url, title}（锚点 §6.3 块2 row1）", async () => {
+      // EXPECTED-TRACE: prd.md §6.3 块2 row 1（{ok:true,url:"http://localhost:<port>/",title:<stub标题>}）
       const out = await surface.invoke(`browser navigate --url http://localhost:${stubPort}`);
       const parsed = JSON.parse(out);
       assert.equal(parsed.ok, true);
@@ -130,8 +133,8 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("已登录：required-cookies 全部存在 → authenticated:true（锚点 §6.3 块5 row2）", async () => {
-    // EXPECTED-TRACE: prd.md §6.3 块5 row 2（{authenticated:true}）
+  it("已登录：required-cookies 全部存在 → authenticated:true（锚点 §6.3 块5 row3）", async () => {
+    // EXPECTED-TRACE: prd.md §6.3 块5 row 3（{authenticated:true}）
     await seedCookie();
     const out = await surface.invoke("browser auth-check --domain .bilibili.com --required-cookies SESSDATA");
     assert.deepEqual(JSON.parse(out), { authenticated: true });
@@ -163,5 +166,48 @@ describe("REQ-BROWSER-006 agent 登录探测 auth-check", () => {
     const parsed = JSON.parse(out);
     assert.equal(parsed.ok, false);
     assert.equal(parsed.error.code, "E-BROWSER-BAD-DOMAIN");
+  });
+});
+
+describe("REQ-BROWSER-002 AC9 截图序号跨会话续号（<configDir>/browser-shots 扫描续号）", () => {
+  it("预置 browser-7.png 后首次截图续号为 browser-8.png 且不覆盖既有文件（锚点 §10.3/§10.4 接口3，2026-08-29 人裁决）", async () => {
+    // EXPECTED-TRACE: prd.md §10.4 接口3 screenshot 行（n 跨会话全局递增：重启后扫描
+    // browser-shots/ 目录取 max+1 续号，不重置、不覆盖既有文件）+ requirements REQ-BROWSER-002 AC9
+    // seam：createBrowserViewManager 注入缝（shotsDir + createView 假视图 + navigateExecutor），
+    // 纯 node 可跑——截图序号持久化是宿主侧逻辑，不依赖真实 WebContentsView 渲染。
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "browser-shots-test-"));
+    try {
+      const shotsDir = path.join(workdir, "browser-shots");
+      fs.mkdirSync(shotsDir, { recursive: true });
+      const presetBytes = Buffer.from("\x89PNG\r\n\x1a\npreset-7");
+      fs.writeFileSync(path.join(shotsDir, "browser-7.png"), presetBytes);
+      const fakeImage = {
+        getSize: () => ({ width: 64, height: 64 }),
+        toPNG: () => Buffer.from("\x89PNG\r\n\x1a\nshot"),
+      };
+      const makeManager = () =>
+        createBrowserViewManager({
+          shotsDir,
+          navigateExecutor: async () => ({ title: "Stub" }),
+          createView: () => ({ webContents: { capturePage: async () => fakeImage }, setBounds() {} }),
+        });
+
+      const m1 = makeManager();
+      await m1.navigate({ url: "http://localhost:1", source: "agent" });
+      const s1 = await m1.screenshot({ source: "agent" });
+      assert.equal(s1.ok, true);
+      assert.equal(path.basename(s1.path), "browser-8.png"); // max(7)+1 续号，不重置为 1
+
+      // 模拟再次重启：同一 shotsDir 新实例继续续号（证明扫描而非一次性记忆）
+      const m2 = makeManager();
+      await m2.navigate({ url: "http://localhost:1", source: "agent" });
+      const s2 = await m2.screenshot({ source: "agent" });
+      assert.equal(path.basename(s2.path), "browser-9.png");
+
+      // 既有文件不被覆盖
+      assert.deepEqual(fs.readFileSync(path.join(shotsDir, "browser-7.png")), presetBytes);
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
   });
 });
