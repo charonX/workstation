@@ -18,7 +18,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import { migrateLegacyDb } from "../db.js";
 import { discoverServer } from "../cli/server.js";
-import { takeoverExistingServer, readServerInfoRaw } from "../serverRegistry.js";
+import { takeoverExistingServer, readServerInfoRaw, pickAppPreferredPort } from "../serverRegistry.js";
 import { isArtifactPathAllowed } from "../preload/artifactPathGuard.js";
 import { getDb } from "../db.js";
 import { checkForUpdates, E_UPDATE_PARSE } from "./updates.js";
@@ -181,18 +181,20 @@ async function createWindow() {
       }
     }
     // 重启保端口（2026-08-02-ui-copilot assistantConfirm AC3「重启后卡片仍挂起」E2E
-    // 契约 + server.json 消费者稳定性）：复用本配置目录 registry 中最近一条记录的
+    // 契约 + server.json 消费者稳定性）：复用 registry 中最近一条 owner="app" 记录的
     // 端口——应用重启后 baseUrl 不变（E2E 重启场景的既有 apiBaseUrl 继续可达）。
+    // ADR-0040 决策 4（BUG-001）：机器级注册表混有 headless/测试记录，必须经
+    // pickAppPreferredPort 过滤，否则复用到别的 server 的端口。
     // 端口被占用时由 startServer 回退随机端口（EADDRINUSE → listen(0)）。
     let preferredPort = 0;
     try {
-      const records = readServerInfoRaw();
-      const last = records[records.length - 1];
-      if (last && Number.isInteger(last.port) && last.port > 0) preferredPort = last.port;
+      preferredPort = pickAppPreferredPort(readServerInfoRaw());
     } catch {
       // 无既有记录 → 随机端口。
     }
-    serverCtx = await startServer({ reset: false, port: preferredPort });
+    // ADR-0040 决策 2（BUG-001）：app 以固定 owner="app" 注册——外部 CLI/agent 的
+    // discoverServer（ppid-owner 精确匹配永不命中）经 app 记录兜底发现本 server。
+    serverCtx = await startServer({ reset: false, port: preferredPort, owner: "app" });
     const { server, baseUrl } = serverCtx;
     const { port } = server.address();
     apiBaseUrl = baseUrl;
@@ -202,7 +204,9 @@ async function createWindow() {
     if (server.services?.getBrowserViewManager) {
       server.services.getBrowserViewManager().setNotifier(forwardBrowserEventToWindow);
     }
-    // Write server.json into userData so E2E fixtures can discover the port
+    // userData/server.json（{port, baseUrl}）仅为 E2E fixture 探测端口的 seam
+    // （ADR-0040 决策 3）：注册表已锚定机器级路径（ADR-0040 决策 1），本文件不再
+    // 是注册表、不参与发现，与注册记录互不影响。
     const serverJsonPath = path.join(userData, "server.json");
     await fs.mkdir(userData, { recursive: true });
     await fs.writeFile(serverJsonPath, JSON.stringify({ port, baseUrl }, null, 2));

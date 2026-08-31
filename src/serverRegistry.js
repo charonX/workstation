@@ -9,12 +9,25 @@ export function getConfigDir() {
   return path.join(os.homedir(), ".opc-workstation");
 }
 
+// ADR-0040（BUG-001）：注册表锚点固定机器级 ~/.opc-workstation/server.json，与
+// configDir 解耦——注册表的本职就是跨进程、跨 configDir 的机器级发现（Electron app 把
+// OPC_WORKSTATION_CONFIG_DIR 指向 userData，per-configDir 锚点使 app 与外部 CLI 互不可见）。
+// OPC_SERVER_REGISTRY_FILE 为覆盖 seam（测试/E2E per-instance 隔离用）。
+// 注意：getConfigDir 保留给 configDir 语义的消费方（DB、agent-sessions 等），注册表不再走它。
 export function getServerInfoFile() {
-  return path.join(getConfigDir(), "server.json");
+  if (process.env.OPC_SERVER_REGISTRY_FILE) {
+    return process.env.OPC_SERVER_REGISTRY_FILE;
+  }
+  return path.join(os.homedir(), ".opc-workstation", "server.json");
+}
+
+function getRegistryDir() {
+  return path.dirname(getServerInfoFile());
 }
 
 function getRegistryLockFile() {
-  return path.join(getConfigDir(), "server.json.lock");
+  // 锁文件与注册表同路径（<file>.lock）：覆盖 seam 下锁随注册表走，不留 configDir 残余。
+  return `${getServerInfoFile()}.lock`;
 }
 
 function sleepMs(ms) {
@@ -24,7 +37,7 @@ function sleepMs(ms) {
 }
 
 export function acquireRegistryLock(timeoutMs = 2000) {
-  fs.mkdirSync(getConfigDir(), { recursive: true });
+  fs.mkdirSync(getRegistryDir(), { recursive: true });
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -65,7 +78,7 @@ export function readServerInfo() {
 
 export function writeServerInfo(records) {
   try {
-    fs.mkdirSync(getConfigDir(), { recursive: true });
+    fs.mkdirSync(getRegistryDir(), { recursive: true });
     const tempFile = `${getServerInfoFile()}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(records, null, 2));
     fs.renameSync(tempFile, getServerInfoFile());
@@ -118,6 +131,14 @@ export function unregisterServerRecord(owner) {
   } finally {
     releaseRegistryLock(fd);
   }
+}
+
+// ADR-0040 决策 4：app 重启保端口的选择函数 seam——机器级注册表混有 headless/测试
+// 记录，只从 owner="app" 的记录取最近一条端口；无 app 记录回退 0（随机端口）。
+export function pickAppPreferredPort(records) {
+  if (!Array.isArray(records)) return 0;
+  const appRecords = records.filter(r => r && r.owner === "app" && Number.isInteger(r.port) && r.port > 0);
+  return appRecords.length > 0 ? appRecords[appRecords.length - 1].port : 0;
 }
 
 function sleepAsync(ms) {

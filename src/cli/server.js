@@ -50,6 +50,7 @@ export async function discoverServer({ allowAnyOwner = false } = {}) {
   const records = readServerInfoRaw();
   const deadPids = [];
   let match = null;
+  let appMatch = null;
   let fallback = null;
   for (const info of records) {
     if (!info.port || !info.pid || !isProcessAlive(info.pid)) {
@@ -63,8 +64,13 @@ export async function discoverServer({ allowAnyOwner = false } = {}) {
         continue;
       }
       const candidate = { port: info.port, baseUrl: `http://127.0.0.1:${info.port}`, managed: false };
+      // ADR-0040 决策 2（BUG-001）：匹配顺序 精确 owner > owner="app"（Electron app
+      // 固定注册，外部 CLI 的 ppid-owner 永不等于它）> allowAnyOwner 兜底。
+      // headless/测试的精确 owner 语义不变。
       if (info.owner === owner) {
         match = candidate;
+      } else if (info.owner === "app" && !appMatch) {
+        appMatch = candidate;
       } else if (allowAnyOwner && !fallback) {
         fallback = candidate;
       }
@@ -74,7 +80,7 @@ export async function discoverServer({ allowAnyOwner = false } = {}) {
     }
   }
   pruneDeadServerRecords(deadPids);
-  return match || fallback;
+  return match || appMatch || fallback;
 }
 
 export async function startHeadlessServer() {
