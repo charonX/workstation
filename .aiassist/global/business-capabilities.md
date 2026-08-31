@@ -123,6 +123,14 @@
 | extension | `tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/`（CLI 归 command-interface） | REQ-AGENT-078~083, 089（2026-08-16 验收） | api `extensionService.test.js`（12）、`workerAssembly.test.js`（6）+ E2E `pluginsPage.test.cjs`（6）：三来源安装/清单/项目启用/装配链路/故障隔离（ADR-024） |
 | mcp-server | `tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-084~088（2026-08-16 验收） | api 9 文件（40 用例：`mcpService`/`mcpBridge`/`mcpPermissionBroker`/`mcpPermissionDefaults`/`mcpProbeTools`/`policyRulesMcp`/`mcpHttpUpdate`/`mcpHttpProjectList`/`channelParity`）+ E2E `mcpPage.test.cjs`（13）、`permissionMcpGroup.test.cjs`（5）：CRUD/桥装配/broker 接线/默认权限层/工具探测/飞书同工（ADR-025） |
 
+### embedded-browser
+> 内置浏览器面板（WebContentsView 主进程托管，ADR-039）：人机共享单实例——用户手动浏览（地址栏协议白名单、弹窗拦截）+ agent 读取工具面（navigate/read/scroll/screenshot，全 query 级）；人机共驾不加锁（停止控制 = agentControlRevoked，手动导航解除）；可见性解耦（收起不断连）；聊天链接默认面板打开；登录态持久化（persist:browser 分区）+ Cookie 受控导出/清理 + `browser auth-check` 人机协同登录引导（Auth Hub）。（2026-08-24-embedded-browser 登记，2026-08-28 结晶）
+
+| 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
+|------|----------|---------------|----------|
+| browser-panel | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/api/`, `.../e2e/` | REQ-BROWSER-001, 003, 004, 005（2026-08-28 结晶） | 集成：URL 规范化/白名单/弹窗拦截/停止控制状态机/cookies 导出清理/日志脱敏；E2E：流程A/B/C、弹窗拦截、链接集成、错误/崩溃页（17 用例已绿） |
+| browser-tools | `tests/capabilities/embedded-browser/browser-tools/2026-08-24-embedded-browser/api/`, `.../e2e/` | REQ-BROWSER-002, 006（2026-08-28 结晶） | 单元：TOOL_DEFS riskLevel 声明；集成：navigate/read/scroll/screenshot JSON 回执/截断/auth-check 判定；E2E：expand 展开链路已覆盖 |
+
 ## 能力依赖图
 
 ```
@@ -155,3 +163,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | command-interface | 1 | 8 | 2026-08-16 |
 | agent-dialogue | 8 | 423 | 2026-08-24 |
 | plugin-management | 2 | 82 | 2026-08-16 |
+| embedded-browser | 2 | 44（api 27 + e2e 17，2026-08-30 review 轮增补） | 2026-08-28 |
