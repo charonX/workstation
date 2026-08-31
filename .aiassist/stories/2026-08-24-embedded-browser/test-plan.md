@@ -11,13 +11,13 @@
 
 | REQ-ID | entity | Seam | 测试文件 | 用例数 | 状态 |
 |---|---|---|---|---|---|
-| REQ-BROWSER-001 | browser-panel | API（/api/browser/navigate、state） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/api/browserApi.test.js` | 6 | 骨架（skeletonPending） |
-| REQ-BROWSER-003 | browser-panel | API（control/bounds/read/state 状态机 + source 通道决定 AC7） | 同上 | 4 + 1（v2 新增 AC7：HTTP 伪造 source:user 仍 DENIED） | 骨架 |
-| REQ-BROWSER-005 | browser-panel | API（cookies GET/DELETE + 日志脱敏 + 访问控制 AC8） | 同上 | 7 + 1（v2 新增 AC8：Host/Origin/Sec-Fetch-Site 校验 + 无 ACAO） | 骨架（空态/无实例/BAD-DOMAIN 三例已可真跑） |
-| REQ-BROWSER-002 | browser-tools | CLI 声明（TOOL_DEFS）+ API 回执（含 AC9 截图跨会话续号） | `tests/capabilities/embedded-browser/browser-tools/2026-08-24-embedded-browser/api/browserTools.test.js` | 2 + 7 + 1（v2 新增 AC9：预置 browser-shots 后重启 server 续号） | 声明两例真跑（待实现后随契约翻转）；回执七例骨架 |
-| REQ-BROWSER-006 | browser-tools | CLI（auth-check）+ API | 同上 | 4 | 骨架 |
-| REQ-BROWSER-004 | browser-panel | 组件（MarkdownRenderer 链接点击） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/component/`（计划补：mock preload 断言 `opc.openExternal` 调用参数 + `mailto:` 不拦截不触发面板 navigate） | 2 | 留白待补（review 阻塞项：AC2/AC3 行为断言） |
-| REQ-BROWSER-001/002/003/004/006 | browser-panel | E2E（Electron + WebContentsView；含 REQ-001 AC8 崩溃态 dev-only 注入 seam） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/e2e/browserPanel.test.cjs` | 7 + 1（v2 新增 AC8：崩溃注入 → E-BROWSER-CRASHED） | skip 占位（流程A×3、弹窗拦截、流程B、流程C、链接集成） |
+| REQ-BROWSER-001 | browser-panel | API（/api/browser/navigate、state） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/api/browserApi.test.js` | 6 | 已落地（Slice 1） |
+| REQ-BROWSER-003 | browser-panel | API（control/bounds/read/state 状态机 + source 通道决定 AC7） | 同上 | 4 + 1（v2 AC7 已测：HTTP 伪造 source:user 仍 DENIED） | 已落地（Slice 1 + review 轮） |
+| REQ-BROWSER-005 | browser-panel | API（cookies GET/DELETE + 日志脱敏 + 访问控制 AC8） | 同上 | 7 + 4（v2 AC8 已测：伪造 Host/跨源 Origin/Sec-Fetch-Site→403、CLI 形态→200 无 ACAO） | 已落地（Slice 1 + review 轮） |
+| REQ-BROWSER-002 | browser-tools | CLI 声明（TOOL_DEFS）+ API 回执（含 AC9 截图跨会话续号） | `tests/capabilities/embedded-browser/browser-tools/2026-08-24-embedded-browser/api/browserTools.test.js` | 2 + 7 + 1（v2 AC9 已测：预置 browser-7.png → 续号 8/9 不覆盖） | 已落地（Slice 2 + review 轮） |
+| REQ-BROWSER-006 | browser-tools | CLI（auth-check）+ API | 同上 | 4 | 已落地（Slice 2） |
+| REQ-BROWSER-004 | browser-panel | 组件（mdLinkDispatch 纯模块，mock 桥函数断言） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/component/mdLinkDispatch.test.js` | 3 | 已落地（review 轮：openExternal 参数断言 + mailto passthrough） |
+| REQ-BROWSER-001/002/003/004/006 | browser-panel | E2E（Electron + WebContentsView；含 REQ-001 AC8 崩溃态 dev-only 注入 seam） | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/e2e/browserPanel.test.cjs` | 19（流程A/B/C/D、弹窗拦截、链接集成、错误/崩溃页、/many 截断、AC8 崩溃注入） | 已落地（Slice 3 + review 轮） |
 
 ## HTML 原型映射（ux/browser-panel.html → 自动化）
 
@@ -37,10 +37,10 @@
 
 ## 留白与风险
 
-1. **Cookie 种入 seam**：REQ-BROWSER-005/006 需要向 persist:browser 分区种入测试 Cookie。实现需提供测试 seam（推荐：dev-only HTTP 端点 `POST /api/browser/_test/seed-cookies`，或经 electron session 直接 set——E2E 可走后者）。骨架中 `seedCookie = skeletonPending()` 占位。
-2. **WebContentsView 点击驱动**：E2E 弹窗拦截用例需在 WebContentsView 内执行真实点击。Electron `_electron` API 可 `webContentsView.webContents.executeJavaScript` 触发，或由实现暴露调试 seam——实现期定。
+1. ~~Cookie 种入 seam~~：已落地（dev-only `POST /api/browser/_test/seed-cookies`，NODE_ENV=test 门控；E2E 经 session 直种）。
+2. ~~WebContentsView 点击驱动~~：已落地（dev-only `_testClick` seam，main.js development 门控）。
 3. **崩溃注入（§8-E4）**：`webContents.forcefullyCrashRenderer()` 可注入，但会让 stub 会话不稳定；实现期评估是否纳入 E2E（集成层以 CRASHED 错误码断言兜底）。（2026-08-30 更新：dev-only 崩溃注入 seam 已建，REQ-001 v2 AC8 锚定 E2E 覆盖。）
 4. **expected 值全部 trace 到 prd.md §6.3/§7/§8/§10.4**：无 `TODO: HUMAN ASSERTION` 占位；无升级点。
-5. **`/many` stub 页（REQ-002 AC4 截断半支，review 重要项）**：>50 个可交互元素的 stub 路由（`/many`），断言 `elements.length === 50 && truncated:true`；4000 字符分支已有 `/long`。/test-author 补。
-6. **流程 D E2E（REQ-006 AC6，review 重要项）**：auth-check=false → agent `navigate --expand` → 面板展开且加载登录页 URL；用户登录动作以 stub Cookie 种入替代。注意消除 E2E 文件头 REQ-TRACE 声明 REQ-006 但无用例的虚假追溯。
-7. **截图跨会话续号断言方式（REQ-002 v2 AC9）**：测试预置 `<configDir>/browser-shots/browser-1.png`、`browser-2.png`（含已知内容），以同一 configDir 重启 server（或新 server 实例）后调 `browser screenshot`，断言返回 `browser-3.png` 且既有两文件内容不变。
+5. ~~`/many` stub 页~~：已落地（review 轮，60 个 `<a>` stub + `elements.length===50 && truncated:true` 断言；暴露并修复了注入脚本恰收 50 致 truncated 永假的 code-defect）。
+6. ~~流程 D E2E~~：已落地（review 轮：auth-check=false → navigate --expand → 面板展开加载登录页；REQ-006 头部追溯名实相符）。
+7. ~~截图跨会话续号断言方式~~：已落地（review 轮：预置 browser-7.png → 续号 8/9、既有文件字节不变）。
