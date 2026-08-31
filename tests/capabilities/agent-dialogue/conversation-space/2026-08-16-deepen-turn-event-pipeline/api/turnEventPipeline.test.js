@@ -15,6 +15,9 @@
 // 覆盖：REQ-AGENT-106（工厂/接口集/无副作用 import）、REQ-AGENT-107（转发/延迟
 //   text_end/计数与清时机）、REQ-AGENT-108（abort 合成）、REQ-AGENT-109（注册表
 //   单元面：AC1-3；AC4 reset 黑盒在 resetDropQueue.test.js）。
+//   2026-08-31 增补：ADR-041 收尾合成泛化（终态 stopReason 零文本事件合成 / toolUse
+//   中轮不合成 / beginTurn 清 lastReplies）——实证 bug：reasoning 模型整轮仅 thinking
+//   正常 stop，UI 永挂「回复中…」+ prompt-result reply 跨轮残留。
 //
 // 事件形态（PI SDK → onSessionEvent 输入，worker.js forwardEvent 现状）：
 //   message_update{ assistantMessageEvent: {type:"text_delta"|"text_end"|"text_start"} }
@@ -299,6 +302,121 @@ describe("REQ-AGENT-108 abort 合成收尾", () => {
     const key = "k1";
     pipe.onSessionEvent(key, evMessageEnd({ stopReason: "aborted", content: [{ type: "text", text: "仅文本" }] }));
     assert.equal(pipe.takeLastReply(key), "仅文本");
+  });
+});
+
+// ADR-041（2026-08-31，全局基础设施独立修复）：收尾合成泛化到所有终态 stopReason。
+// 实证场景：deepseek-v4-flash 整轮只输出 thinking、正常 stop、零 text 块（会话 JSONL
+// stopReason=stop content=[thinking]）→ 115 个 thinking 事件、零 text_delta/text_end、
+// 管道无合成 → UI 永挂「回复中…」；lastReplies 残留上轮 reply（prompt-result reply=有 为假）。
+describe("ADR-041 回合收尾合成泛化——终态 stopReason 零文本事件", () => {
+  it("stop + 整轮仅 thinking（零 text 块）→ 合成 text_end content=\"\"，UI 必复位（本 bug 复现）", () => {
+    const { pipe, sends, logs } = makeHarness();
+    const key = "k1";
+    // 复现形态：message_update 全是 thinking_*（mapToContractEvent 丢弃），无 text_*
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_start", index: 0 } });
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "想" } });
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_end", content: "想" } });
+    pipe.onSessionEvent(
+      key,
+      evMessageEnd({ stopReason: "stop", content: [{ type: "thinking", thinking: "想" }] })
+    );
+    const out = outbound(sends, key);
+    const end = out.find((m) => m.event.type === "text_end");
+    // EXPECTED-TRACE: ADR-041 决策 1（终态 stopReason 缺 text_end → 合成，content=text 块拼接可空）
+    assert.ok(end, "终态 stop 零文本事件必须合成 text_end（text_end 是 UI 回合收尾唯一权威信号）");
+    assert.equal(end.event.content, "", "无 text 块 → 合成 content 为空串（机械拼接，不注入占位文案）");
+    assert.ok(logs.some((l) => String(l).includes("合成 text_end") || String(l).includes("收尾")), "合成应有诊断日志");
+  });
+
+  it("stop + 文本只在最终消息（provider 未流式给文本）→ 合成 content=text 块拼接", () => {
+    const { pipe, sends } = makeHarness();
+    const key = "k1";
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "想" } });
+    pipe.onSessionEvent(
+      key,
+      evMessageEnd({
+        stopReason: "stop",
+        content: [{ type: "thinking", thinking: "想" }, { type: "text", text: "最终" }, { type: "text", text: "文本" }],
+      })
+    );
+    const end = outbound(sends, key).find((m) => m.event.type === "text_end");
+    // EXPECTED-TRACE: ADR-041 决策 1（content = text 块拼接）
+    assert.ok(end, "未流式给文本也应合成 text_end");
+    assert.equal(end.event.content, "最终文本");
+  });
+
+  it("length/error 终态同样合成（终态集合完整性）", () => {
+    for (const stopReason of ["length", "error"]) {
+      const { pipe, sends } = makeHarness();
+      const key = "k1";
+      pipe.onSessionEvent(key, evMessageEnd({ stopReason, content: [{ type: "text", text: `${stopReason}文本` }] }));
+      const end = outbound(sends, key).find((m) => m.event.type === "text_end");
+      // EXPECTED-TRACE: ADR-041 决策 1（终态 = stop/length/aborted/error）
+      assert.ok(end, `${stopReason} 终态零 pending 应合成 text_end`);
+      assert.equal(end.event.content, `${stopReason}文本`);
+    }
+  });
+
+  it("toolUse 中轮（零文本）→ 不合成、无 text_end 出站（语义陷阱守卫：工具循环中途不得复位 UI）", () => {
+    const { pipe, sends } = makeHarness();
+    const key = "k1";
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "想" } });
+    pipe.onSessionEvent(
+      key,
+      evMessageEnd({ stopReason: "toolUse", content: [{ type: "thinking", thinking: "想" }, { type: "toolCall", name: "browser read" }] })
+    );
+    const ends = outbound(sends, key).filter((m) => m.event.type === "text_end");
+    // EXPECTED-TRACE: ADR-041 决策 2（toolUse/deferred 中轮不合成——这些消息天然无 text_end，
+    // 合成会把 UI 流式状态在工具循环中途错误复位）
+    assert.equal(ends.length, 0, "toolUse 中轮不得合成 text_end");
+  });
+
+  it("deferred 中轮 → 不合成", () => {
+    const { pipe, sends } = makeHarness();
+    const key = "k1";
+    pipe.onSessionEvent(key, evMessageEnd({ stopReason: "deferred", content: [] }));
+    // EXPECTED-TRACE: ADR-041 决策 2
+    assert.equal(outbound(sends, key).filter((m) => m.event.type === "text_end").length, 0, "deferred 中轮不得合成");
+  });
+
+  it("stop + 已有 pending text_end → 不重复合成（仅 1 条，content = 原 pending）", () => {
+    const { pipe, sends } = makeHarness();
+    const key = "k1";
+    pipe.onSessionEvent(key, evTextEnd("正常文本"));
+    pipe.onSessionEvent(key, evMessageEnd({ stopReason: "stop", content: [{ type: "text", text: "不应合成" }] }));
+    const ends = outbound(sends, key).filter((m) => m.event.type === "text_end");
+    // EXPECTED-TRACE: ADR-041 决策 1（!hasPending 才合成；REQ-AGENT-108 AC2 的 stop 同型守卫）
+    assert.equal(ends.length, 1, "有 pending 时不应合成第二条 text_end");
+    assert.equal(ends[0].event.content, "正常文本");
+  });
+
+  it("合成后 takeLastReply = 本轮合成 content（不再是上轮残留）", () => {
+    const { pipe } = makeHarness();
+    const key = "k1";
+    // 第一轮正常产出
+    pipe.onSessionEvent(key, evDelta("第一轮"));
+    pipe.onSessionEvent(key, evTextEnd("第一轮"));
+    pipe.onSessionEvent(key, evMessageEnd({ stopReason: "stop", content: [{ type: "text", text: "第一轮" }] }));
+    assert.equal(pipe.takeLastReply(key), "第一轮");
+    // 第二轮 thinking-only（本 bug 形态）：reply 不得残留第一轮文本
+    pipe.beginTurn(key);
+    pipe.onSessionEvent(key, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "想" } });
+    pipe.onSessionEvent(key, evMessageEnd({ stopReason: "stop", content: [{ type: "thinking", thinking: "想" }] }));
+    // EXPECTED-TRACE: ADR-041 决策 1/3（合成重写 lastReplies；prompt-result 不得回传上轮残留）
+    assert.equal(pipe.takeLastReply(key), "", "thinking-only 轮的 reply 应为合成的空串，非上轮残留");
+  });
+
+  it("beginTurn 清 lastReplies（失败轮残留不混轮，与诊断计数同语义）", () => {
+    const { pipe } = makeHarness();
+    const key = "k1";
+    pipe.onSessionEvent(key, evTextEnd("第一轮"));
+    pipe.onSessionEvent(key, evMessageEnd({ stopReason: "stop", content: [{ type: "text", text: "第一轮" }] }));
+    assert.equal(pipe.takeLastReply(key), "第一轮");
+    pipe.beginTurn(key);
+    // EXPECTED-TRACE: ADR-041 决策 3（beginTurn 清 lastReplies——message_end 缺失的崩溃路径
+    // 下也不得把上轮 reply 当本轮回传）
+    assert.equal(pipe.takeLastReply(key), undefined, "beginTurn 后 lastReplies 应清空");
   });
 });
 
