@@ -208,7 +208,8 @@ function createCookieStore(session) {
 
 // —— read 快照自包含序列化器（PRD §10.3：executeJavaScript 注入；无外部依赖字符串）——
 // 遍历 DOM 产出 {title, text, elements:[{tag,text,selector,rect:{x,y,width,height}}]}；
-// 截断（4000 字符 / 50 元素）由宿主侧统一执行——注入体只负责按序收集。
+// 截断（4000 字符 / 50 元素）由宿主侧统一执行——注入体按序收集，元素多收 1 个
+// （LIMIT+1）供宿主判定 truncated（否则恰收 50 时宿主 >50 判定永假，review 2026-08-30 实证）。
 function buildReadScript() {
   return `
 (() => {
@@ -226,7 +227,7 @@ function buildReadScript() {
   const seen = new Set();
   const elements = [];
   for (const el of document.querySelectorAll(interactive)) {
-    if (elements.length >= ${READ_ELEMENTS_LIMIT}) break;
+    if (elements.length >= ${READ_ELEMENTS_LIMIT + 1}) break;
     if (seen.has(el)) continue;
     seen.add(el);
     const text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 200);
