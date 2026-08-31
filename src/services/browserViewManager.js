@@ -344,7 +344,7 @@ export function createBrowserViewManager(options = {}) {
   // 置位：agent expand 导航；消费：BrowserPanel 挂载对账 getState() 展开面板；
   // 清除：面板打开后的首个 open=true bounds 推送（无需新增 IPC 通道）。
   let expandPending = false;
-  let lastViewport = { width: 1280, height: 800 }; // 最近一次可见 bounds 尺寸（沉底隐藏时保持可绘制尺寸）
+  let lastViewport = { width: 1280, height: 800 }; // 最近一次可见 bounds 尺寸（截图临时顶挂/恢复展开时的可绘制尺寸）
   let lastOpenBounds = null; // 最近一次展开态完整 bounds（位置+尺寸）；视图未创建时的推送缓存在此，createView 时套用
   let screenshotSeq = 0;
   let screenshotSeqReady = false; // 跨会话持久化序号是否已完成目录扫描（惰性，首次截图时）
@@ -480,13 +480,13 @@ export function createBrowserViewManager(options = {}) {
   // —— 视图挂载（Slice 3 E2E 实证修复 ×2）——
   // 1. serviceContainer 创建 manager 时无 getWindow → 视图从未真正 attach（attach/detach/
   //    截图静默失效）：main.js 窗口创建后经 setWindowResolver 注入解析器兜底。
-  // 2. 收起态可见性表达：detach 或屏外负坐标都会让 capturePage 返回 0×0 空图（compositor
-  //    表面对屏外/未挂载视图裁剪为零），破坏「收起状态截图照常工作」契约（§6.3 块3
-  //    可见性解耦 + §10.4 接口3 golden width>0）。改为 z-order 隐藏：恒 attach，
-  //    隐藏 = 沉到 contentView 最底层（被不透明主 UI 覆盖，视觉等价隐藏）+ 窗内
-  //    lastViewport 尺寸 bounds——compositor 照常合成，capturePage/read/scroll 全可用。
-  // attachMode: "none" | "top"（面板展开，顶层按渲染进程 bounds 绘制）| "bottom"（收起，
-  // 沉底隐藏保活）。
+  // 2. 收起态可见性表达（2026-08-31 两次实证定稿）：z-order 沉底**不能**隐藏（子视图
+  //    恒绘制在主 webContents 之上，会盖住主 UI）；屏外停靠不可见但 compositor surface
+  //    被完全裁剪，重挂回窗内首帧恢复 >3.5s（收起态截图超时 CAPTURE-EMPTY）。detach 是
+  //    唯一既不可见、重挂后又快速恢复 capture 的形态——收起 = detachView，截图/展开时
+  //    重新顶挂（capturePage 对未挂载视图返回 0×0，截图路径临时顶挂 + paint/重试吸收）。
+  // attachMode: "none"（未挂载：初始/收起）| "top"（展开/截图临时顶挂）。
+  //    （"bottom" 枚举保留但不再使用——z-order 沉底已被证伪。）
   let attachMode = "none";
 
   function mountView(v, mode) {
@@ -496,7 +496,7 @@ export function createBrowserViewManager(options = {}) {
     try {
       if (attachMode !== "none") win.contentView.removeChildView(v);
       if (mode === "bottom") {
-        win.contentView.addChildView(v, 0); // 沉底：主 webContents 视图在其上覆盖
+        win.contentView.addChildView(v, 0); // 保留路径（不再使用）：z-order 沉底已被证伪（子视图恒在上层）
       } else {
         win.contentView.addChildView(v); // 顶层
       }
@@ -520,8 +520,8 @@ export function createBrowserViewManager(options = {}) {
     }
   }
 
-  // 收起态沉底隐藏（幂等）：窗内原点 + lastViewport 尺寸——保持非零可绘制尺寸，
-  // capturePage 收起态返回真实画面；视觉隐藏由主 UI 覆盖保证。
+  // 截图临时顶挂的窗内停靠（capturePage 需要 compositor display surface：窗内原点 +
+  // lastViewport 尺寸）。仅截图路径使用——不是隐藏手段。
   function parkedBounds() {
     return { x: 0, y: 0, width: lastViewport.width, height: lastViewport.height };
   }
@@ -539,12 +539,11 @@ export function createBrowserViewManager(options = {}) {
   }
 
   function parkViewHidden(v) {
-    mountView(v, "bottom");
-    try {
-      v.setBounds(parkedBounds());
-    } catch {
-      // E6 同规：同步异常只记日志
-    }
+    // 收起态隐藏 = detach（2026-08-31 两次实证）：z-order 沉底不能隐藏（子视图恒绘制在
+    // 主 webContents 之上，会盖住主 UI）；屏外停靠虽不可见，但 compositor surface 被
+    // 完全裁剪后重挂回窗内首帧恢复 >3.5s（收起态截图 E-BROWSER-CAPTURE-EMPTY）。
+    // detach 是唯一既不可见、重挂后又能快速恢复 capture 的形态（Slice 3 已验证路径）。
+    detachView(v);
   }
 
   function ensureReady() {
@@ -635,17 +634,18 @@ export function createBrowserViewManager(options = {}) {
       }
       if (!view) {
         view = createView();
-        // 恒 attach：可见性由 z-order 表达（展开=顶层，收起=沉底隐藏），不做 detach
+        // 可见性表达：展开=顶层挂载，收起=detach（不挂载）
         if (view) {
-          mountView(view, open ? "top" : "bottom");
-          // 视图创建即套用布局真相（2026-08-31 实证：面板先于导航展开时推送的 bounds
-          // 曾被 !view 早退静默丢弃 → 新建视图 0×0 白屏）。展开态套最近完整 bounds；
-          // 收起态给可绘制尺寸（capturePage/read 契约）；agent 先导航（无缓存）保持
-          // 0×0 等渲染进程首帧推送。
-          try {
-            if (open && lastOpenBounds) view.setBounds(lastOpenBounds);
-            else if (!open) view.setBounds(parkedBounds());
-          } catch { /* E6 同规：同步异常只记日志，下帧推送重算恢复 */ }
+          if (open) {
+            mountView(view, "top");
+            // 视图创建即套用布局真相（2026-08-31 实证：面板先于导航展开时推送的 bounds
+            // 曾被 !view 早退静默丢弃 → 新建视图 0×0 白屏）；agent 先导航（无缓存）
+            // 保持 0×0 等渲染进程首帧推送。
+            try {
+              if (lastOpenBounds) view.setBounds(lastOpenBounds);
+            } catch { /* E6 同规：同步异常只记日志，下帧推送重算恢复 */ }
+          }
+          // 收起态创建：不挂载（detach = 真隐藏，见 parkViewHidden），截图/展开时再挂
         }
       }
       const { title, snapshot } = await runNavigation(normalized);
@@ -723,33 +723,41 @@ export function createBrowserViewManager(options = {}) {
       assertAgentAllowed(source);
       ensureReady();
       // 收起态截图契约（§6.3 块3 可见性解耦 + §10.4 接口3 golden width>0），Slice 3 E2E
-      // 实证：detached / 屏外 / 沉底被完全覆盖的视图都没有 compositor display surface
-      // （capturePage 返回 0×0 或报 "surface not available"）。唯一可靠路径：临时挂到
-      // 顶层（窗内 0,0 + lastViewport 尺寸）→ 等 compositor 出帧（重试吸收 viz 时序
-      // 错误与 0×0 空帧）→ capture → 恢复沉底隐藏。顶层覆盖主 UI 的瞬间闪烁是契约
-      // 要求的代价（截图优先）；open 时无任何额外动作。
+      // 实证：未挂载视图没有 compositor display surface（capturePage 返回 0×0 或报
+      // "surface not available"）。唯一可靠路径：临时挂到顶层（窗内 0,0 + lastViewport
+      // 尺寸）→ 等 compositor 出帧（paint 事件 + 重试吸收 viz 时序错误与 0×0 空帧）
+      // → capture → 恢复 detach 隐藏。顶层覆盖主 UI 的瞬间闪烁是契约要求的代价
+      // （截图优先）；open 时无任何额外动作。
       const wasOpen = open;
-      if (!wasOpen) {
-        mountView(view, "top");
-        try {
-          view.setBounds(parkedBounds());
-        } catch { /* E6 同规 */ }
-      }
       let image = null;
       let lastErr = null;
       try {
-        for (let attempt = 0; attempt < 15; attempt += 1) {
-          if (!wasOpen) await new Promise((r) => setTimeout(r, 100));
-          try {
-            image = await view.webContents.capturePage();
-            const s = imageSize(image);
-            if (s.width > 0 && s.height > 0) break; // 非空帧才接受（空帧 = surface 未就绪）
-          } catch (err) {
-            lastErr = err; // "display surface not available" / viz 时序错误：重试
+        // 实证时序（2026-08-31 计时）：未挂载视图首次重挂后轮询 8s 仍全空帧，但「拆除
+        // 再重挂」的第二轮 ≈2s 即出帧（三轮策略独立验证）。故收起态截图 = 最多两个
+        // 重挂周期：每周期间 detach→mount 强制 surface 重建，期内 20×200ms 轮询。
+        const cycles = wasOpen ? 1 : 2;
+        for (let cycle = 0; cycle < cycles && !(image && imageSize(image).width > 0); cycle += 1) {
+          if (!wasOpen) {
+            if (cycle > 0) detachView(view); // 二轮前拆除（attachMode→none）强制 surface 重建
+            mountView(view, "top");
+            try {
+              view.setBounds(parkedBounds());
+            } catch { /* E6 同规 */ }
+          }
+          const maxAttempts = wasOpen ? 15 : 20;
+          for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            if (!wasOpen) await new Promise((r) => setTimeout(r, 200));
+            try {
+              image = await view.webContents.capturePage();
+              const s = imageSize(image);
+              if (s.width > 0 && s.height > 0) break; // 非空帧才接受（空帧 = surface 未就绪）
+            } catch (err) {
+              lastErr = err; // "display surface not available" / viz 时序错误：重试
+            }
           }
         }
       } finally {
-        if (!wasOpen) parkViewHidden(view); // 恢复沉底隐藏（含异常路径）
+        if (!wasOpen) parkViewHidden(view); // 恢复 detach 隐藏（含异常路径）
       }
       if (!image || (image.getSize && imageSize(image).width === 0)) {
         // code 落 err.code（而非 err.message）：路由层契约形态 200+{ok:false,error:{code}}
@@ -766,7 +774,7 @@ export function createBrowserViewManager(options = {}) {
       return { ok: true, path: filePath, width: size.width, height: size.height };
     },
 
-    // —— REQ-BROWSER-001：bounds 哑执行（visible=false 沉底隐藏保活，ADR-039 决策 3）——
+    // —— REQ-BROWSER-001：bounds 哑执行（visible=false detach 隐藏保活，ADR-039 决策 3 修订见 2026-08-31 实证）——
     setBounds({ x, y, width, height, visible } = {}) {
       const wasOpen = open;
       open = visible !== false;
@@ -789,8 +797,8 @@ export function createBrowserViewManager(options = {}) {
           mountView(view, "top"); // 幂等：仅 z-order 变化时重挂
           view.setBounds(lastOpenBounds);
         } else if (!open) {
-          // 隐藏 = 沉到 contentView 最底层（主 UI 覆盖，幂等）：实例与 webContents
-          // 保活且保持可绘制尺寸，capturePage 收起态仍返回真实画面
+          // 隐藏 = detach（幂等）：实例与 webContents 保活，read/scroll 注入照常；
+          // 截图由 screenshot 路径临时顶挂回窗内出帧
           parkViewHidden(view);
         }
       } catch (err) {
