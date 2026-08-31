@@ -133,6 +133,27 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     expect(painted, `原生视图应有非零 bounds（实际: ${JSON.stringify(boundsList)}）`).toBeTruthy();
   });
 
+  test("流程A 回归：收起面板后原生视图不在窗内绘制，不遮挡主 UI（2026-08-31 覆盖回归）", async () => {
+    // 回归锚点：z-order 沉底不能隐藏子视图（恒绘制在主 webContents 之上）——曾致收起后
+    // 页面画在主 UI 左半。契约：收起后视图 detach（不在 contentView.children）或完全
+    // 屏外/零尺寸——窗内不存在可见的原生视图 bounds；实例保活（再展开 URL 保留由上例覆盖）。
+    await page.locator(BTN_BROWSER).click();
+    await page.locator(OMNIBOX).fill(`localhost:${STUB_PORT}`);
+    await page.locator(OMNIBOX).press("Enter");
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
+    await page.locator(BTN_BROWSER).click(); // 收起
+    await expect(page.locator(PANEL)).toBeHidden();
+    const boundsList = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      return win.contentView.children.map((v) => (typeof v.getBounds === "function" ? v.getBounds() : null));
+    });
+    const visibleInWindow = boundsList.find((b) => b && b.width > 0 && b.height > 0 && b.x + b.width > 0);
+    expect(
+      visibleInWindow ?? null,
+      `收起后窗内不应有可见原生视图（实际 children bounds: ${JSON.stringify(boundsList)}）`
+    ).toBeNull();
+  });
+
   test("流程A：收起面板后重新展开，地址栏保留原 URL（实例保活）", async () => {
     await page.locator(BTN_BROWSER).click();
     await page.locator(OMNIBOX).fill(`localhost:${STUB_PORT}`);
