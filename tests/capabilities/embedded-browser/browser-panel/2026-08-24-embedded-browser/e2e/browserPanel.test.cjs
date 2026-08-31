@@ -1,15 +1,19 @@
 // REQ-TRACE: 2026-08-24-embedded-browser/REQ-BROWSER-001, 2026-08-24-embedded-browser/REQ-BROWSER-002, 2026-08-24-embedded-browser/REQ-BROWSER-003, 2026-08-24-embedded-browser/REQ-BROWSER-004, 2026-08-24-embedded-browser/REQ-BROWSER-006
-// REQ-VERSION: v1-hash:28b4d67858fda6ad607eac25ec8b9fe9abdd805baa59ba5c36f3d47e9e8b7b59
+// REQ-VERSION: v2-hash:1b26fe9dc10d23ac1d650a76dd952f2458c3492d4981e96c435e9fc819d7b622
 // CAPABILITY-TRACE: embedded-browser
 // ENTITY-TRACE: browser-panel
-// EXPECTED-TRACE: prd.md §6.1 流程A/B/C/D, §6.3 块1 rows 3-4, 块3 rows 3-4, 块4 row1, §10.4 接口5 IPC 通道表, ux/browser-panel.html
+// EXPECTED-TRACE: prd.md §6.1 流程A/B/C/D, §6.3 块1 rows 3-4（块内编号）, 块3 rows 2-3, 块4 row1, §10.4 接口2 截断样例, §10.4 接口5 IPC 通道表, ux/browser-panel.html
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-08-28 assertion signoff，见 signoff.md）
 //
 // 状态：骨架 skip 已全部移除（2026-08-29，Slice 3 落地后替换为真实断言）。
+// 2026-08-30 v2 同步：REQ-VERSION 升 v2 hash；§6.3 行号统一为块内编号约定；新增
+// REQ-002 AC4 元素截断半支（/many stub）、REQ-006 AC6 流程D（auth-check=false →
+// navigate --expand 加载登录页）——REQ-TRACE 的 REQ-006 声明自此名实相符。
 // 覆盖只能在真实窗口 + WebContentsView 下验证的流程：面板展开/收起与地址栏（流程A）、
-// agent 驱动展开与控制指示（流程B）、停止控制按钮（流程C）、聊天链接打开面板（REQ-004）、
-// read 结构/截断、scroll、screenshot（自 api/browserTools.test.js 迁移的 Electron-only 用例）。
+// agent 驱动展开与控制指示（流程B）、停止控制按钮（流程C）、登录引导（流程D）、
+// 聊天链接打开面板（REQ-004）、read 结构/截断、scroll、screenshot
+// （自 api/browserTools.test.js 迁移的 Electron-only 用例）。
 // 弹窗拦截用例经 dev-only seam `opc.__browserTestClick` 驱动视图内点击。
 
 const { test, expect } = require("@playwright/test");
@@ -33,14 +37,24 @@ const STUB_PORT = 38121; // 固定端口供面板地址栏输入用
 // —— stub 页路由 ——
 // "/"：含 target=_blank 链接（弹窗拦截用例）
 // "/long"：正文 >4000 字符（read 截断用例）
+// "/many"：>50 个可交互元素（read 元素截断半支，REQ-002 AC4）
 // "/tall"：长页可滚动（scroll 用例）
+// "/login"：stub 登录页（流程D 引导用例）
 function stubHtml(urlPath) {
   if (urlPath === "/long") {
     const longText = "长文本".repeat(1500); // 4500 字符 > 4000 截断阈值
     return `<!doctype html><html><head><title>Long</title></head><body><p>${longText}</p></body></html>`;
   }
+  if (urlPath === "/many") {
+    // 60 个可交互元素 > 50 截断阈值（锚点 §10.4 接口2：elements 截断至 50，truncated:true）
+    const links = Array.from({ length: 60 }, (_, i) => `<a class="many-link" href="/next">link-${i}</a>`).join("");
+    return `<!doctype html><html><head><title>Many</title></head><body>${links}</body></html>`;
+  }
   if (urlPath === "/tall") {
     return `<!doctype html><html><head><title>Tall</title></head><body><div style="height:5000px">tall</div></body></html>`;
+  }
+  if (urlPath === "/login") {
+    return `<!doctype html><html><head><title>Login</title></head><body><h1>登录</h1></body></html>`;
   }
   if (urlPath === "/next") {
     return `<!doctype html><html><head><title>Next</title></head><body>next</body></html>`;
@@ -120,12 +134,14 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await page.locator(OMNIBOX).press("Enter");
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
     const windowCountBefore = electronApp.windows().length;
+    const hashBefore = new URL(page.url()).hash;
     // EXPECTED-TRACE: prd.md §6.3 块1 row 4（拦截新窗口，转面板内导航）
     const clickResult = await page.evaluate(() => window.opc.__browserTestClick("a[target='_blank']"));
     expect(clickResult.ok).toBe(true);
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/next`);
-    // EXPECTED-TRACE: prd.md §6.2（无新窗口、主窗口路由不变）
+    // EXPECTED-TRACE: prd.md §6.2 / REQ-001 AC7（无新窗口、主窗口路由 hash 不变）
     expect(electronApp.windows().length).toBe(windowCountBefore);
+    expect(new URL(page.url()).hash).toBe(hashBefore);
   });
 
   test("流程A：window.open() 同样被拦截转面板内导航（REQ-001 AC5 第二触发面）", async () => {
@@ -135,10 +151,13 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await page.locator(OMNIBOX).press("Enter");
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
     const windowCountBefore = electronApp.windows().length;
+    const hashBefore = new URL(page.url()).hash;
     const clickResult = await page.evaluate(() => window.opc.__browserTestClick("button.js-open"));
     expect(clickResult.ok).toBe(true);
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/next`);
+    // EXPECTED-TRACE: prd.md §6.2 / REQ-001 AC7（无新窗口、主窗口路由 hash 不变）
     expect(electronApp.windows().length).toBe(windowCountBefore);
+    expect(new URL(page.url()).hash).toBe(hashBefore);
   });
 
   test("流程A：面板展开后地址栏聚焦（REQ-001 AC6 步骤1）", async () => {
@@ -218,6 +237,23 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/`);
   });
 
+  test("流程D：未登录域 auth-check=false → agent navigate --expand → 面板展开加载登录页（REQ-006 AC6）", async () => {
+    // EXPECTED-TRACE: prd.md §6.1 流程D 步骤1（auth-check 返回 authenticated:false）
+    // auth-check 后端 = GET /api/browser/cookies（cli/commands/browser.js authCheck 同一 seam）：
+    // 未登录域空态回执即 authenticated:false 语义（CLI 形态断言见 api/browserTools.test.js）
+    const probe = await (await fetch(`${apiBaseUrl}/api/browser/cookies?domain=.stub-login.local`)).json();
+    expect(probe).toEqual({ ok: true, domain: ".stub-login.local", cookieString: "", cookies: [] });
+    // EXPECTED-TRACE: prd.md §6.1 流程D 步骤2（agent navigate --expand → 面板自动展开，加载登录页）
+    await apiPost(apiBaseUrl, "/api/browser/navigate", {
+      url: `http://localhost:${STUB_PORT}/login`,
+      source: "agent",
+      expand: true,
+    });
+    await expect(page.locator(PANEL)).toBeVisible();
+    await expect(page.locator(OMNIBOX)).toHaveValue(`http://localhost:${STUB_PORT}/login`);
+    // 用户手动登录动作以 stub Cookie 种入替代（AC6 注记：完整闭环依赖真实站点）
+  });
+
   // —— REQ-004 用例共享的会话种子：FAUX 回声（用户消息原文回显为 agent 气泡 → markdown 链接可点击）——
   async function seedChatWithText(text) {
     await fetch(`${apiBaseUrl}/api/settings/agent`, {
@@ -291,6 +327,17 @@ test.describe("内置浏览器面板 E2E（流程 A/B/C + 链接集成 + 工具�
     expect(el.tag).toBe("a");
     expect(el.text).toBe("立即开始");
     expect(typeof el.rect.x).toBe("number");
+    // EXPECTED-TRACE: prd.md §10.4 接口2 正常样例（未超限 → truncated:false，REQ-002 AC3 正常分支）
+    expect(body.truncated).toBe(false);
+  });
+
+  test("REQ-BROWSER-002 read 截断：>50 可交互元素截断至 50 且 truncated=true（AC4 元素半支）", async () => {
+    // EXPECTED-TRACE: prd.md §10.4 接口2 截断样例（元素 >50 个 → elements 截断至 50 个，truncated:true）
+    await apiPost(apiBaseUrl, "/api/browser/navigate", { url: `http://localhost:${STUB_PORT}/many`, source: "agent" });
+    const { body } = await apiPost(apiBaseUrl, "/api/browser/read", {});
+    expect(body.ok).toBe(true);
+    expect(body.elements.length).toBe(50);
+    expect(body.truncated).toBe(true);
   });
 
   test("REQ-BROWSER-002 read 截断：正文 >4000 字符截断且 truncated=true", async () => {
