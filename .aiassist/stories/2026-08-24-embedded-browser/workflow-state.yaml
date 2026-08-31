@@ -1,0 +1,55 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-24-embedded-browser
+intention: >-
+  agent 在 workstation 里起了 web 服务或产出了页面后，用户要切到外部浏览器、
+  手动找端口输地址才能验证效果，「对话 → 看结果」的闭环被打断；
+  agent 需要浏览网页时用户也看不到它在看什么。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: QA # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-24
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-24, from: -, to: THINK, note: "创建 story（初衷：内置浏览器预览/浏览，类 codex）"}
+  - {at: 2026-08-24, from: THINK, to: PRD, note: "三轮 frontier 访谈收敛：方向 B（WebContentsView 主进程托管 + agent 工具面），interview-notes.md 完成"}
+  - {at: 2026-08-24, from: PRD, to: DESIGN, note: "PRD v0.1 完成：5 稳定块 + 3 移动块，complex 分级（结晶前必走 /tech-design），§6.3 锚点值落在既有 toolAdapter riskLevel/确认队列契约上"}
+  - {at: 2026-08-25, from: DESIGN, to: DOMAIN-MODEL, note: "browser-panel.html 单屏一体原型（六状态开关覆盖 §6.1 流程 A/B/C + §8 E1-E6），编译+check 绿，用户 review 确认"}
+  - {at: 2026-08-25, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "CONTEXT.md 新增实体「浏览器面板」（可见性解耦）+ 概念「人机共驾」「读取类/提交类动作」「协议白名单」，无术语冲突"}
+  - {at: 2026-08-26, from: TECH-DESIGN, to: TECH-DESIGN, note: "§10 深潜进行中：Q1 渲染进程持布局真相、Q2 executeJavaScript 自包含快照；Q3 推演 CDP Input 后用户裁决砍 click/type（范围收敛，稳定块 5→4）"}
+  - {at: 2026-08-28, from: TECH-DESIGN, to: CRYSTALLIZE, note: "用户增补稳定块 5（登录态/Cookie 导出/身份桥接，ADR-039 决策 7/8）吸收进 PRD v0.3（流程 D、接口 4、E7/E8、日志脱敏底线）；TECH-DESIGN 完成，进入自动链"}
+  - {at: 2026-08-28, from: CRYSTALLIZE, to: TEST, note: "结晶完成：REQ-BROWSER-001~006（6 REQ，全部有自动化验收标准 + golden 锚点）；新 capability=embedded-browser、entity=browser-panel/browser-tools 登记 business-capabilities.md；requirements-v1.hash 已写；无升级点"}
+  - {at: 2026-08-28, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：3 份业务测试骨架（browserApi 17 用例 / browserTools 13 用例 / browserPanel E2E 7 用例），expected 全 trace 到 PRD 锚点，无 HUMAN ASSERTION 占位；test-plan.md 落盘（含 Cookie 种入 seam 等 4 项留白）"}
+  - {at: 2026-08-28, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 auto 签核通过（signer=AI，零升级点）：6/6 REQ 有测试、expected 逐条交叉验证、安全边界（Cookie 明文导出）威胁建模已入 §10.7+REQ-005；解锁实现"}
+  - {at: 2026-08-30, from: BUILD, to: QA, note: "3 slices 全部完成：S1 browserViewManager+路由（17/17）、S2 toolAdapter 五命令（10/10）、S3 渲染层+IPC+链接集成（E2E 17/17）；全量回归 1118/1118；commits 679a1d0→f2c4e53；PRD 对齐 6 缺口闭环（2 code-defect + 2 spec-gap 人裁决 + 2 missing-test）"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"            # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true           # 是否已跑过 compile-design-system
+  preview: .aiassist/stories/2026-08-24-embedded-browser/ux/preview.html               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: [browser-panel.html]              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
