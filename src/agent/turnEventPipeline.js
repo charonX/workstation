@@ -274,22 +274,30 @@ export function createTurnEventPipeline({
     return true;
   }
 
-  // message_end 处理：abort 合成（REQ-AGENT-091，BUG-010）+ 冲刷（usage 完备 → meta 三字段）。
+  // message_end 处理：收尾合成（REQ-AGENT-091 abort 路径；ADR-041 泛化到所有终态
+  // stopReason）+ 冲刷（usage 完备 → meta 三字段）。
   function handleMessageEnd(sessionKey, ev) {
     const msg = ev.message;
     const hasPending = (pendingTextEnds.get(sessionKey) ?? []).length > 0;
-    if (msg?.stopReason === "aborted" && !hasPending) {
-      // abort 中断（stopReason=aborted）时流被掐断、SDK 不发 text_end → 若本轮
-      // text_end 缺失则合成收尾（content = 中断消息已生成文本——「已生成保留」语义），
-      // 否则 lastReplies 无值（prompt-result 丢 reply）且 UI streaming 永不复位
-      // （text_end 是回合收尾的唯一权威信号）。正常路径（text_end 已到、pending 非空）
-      // 不受影响——不合成。
+    // ADR-041 决策 1/2（2026-08-31 实证：reasoning 模型整轮仅 thinking、正常 stop、
+    // 零 text 块——UI 永挂「回复中…」）：终态 stopReason（stop/length/aborted/error）
+    // 且本轮无 pending text_end → 从最终消息合成收尾（content = 文本段拼接，可为空串）。
+    // toolUse/deferred 中轮不合成——这些消息天然无 text_end，合成会把 UI 流式状态在
+    // 工具循环中途错误复位。正常路径（text_end 已到、pending 非空）不受影响——不合成。
+    const TERMINAL_STOP_REASONS = new Set(["stop", "length", "aborted", "error"]);
+    if (!hasPending && TERMINAL_STOP_REASONS.has(msg?.stopReason)) {
       const content = (msg.content ?? [])
         .filter((c) => c?.type === "text")
         .map((c) => c.text ?? "")
         .join("");
       enqueuePendingTextEnd(sessionKey, content, undefined);
-      log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
+      // aborted 保留 REQ-AGENT-108 签核的「abort 收尾」日志字面量（既有测试锚定）；
+      // 其余终态用泛化措辞（ADR-041）。
+      if (msg?.stopReason === "aborted") {
+        log(`abort 收尾：合成 text_end session=${sessionKey} 已生成=${content.length} 字符`);
+      } else {
+        log(`回合收尾：合成 text_end session=${sessionKey} stopReason=${msg?.stopReason} 已生成=${content.length} 字符`);
+      }
     }
     // message_end 携带完整 assistant message（usage 必填——research 实证）→ 冲刷。
     flushPendingTextEnds(sessionKey, ev.message?.usage);
@@ -331,10 +339,13 @@ export function createTurnEventPipeline({
   }
 
   // 接口 2：beginTurn(sessionKey)——prompt 开始前幂等清两诊断计数（人拍板 B：
-  // 失败轮残留不混轮；幂等：已空时再清不抛）。
+  // 失败轮残留不混轮；幂等：已空时再清不抛）。ADR-041 决策 3：lastReplies 同规——
+  //  message_end 缺失的崩溃路径下，上轮 reply 不得作为本轮 prompt-result 回传
+  // （实证：thinking-only 轮 reply=有 实为上一轮残留）。
   function beginTurn(sessionKey) {
     turnEventCounts.delete(sessionKey);
     sdkEventCounts.delete(sessionKey);
+    lastReplies.delete(sessionKey);
   }
 
   // 接口 3：takeLastReply(sessionKey) → string | undefined——读取不删（现状语义）；
