@@ -210,13 +210,15 @@ async function handleFileRead(req, res) {
   if (PREVIEW_IMAGE_EXTENSIONS.has(ext)) {
     return sendPreviewJson(res, 200, { kind: "image", size: stat.size, mtimeMs: stat.mtimeMs });
   }
-  // SVG 显式拒收（ADR-042 决策 3）；已知二进制扩展名不进嗅探。
-  if (ext === "svg" || BINARY_EXTENSIONS.has(ext)) {
-    return sendPreviewError(res, 415, "E-PREVIEW-UNSUPPORTED", "不支持预览该类型", logContext);
-  }
+  // 管线顺序对齐 §10.3 流 A 步骤 3：stat → E2 → E3 → 类型判定（图片分支前置豁免除外，
+  // image 不受 1MB 约束）。超上限的 SVG/已知二进制按 E3 拒读，不进类型判定。
   // 1MB 上限（含本数）：超上限不读内容（§8 E3）。
   if (stat.size > MAX_PREVIEW_BYTES) {
     return sendPreviewError(res, 413, "E-PREVIEW-TOO-LARGE", "文件过大", logContext);
+  }
+  // SVG 显式拒收（ADR-042 决策 3）；已知二进制扩展名不进嗅探。
+  if (ext === "svg" || BINARY_EXTENSIONS.has(ext)) {
+    return sendPreviewError(res, 415, "E-PREVIEW-UNSUPPORTED", "不支持预览该类型", logContext);
   }
 
   let buffer;
