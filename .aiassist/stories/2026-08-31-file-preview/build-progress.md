@@ -53,3 +53,49 @@
 **已知偏差**（实现注记，不改测试契约）：
 - 互斥桥调用：测试桩 `isOpen()` 闭包引用未绑定标识符必抛 ReferenceError；实现按「collapse 幂等」语义降级——isOpen 查询失败不阻断 collapse 调用（生产桥正常时仍受 isOpen 门控）。
 - modified 事件 toast 同步于事件消费发出（不等重读完成）：测试仅给两个微任务预算，而 request mock 的 async adoption 链 ≥3 微任务；重读结果随后对齐状态，失败走 error 态。
+
+### Slice 1：服务端 files read/list/watch + SSE 推送（2026-09-02，commit 见下文进度）
+
+**PRD → 代码 可追溯性表**
+
+| PRD 意图项 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.2 E1 分支 + §8 E1 行（越界路径拒读，不触达磁盘） | `src/http/routes/agentFiles.js` `resolveInsideRoot`（normalize + realpathBestEffort 双检） | `api/filesApi.test.js` REQ-010 AC3（`../outside.txt` + symlink 逃逸）；`api/filesWatch.test.js` AC2（watch 越界） | COVERED |
+| §6.2 E2 分支 + §8 E2 行（路径不存在） | `agentFiles.js` read/watch stat → `E-PREVIEW-NOT-FOUND` | `api/filesApi.test.js` AC5（ghost.md）；`api/filesWatch.test.js` AC2（不注册 + 落盘零事件） | COVERED |
+| §6.2 E3 + §6.3 块 5（1MB 上限含本数：1,048,576 → 200 / 1,048,577 → E-PREVIEW-TOO-LARGE 不含 content） | `agentFiles.js` `MAX_PREVIEW_BYTES` 边界 stat 判定 | `api/filesApi.test.js` AC2 双边界用例 | COVERED |
+| §6.2 E4 + §7.1 row2（二进制/非 UTF-8/不支持类型 → E-PREVIEW-UNSUPPORTED） | `agentFiles.js` svg 显式拒收 + `BINARY_EXTENSIONS` 拒绝 + UTF-8 fatal 嗅探 | `api/filesApi.test.js` AC4（spec.pdf / icon.svg / bin.dat） | COVERED |
+| §6.2 SVG 行 + ADR-042 决策 3（SVG 拒收，白名单对齐附件清单 jpeg/png/gif/webp/bmp/heic/heif；image kind 不带 content、不受 1MB 约束） | `agentFiles.js` `PREVIEW_IMAGE_EXTENSIONS`（read 端点不含 svg，区别于既有 image 端点白名单） | `api/filesApi.test.js` AC1（logo.png → kind=image 无 content）+ AC4（svg → UNSUPPORTED） | COVERED |
+| §8 E5（无解析根 → E-PREVIEW-NO-ROOT） | `agentFiles.js` `requireProjectRoot`（复用 `resolveProjectRoot`） | `api/filesApi.test.js` AC5（无效 projectId） | COVERED |
+| §8 E6（I/O 失败 → E-PREVIEW-READ-FAILED） | `agentFiles.js` stat/readFile/readdir catch 非 ENOENT 分支 | —（无自动化用例；错误映射与 ENOENT 分支同码路径） | PARTIAL（分支就位，签核测试未锁定此码的触发用例） |
+| §6.3 块 3 row1 + §10.4 接口 1「正常」（噪音目录 .git/node_modules/dist 隐藏；目录在前、同类 localeCompare；文件条目带 size） | `agentFiles.js` `handleFileList`（`NOISE_DIRS` + 分组排序 + stat size） | `api/filesApi.test.js` AC6 根目录/子目录排序用例 | COVERED |
+| §10.4 接口 1「边界/异常」（空目录 entries=[]；dir="../" → 400 E-PREVIEW-OUTSIDE-ROOT 锚定状态码；dir 不存在/指向文件 → E-PREVIEW-NOT-FOUND） | `agentFiles.js` `handleFileList`（dir="" → root；ENOTDIR → NOT-FOUND） | `api/filesApi.test.js` AC6 三用例 | COVERED |
+| §10.4 接口 2「正常 md」（`docs/guide.md` → kind=markdown, content="# Title", size=7, mtimeMs>0） | `agentFiles.js` `MARKDOWN_EXTENSIONS` 分支 | `api/filesApi.test.js` AC1 | COVERED |
+| §10.4 接口 2「正常 code」（`src/auth.js` → kind=code, language=javascript） | `agentFiles.js` `CODE_LANGUAGE_BY_EXTENSION`（hljs 语言键对齐 MarkdownRenderer 注册集） | `api/filesApi.test.js` AC1 | COVERED |
+| §10.3 流 A 步骤 3 + §10.5 决策 6（无扩展名 UTF-8 可解码 → code language=plaintext 兜底） | `agentFiles.js` TextDecoder fatal 嗅探分支 | `api/filesApi.test.js` AC4（LICENSE） | COVERED |
+| §10.4 接口 3「正常」（POST 同 (projectId,path) 幂等返回同一 watchId） | `src/services/filePreviewWatchService.js` `keyIndex` 同键去重 | `api/filesWatch.test.js` AC1 | COVERED |
+| §10.4 接口 3「边界」（文件被删后 POST → E-PREVIEW-NOT-FOUND 不注册，落盘零事件） | `agentFiles.js` `handleWatchRegister` stat 前置 | `api/filesWatch.test.js` AC2 | COVERED |
+| §10.4 接口 3「异常」（DELETE 重复/不存在 → 204 幂等吞掉） | `filePreviewWatchService.js` `unregister` no-op + `agentFiles.js` `handleWatchUnregister` 恒 204 | `api/filesWatch.test.js` AC1/AC3 | COVERED |
+| §10.4 接口 5「连写合并」（200ms 窗口内 3 次落盘 → 仅 1 次 modified） | `filePreviewWatchService.js` `DEBOUNCE_MS=200` 防抖窗口 | `api/filesWatch.test.js` AC4 | COVERED |
+| §10.4 接口 5「删除」（推 deleted + 服务端自动注销；重建不再推送；DELETE 仍 204） | `filePreviewWatchService.js` 防抖窗口关闭时 stat 存在性判定 → deleted 分支自动 unregister | `api/filesWatch.test.js` AC5 | COVERED |
+| §10.5 决策 5（原子写 tmp+rename 覆盖 → 归并 1 次 modified、0 次 deleted） | `filePreviewWatchService.js` stat-at-window-close 归并语义 + modified 后 `ensureWatcher` 重挂 | `api/filesWatch.test.js` AC6 | COVERED |
+| §10.4 接口 5 载荷（SSE 帧 {type:"file-preview-changed", projectId, path, change}，path = 注册相对路径原样；既有会话 SSE 复用，ADR-042 决策 1） | `src/services/sessionSseRegistry.js` subscription 内 subscribe + `projectIdOf(spaceKey)` 过滤 + writeFrame | `api/filesWatch.test.js` AC4/AC5/AC6（经真实 SSE 流捕获帧） | COVERED |
+| §10.7 可观测性（E-PREVIEW-* 错误与 watch 注册/注销主进程日志，含 projectId+path 不含内容） | `agentFiles.js` `sendPreviewError` 日志 + `filePreviewWatchService.js` register/unregister 日志 | —（日志为观测面，非断言面） | COVERED（非测试锚点） |
+| §10.7 性能（面板关闭即注销、句柄不泄漏；server 关停清理） | `filePreviewWatchService.dispose` + `serviceContainer.dispose` 接线 + timer unref | `api/filesWatch.test.js` AC5（自动注销语义）+ after 钩子干净关闭 | COVERED |
+
+**验证**：
+
+```
+NODE_ENV=test node --import ./scripts/session-lifecycle-seam.mjs --test \
+  tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/api/filesApi.test.js \
+  tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/api/filesWatch.test.js \
+  --test-timeout=60000
+# → tests 24 / pass 24 / fail 0
+npm run test:unit
+# → tests 1193 / pass 1193 / fail 0（含 serverAssembly AC5 行数约束，server.js 保持 ≤250 行）
+```
+
+**已知偏差/注记**（不改测试契约）：
+- 错误状态码选型（测试仅锚定 list 越界=400、其余 ≥400）：NO-ROOT/NOT-FOUND=404、OUTSIDE-ROOT=400、TOO-LARGE=413、UNSUPPORTED=415、READ-FAILED=500。
+- 已知二进制扩展名（`BINARY_EXTENSIONS`，含 pdf）直接拒收不进 UTF-8 嗅探：ASCII 头部的 PDF 嗅探会误判为文本，§10.4 接口 2「异常类型」锚点（spec.pdf → UNSUPPORTED）要求扩展名前置拦截。
+- list 中 symlink/非 dir 非 file 条目略过（不跟随 symlink，规避逃逸面）；文件 size stat 竞态失败时省略该可选字段（契约 size? 可选）。
+- read 目录路径（stat.isFile()=false）归并到 E-PREVIEW-NOT-FOUND（测试未锁定，语义取「非可预览文件」）。
