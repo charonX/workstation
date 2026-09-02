@@ -1,0 +1,52 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-31-file-preview
+intention: >-
+  在 workstation 里查看项目内的 Markdown / 代码文件时，只能看到原始文本，
+  没有渲染后的预览（Markdown 渲染、代码高亮），阅读和 review 体验差。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: BUILD            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-31
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-31, from: -, to: THINK, note: "创建 story（初衷：项目内文件预览——Markdown 渲染 / 代码高亮）"}
+  - {at: 2026-08-31, from: THINK, to: PRD, note: "需求洞察完成：方向 A 一体交付（左侧文件树 + 右侧预览面板复用浏览器容器心智 + 聊天路径点击入口）；只读、根目录硬约束、自动刷新；interview-notes.md 完成"}
+  - {at: 2026-08-31, from: PRD, to: DESIGN, note: "PRD v0.1 完成：5 稳定块（预览面板/路径入口/文件树/自动刷新/安全边界）+ 2 移动块（路径识别规则、图片纳入）；complex 分级，§10.3-10.7 待 /tech-design；错误码 E-PREVIEW-* 系列"}
+  - {at: 2026-09-02, from: DESIGN, to: DOMAIN-MODEL, note: "一屏集成原型 file-preview.html 完成并 approved（预览面板+文件树+聊天路径入口同屏，错误态 E1-E4 演示，自动刷新演示）；用户反馈补「树全部展开/收起」并回流 PRD §6.1/§6.3；编译+check 绿，preview 61KB 1 card"}
+  - {at: 2026-09-02, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "术语登记：新增实体「文件预览面板」「文件树」+ 概念「解析根」「噪音目录」；裁决「预览面板」裸词冲突（双向禁用，新实体全名带「文件」前缀）；PRD 裸词同步替换"}
+  - {at: 2026-09-02, from: TECH-DESIGN, to: CRYSTALLIZE, note: "深潜完成：四问定案（槽位互斥/识别仅行内code/HTTP+SSE通道/图片对齐附件白名单）；§10.2-10.7 全量 + 5 接口契约 golden values；ADR-042 落地；移动块清零；PRD v1.0"}
+  - {at: 2026-09-02, from: CRYSTALLIZE, to: TEST, note: "结晶完成：REQ-PREVIEW-001~010（capability=file-preview，entity=file-preview-panel/file-tree），全部 EXPECTED-TRACE 到 §6.3/§8/§10.4；requirements-v1.hash 落盘；business-capabilities.md 登记 file-preview"}
+  - {at: 2026-09-02, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架完成：6 文件 61 用例（component 3 文件 26 例：pathRecognition/filePreviewStore/fileTreeStore 纯 seam；api 2 文件 24 例：filesApi/filesWatch 真实 fs+HTTP+SSE；e2e 2 文件 11 例 Playwright Electron）；全部 EXPECTED-TRACE，无 HUMAN ASSERTION；component/api 已验证 RED 可执行（seam 未就绪/404 清晰失败）；test-plan.md 落盘"}
+  - {at: 2026-09-02, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：AI 全量自检零升级点（expected 全量 trace 到 §6.3/§7/§10.4 锚点，安全边界已于 tech-design 人确认）；signoff.md 落盘；BUILD 解锁"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: "global"            # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: true            # 是否已跑过 compile-design-system
+  preview: .aiassist/stories/2026-08-31-file-preview/ux/preview.html
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: [file-preview.html]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
