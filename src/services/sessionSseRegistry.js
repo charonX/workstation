@@ -20,6 +20,7 @@
 // Slice 3 路由瘦身时路由内旧副本删除并改经 context.getSseRegistry() 消费本实例。
 
 import { subscribe } from "./eventBus.js";
+import { projectIdOf } from "./sessionDomain.js";
 
 export function createSseSubscriptionRegistry() {
   // 挂起订阅注册表：spaceKey → Set<sub>。events 连接先于首条消息打开时，agentService
@@ -99,6 +100,23 @@ export function createSseSubscriptionRegistry() {
       writeFrame({ type: "confirmation-pending", ...pending });
     });
 
+    // 文件预览变更推送（story 2026-08-31-file-preview / REQ-PREVIEW-008，ADR-042
+    // 决策 1：复用既有会话 SSE 连接，不新建通道）：filePreviewWatchService 经
+    // eventBus 发布（200ms 防抖合并后），本连接按 projectIdOf(spaceKey) 匹配
+    // projectId 过滤转发；帧 = {type:"file-preview-changed", projectId, path,
+    // change}（prd.md §10.4 接口 5 载荷契约）。非项目空间（projectIdOf →
+    // undefined）天然不匹配任何事件。SSE 只推增量不做回溯（面板重连时主动
+    // re-read 兜底，§10.3 流 C）。
+    const unsubscribePreview = subscribe("file-preview-changed", (payload) => {
+      if (detached || !payload || payload.projectId !== projectIdOf(spaceKey)) return;
+      writeFrame({
+        type: "file-preview-changed",
+        projectId: payload.projectId,
+        path: payload.path,
+        change: payload.change,
+      });
+    });
+
     const onEvent = (ev) => {
       if (detached || !ev || typeof ev.type !== "string") return;
       if (ev.type === "text_start") {
@@ -126,6 +144,7 @@ export function createSseSubscriptionRegistry() {
         if (detached) return;
         detached = true;
         unsubscribePending(); // 摘除 confirmation-pending 订阅（eventBus 回调先查 detached，幂等）
+        unsubscribePreview(); // 摘除 file-preview-changed 订阅（同型）
         if (heartbeat) clearInterval(heartbeat);
         if (attached && session) session.off("session-event", onEvent);
         const subs = pendingSseSubs.get(spaceKey);

@@ -18,6 +18,7 @@ import { createModeService } from "./modeService.js";
 import { buildSessionConfig } from "./sessionDomain.js";
 import { createSseSubscriptionRegistry } from "./sessionSseRegistry.js";
 import { createBrowserViewManager } from "./browserViewManager.js";
+import { createFilePreviewWatchService } from "./filePreviewWatchService.js";
 import { executeToolCommand } from "../agent/toolAdapter.js";
 
 export const PURGE_CRON_SCHEDULE = "17 3 * * *";
@@ -55,6 +56,7 @@ export function createServiceContainer(options = {}) {
   let serverAgentService = null;
   let serverCardRenderer = null;
   let serverBrowserViewManager = null;
+  let serverFilePreviewWatchService = null;
 
   // Lazy factories (can be overridden via setters or server._opcXxx proxies)
   let sessionStoreFactory = () => {
@@ -171,6 +173,15 @@ export function createServiceContainer(options = {}) {
     return serverBrowserViewManager;
   };
 
+  // 文件预览 watch 服务（story 2026-08-31-file-preview / REQ-PREVIEW-008）：惰性单例，
+  // fs.watch 句柄集中持有；dispose 时清空全部句柄（不泄漏）。
+  let filePreviewWatchServiceFactory = () => {
+    if (!serverFilePreviewWatchService) {
+      serverFilePreviewWatchService = createFilePreviewWatchService();
+    }
+    return serverFilePreviewWatchService;
+  };
+
   async function start() {
     runExecutionLogPurge();
 
@@ -251,6 +262,10 @@ export function createServiceContainer(options = {}) {
   }
 
   async function dispose() {
+    if (serverFilePreviewWatchService) {
+      try { serverFilePreviewWatchService.dispose(); } catch { /* ignore */ }
+      serverFilePreviewWatchService = null;
+    }
     if (serverBrowserViewManager) {
       try { serverBrowserViewManager.dispose(); } catch { /* ignore */ }
       serverBrowserViewManager = null;
@@ -323,6 +338,7 @@ export function createServiceContainer(options = {}) {
     getAgentService: async () => agentServiceFactory(),
     getCardRenderer: () => cardRendererFactory(),
     getBrowserViewManager: () => browserViewManagerFactory(),
+    getFilePreviewWatchService: () => filePreviewWatchServiceFactory(),
 
     // State peek
     peekAgentService: () => serverAgentService ?? null,
@@ -351,6 +367,8 @@ export function createServiceContainer(options = {}) {
     setCardRendererFactory: (fn) => { cardRendererFactory = fn; },
     getBrowserViewManagerFactory: () => browserViewManagerFactory,
     setBrowserViewManagerFactory: (fn) => { browserViewManagerFactory = fn; },
+    getFilePreviewWatchServiceFactory: () => filePreviewWatchServiceFactory,
+    setFilePreviewWatchServiceFactory: (fn) => { filePreviewWatchServiceFactory = fn; },
     setAgentService: (svc) => { serverAgentService = svc; },
   };
 

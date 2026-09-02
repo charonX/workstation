@@ -182,7 +182,7 @@ async function handleRequest(req, res, server) {
       if (subPath[0] === "mode" && subPath[1] === "last") {
         return handleAgentLastMode(req, res, body, { getModeService: () => services?.getModeService() });
       }
-      if (subPath[0] === "files") return handleAgentFiles(req, res, subPath.slice(1));
+      if (subPath[0] === "files") return handleAgentFiles(req, res, subPath.slice(1), body, { getFilePreviewWatchService: () => services?.getFilePreviewWatchService() });
       return handleAgentConfirmations(req, res, body, subPath, {
         getConfirmationService: () => services?.getConfirmationService(),
       });
