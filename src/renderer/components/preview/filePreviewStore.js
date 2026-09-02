@@ -136,7 +136,17 @@ export function createFilePreviewStore(deps) {
       showRenderToggle: false,
       error: null,
     });
-    const res = await request("GET", readUrl(projectId, path));
+    let res;
+    try {
+      res = await request("GET", readUrl(projectId, path));
+    } catch {
+      // E6 客户端失败面：read 请求 promise reject（网络层失败）→ 错误码入状态，
+      // open 保持 true，错误页在面板内呈现（§8 E6；异常不穿透调用方）
+      if (isCurrent(projectId, path)) {
+        set({ error: "E-PREVIEW-READ-FAILED", kind: null, content: null, language: null, showRenderToggle: false });
+      }
+      return;
+    }
     if (!isCurrent(projectId, path)) return;
     if (!res || res.status >= 400) {
       // 错误态仍在面板内呈现（REQ-005）；E2/错误态不注册 watch（§10.4 接口 3）
@@ -196,16 +206,42 @@ export function createFilePreviewStore(deps) {
     set({ open: false });
   }
 
-  // 重读当前文件（SSE modified / 重连兜底共用）
+  // 重读当前文件（SSE modified / 断线重连兜底共用，REQ-009 AC5）：
+  // 面板未打开或无当前文件时为安全 no-op；Slice 3 经返回对象上的 refresh() 调入口。
   async function refresh() {
     const { projectId, path } = state;
-    const res = await request("GET", readUrl(projectId, path));
+    if (!state.open || !projectId || !path) return;
+    let res;
+    try {
+      res = await request("GET", readUrl(projectId, path));
+    } catch {
+      // E6 客户端失败面：网络层 reject → 错误页在面板内呈现（§8 E6；open 保持 true）
+      if (isCurrent(projectId, path)) {
+        set({ error: "E-PREVIEW-READ-FAILED", kind: null, content: null, language: null, showRenderToggle: false });
+      }
+      return;
+    }
     if (!isCurrent(projectId, path)) return;
     if (!res || res.status >= 400) {
       set({ error: errorCodeOf(res), kind: null, content: null, language: null, showRenderToggle: false });
       return;
     }
     const body = res.body || {};
+    // 图片自动刷新：kind=image 时重读须重建 blob URL（旧 URL 指向旧字节，用户故事 3
+    // 「看到的始终是最新内容」）；kind 在 image ↔ 文本类间切换时对称建立/清理，不留泄漏。
+    let imageUrl = null;
+    if (body.kind === "image") {
+      imageUrl = imageBlobs.create(projectId, path);
+    }
+    const prevUrl = blobUrl;
+    blobUrl = imageUrl;
+    if (prevUrl && prevUrl !== imageUrl) {
+      try {
+        imageBlobs.revoke(prevUrl);
+      } catch {
+        // revoke 失败不影响面板状态
+      }
+    }
     set({
       error: null,
       kind: body.kind ?? null,
@@ -213,6 +249,7 @@ export function createFilePreviewStore(deps) {
       language: body.language ?? null,
       size: body.size ?? 0,
       mtimeMs: body.mtimeMs ?? 0,
+      imageUrl,
       showRenderToggle: body.kind === "markdown",
     });
   }
@@ -243,5 +280,6 @@ export function createFilePreviewStore(deps) {
     setViewMode,
     notifyBrowserOpened,
     handleSseEvent,
+    refresh,
   };
 }
