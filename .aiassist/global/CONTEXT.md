@@ -30,7 +30,9 @@
 | 飞书归档条目 | Feishu Archive Entry | 飞书空间 /reset 后保留的历史会话行（ADR-037，2026-08-19）：spaceKey `feishu:<chatId>:gen<N>`，title/sessionRef/lastActiveAt/createdAt 冻结原值，只读可回看；写端点 403 E-SESSION-READONLY；displayName 为空时逆解析活跃键查 agent_space_meta fallback | 对话空间 | 会话列表「飞书」分组历史回看 |
 | 会话轨迹 | Trajectory | 伴随 Agent 会话生成的全量执行账本（含 TTFT/decode 细粒度耗时、Token 用量、工具入参及出参、大载荷截断标记等），以 append-only 侧车文件落盘，可独立回看与时间线过滤（ADR-038） | `*.traj.jsonl` 侧车文件 + `GET /api/agent/sessions/:spaceKey/trajectory` | 轨迹账本、执行日志 |
 | 侧车文件 | Sidecar File | 伴随主会话存在、记录全量高频/大载荷遥测与工具调用的 append-only 本地 JSONL 文件（`ui_project_<pid>_<sid>.traj.jsonl`），实现历史投影与轨迹账本物理隔离 | `src/agent/trajectoryRecorder.js` | 轨迹文件、侧车 |
-| 浏览器面板 | Browser Panel | 会话区右侧可收起的内嵌浏览器视图（WebContentsView 主进程托管）：同一浏览器实例承载人的交互浏览与 agent 的浏览器工具面；**可见性解耦**——收起 ≠ 关闭，实例生命周期独立于面板可见性（agent 工具照常可用） | browserViewManager（main）+ BrowserPanel（renderer）+ `/api/browser/*` | 预览面板、webview（实现选型词，禁用于领域语言） |
+| 浏览器面板 | Browser Panel | 会话区右侧可收起的内嵌浏览器视图（WebContentsView 主进程托管）：同一浏览器实例承载人的交互浏览与 agent 的浏览器工具面；**可见性解耦**——收起 ≠ 关闭，实例生命周期独立于面板可见性（agent 工具照常可用） | browserViewManager（main）+ BrowserPanel（renderer）+ `/api/browser/*` | 预览面板（裸词，2026-09-02 起归「文件预览面板」全名使用）、webview（实现选型词，禁用于领域语言） |
+| 文件预览面板 | File Preview Panel | 会话区右侧可收起的项目内文件**只读**预览视图（React 渲染层，非 WebContentsView——协议白名单不推翻）：Markdown 渲染/源码切换（复用聊天 MarkdownRenderer 管线）、代码高亮、图片直渲；与浏览器面板共享右侧面板容器心智，但内容通道独立（主进程受控读取）；文件外部变更自动刷新（主进程监听） | 待新增（2026-08-31-file-preview BUILD 落位） | 预览面板（裸词禁用，与浏览器面板消歧）、文件预览器 |
+| 文件树 | File Tree | 会话区左侧可收起边栏：绑定当前会话项目空间的解析根，懒加载目录树，噪音目录默认隐藏，支持全部展开/收起；点击文件 → 文件预览面板打开；非项目空间无解析根 → 不显示入口 | 待新增（2026-08-31-file-preview BUILD 落位） | 资源管理器、文件浏览器 |
 
 ## 业务概念
 
@@ -88,6 +90,8 @@
 | 统一身份池 | Unified Identity Pool | `persist:browser` 分区持久化的目标站点登录态（Cookie/Session）：既供内置面板渲染，也经受控导出接口（`GET /api/browser/cookies`；Host=127.0.0.1/localhost 校验 + 跨源封锁 + 无 ACAO）供本地采集引擎与后台 Agent 复用 | 浏览器面板 | 登录态桥接 / Cookie 导出（ADR-039 决策 7/10） |
 | 人机协同登录引导 | Human-in-the-Loop Auth | agent 经 `browser auth-check` 探测目标站点登录态，缺失时导航登录页并展开面板，由用户在面板内手动扫码/登录，后续请求与采集任务无缝接续 | 浏览器面板 | 登录引导流程 D（ADR-039 决策 8） |
 | 本地采集引擎 | Local Collection Engine | workstation 内直连目标站点 API 做数据采集的服务（B站/X/微博等）；经统一身份池的 Cookie 受控导出接口复用登录态，自身不持有凭据 | 浏览器面板 | 采集场景的登录态消费方 |
+| 解析根 | Preview Root | 文件预览与聊天图片解析共用的根目录真源：当前会话项目空间 → 项目 ID → registry 解析的项目工作目录；相对路径按它解析、绝对路径必须落在它之内（realpath 双检）；非项目空间（通用/飞书/孤儿）无解析根 | 对话空间, Project | 文件预览 / Markdown 图片解析（REQ-AGENT-051 起在用，2026-09-02 补登记） |
+| 噪音目录 | Noise Directories | 文件树默认隐藏的硬编码目录清单（`.git`/`node_modules`/`dist` 等）；第一版不解析 .gitignore | 文件树 | 文件树过滤 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -138,6 +142,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-09-02 | 新增实体「文件预览面板」「文件树」；新增概念「解析根」（REQ-AGENT-051 补登记）「噪音目录」；「预览面板」裸词双向禁用（浏览器面板禁用别名修订注释） | 2026-08-31-file-preview /domain-model |
 | 2026-08-30 | 「人机共驾」修订（断控制后任何 browser 工具 DENIED；解除仅限地址栏/chrome 手势 IPC 导航，页内点击不解除）；「读取类动作」枚举补 auth-check；新增「统一身份池」「人机协同登录引导」「本地采集引擎」 | 2026-08-24-embedded-browser review 修订 |
 | 2026-08-25 | 新增实体「浏览器面板」（可见性解耦）；新增概念「人机共驾」「读取类/提交类动作」「协议白名单」 | 2026-08-24-embedded-browser /domain-model |
 | 2026-08-22 | 新增「飞书归档条目」「活跃行」「世代编号」「空世代」术语（ADR-037 归档语义沉淀） | 2026-08-19-feishu-reset-history-archive /reflect |

@@ -131,6 +131,14 @@
 | browser-panel | `tests/capabilities/embedded-browser/browser-panel/2026-08-24-embedded-browser/api/`, `.../e2e/` | REQ-BROWSER-001, 003, 004, 005（2026-08-28 结晶） | 集成：URL 规范化/白名单/弹窗拦截/停止控制状态机/cookies 导出清理/日志脱敏；E2E：流程A/B/C、弹窗拦截、链接集成、错误/崩溃页（17 用例已绿） |
 | browser-tools | `tests/capabilities/embedded-browser/browser-tools/2026-08-24-embedded-browser/api/`, `.../e2e/` | REQ-BROWSER-002, 006（2026-08-28 结晶） | 单元：TOOL_DEFS riskLevel 声明；集成：navigate/read/scroll/screenshot JSON 回执/截断/auth-check 判定；E2E：expand 展开链路已覆盖 |
 
+### file-preview
+> 项目内文件预览（ADR-042）：左侧文件树边栏（懒加载、噪音目录隐藏、全部展开/收起）+ 右侧文件预览面板（与浏览器面板槽位互斥，Markdown 渲染/源码切换、hljs 代码高亮、图片白名单直渲，纯只读）+ 聊天行内 code 路径点击入口（围栏不识别）；通道 = HTTP API（read/list/watch）+ 既有会话 SSE（`file-preview-changed` 自动刷新）；安全 = 主进程 registry 解析根 + realpath 双检、1MB 上限、E-PREVIEW-* 错误码族。（2026-08-31-file-preview 登记，2026-09-02 结晶）
+
+| 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
+|------|----------|---------------|----------|
+| file-preview-panel | `tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/{unit,component,api,e2e}/` | REQ-PREVIEW-001~006, 008~010（2026-09-02 结晶） | 单元：路径识别纯函数正反矩阵；组件：面板 kind 分支/渲染源码切换/错误态 E1-E6/SSE 消费/槽位互斥；集成：files read|list|watch HTTP 契约 + fs.watch 防抖；E2E：聊天点路径→面板、互斥、自动刷新 |
+| file-tree | `tests/capabilities/file-preview/file-tree/2026-08-31-file-preview/{component,e2e}/` | REQ-PREVIEW-007（2026-09-02 结晶） | 组件：懒加载/噪音过滤/排序/全部展开收起/点击分发；E2E：入口显隐（非项目空间隐藏） |
+
 ## 能力依赖图
 
 ```
@@ -145,6 +153,7 @@ command-interface ──> workspace-management ──> flow-orchestration ──
 plugin-management ──> agent-dialogue、workspace-management
 channel-integration ──> workspace-management                                │
 collection-pipeline ──> scheduling-execution、flow-orchestration、skill-management、channel-integration
+file-preview ──> agent-dialogue、workspace-management（项目空间解析根）、embedded-browser（槽位互斥联动）
 ```
 
 ## 健康指标
@@ -164,3 +173,4 @@ collection-pipeline ──> scheduling-execution、flow-orchestration、skill-ma
 | agent-dialogue | 8 | 423 | 2026-08-24 |
 | plugin-management | 2 | 82 | 2026-08-16 |
 | embedded-browser | 2 | 44（api 27 + e2e 17，2026-08-30 review 轮增补） | 2026-08-28 |
+| file-preview | 2 | 0（2026-09-02 结晶，测试待生成） | 2026-09-02 |
