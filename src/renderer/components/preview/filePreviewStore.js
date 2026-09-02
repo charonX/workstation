@@ -95,9 +95,68 @@ export function createFilePreviewStore(deps) {
     return res && res.body && typeof res.body.error === "string" ? res.body.error : "E-PREVIEW-READ-FAILED";
   }
 
+  // 错误态统一入状态（E-PREVIEW-* 码；错误页仍在面板内呈现，REQ-005）。
+  // imageUrl/blob 刻意不动：错误页不消费 imageUrl，blob 句柄保留至 close/切换时统一回收。
+  function setErrorState(code) {
+    set({ error: code, kind: null, content: null, language: null, showRenderToggle: false });
+  }
+
   // 响应归来时面板已关闭或已切到别的文件 → 丢弃陈旧结果（竞态以最近操作为准）。
   function isCurrent(projectId, path) {
     return state.open && state.projectId === projectId && state.path === path;
+  }
+
+  // GET read 一次（openWithPath/refresh 共用）：成功 → 返回 body（可为 {}）；
+  // 失败/陈旧 → 对应错误码已入状态或结果被丢弃，返回 null。
+  // E6 客户端失败面：read 请求 promise reject（网络层失败）→ E-PREVIEW-READ-FAILED
+  // 入状态，open 保持 true，错误页在面板内呈现（§8 E6；异常不穿透调用方）。
+  async function requestRead(projectId, path) {
+    let res;
+    try {
+      res = await request("GET", readUrl(projectId, path));
+    } catch {
+      if (isCurrent(projectId, path)) setErrorState("E-PREVIEW-READ-FAILED");
+      return null;
+    }
+    if (!isCurrent(projectId, path)) return null;
+    if (!res || res.status >= 400) {
+      // E2/错误态不注册 watch（§10.4 接口 3）
+      setErrorState(errorCodeOf(res));
+      return null;
+    }
+    return res.body || {};
+  }
+
+  // 按 body.kind 换入新 blob URL 并回收旧 URL（不泄漏，REQ-004 AC3）：
+  // kind=image → 重建（旧 URL 指向旧字节，用户故事 3「看到的始终是最新内容」）；
+  // kind 在 image ↔ 文本类间切换时对称建立/清理。返回当前应入状态的 imageUrl。
+  function swapBlobUrl(projectId, path, body) {
+    const nextUrl = body.kind === "image" ? imageBlobs.create(projectId, path) : null;
+    const prevUrl = blobUrl;
+    blobUrl = nextUrl;
+    if (prevUrl && prevUrl !== nextUrl) {
+      try {
+        imageBlobs.revoke(prevUrl);
+      } catch {
+        // revoke 失败不影响面板状态
+      }
+    }
+    return nextUrl;
+  }
+
+  // 读取成功统一入状态；extra 供打开路径附带重置（如 viewMode）。
+  function setContentState(body, imageUrl, extra) {
+    set({
+      error: null,
+      kind: body.kind ?? null,
+      content: body.content ?? null,
+      language: body.language ?? null,
+      size: body.size ?? 0,
+      mtimeMs: body.mtimeMs ?? 0,
+      imageUrl,
+      showRenderToggle: body.kind === "markdown",
+      ...extra,
+    });
   }
 
   // 右侧槽位互斥：预览打开 → 浏览器面板收起（ADR-042 决策 2，互收不毁实例）。
@@ -136,40 +195,10 @@ export function createFilePreviewStore(deps) {
       showRenderToggle: false,
       error: null,
     });
-    let res;
-    try {
-      res = await request("GET", readUrl(projectId, path));
-    } catch {
-      // E6 客户端失败面：read 请求 promise reject（网络层失败）→ 错误码入状态，
-      // open 保持 true，错误页在面板内呈现（§8 E6；异常不穿透调用方）
-      if (isCurrent(projectId, path)) {
-        set({ error: "E-PREVIEW-READ-FAILED", kind: null, content: null, language: null, showRenderToggle: false });
-      }
-      return;
-    }
-    if (!isCurrent(projectId, path)) return;
-    if (!res || res.status >= 400) {
-      // 错误态仍在面板内呈现（REQ-005）；E2/错误态不注册 watch（§10.4 接口 3）
-      set({ error: errorCodeOf(res), kind: null, content: null, language: null, showRenderToggle: false });
-      return;
-    }
-    const body = res.body || {};
-    let imageUrl = null;
-    if (body.kind === "image") {
-      imageUrl = imageBlobs.create(projectId, path);
-      blobUrl = imageUrl;
-    }
-    set({
-      error: null,
-      kind: body.kind ?? null,
-      content: body.content ?? null,
-      language: body.language ?? null,
-      size: body.size ?? 0,
-      mtimeMs: body.mtimeMs ?? 0,
-      imageUrl,
-      viewMode: "render",
-      showRenderToggle: body.kind === "markdown",
-    });
+    const body = await requestRead(projectId, path);
+    if (!body) return;
+    const imageUrl = swapBlobUrl(projectId, path, body);
+    setContentState(body, imageUrl, { viewMode: "render" });
     // 打开成功 → 注册变更监听（§10.3 流 A 步骤 4）
     try {
       const w = await request("POST", "/api/agent/files/watch", { projectId, path });
@@ -211,47 +240,10 @@ export function createFilePreviewStore(deps) {
   async function refresh() {
     const { projectId, path } = state;
     if (!state.open || !projectId || !path) return;
-    let res;
-    try {
-      res = await request("GET", readUrl(projectId, path));
-    } catch {
-      // E6 客户端失败面：网络层 reject → 错误页在面板内呈现（§8 E6；open 保持 true）
-      if (isCurrent(projectId, path)) {
-        set({ error: "E-PREVIEW-READ-FAILED", kind: null, content: null, language: null, showRenderToggle: false });
-      }
-      return;
-    }
-    if (!isCurrent(projectId, path)) return;
-    if (!res || res.status >= 400) {
-      set({ error: errorCodeOf(res), kind: null, content: null, language: null, showRenderToggle: false });
-      return;
-    }
-    const body = res.body || {};
-    // 图片自动刷新：kind=image 时重读须重建 blob URL（旧 URL 指向旧字节，用户故事 3
-    // 「看到的始终是最新内容」）；kind 在 image ↔ 文本类间切换时对称建立/清理，不留泄漏。
-    let imageUrl = null;
-    if (body.kind === "image") {
-      imageUrl = imageBlobs.create(projectId, path);
-    }
-    const prevUrl = blobUrl;
-    blobUrl = imageUrl;
-    if (prevUrl && prevUrl !== imageUrl) {
-      try {
-        imageBlobs.revoke(prevUrl);
-      } catch {
-        // revoke 失败不影响面板状态
-      }
-    }
-    set({
-      error: null,
-      kind: body.kind ?? null,
-      content: body.content ?? null,
-      language: body.language ?? null,
-      size: body.size ?? 0,
-      mtimeMs: body.mtimeMs ?? 0,
-      imageUrl,
-      showRenderToggle: body.kind === "markdown",
-    });
+    const body = await requestRead(projectId, path);
+    if (!body) return;
+    const imageUrl = swapBlobUrl(projectId, path, body);
+    setContentState(body, imageUrl);
   }
 
   // SSE file-preview-changed 消费（REQ-009；§10.4 接口 5 消费语义）
@@ -260,7 +252,7 @@ export function createFilePreviewStore(deps) {
     if (!state.open || frame.projectId !== state.projectId || frame.path !== state.path) return;
     if (frame.change === "deleted") {
       // E2 页 + 注销监听（§10.4 接口 5 删除行）
-      set({ error: "E-PREVIEW-NOT-FOUND", kind: null, content: null, language: null, showRenderToggle: false });
+      setErrorState("E-PREVIEW-NOT-FOUND");
       void releaseWatch();
       return;
     }
