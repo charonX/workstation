@@ -102,3 +102,13 @@ npm run test:unit
 - 已知二进制扩展名（`BINARY_EXTENSIONS`，含 pdf）直接拒收不进 UTF-8 嗅探：ASCII 头部的 PDF 嗅探会误判为文本，§10.4 接口 2「异常类型」锚点（spec.pdf → UNSUPPORTED）要求扩展名前置拦截。
 - list 中 symlink/非 dir 非 file 条目略过（不跟随 symlink，规避逃逸面）；文件 size stat 竞态失败时省略该可选字段（契约 size? 可选）。
 - read 目录路径（stat.isFile()=false）归并到 E-PREVIEW-NOT-FOUND（测试未锁定，语义取「非可预览文件」）。
+
+## 已知测试覆盖缺口登记（missing-test，非阻塞；REFLECT 复查候选）
+
+Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现真实完整），缺口在锁定测试侧：
+
+1. **E6 promise reject 分支无锁定断言**：REQ-005 E6 用例走 status 500 响应路径；`openWithPath`/`refresh` 的 read 请求 reject → `E-PREVIEW-READ-FAILED` 无直接断言。
+2. **图片 modified 重读的 blob 重建/销旧无锁定断言**：REQ-004 图片用例只覆盖 open/close 的 create/revoke，不覆盖 refresh 成功分支的 image→image 换绑与 image↔text 对称清理。
+3. **REQ-009 AC5 `refresh()` 直接入口无锁定断言**（未打开 no-op / SSE 重连 re-read）：AC1 经 `handleSseEvent → void refresh()` 间接覆盖读路径，直接入口语义未锁定。
+
+处置建议：不阻断 BUILD；如需补断言走 `/bug` test-gap 或 REFLECT 阶段评估（补断言触及已签核测试文件，需重签）。
