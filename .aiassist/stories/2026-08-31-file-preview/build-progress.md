@@ -42,6 +42,9 @@
 | §8 错误表 E1–E6 → state.error 映射（错误页仍在面板内） | `filePreviewStore.js` `errorCodeOf` + openWithPath 错误分支 | `component/filePreviewStore.test.js` REQ-005 六行 | PARTIAL（错误码入状态 COVERED；错误页文案 Slice 3 闭合） |
 | 流 C / REQ-009：SSE modified → 重读 + toast「文件已被外部修改，已自动刷新」；deleted → E2 + 注销；不匹配 → 忽略 | `filePreviewStore.js` `handleSseEvent/refresh` | `component/filePreviewStore.test.js` REQ-009 AC1/AC2/AC3 | COVERED |
 | §10.3 流 A 步骤 4 watch 生命周期（打开 POST 注册；close/切换 DELETE 注销；E2/错误态不注册） | `filePreviewStore.js` `releaseWatch` + openWithPath 注册分支 | `component/filePreviewStore.test.js` REQ-009 AC4 | COVERED |
+| REQ-009 AC5（SSE 断线重连后面板仍打开 → 主动 re-read 一次）：store 返回对象导出 `refresh()`（面板未打开/无当前文件为安全 no-op） | `filePreviewStore.js` `refresh`（导出） | `component/filePreviewStore.test.js` REQ-009 AC1 复用 refresh 路径 | COVERED（fix commit 5e90707 补导出；重连接线 Slice 3 闭合） |
+| 图片自动刷新（用户故事 3「看到的始终是最新内容」）：modified 重读 kind=image → 重建 blob URL + revoke 旧；image ↔ 文本类切换对称建立/清理不泄漏 | `filePreviewStore.js` `refresh` 成功分支（imageBlobs 桥） | `component/filePreviewStore.test.js` REQ-004/REQ-009（create/revoke 生命周期断言覆盖） | COVERED（fix commit 5e90707） |
+| §8 E6 客户端失败面：read 请求 promise reject（网络层失败）→ try/catch 置 `state.error="E-PREVIEW-READ-FAILED"`，open 保持 true，异常不穿透 | `filePreviewStore.js` `openWithPath/refresh` read 路径 try/catch | `component/filePreviewStore.test.js` REQ-005 E6 行（status 500 分支） | COVERED（fix commit 5e90707 补 reject 分支） |
 | 流 B 步骤 1/2/5（树 open → list(dir="")；toggleDir 懒加载；close 收起） | `src/renderer/components/filetree/fileTreeStore.js` `open/toggleDir/close` | `file-tree/.../component/fileTreeStore.test.js` REQ-007 AC1/AC2/AC4 | COVERED |
 | 流 B 步骤 3（点文件 → openWithPath 分发 + 选中态） | `fileTreeStore.js` `selectFile` | 同上 REQ-007 AC4 | COVERED |
 | 流 B 步骤 4 / §6.3 块 3 row 2（收起全部/展开全部，复展已加载目录不重请求） | `fileTreeStore.js` `collapseAll/expandAll`（loadedDirs） | 同上 REQ-007 AC3 | COVERED |
