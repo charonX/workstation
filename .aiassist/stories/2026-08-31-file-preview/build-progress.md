@@ -118,3 +118,5 @@ Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现�
 - Slice 2: complete (4482627 + 5e90707, tests green 28/28 + 1193/1193, PRD alignment: MISALIGNMENT_FOUND(3 gaps) → fix → re-check ALIGNED)
 - Slice 2: refactor pass done (5ecf003, tests green 28/28 + 1193/1193, no rollback; 提取 requestRead/setErrorState/swapBlobUrl/setContentState 四 helper，公共契约零变化)
 - Slice 1: PRD alignment: MISALIGNMENT_FOUND(G1/G2/G3) → fix 21a3c59 → re-check ALIGNED（父代理验证 24/24 + 1193/1193）
+- Slice 1: complete (c3d326e + 21a3c59, tests green 24/24 + 1193/1193, PRD alignment re-check ALIGNED)
+- Slice 1: refactor pass done (bcf3822, tests green 24/24 + 1193/1193, no rollback; 字面 NUL 字节清除（新 blob 纯文本，byte scan=0）+ sendFsError/statExistingFile/resolveInsideRootOrReject 三 helper 提取；留 /review：agentFiles.js 双错误范式并存 383 行)
