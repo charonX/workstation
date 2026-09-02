@@ -176,6 +176,42 @@ function isNotFoundError(err) {
   return err?.code === "ENOENT" || err?.code === "ENOTDIR";
 }
 
+// 边界解析公共前置（read/list/watch 共用）：越界/symlink 逃逸 → 400
+// E-PREVIEW-OUTSIDE-ROOT（不触达内容读取）；返回 abs 或 null（已响应）。
+function resolveInsideRootOrReject(res, root, relPath, logContext) {
+  const abs = resolveInsideRoot(root, relPath);
+  if (!abs) {
+    sendPreviewError(res, 400, "E-PREVIEW-OUTSIDE-ROOT", "仅支持预览项目内文件", logContext);
+  }
+  return abs;
+}
+
+// fs I/O 错误统一映射：ENOENT/ENOTDIR → 404 E-PREVIEW-NOT-FOUND（notFoundMessage
+// 按资源形态区分文件/目录）；其余 → 500 E-PREVIEW-READ-FAILED。
+function sendFsError(res, err, logContext, notFoundMessage) {
+  if (isNotFoundError(err)) {
+    return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", notFoundMessage, logContext);
+  }
+  return sendPreviewError(res, 500, "E-PREVIEW-READ-FAILED", "读取失败", logContext);
+}
+
+// stat 既有文件公共前置（read/watch 共用）：不存在/非文件 → E-PREVIEW-NOT-FOUND；
+// 返回 stat 或 null（已响应）。
+async function statExistingFile(res, abs, logContext) {
+  let stat;
+  try {
+    stat = await fs.promises.stat(abs);
+  } catch (err) {
+    sendFsError(res, err, logContext, "文件不存在");
+    return null;
+  }
+  if (!stat.isFile()) {
+    sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
+    return null;
+  }
+  return stat;
+}
+
 // GET read（§10.4 接口 2）。
 async function handleFileRead(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -185,23 +221,11 @@ async function handleFileRead(req, res) {
 
   const root = requireProjectRoot(res, projectId, logContext);
   if (!root) return;
-  const abs = resolveInsideRoot(root, previewPath);
-  if (!abs) {
-    return sendPreviewError(res, 400, "E-PREVIEW-OUTSIDE-ROOT", "仅支持预览项目内文件", logContext);
-  }
+  const abs = resolveInsideRootOrReject(res, root, previewPath, logContext);
+  if (!abs) return;
 
-  let stat;
-  try {
-    stat = await fs.promises.stat(abs);
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
-    }
-    return sendPreviewError(res, 500, "E-PREVIEW-READ-FAILED", "读取失败", logContext);
-  }
-  if (!stat.isFile()) {
-    return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
-  }
+  const stat = await statExistingFile(res, abs, logContext);
+  if (!stat) return;
 
   const ext = path.extname(previewPath).slice(1).toLowerCase();
 
@@ -225,10 +249,7 @@ async function handleFileRead(req, res) {
   try {
     buffer = await fs.promises.readFile(abs);
   } catch (err) {
-    if (isNotFoundError(err)) {
-      return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
-    }
-    return sendPreviewError(res, 500, "E-PREVIEW-READ-FAILED", "读取失败", logContext);
+    return sendFsError(res, err, logContext, "文件不存在");
   }
 
   if (MARKDOWN_EXTENSIONS.has(ext)) {
@@ -257,20 +278,15 @@ async function handleFileList(req, res) {
   const root = requireProjectRoot(res, projectId, logContext);
   if (!root) return;
   // dir="" = 根；否则 normalize + realpath 双检（dir="../" → 400 锚定状态码）。
-  const abs = dir === "" ? root : resolveInsideRoot(root, dir);
-  if (!abs) {
-    return sendPreviewError(res, 400, "E-PREVIEW-OUTSIDE-ROOT", "仅支持预览项目内文件", logContext);
-  }
+  const abs = dir === "" ? root : resolveInsideRootOrReject(res, root, dir, logContext);
+  if (!abs) return;
 
   let dirents;
   try {
     dirents = await fs.promises.readdir(abs, { withFileTypes: true });
   } catch (err) {
-    if (isNotFoundError(err)) {
-      // dir 不存在或指向文件（ENOTDIR）→ E-PREVIEW-NOT-FOUND（接口 1 业务错误行）。
-      return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "目录不存在", logContext);
-    }
-    return sendPreviewError(res, 500, "E-PREVIEW-READ-FAILED", "读取失败", logContext);
+    // dir 不存在或指向文件（ENOTDIR）→ E-PREVIEW-NOT-FOUND（接口 1 业务错误行）。
+    return sendFsError(res, err, logContext, "目录不存在");
   }
 
   const dirs = [];
@@ -304,23 +320,11 @@ async function handleWatchRegister(req, res, body, context) {
 
   const root = requireProjectRoot(res, projectId, logContext);
   if (!root) return;
-  const abs = resolveInsideRoot(root, watchPath);
-  if (!abs) {
-    return sendPreviewError(res, 400, "E-PREVIEW-OUTSIDE-ROOT", "仅支持预览项目内文件", logContext);
-  }
-  let stat;
-  try {
-    stat = await fs.promises.stat(abs);
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      // 文件不存在 → 不注册（注册后落盘不得产生事件，§10.4 接口 3「边界」行）。
-      return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
-    }
-    return sendPreviewError(res, 500, "E-PREVIEW-READ-FAILED", "读取失败", logContext);
-  }
-  if (!stat.isFile()) {
-    return sendPreviewError(res, 404, "E-PREVIEW-NOT-FOUND", "文件不存在", logContext);
-  }
+  const abs = resolveInsideRootOrReject(res, root, watchPath, logContext);
+  if (!abs) return;
+  // 文件不存在 → 不注册（注册后落盘不得产生事件，§10.4 接口 3「边界」行）。
+  const stat = await statExistingFile(res, abs, logContext);
+  if (!stat) return;
 
   const svc = context?.getFilePreviewWatchService?.();
   if (!svc) {
