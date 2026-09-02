@@ -69,7 +69,7 @@
 | §6.2 E4 + §7.1 row2（二进制/非 UTF-8/不支持类型 → E-PREVIEW-UNSUPPORTED） | `agentFiles.js` svg 显式拒收 + `BINARY_EXTENSIONS` 拒绝 + UTF-8 fatal 嗅探 | `api/filesApi.test.js` AC4（spec.pdf / icon.svg / bin.dat） | COVERED |
 | §6.2 SVG 行 + ADR-042 决策 3（SVG 拒收，白名单对齐附件清单 jpeg/png/gif/webp/bmp/heic/heif；image kind 不带 content、不受 1MB 约束） | `agentFiles.js` `PREVIEW_IMAGE_EXTENSIONS`（read 端点不含 svg，区别于既有 image 端点白名单） | `api/filesApi.test.js` AC1（logo.png → kind=image 无 content）+ AC4（svg → UNSUPPORTED） | COVERED |
 | §8 E5（无解析根 → E-PREVIEW-NO-ROOT） | `agentFiles.js` `requireProjectRoot`（复用 `resolveProjectRoot`） | `api/filesApi.test.js` AC5（无效 projectId） | COVERED |
-| §8 E6（I/O 失败 → E-PREVIEW-READ-FAILED） | `agentFiles.js` stat/readFile/readdir catch 非 ENOENT 分支 | —（无自动化用例；错误映射与 ENOENT 分支同码路径） | PARTIAL（分支就位，签核测试未锁定此码的触发用例） |
+| §8 E6（I/O 失败 → E-PREVIEW-READ-FAILED） | `agentFiles.js` stat/readFile/readdir catch 非 ENOENT 分支 + watch 建立失败分支（`filePreviewWatchService.js` fs.watch throw → 路由转 E-PREVIEW-READ-FAILED，不产生半注册状态） | —（无自动化用例；错误映射与 ENOENT 分支同码路径） | PARTIAL（分支就位，签核测试未锁定此码的触发用例） |
 | §6.3 块 3 row1 + §10.4 接口 1「正常」（噪音目录 .git/node_modules/dist 隐藏；目录在前、同类 localeCompare；文件条目带 size） | `agentFiles.js` `handleFileList`（`NOISE_DIRS` + 分组排序 + stat size） | `api/filesApi.test.js` AC6 根目录/子目录排序用例 | COVERED |
 | §10.4 接口 1「边界/异常」（空目录 entries=[]；dir="../" → 400 E-PREVIEW-OUTSIDE-ROOT 锚定状态码；dir 不存在/指向文件 → E-PREVIEW-NOT-FOUND） | `agentFiles.js` `handleFileList`（dir="" → root；ENOTDIR → NOT-FOUND） | `api/filesApi.test.js` AC6 三用例 | COVERED |
 | §10.4 接口 2「正常 md」（`docs/guide.md` → kind=markdown, content="# Title", size=7, mtimeMs>0） | `agentFiles.js` `MARKDOWN_EXTENSIONS` 分支 | `api/filesApi.test.js` AC1 | COVERED |
@@ -82,7 +82,7 @@
 | §10.4 接口 5「删除」（推 deleted + 服务端自动注销；重建不再推送；DELETE 仍 204） | `filePreviewWatchService.js` 防抖窗口关闭时 stat 存在性判定 → deleted 分支自动 unregister | `api/filesWatch.test.js` AC5 | COVERED |
 | §10.5 决策 5（原子写 tmp+rename 覆盖 → 归并 1 次 modified、0 次 deleted） | `filePreviewWatchService.js` stat-at-window-close 归并语义 + modified 后 `ensureWatcher` 重挂 | `api/filesWatch.test.js` AC6 | COVERED |
 | §10.4 接口 5 载荷（SSE 帧 {type:"file-preview-changed", projectId, path, change}，path = 注册相对路径原样；既有会话 SSE 复用，ADR-042 决策 1） | `src/services/sessionSseRegistry.js` subscription 内 subscribe + `projectIdOf(spaceKey)` 过滤 + writeFrame | `api/filesWatch.test.js` AC4/AC5/AC6（经真实 SSE 流捕获帧） | COVERED |
-| §10.7 可观测性（E-PREVIEW-* 错误与 watch 注册/注销主进程日志，含 projectId+path 不含内容） | `agentFiles.js` `sendPreviewError` 日志 + `filePreviewWatchService.js` register/unregister 日志 | —（日志为观测面，非断言面） | COVERED（非测试锚点） |
+| §10.7 可观测性（E-PREVIEW-* 错误与 watch 注册/注销主进程日志 + SSE 推送计数，含 projectId+path 不含内容） | `agentFiles.js` `sendPreviewError` 日志 + `filePreviewWatchService.js` register/unregister 日志 + `pushChange` 推送计数日志（`file-preview-push`，含 change 与进程内累计 count） | —（日志为观测面，非断言面） | COVERED（非测试锚点） |
 | §10.7 性能（面板关闭即注销、句柄不泄漏；server 关停清理） | `filePreviewWatchService.dispose` + `serviceContainer.dispose` 接线 + timer unref | `api/filesWatch.test.js` AC5（自动注销语义）+ after 钩子干净关闭 | COVERED |
 
 **验证**：
