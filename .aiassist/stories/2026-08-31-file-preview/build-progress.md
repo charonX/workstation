@@ -112,3 +112,9 @@ Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现�
 3. **REQ-009 AC5 `refresh()` 直接入口无锁定断言**（未打开 no-op / SSE 重连 re-read）：AC1 经 `handleSseEvent → void refresh()` 间接覆盖读路径，直接入口语义未锁定。
 
 处置建议：不阻断 BUILD；如需补断言走 `/bug` test-gap 或 REFLECT 阶段评估（补断言触及已签核测试文件，需重签）。
+
+## 进度日志（切片收口）
+
+- Slice 2: complete (4482627 + 5e90707, tests green 28/28 + 1193/1193, PRD alignment: MISALIGNMENT_FOUND(3 gaps) → fix → re-check ALIGNED)
+- Slice 2: refactor pass done (5ecf003, tests green 28/28 + 1193/1193, no rollback; 提取 requestRead/setErrorState/swapBlobUrl/setContentState 四 helper，公共契约零变化)
+- Slice 1: PRD alignment: MISALIGNMENT_FOUND(G1/G2/G3) → fix 21a3c59 → re-check ALIGNED（父代理验证 24/24 + 1193/1193）
