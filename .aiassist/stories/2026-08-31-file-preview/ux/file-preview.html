@@ -1,0 +1,648 @@
+<!-- @dsCard group="file-preview" name="文件预览（一屏集成）" viewport="1440x900" -->
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>文件预览 — 项目内文件预览原型</title>
+<link rel="stylesheet" href="_ds/global/tokens.css" />
+<link rel="stylesheet" href="_ds/global/styles.css" />
+<style>
+/* ============================================================
+   文件预览 UX 原型 — story 2026-08-31-file-preview
+   一屏集成：会话列表 + 文件树边栏 + 对话窗（路径可点击）+ 右侧预览面板。
+   基调：贴 browser-panel.html 既有的会话区语言与右侧面板 chrome；
+   文件树用左侧边栏、与会话列表同密度。
+   状态开关（本原型内置）：
+     内容态  md-render / md-source / code / img
+     错误态  err-outside / err-large / err-unsupported / not-found
+   交互：树展开收起、点文件开预览、点聊天路径开预览、
+        渲染/源码切换、模拟外部修改（自动刷新）。
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--ch-font-sans);
+  font-size: var(--ch-text-base);
+  background: var(--ch-bg);
+  color: var(--ch-text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.zone { display: flex; height: 100vh; }
+
+/* —— 会话列表（与 browser-panel 原型一致，简化呈现）—— */
+.session-col {
+  width: 220px; flex: none;
+  border-right: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  display: flex; flex-direction: column;
+}
+.session-col .col-title {
+  padding: var(--ch-space-3) var(--ch-space-4);
+  font-size: var(--ch-text-sm); color: var(--ch-text-tertiary);
+  font-weight: var(--ch-weight-semibold);
+}
+.session-item {
+  padding: var(--ch-space-2) var(--ch-space-4);
+  color: var(--ch-text-secondary);
+  border-left: 2px solid transparent;
+}
+.session-item.active {
+  background: var(--ch-accent-soft); color: var(--ch-text);
+  border-left-color: var(--ch-accent);
+}
+.session-item .s-title { font-size: var(--ch-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-item .s-meta { font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: 2px; }
+
+/* —— 文件树边栏（本 story 新增：左侧，可收起）—— */
+.tree-col {
+  width: 240px; flex: none;
+  border-right: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  display: flex; flex-direction: column;
+  transition: margin-left 0.18s ease;
+}
+.tree-col.collapsed { margin-left: -240px; }
+.tree-head {
+  display: flex; align-items: center; gap: var(--ch-space-2);
+  padding: var(--ch-space-3) var(--ch-space-4);
+  border-bottom: 1px solid var(--ch-border);
+  flex: none;
+}
+.tree-head .t-title {
+  font-size: var(--ch-text-sm); font-weight: var(--ch-weight-semibold);
+  color: var(--ch-text-secondary);
+}
+.tree-head .t-root {
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.tree-toggle-all {
+  flex: none; border: 1px solid var(--ch-border); border-radius: var(--ch-radius-sm);
+  background: transparent; color: var(--ch-text-tertiary);
+  font-size: var(--ch-text-xs); padding: 1px 6px; cursor: pointer;
+}
+.tree-toggle-all:hover { border-color: var(--ch-border-strong); color: var(--ch-text); }
+.tree-body { flex: 1; overflow-y: auto; padding: var(--ch-space-2) 0; }
+.tree-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px var(--ch-space-3);
+  font-size: var(--ch-text-sm); color: var(--ch-text-secondary);
+  cursor: pointer; user-select: none;
+  white-space: nowrap;
+}
+.tree-row:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+.tree-row.selected { background: var(--ch-accent-soft); color: var(--ch-accent); }
+.tree-row .twisty {
+  width: 14px; flex: none; text-align: center;
+  color: var(--ch-text-tertiary); font-size: 10px;
+  transition: transform 0.12s ease;
+}
+.tree-row.open > .twisty { transform: rotate(90deg); }
+.tree-row .fname { overflow: hidden; text-overflow: ellipsis; }
+.tree-row .ficon { flex: none; width: 16px; text-align: center; font-size: var(--ch-text-xs); }
+.tree-children { display: none; }
+.tree-children.open { display: block; }
+.tree-note {
+  padding: var(--ch-space-2) var(--ch-space-4);
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  border-top: 1px solid var(--ch-border); flex: none;
+}
+
+/* —— 对话窗 —— */
+.chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.chat-header {
+  display: flex; align-items: center; gap: var(--ch-space-3);
+  padding: var(--ch-space-3) var(--ch-space-5);
+  border-bottom: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  flex: none;
+}
+.chat-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }
+.space-badge {
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);
+  padding: 1px 8px;
+}
+.header-actions { margin-left: auto; display: flex; gap: var(--ch-space-2); }
+.icon-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; font-size: var(--ch-text-sm);
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+  background: transparent; color: var(--ch-text-secondary); cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--ch-border-strong); color: var(--ch-text); }
+.icon-btn.active { background: var(--ch-accent-soft); color: var(--ch-accent); border-color: transparent; }
+
+.chat-body { flex: 1; overflow-y: auto; padding: var(--ch-space-5); display: flex; flex-direction: column; gap: var(--ch-space-4); }
+.msg { max-width: 82%; }
+.msg.user { align-self: flex-end; }
+.msg .bubble {
+  padding: var(--ch-space-3) var(--ch-space-4);
+  border-radius: var(--ch-radius-lg);
+  font-size: var(--ch-text-base); line-height: var(--ch-leading-relaxed);
+}
+.msg.user .bubble { background: var(--ch-accent-soft); }
+.msg.agent .bubble { background: var(--ch-surface); border: 1px solid var(--ch-border); }
+
+/* 本地文件路径链接（本 story 新增 affordance：与 http 链接同 accent 色，
+   但带文件图标前缀 + 单色底，区分「网页链接」与「本地文件」） */
+.file-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+  color: var(--ch-accent); background: var(--ch-accent-soft);
+  border-radius: var(--ch-radius-sm); padding: 0 6px;
+  cursor: pointer; border: 1px solid transparent;
+}
+.file-link:hover { border-color: var(--ch-accent); }
+.file-link.bad { color: var(--ch-error); background: var(--ch-error-soft); }
+.file-link.bad:hover { border-color: var(--ch-error); }
+
+.composer {
+  flex: none; padding: var(--ch-space-4) var(--ch-space-5);
+  border-top: 1px solid var(--ch-border); background: var(--ch-surface);
+}
+.composer .input {
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-lg);
+  padding: var(--ch-space-3) var(--ch-space-4);
+  color: var(--ch-text-tertiary); font-size: var(--ch-text-base);
+}
+
+/* —— 预览面板（右侧；容器心智复用浏览器面板：chrome 条 + 视口 + 底栏）—— */
+.preview-panel {
+  width: 560px; flex: none;
+  border-left: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+  display: none; flex-direction: column;
+}
+.preview-panel.open { display: flex; }
+
+.pv-chrome {
+  display: flex; align-items: center; gap: var(--ch-space-2);
+  padding: var(--ch-space-2) var(--ch-space-3);
+  border-bottom: 1px solid var(--ch-border);
+  flex: none;
+}
+.pv-path {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: var(--ch-space-2);
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+  color: var(--ch-text); background: var(--ch-surface-high);
+  border-radius: var(--ch-radius-full); padding: 4px 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pv-path .pv-kind { color: var(--ch-text-tertiary); font-size: var(--ch-text-xs); flex: none; }
+.pv-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px; padding: 0 6px;
+  border: none; border-radius: var(--ch-radius-md);
+  background: transparent; color: var(--ch-text-secondary);
+  cursor: pointer; font-size: var(--ch-text-sm);
+}
+.pv-btn:hover { background: var(--ch-surface-high); color: var(--ch-text); }
+.pv-btn.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+
+/* 分段切换：渲染 / 源码（仅 Markdown 文件可见） */
+.pv-seg {
+  display: inline-flex; border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-md); overflow: hidden; flex: none;
+}
+.pv-seg button {
+  border: none; background: transparent; color: var(--ch-text-secondary);
+  font-size: var(--ch-text-xs); padding: 3px 10px; cursor: pointer;
+}
+.pv-seg button.active { background: var(--ch-accent-soft); color: var(--ch-accent); }
+
+.pv-viewport { flex: 1; overflow-y: auto; min-height: 0; position: relative; }
+
+/* Markdown 渲染视图（复用聊天 .md 语言） */
+.pv-md { padding: var(--ch-space-5) var(--ch-space-6); line-height: var(--ch-leading-relaxed); }
+.pv-md h1 { font-size: var(--ch-text-xl); font-weight: var(--ch-weight-bold); margin: var(--ch-space-4) 0 var(--ch-space-3); }
+.pv-md h2 { font-size: var(--ch-text-lg); font-weight: var(--ch-weight-semibold); margin: var(--ch-space-5) 0 var(--ch-space-2); }
+.pv-md p { margin: var(--ch-space-2) 0; color: var(--ch-text-secondary); }
+.pv-md ul { margin: var(--ch-space-2) 0 var(--ch-space-2) var(--ch-space-5); color: var(--ch-text-secondary); }
+.pv-md code {
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+  background: var(--ch-code-bg); border-radius: var(--ch-radius-sm); padding: 1px 5px;
+}
+.pv-md pre {
+  background: var(--ch-code-bg); border-radius: var(--ch-radius-md);
+  padding: var(--ch-space-3) var(--ch-space-4); margin: var(--ch-space-3) 0;
+  overflow-x: auto; font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+}
+.pv-md pre code { background: none; padding: 0; }
+.pv-md table { border-collapse: collapse; margin: var(--ch-space-3) 0; font-size: var(--ch-text-sm); }
+.pv-md th, .pv-md td { border: 1px solid var(--ch-border); padding: 4px 10px; }
+.pv-md th { background: var(--ch-surface-high); }
+
+/* 代码高亮 token（全局 tokens 既有 --ch-code-* 变量） */
+.tok-kw { color: var(--ch-code-kw); }
+.tok-str { color: var(--ch-code-str); }
+.tok-fn { color: var(--ch-code-fn); }
+.tok-num { color: var(--ch-code-num); }
+.tok-cmt { color: var(--ch-code-cmt); }
+
+/* 源码视图（等宽 + 行号） */
+.pv-source {
+  display: flex; padding: var(--ch-space-4) 0;
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+  line-height: var(--ch-leading-normal);
+}
+.pv-source .ln {
+  flex: none; width: 48px; text-align: right; padding-right: var(--ch-space-3);
+  color: var(--ch-text-tertiary); user-select: none;
+  border-right: 1px solid var(--ch-border); margin-right: var(--ch-space-3);
+}
+.pv-source pre { white-space: pre-wrap; color: var(--ch-code-text); }
+
+/* 图片视图 */
+.pv-img { display: flex; align-items: center; justify-content: center; height: 100%; padding: var(--ch-space-6); }
+.pv-img .img-box {
+  width: 320px; height: 200px; border-radius: var(--ch-radius-lg);
+  background: var(--ch-surface-high); border: 1px dashed var(--ch-border-strong);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ch-text-tertiary); font-size: var(--ch-text-sm);
+}
+
+/* 错误态（贴浏览器面板 bp-error 语言） */
+.pv-error {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: var(--ch-space-2); padding: var(--ch-space-6); text-align: center;
+}
+.pv-error .e-code {
+  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);
+  color: var(--ch-error); background: var(--ch-error-soft);
+  border-radius: var(--ch-radius-md); padding: 2px 10px;
+}
+.pv-error .e-title { font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }
+.pv-error .e-desc { font-size: var(--ch-text-sm); color: var(--ch-text-tertiary); max-width: 320px; }
+.pv-error .e-action {
+  margin-top: var(--ch-space-2);
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);
+  background: transparent; color: var(--ch-text-secondary);
+  padding: 4px 14px; font-size: var(--ch-text-sm); cursor: pointer;
+}
+.pv-error .e-action:hover { border-color: var(--ch-border-strong); color: var(--ch-text); }
+
+/* 底栏：路径 + 大小 + 刷新时间（贴 bp-statusbar 语言） */
+.pv-statusbar {
+  display: flex; align-items: center; gap: var(--ch-space-3);
+  padding: var(--ch-space-1) var(--ch-space-3);
+  border-top: 1px solid var(--ch-border);
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+  font-family: var(--ch-font-mono); flex: none;
+}
+.pv-statusbar .st-path { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-statusbar .st-fresh { color: var(--ch-success); }
+
+/* 自动刷新提示条（watch 触发后短暂出现） */
+.pv-toast {
+  position: absolute; top: var(--ch-space-3); left: 50%; transform: translateX(-50%);
+  background: var(--ch-surface-highest); border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-full); padding: 3px 14px;
+  font-size: var(--ch-text-xs); color: var(--ch-text-secondary);
+  box-shadow: var(--ch-shadow-md);
+  opacity: 0; transition: opacity 0.2s ease; pointer-events: none;
+}
+.pv-toast.show { opacity: 1; }
+
+/* —— 原型状态开关（仅原型用，非产品 UI）—— */
+.proto-bar {
+  position: fixed; bottom: var(--ch-space-3); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 6px; align-items: center;
+  background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius-full); padding: 6px 12px;
+  box-shadow: var(--ch-shadow-lg); z-index: 50;
+  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);
+}
+.proto-bar button {
+  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);
+  background: transparent; color: var(--ch-text-secondary);
+  font-size: var(--ch-text-xs); padding: 2px 10px; cursor: pointer;
+}
+.proto-bar button.active { background: var(--ch-accent-soft); color: var(--ch-accent); border-color: transparent; }
+</style>
+</head>
+<body>
+
+<div class="zone">
+
+  <!-- 会话列表 -->
+  <aside class="session-col">
+    <div class="col-title">会话</div>
+    <div class="session-item active">
+      <div class="s-title">重构鉴权模块</div>
+      <div class="s-meta">项目空间 · my-app</div>
+    </div>
+    <div class="session-item">
+      <div class="s-title">周报草稿</div>
+      <div class="s-meta">通用空间</div>
+    </div>
+  </aside>
+
+  <!-- 文件树边栏 -->
+  <aside class="tree-col" id="treeCol">
+    <div class="tree-head">
+      <span class="t-title">文件</span>
+      <span class="t-root">my-app/</span>
+      <button class="tree-toggle-all" id="treeToggleAll" title="全部展开 / 全部收起">⇅ 收起全部</button>
+    </div>
+    <div class="tree-body" id="treeBody">
+      <div class="tree-row" data-dir="docs">
+        <span class="twisty">▶</span><span class="ficon">📁</span><span class="fname">docs</span>
+      </div>
+      <div class="tree-children" data-children="docs">
+        <div class="tree-row" style="padding-left: 30px" data-file="docs/guide.md" data-kind="md">
+          <span class="twisty"></span><span class="ficon">📝</span><span class="fname">guide.md</span>
+        </div>
+        <div class="tree-row" style="padding-left: 30px" data-file="docs/spec.pdf" data-kind="unsupported">
+          <span class="twisty"></span><span class="ficon">📄</span><span class="fname">spec.pdf</span>
+        </div>
+      </div>
+      <div class="tree-row" data-dir="src">
+        <span class="twisty">▶</span><span class="ficon">📁</span><span class="fname">src</span>
+      </div>
+      <div class="tree-children" data-children="src">
+        <div class="tree-row" style="padding-left: 30px" data-file="src/auth.js" data-kind="code">
+          <span class="twisty"></span><span class="ficon">📜</span><span class="fname">auth.js</span>
+        </div>
+        <div class="tree-row" style="padding-left: 30px" data-file="src/logo.png" data-kind="img">
+          <span class="twisty"></span><span class="ficon">🖼</span><span class="fname">logo.png</span>
+        </div>
+      </div>
+      <div class="tree-row" data-file="README.md" data-kind="md">
+        <span class="twisty"></span><span class="ficon">📝</span><span class="fname">README.md</span>
+      </div>
+      <div class="tree-row" data-file="assets/dump.bin" data-kind="large">
+        <span class="twisty"></span><span class="ficon">📦</span><span class="fname">dump.bin <span style="color:var(--ch-text-tertiary)">2.3MB</span></span>
+      </div>
+    </div>
+    <div class="tree-note">已隐藏：.git / node_modules / dist</div>
+  </aside>
+
+  <!-- 对话窗 -->
+  <main class="chat-col">
+    <header class="chat-header">
+      <span class="chat-title">重构鉴权模块</span>
+      <span class="space-badge">项目空间 · my-app</span>
+      <div class="header-actions">
+        <button class="icon-btn" id="btnTree">🗂 文件</button>
+        <button class="icon-btn">⧉ 浏览器</button>
+      </div>
+    </header>
+
+    <div class="chat-body">
+      <div class="msg user"><div class="bubble">把鉴权逻辑抽成独立模块，顺便补一份使用文档。</div></div>
+      <div class="msg agent"><div class="bubble">
+        已完成。改动在 <span class="file-link" data-file="src/auth.js" data-kind="code">📜 src/auth.js</span>，
+        文档写在 <span class="file-link" data-file="docs/guide.md" data-kind="md">📝 docs/guide.md</span>。
+        另外我注意到 <span class="file-link bad" data-file="../prod-config.yaml" data-kind="outside">⚠ ../prod-config.yaml</span>
+        里也有一个过期配置，但在项目外，建议你手动检查。
+      </div></div>
+      <div class="msg agent"><div class="bubble" style="color:var(--ch-text-tertiary); font-size: var(--ch-text-sm)">
+        ↑ 点击路径试试：前两个打开预览；<code>../prod-config.yaml</code> 越界被拒（E1）。
+      </div></div>
+    </div>
+
+    <footer class="composer"><div class="input">输入消息…</div></footer>
+  </main>
+
+  <!-- 预览面板 -->
+  <section class="preview-panel" id="pvPanel">
+    <div class="pv-chrome">
+      <div class="pv-path"><span id="pvPath">docs/guide.md</span><span class="pv-kind" id="pvKind">Markdown</span></div>
+      <div class="pv-seg" id="pvSeg">
+        <button data-view="render" class="active">渲染</button>
+        <button data-view="source">源码</button>
+      </div>
+      <button class="pv-btn" title="复制内容">⧉</button>
+      <button class="pv-btn" title="在系统默认应用打开">↗</button>
+      <button class="pv-btn" title="收起" id="pvClose">✕</button>
+    </div>
+
+    <div class="pv-viewport" id="pvViewport">
+      <div class="pv-toast" id="pvToast">⟳ 文件已被外部修改，已自动刷新</div>
+
+      <!-- Markdown 渲染视图 -->
+      <div class="pv-md" data-pane="md-render">
+        <h1>鉴权模块使用指南</h1>
+        <p>本模块提供统一的登录态校验与令牌刷新能力，供所有需要鉴权的页面引用。</p>
+        <h2>快速开始</h2>
+        <ul>
+          <li>引入 <code>auth.js</code> 并调用 <code>initAuth()</code></li>
+          <li>在路由守卫中调用 <code>requireLogin()</code></li>
+        </ul>
+        <h2>API</h2>
+        <table>
+          <tr><th>方法</th><th>说明</th></tr>
+          <tr><td><code>initAuth(opts)</code></td><td>初始化，读取本地令牌</td></tr>
+          <tr><td><code>requireLogin()</code></td><td>未登录时跳转登录页</td></tr>
+        </table>
+        <h2>示例</h2>
+        <pre><code><span class="tok-kw">import</span> { initAuth } <span class="tok-kw">from</span> <span class="tok-str">'./auth.js'</span>;
+
+<span class="tok-fn">initAuth</span>({ ttl: <span class="tok-num">3600</span> }); <span class="tok-cmt">// 1 小时过期</span></code></pre>
+        <p id="mdTail">最近更新：v1（初始版本）。</p>
+      </div>
+
+      <!-- Markdown 源码视图 -->
+      <div class="pv-source" data-pane="md-source" hidden>
+        <div class="ln">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8</div>
+        <pre id="srcBody"># 鉴权模块使用指南
+
+本模块提供统一的登录态校验与令牌刷新能力。
+
+## 快速开始
+
+- 引入 `auth.js` 并调用 `initAuth()`</pre>
+      </div>
+
+      <!-- 代码高亮视图 -->
+      <div class="pv-source" data-pane="code" hidden>
+        <div class="ln">1<br>2<br>3<br>4<br>5<br>6<br>7</div>
+        <pre><span class="tok-kw">export</span> <span class="tok-kw">function</span> <span class="tok-fn">initAuth</span>(opts) {
+  <span class="tok-kw">const</span> ttl = opts?.ttl ?? <span class="tok-num">1800</span>;
+  <span class="tok-cmt">// 读取本地令牌，过期则刷新</span>
+  <span class="tok-kw">const</span> token = <span class="tok-fn">readToken</span>();
+  <span class="tok-kw">return</span> { ttl, token };
+}</pre>
+      </div>
+
+      <!-- 图片视图 -->
+      <div class="pv-img" data-pane="img" hidden>
+        <div class="img-box">logo.png（图片直渲占位）</div>
+      </div>
+
+      <!-- 错误态：E1 越界 -->
+      <div class="pv-error" data-pane="err-outside" hidden>
+        <span class="e-code">E-PREVIEW-OUTSIDE-ROOT</span>
+        <span class="e-title">仅支持预览项目内文件</span>
+        <span class="e-desc">路径 <b>../prod-config.yaml</b> 解析后位于项目根 my-app/ 之外，已拒绝访问。</span>
+      </div>
+
+      <!-- 错误态：E3 过大 -->
+      <div class="pv-error" data-pane="err-large" hidden>
+        <span class="e-code">E-PREVIEW-TOO-LARGE</span>
+        <span class="e-title">文件过大（2.3MB，上限 1MB）</span>
+        <span class="e-desc">超过 1MB 的文件不在面板内渲染。</span>
+        <button class="e-action">在系统默认应用打开</button>
+      </div>
+
+      <!-- 错误态：E4 不支持 -->
+      <div class="pv-error" data-pane="err-unsupported" hidden>
+        <span class="e-code">E-PREVIEW-UNSUPPORTED</span>
+        <span class="e-title">不支持预览该类型</span>
+        <span class="e-desc">spec.pdf 不是可预览的文本 / 图片类型。</span>
+        <button class="e-action">在系统默认应用打开</button>
+      </div>
+
+      <!-- 错误态：E2 不存在 -->
+      <div class="pv-error" data-pane="not-found" hidden>
+        <span class="e-code">E-PREVIEW-NOT-FOUND</span>
+        <span class="e-title">文件不存在</span>
+        <span class="e-desc">该文件已被移动或删除。</span>
+      </div>
+    </div>
+
+    <div class="pv-statusbar">
+      <span class="st-path" id="pvStatusPath">my-app/docs/guide.md</span>
+      <span id="pvStatusSize">1.2 KB</span>
+      <span class="st-fresh" id="pvStatusFresh">● 已监听变更</span>
+    </div>
+  </section>
+</div>
+
+<!-- 原型状态开关（非产品 UI） -->
+<div class="proto-bar">
+  <span>原型状态：</span>
+  <button data-demo="open-md" class="active">Markdown</button>
+  <button data-demo="open-code">代码</button>
+  <button data-demo="open-img">图片</button>
+  <button data-demo="err-outside">E1 越界</button>
+  <button data-demo="err-large">E3 过大</button>
+  <button data-demo="err-unsupported">E4 不支持</button>
+  <button data-demo="not-found">E2 不存在</button>
+  <button data-demo="refresh">模拟外部修改</button>
+</div>
+
+<script>
+/* 原型交互：树展开/点文件/点聊天路径/视图切换/自动刷新演示 */
+const panel = document.getElementById('pvPanel');
+const panes = document.querySelectorAll('[data-pane]');
+const seg = document.getElementById('pvSeg');
+const pvPath = document.getElementById('pvPath');
+const pvKind = document.getElementById('pvKind');
+const pvStatusPath = document.getElementById('pvStatusPath');
+
+const FILES = {
+  'docs/guide.md':   { pane: 'md-render', kind: 'Markdown', seg: true,  size: '1.2 KB' },
+  'README.md':       { pane: 'md-render', kind: 'Markdown', seg: true,  size: '3.4 KB' },
+  'src/auth.js':     { pane: 'code',      kind: 'JavaScript', seg: false, size: '0.8 KB' },
+  'src/logo.png':    { pane: 'img',       kind: 'PNG 图片', seg: false, size: '48 KB' },
+  'docs/spec.pdf':   { pane: 'err-unsupported', kind: 'PDF', seg: false, size: '812 KB' },
+  'assets/dump.bin': { pane: 'err-large', kind: '二进制', seg: false, size: '2.3 MB' },
+  '../prod-config.yaml': { pane: 'err-outside', kind: '越界路径', seg: false, size: '—' },
+};
+
+function showPane(name) {
+  panes.forEach(p => { p.hidden = p.dataset.pane !== name; });
+}
+
+function openFile(path) {
+  const meta = FILES[path] || { pane: 'not-found', kind: '未知', seg: false, size: '—' };
+  panel.classList.add('open');
+  pvPath.textContent = path;
+  pvKind.textContent = meta.kind;
+  pvStatusPath.textContent = path.startsWith('..') ? path : 'my-app/' + path;
+  document.getElementById('pvStatusSize').textContent = meta.size;
+  seg.style.display = meta.seg ? '' : 'none';
+  // Markdown 默认渲染视图
+  seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.view === 'render'));
+  showPane(meta.pane);
+  // 树选中态
+  document.querySelectorAll('.tree-row[data-file]').forEach(r =>
+    r.classList.toggle('selected', r.dataset.file === path));
+}
+
+/* 树目录展开/收起 */
+document.querySelectorAll('.tree-row[data-dir]').forEach(row => {
+  row.addEventListener('click', () => {
+    const kids = document.querySelector(`[data-children="${row.dataset.dir}"]`);
+    const open = kids.classList.toggle('open');
+    row.classList.toggle('open', open);
+  });
+});
+
+/* 全部展开 / 全部收起 */
+const treeToggleAll = document.getElementById('treeToggleAll');
+let allOpen = true; // 初始 docs 展开
+treeToggleAll.addEventListener('click', () => {
+  allOpen = !allOpen;
+  document.querySelectorAll('.tree-children').forEach(k => k.classList.toggle('open', allOpen));
+  document.querySelectorAll('.tree-row[data-dir]').forEach(r => r.classList.toggle('open', allOpen));
+  treeToggleAll.textContent = allOpen ? '⇅ 收起全部' : '⇅ 展开全部';
+});
+
+/* 树/聊天路径点击 → 开预览 */
+document.querySelectorAll('[data-file]').forEach(el => {
+  el.addEventListener('click', () => openFile(el.dataset.file));
+});
+
+/* 渲染/源码切换 */
+seg.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    showPane(btn.dataset.view === 'render' ? 'md-render' : 'md-source');
+  });
+});
+
+/* 面板收起 / 文件树收起 */
+document.getElementById('pvClose').addEventListener('click', () => panel.classList.remove('open'));
+const treeCol = document.getElementById('treeCol');
+const btnTree = document.getElementById('btnTree');
+btnTree.addEventListener('click', () => {
+  treeCol.classList.toggle('collapsed');
+  btnTree.classList.toggle('active', !treeCol.classList.contains('collapsed'));
+});
+btnTree.classList.add('active');
+
+/* 模拟外部修改 → 自动刷新 */
+let rev = 1;
+function simulateExternalEdit() {
+  rev += 1;
+  const tail = document.getElementById('mdTail');
+  tail.textContent = `最近更新：v${rev}（agent 补充了刷新策略说明）。`;
+  const toast = document.getElementById('pvToast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+/* 原型状态开关 */
+document.querySelectorAll('.proto-bar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const d = btn.dataset.demo;
+    if (d === 'refresh') { simulateExternalEdit(); return; }
+    document.querySelectorAll('.proto-bar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const map = {
+      'open-md': 'docs/guide.md', 'open-code': 'src/auth.js', 'open-img': 'src/logo.png',
+      'err-outside': '../prod-config.yaml', 'err-large': 'assets/dump.bin',
+      'err-unsupported': 'docs/spec.pdf', 'not-found': 'docs/ghost.md',
+    };
+    openFile(map[d]);
+  });
+});
+
+/* 初始态：docs 展开，预览打开 guide.md */
+document.querySelector('[data-children="docs"]').classList.add('open');
+document.querySelector('[data-dir="docs"]').classList.add('open');
+openFile('docs/guide.md');
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "type": "design",
+  "designSystems": [
+    {
+      "name": "OPC Workstation 设计系统",
+      "slug": "global",
+      "namespace": "Global_8001c2",
+      "dsFolder": "_ds/global",
+      "sourcePath": ".aiassist/global"
+    }
+  ],
+  "primaryDesignSystem": "global",
+  "createdAt": "2026-09-02T02:38:29.478Z",
+  "updatedAt": "2026-09-02T06:27:33.806Z",
+  "assets": {
+    "文件预览（一屏集成）": {
+      "versions": [
+        {
+          "path": "file-preview.html",
+          "createdAt": "2026-09-02T02:43:16.385Z",
+          "status": "approved"
+        }
+      ]
+    }
+  }
+}

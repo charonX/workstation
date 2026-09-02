@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ux — Design system</title>
+<style>
+
+:root {
+  color-scheme: light;
+  --ds-bg: #FAF9F5;
+  --ds-surface: #FFFFFF;
+  --ds-text: rgba(15, 12, 8, 0.92);
+  --ds-text-2: rgba(15, 12, 8, 0.62);
+  --ds-text-3: rgba(15, 12, 8, 0.46);
+  --ds-border: rgba(15, 12, 8, 0.10);
+  --ds-border-soft: rgba(15, 12, 8, 0.07);
+  --ds-hover: rgba(15, 12, 8, 0.045);
+  --ds-active: rgba(15, 12, 8, 0.07);
+  --ds-accent: #D97757;
+  --ds-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ds-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--ds-font);
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+.ds-pane { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+
+/* ------------------------------------------------- outline (left nav) */
+.ds-outline {
+  flex: 0 0 248px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ds-border-soft);
+  background: var(--ds-bg);
+}
+@media (max-width: 1007px) { .ds-outline { display: none; } }
+.ds-outline-head { padding: 18px 16px 12px; }
+.ds-outline-head h1 { margin: 0; font-size: 18px; font-weight: 550; letter-spacing: -0.01em; color: var(--ds-text); }
+.ds-outline-scroll { flex: 1; overflow-y: auto; padding: 4px 8px 16px; scrollbar-width: thin; }
+.ds-pinned { margin: 0 0 4px; padding: 0 0 6px; border-bottom: 1px solid var(--ds-border-soft); }
+.ds-item {
+  display: flex; align-items: center; width: 100%;
+  text-align: left; padding: 5px 8px 5px 24px;
+  font-size: 12px; line-height: 1.35; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-item:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-item.active { font-weight: 550; color: var(--ds-text); background: var(--ds-active); }
+.ds-item .ds-ic { flex: 0 0 auto; width: 13px; height: 13px; margin-left: -19px; margin-right: 6px; opacity: 0.75; }
+.ds-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-group-btn {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  padding: 6px 8px; margin-top: 6px;
+  font-size: 12px; font-weight: 550; color: var(--ds-text-2);
+  border-radius: 6px;
+}
+.ds-group-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-group-btn .ds-caret { width: 9px; height: 9px; flex: 0 0 auto; transition: transform 0.15s ease; opacity: 0.7; }
+.ds-outline-group.collapsed .ds-caret { transform: rotate(-90deg); }
+.ds-outline-group.collapsed .ds-group-items { display: none; }
+.ds-group-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------- content column */
+.ds-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ds-content-inner {
+  display: flex; flex-direction: column; gap: 24px;
+  padding: 30px 16px 80px;
+  max-width: 760px; margin: 0 auto;
+}
+.ds-group-label { margin: 6px 0 14px; font-size: 13px; font-weight: 550; color: var(--ds-text); }
+.ds-card + .ds-card { margin-top: 26px; }
+.ds-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ds-card-title { margin: 0; font-size: 13.5px; font-weight: 550; line-height: 1.3; color: var(--ds-text); }
+.ds-card-sub { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--ds-text-3); }
+.ds-prevwrap {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--ds-border-soft); border-radius: 8px;
+  background: #fff;
+}
+/* Outer-tree color-scheme on the shadow host beats the card's own
+   ':host { color-scheme: light dark }' (rewritten from ':root'), so
+   light-dark() tokens resolve LIGHT regardless of the viewer's OS theme —
+   the preview chrome is light-only. Cards opting into dark explicitly
+   (e.g. a '.spectrum-dark' subtree) still render dark. */
+.ds-stage { transform-origin: top left; visibility: hidden; color-scheme: light; }
+.ds-stage[data-ready] { visibility: visible; }
+
+/* ------------------------------------------------------------- readme */
+.ds-readme-body { position: relative; }
+.ds-readme-body.collapsed { max-height: 280px; overflow: hidden; }
+.ds-readme-body.collapsed::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 64px;
+  background: linear-gradient(to bottom, rgba(250, 249, 245, 0), var(--ds-bg));
+  pointer-events: none;
+}
+.ds-readme-toggle { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--ds-text-2); }
+.ds-readme-toggle:hover { color: var(--ds-text); }
+
+/* -------------------------------------------------------------- prose */
+.ds-prose { font-size: 13px; line-height: 1.6; color: var(--ds-text); }
+.ds-prose > :first-child { margin-top: 0; }
+.ds-prose h1 { font-size: 19px; font-weight: 600; margin: 22px 0 8px; letter-spacing: -0.01em; }
+.ds-prose h2 { font-size: 16px; font-weight: 600; margin: 20px 0 6px; }
+.ds-prose h3 { font-size: 13.5px; font-weight: 600; margin: 16px 0 4px; }
+.ds-prose h4, .ds-prose h5, .ds-prose h6 { font-size: 12.5px; font-weight: 600; margin: 14px 0 4px; }
+.ds-prose p { margin: 0 0 10px; }
+.ds-prose ul, .ds-prose ol { margin: 0 0 10px; padding-left: 22px; }
+.ds-prose li { margin: 2px 0; }
+.ds-prose code {
+  font-family: var(--ds-mono); font-size: 0.92em;
+  background: rgba(15, 12, 8, 0.055); border-radius: 4px; padding: 0.1em 0.35em;
+}
+.ds-prose pre {
+  background: rgba(15, 12, 8, 0.045); border: 1px solid var(--ds-border-soft);
+  border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 12px;
+}
+.ds-prose pre code { background: none; padding: 0; font-size: 11.5px; line-height: 1.55; }
+.ds-prose blockquote {
+  margin: 0 0 10px; padding: 2px 0 2px 12px;
+  border-left: 3px solid rgba(15, 12, 8, 0.14); color: var(--ds-text-2);
+}
+.ds-prose hr { border: 0; border-top: 1px solid var(--ds-border-soft); margin: 16px 0; }
+.ds-prose table { border-collapse: collapse; margin: 0 0 12px; font-size: 12px; width: 100%; }
+.ds-prose th, .ds-prose td { border: 1px solid var(--ds-border); padding: 5px 9px; text-align: left; vertical-align: top; }
+.ds-prose th { background: rgba(15, 12, 8, 0.035); font-weight: 600; }
+.ds-prose img { max-width: 100%; border-radius: 6px; }
+.ds-prose a { color: inherit; text-decoration: underline; text-decoration-color: rgba(15, 12, 8, 0.3); }
+.ds-prose a:hover { text-decoration-color: currentColor; }
+
+.ds-empty { font-size: 13px; color: var(--ds-text-3); padding: 24px 0; }
+
+</style>
+
+</head>
+<body>
+<div class="ds-pane">
+<nav class="ds-outline" aria-label="Design system outline"><div class="ds-outline-head"><h1>Design system</h1></div><div class="ds-outline-scroll"><div class="ds-outline-group"><button class="ds-group-btn" data-group-toggle><svg class="ds-caret" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 3.25 5 6.75l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>file-preview</span></button><div class="ds-group-items"><button class="ds-item" data-target="g-file-preview"><span>文件预览（一屏集成）</span></button></div></div></div></nav>
+<main class="ds-content" data-scroll>
+<div class="ds-content-inner">
+<div class="ds-group" id="g-file-preview" data-anchor data-anchor-key="g-file-preview"><h2 class="ds-group-label">file-preview</h2><section class="ds-card" id="card-0-x" data-card data-anchor data-anchor-key="g-file-preview"><header class="ds-card-head"><div><h3 class="ds-card-title">文件预览（一屏集成）</h3></div></header><div class="ds-prevwrap" data-fit style="box-sizing:content-box;width:728px;height:455px;"><div class="ds-stage" data-stage style="width:1440px;height:900px;transform:scale(0.5055555555555555);"><template shadowrootmode="open"><div class="__dsroot" style="margin:0;width:100%;height:100%;overflow:auto;box-sizing:border-box;"><div class="zone">
+
+  <!-- 会话列表 -->
+  <aside class="session-col">
+    <div class="col-title">会话</div>
+    <div class="session-item active">
+      <div class="s-title">重构鉴权模块</div>
+      <div class="s-meta">项目空间 · my-app</div>
+    </div>
+    <div class="session-item">
+      <div class="s-title">周报草稿</div>
+      <div class="s-meta">通用空间</div>
+    </div>
+  </aside>
+
+  <!-- 文件树边栏 -->
+  <aside class="tree-col" id="treeCol">
+    <div class="tree-head">
+      <span class="t-title">文件</span>
+      <span class="t-root">my-app/</span>
+      <button class="tree-toggle-all" id="treeToggleAll" title="全部展开 / 全部收起">⇅ 收起全部</button>
+    </div>
+    <div class="tree-body" id="treeBody">
+      <div class="tree-row" data-dir="docs">
+        <span class="twisty">▶</span><span class="ficon">📁</span><span class="fname">docs</span>
+      </div>
+      <div class="tree-children" data-children="docs">
+        <div class="tree-row" style="padding-left: 30px" data-file="docs/guide.md" data-kind="md">
+          <span class="twisty"></span><span class="ficon">📝</span><span class="fname">guide.md</span>
+        </div>
+        <div class="tree-row" style="padding-left: 30px" data-file="docs/spec.pdf" data-kind="unsupported">
+          <span class="twisty"></span><span class="ficon">📄</span><span class="fname">spec.pdf</span>
+        </div>
+      </div>
+      <div class="tree-row" data-dir="src">
+        <span class="twisty">▶</span><span class="ficon">📁</span><span class="fname">src</span>
+      </div>
+      <div class="tree-children" data-children="src">
+        <div class="tree-row" style="padding-left: 30px" data-file="src/auth.js" data-kind="code">
+          <span class="twisty"></span><span class="ficon">📜</span><span class="fname">auth.js</span>
+        </div>
+        <div class="tree-row" style="padding-left: 30px" data-file="src/logo.png" data-kind="img">
+          <span class="twisty"></span><span class="ficon">🖼</span><span class="fname">logo.png</span>
+        </div>
+      </div>
+      <div class="tree-row" data-file="README.md" data-kind="md">
+        <span class="twisty"></span><span class="ficon">📝</span><span class="fname">README.md</span>
+      </div>
+      <div class="tree-row" data-file="assets/dump.bin" data-kind="large">
+        <span class="twisty"></span><span class="ficon">📦</span><span class="fname">dump.bin <span style="color:var(--ch-text-tertiary)">2.3MB</span></span>
+      </div>
+    </div>
+    <div class="tree-note">已隐藏：.git / node_modules / dist</div>
+  </aside>
+
+  <!-- 对话窗 -->
+  <main class="chat-col">
+    <header class="chat-header">
+      <span class="chat-title">重构鉴权模块</span>
+      <span class="space-badge">项目空间 · my-app</span>
+      <div class="header-actions">
+        <button class="icon-btn" id="btnTree">🗂 文件</button>
+        <button class="icon-btn">⧉ 浏览器</button>
+      </div>
+    </header>
+
+    <div class="chat-body">
+      <div class="msg user"><div class="bubble">把鉴权逻辑抽成独立模块，顺便补一份使用文档。</div></div>
+      <div class="msg agent"><div class="bubble">
+        已完成。改动在 <span class="file-link" data-file="src/auth.js" data-kind="code">📜 src/auth.js</span>，
+        文档写在 <span class="file-link" data-file="docs/guide.md" data-kind="md">📝 docs/guide.md</span>。
+        另外我注意到 <span class="file-link bad" data-file="../prod-config.yaml" data-kind="outside">⚠ ../prod-config.yaml</span>
+        里也有一个过期配置，但在项目外，建议你手动检查。
+      </div></div>
+      <div class="msg agent"><div class="bubble" style="color:var(--ch-text-tertiary); font-size: var(--ch-text-sm)">
+        ↑ 点击路径试试：前两个打开预览；<code>../prod-config.yaml</code> 越界被拒（E1）。
+      </div></div>
+    </div>
+
+    <footer class="composer"><div class="input">输入消息…</div></footer>
+  </main>
+
+  <!-- 预览面板 -->
+  <section class="preview-panel" id="pvPanel">
+    <div class="pv-chrome">
+      <div class="pv-path"><span id="pvPath">docs/guide.md</span><span class="pv-kind" id="pvKind">Markdown</span></div>
+      <div class="pv-seg" id="pvSeg">
+        <button data-view="render" class="active">渲染</button>
+        <button data-view="source">源码</button>
+      </div>
+      <button class="pv-btn" title="复制内容">⧉</button>
+      <button class="pv-btn" title="在系统默认应用打开">↗</button>
+      <button class="pv-btn" title="收起" id="pvClose">✕</button>
+    </div>
+
+    <div class="pv-viewport" id="pvViewport">
+      <div class="pv-toast" id="pvToast">⟳ 文件已被外部修改，已自动刷新</div>
+
+      <!-- Markdown 渲染视图 -->
+      <div class="pv-md" data-pane="md-render">
+        <h1>鉴权模块使用指南</h1>
+        <p>本模块提供统一的登录态校验与令牌刷新能力，供所有需要鉴权的页面引用。</p>
+        <h2>快速开始</h2>
+        <ul>
+          <li>引入 <code>auth.js</code> 并调用 <code>initAuth()</code></li>
+          <li>在路由守卫中调用 <code>requireLogin()</code></li>
+        </ul>
+        <h2>API</h2>
+        <table>
+          <tr><th>方法</th><th>说明</th></tr>
+          <tr><td><code>initAuth(opts)</code></td><td>初始化，读取本地令牌</td></tr>
+          <tr><td><code>requireLogin()</code></td><td>未登录时跳转登录页</td></tr>
+        </table>
+        <h2>示例</h2>
+        <pre><code><span class="tok-kw">import</span> { initAuth } <span class="tok-kw">from</span> <span class="tok-str">'./auth.js'</span>;
+
+<span class="tok-fn">initAuth</span>({ ttl: <span class="tok-num">3600</span> }); <span class="tok-cmt">// 1 小时过期</span></code></pre>
+        <p id="mdTail">最近更新：v1（初始版本）。</p>
+      </div>
+
+      <!-- Markdown 源码视图 -->
+      <div class="pv-source" data-pane="md-source" hidden>
+        <div class="ln">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8</div>
+        <pre id="srcBody"># 鉴权模块使用指南
+
+本模块提供统一的登录态校验与令牌刷新能力。
+
+## 快速开始
+
+- 引入 `auth.js` 并调用 `initAuth()`</pre>
+      </div>
+
+      <!-- 代码高亮视图 -->
+      <div class="pv-source" data-pane="code" hidden>
+        <div class="ln">1<br>2<br>3<br>4<br>5<br>6<br>7</div>
+        <pre><span class="tok-kw">export</span> <span class="tok-kw">function</span> <span class="tok-fn">initAuth</span>(opts) {
+  <span class="tok-kw">const</span> ttl = opts?.ttl ?? <span class="tok-num">1800</span>;
+  <span class="tok-cmt">// 读取本地令牌，过期则刷新</span>
+  <span class="tok-kw">const</span> token = <span class="tok-fn">readToken</span>();
+  <span class="tok-kw">return</span> { ttl, token };
+}</pre>
+      </div>
+
+      <!-- 图片视图 -->
+      <div class="pv-img" data-pane="img" hidden>
+        <div class="img-box">logo.png（图片直渲占位）</div>
+      </div>
+
+      <!-- 错误态：E1 越界 -->
+      <div class="pv-error" data-pane="err-outside" hidden>
+        <span class="e-code">E-PREVIEW-OUTSIDE-ROOT</span>
+        <span class="e-title">仅支持预览项目内文件</span>
+        <span class="e-desc">路径 <b>../prod-config.yaml</b> 解析后位于项目根 my-app/ 之外，已拒绝访问。</span>
+      </div>
+
+      <!-- 错误态：E3 过大 -->
+      <div class="pv-error" data-pane="err-large" hidden>
+        <span class="e-code">E-PREVIEW-TOO-LARGE</span>
+        <span class="e-title">文件过大（2.3MB，上限 1MB）</span>
+        <span class="e-desc">超过 1MB 的文件不在面板内渲染。</span>
+        <button class="e-action">在系统默认应用打开</button>
+      </div>
+
+      <!-- 错误态：E4 不支持 -->
+      <div class="pv-error" data-pane="err-unsupported" hidden>
+        <span class="e-code">E-PREVIEW-UNSUPPORTED</span>
+        <span class="e-title">不支持预览该类型</span>
+        <span class="e-desc">spec.pdf 不是可预览的文本 / 图片类型。</span>
+        <button class="e-action">在系统默认应用打开</button>
+      </div>
+
+      <!-- 错误态：E2 不存在 -->
+      <div class="pv-error" data-pane="not-found" hidden>
+        <span class="e-code">E-PREVIEW-NOT-FOUND</span>
+        <span class="e-title">文件不存在</span>
+        <span class="e-desc">该文件已被移动或删除。</span>
+      </div>
+    </div>
+
+    <div class="pv-statusbar">
+      <span class="st-path" id="pvStatusPath">my-app/docs/guide.md</span>
+      <span id="pvStatusSize">1.2 KB</span>
+      <span class="st-fresh" id="pvStatusFresh">● 已监听变更</span>
+    </div>
+  </section>
+</div>
+
+<!-- 原型状态开关（非产品 UI） -->
+<div class="proto-bar">
+  <span>原型状态：</span>
+  <button data-demo="open-md" class="active">Markdown</button>
+  <button data-demo="open-code">代码</button>
+  <button data-demo="open-img">图片</button>
+  <button data-demo="err-outside">E1 越界</button>
+  <button data-demo="err-large">E3 过大</button>
+  <button data-demo="err-unsupported">E4 不支持</button>
+  <button data-demo="not-found">E2 不存在</button>
+  <button data-demo="refresh">模拟外部修改</button>
+</div></div></template></div></div></section></div>
+</div>
+</main>
+</div>
+<script type="application/json" id="ds-data">{"cards":[{"id":"card-0-x","w":1440,"h":900,"base":"","css":["li5vid","1cow7qn","u0wwy0"],"js":[{"code":"\n/* 原型交互：树展开/点文件/点聊天路径/视图切换/自动刷新演示 */\nconst panel = document.getElementById('pvPanel');\nconst panes = document.querySelectorAll('[data-pane]');\nconst seg = document.getElementById('pvSeg');\nconst pvPath = document.getElementById('pvPath');\nconst pvKind = document.getElementById('pvKind');\nconst pvStatusPath = document.getElementById('pvStatusPath');\n\nconst FILES = {\n  'docs/guide.md':   { pane: 'md-render', kind: 'Markdown', seg: true,  size: '1.2 KB' },\n  'README.md':       { pane: 'md-render', kind: 'Markdown', seg: true,  size: '3.4 KB' },\n  'src/auth.js':     { pane: 'code',      kind: 'JavaScript', seg: false, size: '0.8 KB' },\n  'src/logo.png':    { pane: 'img',       kind: 'PNG 图片', seg: false, size: '48 KB' },\n  'docs/spec.pdf':   { pane: 'err-unsupported', kind: 'PDF', seg: false, size: '812 KB' },\n  'assets/dump.bin': { pane: 'err-large', kind: '二进制', seg: false, size: '2.3 MB' },\n  '../prod-config.yaml': { pane: 'err-outside', kind: '越界路径', seg: false, size: '—' },\n};\n\nfunction showPane(name) {\n  panes.forEach(p => { p.hidden = p.dataset.pane !== name; });\n}\n\nfunction openFile(path) {\n  const meta = FILES[path] || { pane: 'not-found', kind: '未知', seg: false, size: '—' };\n  panel.classList.add('open');\n  pvPath.textContent = path;\n  pvKind.textContent = meta.kind;\n  pvStatusPath.textContent = path.startsWith('..') ? path : 'my-app/' + path;\n  document.getElementById('pvStatusSize').textContent = meta.size;\n  seg.style.display = meta.seg ? '' : 'none';\n  // Markdown 默认渲染视图\n  seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.view === 'render'));\n  showPane(meta.pane);\n  // 树选中态\n  document.querySelectorAll('.tree-row[data-file]').forEach(r =>\n    r.classList.toggle('selected', r.dataset.file === path));\n}\n\n/* 树目录展开/收起 */\ndocument.querySelectorAll('.tree-row[data-dir]').forEach(row => {\n  row.addEventListener('click', () => {\n    const kids = document.querySelector(`[data-children=\"${row.dataset.dir}\"]`);\n    const open = kids.classList.toggle('open');\n    row.classList.toggle('open', open);\n  });\n});\n\n/* 全部展开 / 全部收起 */\nconst treeToggleAll = document.getElementById('treeToggleAll');\nlet allOpen = true; // 初始 docs 展开\ntreeToggleAll.addEventListener('click', () => {\n  allOpen = !allOpen;\n  document.querySelectorAll('.tree-children').forEach(k => k.classList.toggle('open', allOpen));\n  document.querySelectorAll('.tree-row[data-dir]').forEach(r => r.classList.toggle('open', allOpen));\n  treeToggleAll.textContent = allOpen ? '⇅ 收起全部' : '⇅ 展开全部';\n});\n\n/* 树/聊天路径点击 → 开预览 */\ndocument.querySelectorAll('[data-file]').forEach(el => {\n  el.addEventListener('click', () => openFile(el.dataset.file));\n});\n\n/* 渲染/源码切换 */\nseg.querySelectorAll('button').forEach(btn => {\n  btn.addEventListener('click', () => {\n    seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));\n    btn.classList.add('active');\n    showPane(btn.dataset.view === 'render' ? 'md-render' : 'md-source');\n  });\n});\n\n/* 面板收起 / 文件树收起 */\ndocument.getElementById('pvClose').addEventListener('click', () => panel.classList.remove('open'));\nconst treeCol = document.getElementById('treeCol');\nconst btnTree = document.getElementById('btnTree');\nbtnTree.addEventListener('click', () => {\n  treeCol.classList.toggle('collapsed');\n  btnTree.classList.toggle('active', !treeCol.classList.contains('collapsed'));\n});\nbtnTree.classList.add('active');\n\n/* 模拟外部修改 → 自动刷新 */\nlet rev = 1;\nfunction simulateExternalEdit() {\n  rev += 1;\n  const tail = document.getElementById('mdTail');\n  tail.textContent = `最近更新：v${rev}（agent 补充了刷新策略说明）。`;\n  const toast = document.getElementById('pvToast');\n  toast.classList.add('show');\n  setTimeout(() => toast.classList.remove('show'), 1800);\n}\n\n/* 原型状态开关 */\ndocument.querySelectorAll('.proto-bar button').forEach(btn => {\n  btn.addEventListener('click', () => {\n    const d = btn.dataset.demo;\n    if (d === 'refresh') { simulateExternalEdit(); return; }\n    document.querySelectorAll('.proto-bar button').forEach(b => b.classList.remove('active'));\n    btn.classList.add('active');\n    const map = {\n      'open-md': 'docs/guide.md', 'open-code': 'src/auth.js', 'open-img': 'src/logo.png',\n      'err-outside': '../prod-config.yaml', 'err-large': 'assets/dump.bin',\n      'err-unsupported': 'docs/spec.pdf', 'not-found': 'docs/ghost.md',\n    };\n    openFile(map[d]);\n  });\n});\n\n/* 初始态：docs 展开，预览打开 guide.md */\ndocument.querySelector('[data-children=\"docs\"]').classList.add('open');\ndocument.querySelector('[data-dir=\"docs\"]').classList.add('open');\nopenFile('docs/guide.md');\n","babel":false,"name":null}]}],"css":{"li5vid":":host{\n  /* === Typography === */\n  --ch-font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif; /* @kind font */\n  --ch-font-mono: \"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace; /* @kind font */\n\n  --ch-text-xs: 11px; /* @kind other */\n  --ch-text-sm: 12px; /* @kind other */\n  --ch-text-base: 13px; /* @kind other */\n  --ch-text-md: 14px; /* @kind other */\n  --ch-text-lg: 16px; /* @kind other */\n  --ch-text-xl: 20px; /* @kind other */\n  --ch-text-2xl: 28px; /* @kind other */\n\n  --ch-weight-normal: 400; /* @kind other */\n  --ch-weight-medium: 500; /* @kind other */\n  --ch-weight-semibold: 600; /* @kind other */\n  --ch-weight-bold: 700; /* @kind other */\n\n  --ch-leading-tight: 1.25; /* @kind other */\n  --ch-leading-normal: 1.5; /* @kind other */\n  --ch-leading-relaxed: 1.75; /* @kind other */\n\n  /* === Spacing === */\n  --ch-space-1: 4px;\n  --ch-space-2: 8px;\n  --ch-space-3: 12px;\n  --ch-space-4: 16px;\n  --ch-space-5: 20px;\n  --ch-space-6: 24px;\n  --ch-space-8: 32px;\n  --ch-space-10: 40px;\n\n  /* === Border Radius === */\n  --ch-radius-sm: 4px;\n  --ch-radius-md: 6px;\n  --ch-radius-lg: 8px;\n  --ch-radius-xl: 12px;\n  --ch-radius-full: 9999px;\n\n  /* === Layout === */\n  --ch-topbar-height: 48px; /* @kind other */\n  --ch-sidebar-width: 260px; /* @kind other */\n  --ch-right-panel-width: 800px; /* @kind other */\n  --ch-panel-padding: 16px; /* @kind other */\n}\n:host,\n[data-theme=\"light\"]{\n  color-scheme: light;\n\n  --ch-bg: #f7f8f7;\n  --ch-surface: #ffffff;\n  --ch-surface-high: #f0f1ef;\n  --ch-surface-highest: #e6e7e4;\n  --ch-border: #d9dbd6;\n  --ch-border-strong: #bfc2bb;\n  --ch-text: #1a1c19;\n  --ch-text-secondary: #4d524b;\n  --ch-text-tertiary: #7a8179;\n\n  --ch-accent: #0d9488;\n  --ch-accent-dim: #0f766e;\n  --ch-accent-text: #ffffff;\n  --ch-accent-soft: rgba(13, 148, 136, 0.10);\n\n  --ch-success: #16a34a;\n  --ch-success-soft: rgba(22, 163, 74, 0.10);\n  --ch-warning: #d97706;\n  --ch-warning-soft: rgba(217, 119, 6, 0.10);\n  --ch-error: #dc2626;\n  --ch-error-soft: rgba(220, 38, 38, 0.10);\n  --ch-info: #2563eb;\n  --ch-info-soft: rgba(37, 99, 235, 0.10);\n\n  --ch-codex: #9333ea;\n  --ch-skill: #0891b2;\n  --ch-trigger: #d97706;\n  --ch-output: #16a34a;\n\n  /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：对话富呈现） */\n  --ch-code-bg: #f4f5f3;\n  --ch-code-text: #24292f;\n  --ch-code-kw: #cf222e;\n  --ch-code-str: #0a3069;\n  --ch-code-fn: #8250df;\n  --ch-code-num: #0550ae;\n  --ch-code-cmt: #6e7781;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);\n}\n[data-theme=\"dark\"]{\n  color-scheme: dark;\n\n  --ch-bg: #0d1117;\n  --ch-surface: #161b22;\n  --ch-surface-high: #1f242c;\n  --ch-surface-highest: #2a3039;\n  --ch-border: #2f3634;\n  --ch-border-strong: #3c4a46;\n  --ch-text: #dde4e1;\n  --ch-text-secondary: #8b929d;\n  --ch-text-tertiary: #5f6a66;\n\n  --ch-accent: #2dd4bf;\n  --ch-accent-dim: #1a9e8e;\n  --ch-accent-text: #003731;\n  --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n  --ch-success: #22c55e;\n  --ch-success-soft: rgba(34, 197, 94, 0.14);\n  --ch-warning: #f59e0b;\n  --ch-warning-soft: rgba(245, 158, 11, 0.14);\n  --ch-error: #ef4444;\n  --ch-error-soft: rgba(239, 68, 68, 0.14);\n  --ch-info: #3b82f6;\n  --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n  --ch-codex: #a855f7;\n  --ch-skill: #06b6d4;\n  --ch-trigger: #f59e0b;\n  --ch-output: #22c55e;\n\n  /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：对话富呈现，暗色独立配色） */\n  --ch-code-bg: #0d1117;\n  --ch-code-text: #c9d1d9;\n  --ch-code-kw: #ff7b72;\n  --ch-code-str: #a5d6ff;\n  --ch-code-fn: #d2a8ff;\n  --ch-code-num: #79c0ff;\n  --ch-code-cmt: #8b949e;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n}\n@media (prefers-color-scheme: dark){:host:not([data-theme=\"light\"]){\n    color-scheme: dark;\n\n    --ch-bg: #0d1117;\n    --ch-surface: #161b22;\n    --ch-surface-high: #1f242c;\n    --ch-surface-highest: #2a3039;\n    --ch-border: #2f3634;\n    --ch-border-strong: #3c4a46;\n    --ch-text: #dde4e1;\n    --ch-text-secondary: #8b929d;\n    --ch-text-tertiary: #5f6a66;\n\n    --ch-accent: #2dd4bf;\n    --ch-accent-dim: #1a9e8e;\n    --ch-accent-text: #003731;\n    --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n    --ch-success: #22c55e;\n    --ch-success-soft: rgba(34, 197, 94, 0.14);\n    --ch-warning: #f59e0b;\n    --ch-warning-soft: rgba(245, 158, 11, 0.14);\n    --ch-error: #ef4444;\n    --ch-error-soft: rgba(239, 68, 68, 0.14);\n    --ch-info: #3b82f6;\n    --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n    --ch-codex: #a855f7;\n    --ch-skill: #06b6d4;\n    --ch-trigger: #f59e0b;\n    --ch-output: #22c55e;\n\n    /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：OS 暗色回退块——W-3 review 修复，与暗色块同值） */\n    --ch-code-bg: #0d1117;\n    --ch-code-text: #c9d1d9;\n    --ch-code-kw: #ff7b72;\n    --ch-code-str: #a5d6ff;\n    --ch-code-fn: #d2a8ff;\n    --ch-code-num: #79c0ff;\n    --ch-code-cmt: #8b949e;\n\n    --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n    --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n    --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n  }\n}\n","1cow7qn":":host{\n  /* === Typography === */\n  --ch-font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif; /* @kind font */\n  --ch-font-mono: \"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace; /* @kind font */\n\n  --ch-text-xs: 11px; /* @kind other */\n  --ch-text-sm: 12px; /* @kind other */\n  --ch-text-base: 13px; /* @kind other */\n  --ch-text-md: 14px; /* @kind other */\n  --ch-text-lg: 16px; /* @kind other */\n  --ch-text-xl: 20px; /* @kind other */\n  --ch-text-2xl: 28px; /* @kind other */\n\n  --ch-weight-normal: 400; /* @kind other */\n  --ch-weight-medium: 500; /* @kind other */\n  --ch-weight-semibold: 600; /* @kind other */\n  --ch-weight-bold: 700; /* @kind other */\n\n  --ch-leading-tight: 1.25; /* @kind other */\n  --ch-leading-normal: 1.5; /* @kind other */\n  --ch-leading-relaxed: 1.75; /* @kind other */\n\n  /* === Spacing === */\n  --ch-space-1: 4px;\n  --ch-space-2: 8px;\n  --ch-space-3: 12px;\n  --ch-space-4: 16px;\n  --ch-space-5: 20px;\n  --ch-space-6: 24px;\n  --ch-space-8: 32px;\n  --ch-space-10: 40px;\n\n  /* === Border Radius === */\n  --ch-radius-sm: 4px;\n  --ch-radius-md: 6px;\n  --ch-radius-lg: 8px;\n  --ch-radius-xl: 12px;\n  --ch-radius-full: 9999px;\n\n  /* === Layout === */\n  --ch-topbar-height: 48px; /* @kind other */\n  --ch-sidebar-width: 260px; /* @kind other */\n  --ch-right-panel-width: 800px; /* @kind other */\n  --ch-panel-padding: 16px; /* @kind other */\n}\n:host,\n[data-theme=\"light\"]{\n  color-scheme: light;\n\n  --ch-bg: #f7f8f7;\n  --ch-surface: #ffffff;\n  --ch-surface-high: #f0f1ef;\n  --ch-surface-highest: #e6e7e4;\n  --ch-border: #d9dbd6;\n  --ch-border-strong: #bfc2bb;\n  --ch-text: #1a1c19;\n  --ch-text-secondary: #4d524b;\n  --ch-text-tertiary: #7a8179;\n\n  --ch-accent: #0d9488;\n  --ch-accent-dim: #0f766e;\n  --ch-accent-text: #ffffff;\n  --ch-accent-soft: rgba(13, 148, 136, 0.10);\n\n  --ch-success: #16a34a;\n  --ch-success-soft: rgba(22, 163, 74, 0.10);\n  --ch-warning: #d97706;\n  --ch-warning-soft: rgba(217, 119, 6, 0.10);\n  --ch-error: #dc2626;\n  --ch-error-soft: rgba(220, 38, 38, 0.10);\n  --ch-info: #2563eb;\n  --ch-info-soft: rgba(37, 99, 235, 0.10);\n\n  --ch-codex: #9333ea;\n  --ch-skill: #0891b2;\n  --ch-trigger: #d97706;\n  --ch-output: #16a34a;\n\n  /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：对话富呈现） */\n  --ch-code-bg: #f4f5f3;\n  --ch-code-text: #24292f;\n  --ch-code-kw: #cf222e;\n  --ch-code-str: #0a3069;\n  --ch-code-fn: #8250df;\n  --ch-code-num: #0550ae;\n  --ch-code-cmt: #6e7781;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);\n}\n[data-theme=\"dark\"]{\n  color-scheme: dark;\n\n  --ch-bg: #0d1117;\n  --ch-surface: #161b22;\n  --ch-surface-high: #1f242c;\n  --ch-surface-highest: #2a3039;\n  --ch-border: #2f3634;\n  --ch-border-strong: #3c4a46;\n  --ch-text: #dde4e1;\n  --ch-text-secondary: #8b929d;\n  --ch-text-tertiary: #5f6a66;\n\n  --ch-accent: #2dd4bf;\n  --ch-accent-dim: #1a9e8e;\n  --ch-accent-text: #003731;\n  --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n  --ch-success: #22c55e;\n  --ch-success-soft: rgba(34, 197, 94, 0.14);\n  --ch-warning: #f59e0b;\n  --ch-warning-soft: rgba(245, 158, 11, 0.14);\n  --ch-error: #ef4444;\n  --ch-error-soft: rgba(239, 68, 68, 0.14);\n  --ch-info: #3b82f6;\n  --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n  --ch-codex: #a855f7;\n  --ch-skill: #06b6d4;\n  --ch-trigger: #f59e0b;\n  --ch-output: #22c55e;\n\n  /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：对话富呈现，暗色独立配色） */\n  --ch-code-bg: #0d1117;\n  --ch-code-text: #c9d1d9;\n  --ch-code-kw: #ff7b72;\n  --ch-code-str: #a5d6ff;\n  --ch-code-fn: #d2a8ff;\n  --ch-code-num: #79c0ff;\n  --ch-code-cmt: #8b949e;\n\n  --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n  --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n  --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n}\n@media (prefers-color-scheme: dark){:host:not([data-theme=\"light\"]){\n    color-scheme: dark;\n\n    --ch-bg: #0d1117;\n    --ch-surface: #161b22;\n    --ch-surface-high: #1f242c;\n    --ch-surface-highest: #2a3039;\n    --ch-border: #2f3634;\n    --ch-border-strong: #3c4a46;\n    --ch-text: #dde4e1;\n    --ch-text-secondary: #8b929d;\n    --ch-text-tertiary: #5f6a66;\n\n    --ch-accent: #2dd4bf;\n    --ch-accent-dim: #1a9e8e;\n    --ch-accent-text: #003731;\n    --ch-accent-soft: rgba(45, 212, 191, 0.14);\n\n    --ch-success: #22c55e;\n    --ch-success-soft: rgba(34, 197, 94, 0.14);\n    --ch-warning: #f59e0b;\n    --ch-warning-soft: rgba(245, 158, 11, 0.14);\n    --ch-error: #ef4444;\n    --ch-error-soft: rgba(239, 68, 68, 0.14);\n    --ch-info: #3b82f6;\n    --ch-info-soft: rgba(59, 130, 246, 0.14);\n\n    --ch-codex: #a855f7;\n    --ch-skill: #06b6d4;\n    --ch-trigger: #f59e0b;\n    --ch-output: #22c55e;\n\n    /* 代码高亮（2026-08-08 pi-agent-ux-enrichment 新增：OS 暗色回退块——W-3 review 修复，与暗色块同值） */\n    --ch-code-bg: #0d1117;\n    --ch-code-text: #c9d1d9;\n    --ch-code-kw: #ff7b72;\n    --ch-code-str: #a5d6ff;\n    --ch-code-fn: #d2a8ff;\n    --ch-code-num: #79c0ff;\n    --ch-code-cmt: #8b949e;\n\n    --ch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);\n    --ch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);\n    --ch-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);\n  }\n}\n.ch-sr-only{\n  position: absolute;\n  width: 1px;\n  height: 1px;\n  padding: 0;\n  margin: -1px;\n  overflow: hidden;\n  clip: rect(0, 0, 0, 0);\n  white-space: nowrap;\n  border-width: 0;\n}\n.ch-focus-ring:focus-visible{\n  outline: none;\n  box-shadow: 0 0 0 2px var(--ch-accent);\n}\n","u0wwy0":"*{ box-sizing: border-box; margin: 0; padding: 0; }\n.__dsroot{\n  font-family: var(--ch-font-sans);\n  font-size: var(--ch-text-base);\n  background: var(--ch-bg);\n  color: var(--ch-text);\n  height: 100vh;\n  overflow: hidden;\n}\n.zone{ display: flex; height: 100vh; }\n.session-col{\n  width: 220px; flex: none;\n  border-right: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  display: flex; flex-direction: column;\n}\n.session-col .col-title{\n  padding: var(--ch-space-3) var(--ch-space-4);\n  font-size: var(--ch-text-sm); color: var(--ch-text-tertiary);\n  font-weight: var(--ch-weight-semibold);\n}\n.session-item{\n  padding: var(--ch-space-2) var(--ch-space-4);\n  color: var(--ch-text-secondary);\n  border-left: 2px solid transparent;\n}\n.session-item.active{\n  background: var(--ch-accent-soft); color: var(--ch-text);\n  border-left-color: var(--ch-accent);\n}\n.session-item .s-title{ font-size: var(--ch-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.session-item .s-meta{ font-size: var(--ch-text-xs); color: var(--ch-text-tertiary); margin-top: 2px; }\n.tree-col{\n  width: 240px; flex: none;\n  border-right: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  display: flex; flex-direction: column;\n  transition: margin-left 0.18s ease;\n}\n.tree-col.collapsed{ margin-left: -240px; }\n.tree-head{\n  display: flex; align-items: center; gap: var(--ch-space-2);\n  padding: var(--ch-space-3) var(--ch-space-4);\n  border-bottom: 1px solid var(--ch-border);\n  flex: none;\n}\n.tree-head .t-title{\n  font-size: var(--ch-text-sm); font-weight: var(--ch-weight-semibold);\n  color: var(--ch-text-secondary);\n}\n.tree-head .t-root{\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  font-family: var(--ch-font-mono);\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\n  flex: 1; min-width: 0;\n}\n.tree-toggle-all{\n  flex: none; border: 1px solid var(--ch-border); border-radius: var(--ch-radius-sm);\n  background: transparent; color: var(--ch-text-tertiary);\n  font-size: var(--ch-text-xs); padding: 1px 6px; cursor: pointer;\n}\n.tree-toggle-all:hover{ border-color: var(--ch-border-strong); color: var(--ch-text); }\n.tree-body{ flex: 1; overflow-y: auto; padding: var(--ch-space-2) 0; }\n.tree-row{\n  display: flex; align-items: center; gap: 6px;\n  padding: 3px var(--ch-space-3);\n  font-size: var(--ch-text-sm); color: var(--ch-text-secondary);\n  cursor: pointer; user-select: none;\n  white-space: nowrap;\n}\n.tree-row:hover{ background: var(--ch-surface-high); color: var(--ch-text); }\n.tree-row.selected{ background: var(--ch-accent-soft); color: var(--ch-accent); }\n.tree-row .twisty{\n  width: 14px; flex: none; text-align: center;\n  color: var(--ch-text-tertiary); font-size: 10px;\n  transition: transform 0.12s ease;\n}\n.tree-row.open > .twisty{ transform: rotate(90deg); }\n.tree-row .fname{ overflow: hidden; text-overflow: ellipsis; }\n.tree-row .ficon{ flex: none; width: 16px; text-align: center; font-size: var(--ch-text-xs); }\n.tree-children{ display: none; }\n.tree-children.open{ display: block; }\n.tree-note{\n  padding: var(--ch-space-2) var(--ch-space-4);\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  border-top: 1px solid var(--ch-border); flex: none;\n}\n.chat-col{ flex: 1; display: flex; flex-direction: column; min-width: 0; }\n.chat-header{\n  display: flex; align-items: center; gap: var(--ch-space-3);\n  padding: var(--ch-space-3) var(--ch-space-5);\n  border-bottom: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  flex: none;\n}\n.chat-title{ font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }\n.space-badge{\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);\n  padding: 1px 8px;\n}\n.header-actions{ margin-left: auto; display: flex; gap: var(--ch-space-2); }\n.icon-btn{\n  display: inline-flex; align-items: center; gap: 6px;\n  padding: 4px 10px; font-size: var(--ch-text-sm);\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);\n  background: transparent; color: var(--ch-text-secondary); cursor: pointer;\n}\n.icon-btn:hover{ border-color: var(--ch-border-strong); color: var(--ch-text); }\n.icon-btn.active{ background: var(--ch-accent-soft); color: var(--ch-accent); border-color: transparent; }\n.chat-body{ flex: 1; overflow-y: auto; padding: var(--ch-space-5); display: flex; flex-direction: column; gap: var(--ch-space-4); }\n.msg{ max-width: 82%; }\n.msg.user{ align-self: flex-end; }\n.msg .bubble{\n  padding: var(--ch-space-3) var(--ch-space-4);\n  border-radius: var(--ch-radius-lg);\n  font-size: var(--ch-text-base); line-height: var(--ch-leading-relaxed);\n}\n.msg.user .bubble{ background: var(--ch-accent-soft); }\n.msg.agent .bubble{ background: var(--ch-surface); border: 1px solid var(--ch-border); }\n.file-link{\n  display: inline-flex; align-items: center; gap: 4px;\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n  color: var(--ch-accent); background: var(--ch-accent-soft);\n  border-radius: var(--ch-radius-sm); padding: 0 6px;\n  cursor: pointer; border: 1px solid transparent;\n}\n.file-link:hover{ border-color: var(--ch-accent); }\n.file-link.bad{ color: var(--ch-error); background: var(--ch-error-soft); }\n.file-link.bad:hover{ border-color: var(--ch-error); }\n.composer{\n  flex: none; padding: var(--ch-space-4) var(--ch-space-5);\n  border-top: 1px solid var(--ch-border); background: var(--ch-surface);\n}\n.composer .input{\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-lg);\n  padding: var(--ch-space-3) var(--ch-space-4);\n  color: var(--ch-text-tertiary); font-size: var(--ch-text-base);\n}\n.preview-panel{\n  width: 560px; flex: none;\n  border-left: 1px solid var(--ch-border);\n  background: var(--ch-surface);\n  display: none; flex-direction: column;\n}\n.preview-panel.open{ display: flex; }\n.pv-chrome{\n  display: flex; align-items: center; gap: var(--ch-space-2);\n  padding: var(--ch-space-2) var(--ch-space-3);\n  border-bottom: 1px solid var(--ch-border);\n  flex: none;\n}\n.pv-path{\n  flex: 1; min-width: 0;\n  display: flex; align-items: center; gap: var(--ch-space-2);\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n  color: var(--ch-text); background: var(--ch-surface-high);\n  border-radius: var(--ch-radius-full); padding: 4px 12px;\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\n}\n.pv-path .pv-kind{ color: var(--ch-text-tertiary); font-size: var(--ch-text-xs); flex: none; }\n.pv-btn{\n  display: inline-flex; align-items: center; justify-content: center;\n  min-width: 26px; height: 26px; padding: 0 6px;\n  border: none; border-radius: var(--ch-radius-md);\n  background: transparent; color: var(--ch-text-secondary);\n  cursor: pointer; font-size: var(--ch-text-sm);\n}\n.pv-btn:hover{ background: var(--ch-surface-high); color: var(--ch-text); }\n.pv-btn.active{ background: var(--ch-accent-soft); color: var(--ch-accent); }\n.pv-seg{\n  display: inline-flex; border: 1px solid var(--ch-border);\n  border-radius: var(--ch-radius-md); overflow: hidden; flex: none;\n}\n.pv-seg button{\n  border: none; background: transparent; color: var(--ch-text-secondary);\n  font-size: var(--ch-text-xs); padding: 3px 10px; cursor: pointer;\n}\n.pv-seg button.active{ background: var(--ch-accent-soft); color: var(--ch-accent); }\n.pv-viewport{ flex: 1; overflow-y: auto; min-height: 0; position: relative; }\n.pv-md{ padding: var(--ch-space-5) var(--ch-space-6); line-height: var(--ch-leading-relaxed); }\n.pv-md h1{ font-size: var(--ch-text-xl); font-weight: var(--ch-weight-bold); margin: var(--ch-space-4) 0 var(--ch-space-3); }\n.pv-md h2{ font-size: var(--ch-text-lg); font-weight: var(--ch-weight-semibold); margin: var(--ch-space-5) 0 var(--ch-space-2); }\n.pv-md p{ margin: var(--ch-space-2) 0; color: var(--ch-text-secondary); }\n.pv-md ul{ margin: var(--ch-space-2) 0 var(--ch-space-2) var(--ch-space-5); color: var(--ch-text-secondary); }\n.pv-md code{\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n  background: var(--ch-code-bg); border-radius: var(--ch-radius-sm); padding: 1px 5px;\n}\n.pv-md pre{\n  background: var(--ch-code-bg); border-radius: var(--ch-radius-md);\n  padding: var(--ch-space-3) var(--ch-space-4); margin: var(--ch-space-3) 0;\n  overflow-x: auto; font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n}\n.pv-md pre code{ background: none; padding: 0; }\n.pv-md table{ border-collapse: collapse; margin: var(--ch-space-3) 0; font-size: var(--ch-text-sm); }\n.pv-md th, .pv-md td{ border: 1px solid var(--ch-border); padding: 4px 10px; }\n.pv-md th{ background: var(--ch-surface-high); }\n.tok-kw{ color: var(--ch-code-kw); }\n.tok-str{ color: var(--ch-code-str); }\n.tok-fn{ color: var(--ch-code-fn); }\n.tok-num{ color: var(--ch-code-num); }\n.tok-cmt{ color: var(--ch-code-cmt); }\n.pv-source{\n  display: flex; padding: var(--ch-space-4) 0;\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n  line-height: var(--ch-leading-normal);\n}\n.pv-source .ln{\n  flex: none; width: 48px; text-align: right; padding-right: var(--ch-space-3);\n  color: var(--ch-text-tertiary); user-select: none;\n  border-right: 1px solid var(--ch-border); margin-right: var(--ch-space-3);\n}\n.pv-source pre{ white-space: pre-wrap; color: var(--ch-code-text); }\n.pv-img{ display: flex; align-items: center; justify-content: center; height: 100%; padding: var(--ch-space-6); }\n.pv-img .img-box{\n  width: 320px; height: 200px; border-radius: var(--ch-radius-lg);\n  background: var(--ch-surface-high); border: 1px dashed var(--ch-border-strong);\n  display: flex; align-items: center; justify-content: center;\n  color: var(--ch-text-tertiary); font-size: var(--ch-text-sm);\n}\n.pv-error{\n  display: flex; flex-direction: column; align-items: center; justify-content: center;\n  height: 100%; gap: var(--ch-space-2); padding: var(--ch-space-6); text-align: center;\n}\n.pv-error .e-code{\n  font-family: var(--ch-font-mono); font-size: var(--ch-text-sm);\n  color: var(--ch-error); background: var(--ch-error-soft);\n  border-radius: var(--ch-radius-md); padding: 2px 10px;\n}\n.pv-error .e-title{ font-size: var(--ch-text-md); font-weight: var(--ch-weight-semibold); }\n.pv-error .e-desc{ font-size: var(--ch-text-sm); color: var(--ch-text-tertiary); max-width: 320px; }\n.pv-error .e-action{\n  margin-top: var(--ch-space-2);\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md);\n  background: transparent; color: var(--ch-text-secondary);\n  padding: 4px 14px; font-size: var(--ch-text-sm); cursor: pointer;\n}\n.pv-error .e-action:hover{ border-color: var(--ch-border-strong); color: var(--ch-text); }\n.pv-statusbar{\n  display: flex; align-items: center; gap: var(--ch-space-3);\n  padding: var(--ch-space-1) var(--ch-space-3);\n  border-top: 1px solid var(--ch-border);\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n  font-family: var(--ch-font-mono); flex: none;\n}\n.pv-statusbar .st-path{ flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.pv-statusbar .st-fresh{ color: var(--ch-success); }\n.pv-toast{\n  position: absolute; top: var(--ch-space-3); left: 50%; transform: translateX(-50%);\n  background: var(--ch-surface-highest); border: 1px solid var(--ch-border);\n  border-radius: var(--ch-radius-full); padding: 3px 14px;\n  font-size: var(--ch-text-xs); color: var(--ch-text-secondary);\n  box-shadow: var(--ch-shadow-md);\n  opacity: 0; transition: opacity 0.2s ease; pointer-events: none;\n}\n.pv-toast.show{ opacity: 1; }\n.proto-bar{\n  position: fixed; bottom: var(--ch-space-3); left: 50%; transform: translateX(-50%);\n  display: flex; gap: 6px; align-items: center;\n  background: var(--ch-surface); border: 1px solid var(--ch-border);\n  border-radius: var(--ch-radius-full); padding: 6px 12px;\n  box-shadow: var(--ch-shadow-lg); z-index: 50;\n  font-size: var(--ch-text-xs); color: var(--ch-text-tertiary);\n}\n.proto-bar button{\n  border: 1px solid var(--ch-border); border-radius: var(--ch-radius-full);\n  background: transparent; color: var(--ch-text-secondary);\n  font-size: var(--ch-text-xs); padding: 2px 10px; cursor: pointer;\n}\n.proto-bar button.active{ background: var(--ch-accent-soft); color: var(--ch-accent); border-color: transparent; }\n"}}</script>
+<script>
+(function () {
+  var dataEl = document.getElementById("ds-data");
+  if (!dataEl) return;
+  var DATA = JSON.parse(dataEl.textContent);
+  var ASSETS = DATA.assets || {};
+  var cardById = {};
+  DATA.cards.forEach(function (c) { cardById[c.id] = c; });
+
+  function normPath(p) {
+    var segs = p.split("/");
+    var out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (!s || s === ".") continue;
+      if (s === "..") { if (out.length) out.pop(); continue; }
+      out.push(s);
+    }
+    return out.join("/");
+  }
+
+  var supportsAdopt = (function () {
+    try {
+      var s = new CSSStyleSheet();
+      s.replaceSync(":host{}");
+      return "adoptedStyleSheets" in Document.prototype || "adoptedStyleSheets" in ShadowRoot.prototype;
+    } catch (e) { return false; }
+  })();
+
+  var sheetCache = {};
+  function getSheet(hash) {
+    if (!sheetCache[hash]) {
+      var s = new CSSStyleSheet();
+      try { s.replaceSync(DATA.css[hash] || ""); } catch (e) { console.error("[ds-preview] css error", e); }
+      sheetCache[hash] = s;
+    }
+    return sheetCache[hash];
+  }
+
+  // Cards scroll if their content overflows the declared viewport, but the
+  // scrollbar chrome itself reads as a defect in a scaled-down thumbnail —
+  // hide it (content stays scrollable). Applied last so it wins ties.
+  var BASE_CARD_CSS = ".__dsroot{scrollbar-width:none;-ms-overflow-style:none}.__dsroot::-webkit-scrollbar{display:none}";
+  var baseCardSheet = null;
+  function getBaseCardSheet() {
+    if (!baseCardSheet) {
+      baseCardSheet = new CSSStyleSheet();
+      try { baseCardSheet.replaceSync(BASE_CARD_CSS); } catch (e) {}
+    }
+    return baseCardSheet;
+  }
+
+  function ensureShadow(stage) {
+    var root = stage.shadowRoot;
+    if (!root) {
+      var tpl = stage.querySelector("template");
+      root = stage.attachShadow({ mode: "open" });
+      if (tpl) { root.appendChild(tpl.content); tpl.remove(); }
+    }
+    return root;
+  }
+
+  function applyStyles(root, hashes) {
+    if (supportsAdopt && root.adoptedStyleSheets !== undefined) {
+      try { root.adoptedStyleSheets = hashes.map(getSheet).concat([getBaseCardSheet()]); return; } catch (e) {}
+    }
+    var base = document.createElement("style");
+    base.textContent = BASE_CARD_CSS;
+    root.insertBefore(base, root.firstChild);
+    for (var i = hashes.length - 1; i >= 0; i--) {
+      var st = document.createElement("style");
+      st.textContent = DATA.css[hashes[i]] || "";
+      root.insertBefore(st, root.firstChild);
+    }
+  }
+
+  function appendExports(code) {
+    var names = {};
+    var re = /^(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|^(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/gm;
+    var m;
+    while ((m = re.exec(code))) names[m[1] || m[2]] = 1;
+    var tail = Object.keys(names).map(function (n) {
+      return "try{__vars." + n + "=" + n + ";}catch(__e){}";
+    }).join("");
+    return tail ? code + "\n;" + tail : code;
+  }
+
+  function makeEnv(card, root, rootEl) {
+    var vars = Object.create(null);
+    var pendingLoad = [];
+    var realDoc = document;
+    var realWin = window;
+    var winProxy, docProxy;
+
+    // Card sources live in subdirectories, but their HTML is re-rooted into
+    // this single file — rebase relative fetch() URLs against the card's
+    // source dir, serving build-time-inlined project assets when available
+    // (which also makes them work over file://).
+    vars.fetch = function (input, init) {
+      var u = null;
+      try { u = typeof input === "string" ? input : null; } catch (e) {}
+      if (u != null && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u) && u.charAt(0) !== "/" && u.charAt(0) !== "#" && u.charAt(0) !== "?") {
+        var m = /^([^?#]*)([\s\S]*)$/.exec(u);
+        var resolved = normPath((card.base ? card.base + "/" : "") + m[1]);
+        if (Object.prototype.hasOwnProperty.call(ASSETS, resolved)) return realWin.fetch(ASSETS[resolved], init);
+        return realWin.fetch(resolved + m[2], init);
+      }
+      return realWin.fetch(input, init);
+    };
+
+    docProxy = new Proxy(realDoc, {
+      get: function (t, k) {
+        switch (k) {
+          case "getElementById":
+            return function (id) {
+              return root.getElementById ? root.getElementById(id) : root.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(id) : id));
+            };
+          case "querySelector": return root.querySelector.bind(root);
+          case "querySelectorAll": return root.querySelectorAll.bind(root);
+          case "getElementsByClassName": return function (c) { return rootEl.getElementsByClassName(c); };
+          case "getElementsByTagName": return function (s) { return rootEl.getElementsByTagName(s); };
+          case "body": case "documentElement": case "head": return rootEl;
+          case "defaultView": return winProxy;
+          case "readyState": return "complete";
+          case "currentScript": return null;
+          case "activeElement": return root.activeElement || null;
+          case "styleSheets": return root.styleSheets;
+          case "location": return realWin.location;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "DOMContentLoaded" || type === "load" || type === "readystatechange") pendingLoad.push(fn);
+              else realDoc.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return realDoc.removeEventListener.bind(realDoc);
+          default: {
+            var v = t[k];
+            return typeof v === "function" ? v.bind(t) : v;
+          }
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "title" || k === "cookie") return true;
+        try { t[k] = val; } catch (e) {}
+        return true;
+      },
+    });
+
+    winProxy = new Proxy(realWin, {
+      get: function (t, k) {
+        switch (k) {
+          case "document": return docProxy;
+          case "window": case "self": case "globalThis": case "top": case "parent": case "frames": return winProxy;
+          case "innerWidth": return card.w;
+          case "innerHeight": return card.h;
+          case "addEventListener":
+            return function (type, fn, o) {
+              if (type === "load" || type === "DOMContentLoaded") pendingLoad.push(fn);
+              else t.addEventListener(type, fn, o);
+            };
+          case "removeEventListener": return t.removeEventListener.bind(t);
+          default:
+            if (k in vars) return vars[k];
+            var v = t[k];
+            if (typeof v === "function" && typeof k === "string" && /^[a-z]/.test(k)) {
+              try { return v.bind(t); } catch (e) { return v; }
+            }
+            return v;
+        }
+      },
+      set: function (t, k, val) {
+        if (k === "onload") { pendingLoad.push(val); return true; }
+        vars[k] = val;
+        return true;
+      },
+      has: function (t, k) { return k in vars || k in t; },
+    });
+
+    var scope = new Proxy(vars, {
+      has: function (t, k) {
+        if (typeof k !== "string") return false;
+        if (k === "window" || k === "document" || k === "globalThis" || k === "self" || k === "__vars" || k === "__scope" || k === "event") return false;
+        return k in t;
+      },
+      get: function (t, k) { return t[k]; },
+      set: function (t, k, v) { t[k] = v; return true; },
+    });
+
+    return { win: winProxy, doc: docProxy, vars: vars, scope: scope, pendingLoad: pendingLoad };
+  }
+
+  function runCode(card, env, code, name) {
+    var body = "with(__scope){\n" + appendExports(code) + "\n}";
+    try {
+      var fn = new Function("window", "document", "globalThis", "self", "__vars", "__scope", body);
+      fn.call(env.win, env.win, env.doc, env.win, env.win, env.vars, env.scope);
+    } catch (err) {
+      console.error("[ds-preview] " + card.id + (name ? " (" + name + ")" : "") + ":", err);
+    }
+  }
+
+  function runScripts(card, env) {
+    for (var i = 0; i < card.js.length; i++) {
+      var s = card.js[i];
+      var code = s.code;
+      if (s.babel) {
+        if (window.Babel) {
+          try {
+            code = Babel.transform(code, { presets: [["react", {}]], filename: s.name || "card.jsx" }).code;
+          } catch (err) {
+            console.error("[ds-preview] babel " + card.id + ":", err);
+            continue;
+          }
+        } else {
+          console.error("[ds-preview] " + card.id + " needs Babel but it is not loaded");
+          continue;
+        }
+      }
+      runCode(card, env, code, s.name);
+    }
+    var flush = env.pendingLoad.splice(0);
+    if (flush.length) {
+      setTimeout(function () {
+        var ev; try { ev = new Event("load"); } catch (e) { ev = { type: "load" }; }
+        flush.forEach(function (fn) {
+          try { typeof fn === "function" && fn.call(env.win, ev); } catch (err) { console.error("[ds-preview]", err); }
+        });
+      }, 0);
+    }
+  }
+
+  function bindInlineHandlers(card, env, rootEl) {
+    var all = rootEl.querySelectorAll("*");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      for (var j = 0; j < el.attributes.length; j++) {
+        var at = el.attributes[j];
+        if (at.name.indexOf("data-ds-on") !== 0) continue;
+        (function (el, evt, code) {
+          el.addEventListener(evt, function (event) {
+            try {
+              var fn = new Function("window", "document", "globalThis", "self", "__scope", "event", "with(__scope){\n" + code + "\n}");
+              fn.call(el, env.win, env.doc, env.win, env.win, env.scope, event);
+            } catch (err) { console.error("[ds-preview] inline handler:", err); }
+          });
+        })(el, at.name.slice(10), at.value);
+      }
+    }
+  }
+
+  function fit(section) {
+    var card = cardById[section.id];
+    var wrap = section.querySelector("[data-fit]");
+    var stage = section.querySelector("[data-stage]");
+    if (!card || !wrap || !stage) return;
+    // Measure the available width on the SECTION, not the wrap: the wrap is
+    // shrink-wrapped to the scaled stage below, so reading it back would feed
+    // the previous scale into the next one.
+    var cw = section.clientWidth || wrap.clientWidth;
+    if (!cw) return;
+    // The declared viewport height is a MINIMUM: content that ends up taller
+    // (React mounts, fetched icons, wrapped rows) grows the stage instead of
+    // getting clipped. Monotonic with a 1px tolerance so repeated measures
+    // never jitter the layout back down.
+    var rootEl = stage.shadowRoot && stage.shadowRoot.querySelector(".__dsroot");
+    if (rootEl) {
+      // Cap growth so content sized relative to the container (height:100%
+      // plus a fixed extra) can never ratchet the stage upward forever.
+      var contentH = Math.min(rootEl.scrollHeight, Math.max(card.h, 4000));
+      if (contentH > (card.eh || card.h) + 1) card.eh = contentH;
+    }
+    var h = Math.max(card.eh || 0, card.h);
+    stage.style.height = h + "px";
+    // Width-only scaling: height never shrinks the card (it would leave blank
+    // bands beside the narrower stage). The wrap shrink-wraps the scaled stage
+    // so its frame always hugs the visible pixels.
+    var scale = Math.min(cw / card.w, 1);
+    stage.style.transform = scale === 1 ? "none" : "scale(" + scale + ")";
+    wrap.style.width = Math.ceil(card.w * scale) + "px";
+    wrap.style.height = Math.ceil(h * scale) + "px";
+  }
+
+  var sections = [].slice.call(document.querySelectorAll("[data-card]"));
+  function fitAll() { sections.forEach(fit); }
+
+  // ---- mount all cards
+  sections.forEach(function (section) {
+    var card = cardById[section.id];
+    if (!card) return;
+    var stage = section.querySelector("[data-stage]");
+    try {
+      var root = ensureShadow(stage);
+      var rootEl = root.querySelector(".__dsroot");
+      applyStyles(root, card.css);
+      var env = makeEnv(card, root, rootEl);
+      if (card.js.length) runScripts(card, env);
+      bindInlineHandlers(card, env, rootEl);
+      // Card content keeps changing after mount (React commits async, icon
+      // fetches resolve, images decode) — re-measure on every DOM change and
+      // resource load inside the shadow tree.
+      if (window.MutationObserver) {
+        new MutationObserver(function () { fit(section); }).observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true,
+        });
+      }
+      root.addEventListener("load", function () { fit(section); }, true);
+    } catch (err) {
+      console.error("[ds-preview] mount " + card.id + ":", err);
+    }
+    stage.setAttribute("data-ready", "1");
+    fit(section);
+  });
+
+  // ---- scaling
+  var scroller = document.querySelector("[data-scroll]");
+  var inner = document.querySelector(".ds-content-inner");
+  if (window.ResizeObserver && inner) {
+    var raf = 0;
+    new ResizeObserver(function () {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fitAll);
+    }).observe(inner);
+  } else {
+    window.addEventListener("resize", fitAll);
+  }
+  // Web fonts swap and late resources settle without DOM mutations —
+  // re-measure once fonts are ready plus a few fallback ticks.
+  if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+    document.fonts.ready.then(function () { fitAll(); });
+  }
+  [250, 750, 1500, 3000].forEach(function (ms) { setTimeout(fitAll, ms); });
+
+  // ---- outline interactions
+  var items = [].slice.call(document.querySelectorAll(".ds-item[data-target]"));
+  var itemByTarget = {};
+  items.forEach(function (it) { itemByTarget[it.getAttribute("data-target")] = it; });
+  var anchors = [].slice.call(document.querySelectorAll("[data-anchor]"));
+  var suppressUntil = 0;
+
+  function setActive(it) {
+    items.forEach(function (x) { x.classList.toggle("active", x === it); });
+    if (it) {
+      var g = it.closest(".ds-outline-group");
+      if (g) g.classList.remove("collapsed");
+    }
+  }
+
+  items.forEach(function (it) {
+    it.addEventListener("click", function () {
+      var target = document.getElementById(it.getAttribute("data-target"));
+      if (!target || !scroller) return;
+      var top = scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 20;
+      suppressUntil = Date.now() + 900;
+      setActive(it);
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    });
+  });
+
+  [].slice.call(document.querySelectorAll("[data-group-toggle]")).forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      btn.closest(".ds-outline-group").classList.toggle("collapsed");
+    });
+  });
+
+  function spy() {
+    if (Date.now() < suppressUntil || !scroller) return;
+    var cTop = scroller.getBoundingClientRect().top;
+    var best = null;
+    for (var i = 0; i < anchors.length; i++) {
+      var r = anchors[i].getBoundingClientRect();
+      if (r.top - cTop <= 90) best = anchors[i];
+      else break;
+    }
+    if (!best && anchors.length) best = anchors[0];
+    if (best) {
+      var key = best.getAttribute("data-anchor-key") || best.id;
+      setActive(itemByTarget[key] || itemByTarget[best.id] || null);
+    }
+  }
+  if (scroller) {
+    var sraf = 0;
+    scroller.addEventListener("scroll", function () {
+      cancelAnimationFrame(sraf);
+      sraf = requestAnimationFrame(spy);
+    }, { passive: true });
+    spy();
+  }
+
+  // ---- readme collapse
+  var readme = document.querySelector("[data-readme]");
+  var toggle = document.querySelector("[data-readme-toggle]");
+  if (readme && toggle) {
+    var update = function () {
+      var collapsed = readme.classList.contains("collapsed");
+      toggle.textContent = collapsed ? "Show more" : "Show less";
+    };
+    if (readme.scrollHeight <= 300) {
+      readme.classList.remove("collapsed");
+      toggle.style.display = "none";
+    }
+    toggle.addEventListener("click", function () {
+      readme.classList.toggle("collapsed");
+      update();
+      fitAll();
+    });
+    update();
+  }
+
+  window.addEventListener("load", fitAll);
+})();
+
+</script>
+</body>
+</html>
