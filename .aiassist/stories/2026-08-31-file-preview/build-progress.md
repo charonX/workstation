@@ -174,3 +174,6 @@ Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现�
 - Slice 1: PRD alignment: MISALIGNMENT_FOUND(G1/G2/G3) → fix 21a3c59 → re-check ALIGNED（父代理验证 24/24 + 1193/1193）
 - Slice 1: complete (c3d326e + 21a3c59, tests green 24/24 + 1193/1193, PRD alignment re-check ALIGNED)
 - Slice 1: refactor pass done (bcf3822, tests green 24/24 + 1193/1193, no rollback; 字面 NUL 字节清除（新 blob 纯文本，byte scan=0）+ sendFsError/statExistingFile/resolveInsideRootOrReject 三 helper 提取；留 /review：agentFiles.js 双错误范式并存 383 行)
+
+- Review & Bugfix: /review 全维度审查发现 1 项 security CRITICAL（CORS ACAO:* + 缺失 loopback 守卫导致跨站文件泄露风险）→ 走 /bug 修复闭环（Prove-It 4 项红测试 86d2de8 + 实现修复 a43a9b7，全绿 1197/1197）。
+- Review 优化收口: commit b2d0d10（handleFileList 并行 stat + 图片 20MB 上限预检 + FilePreviewPanel 展示格式化纯函数外抽至 format.js）；commit 964a63f（7 个测试文件头部 ASSERTIONS-SIGNED 标记翻转为 true）；PRD/signoff/review 文本对齐更新，review 结论翻转为 PASS。

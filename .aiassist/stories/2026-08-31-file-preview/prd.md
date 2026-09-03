@@ -125,7 +125,7 @@
 | 维度 | 取值/说明 |
 |---|---|
 | 复杂度 | **complex** |
-| 判断理由 | 模块数 4（主进程文件服务 IPC、文件预览面板、文件树、聊天链接分发）；新增 IPC 契约 ≥3（读目录/读文件/监听）；分支多（文件类型 × 6 种错误态 × watch 生命周期）；新外部依赖 fs.watch（跨平台语义差异）；路径识别规则有误报面。参照：内置浏览器 story 同为 complex。 |
+| 判断理由 | 模块数 4（主进程文件预览服务 HTTP+SSE、文件预览面板、文件树、聊天链接分发）；新增 HTTP/SSE 契约 ≥3（读目录/读文件/监听）；分支多（文件类型 × 6 种错误态 × watch 生命周期）；新外部依赖 fs.watch（跨平台语义差异）；路径识别规则有误报面。参照：内置浏览器 story 同为 complex。 |
 
 - 结晶路径：`PRD → DESIGN → DOMAIN-MODEL → TECH-DESIGN → CRYSTALLIZE`（§10 由 `/tech-design` 深潜补全）。
 
@@ -143,7 +143,7 @@
 |---|---|---|
 | 文件预览服务（主进程/服务层） | HTTP 端点：目录列举 / 文件读取 / watch 注册注销；根目录硬约束（registry 解析根 + `isArtifactPathAllowed` realpath 双检语义）；1MB 上限；类型判定（扩展名白名单 + UTF-8 嗅探）；fs.watch 单文件监听 + 200ms 防抖 → SSE 推送 | 是 |
 | 文件预览面板（渲染进程） | 右侧槽位面板（与浏览器面板互斥，复用容器心智与 mini-store 模式）；Markdown 渲染复用 MarkdownRenderer 管线（传 projectDir=projectId）；代码 hljs 高亮（复用 highlightCode）；图片 blob URL；错误态页；toast 刷新提示 | 是 |
-| 文件树边栏（渲染进程） | 左侧可收起边栏；懒加载目录树（一次展开一次 list）；噪音目录过滤；全部展开/收起；点击分发到预览面板 | 是 |
+| 文件树边栏（渲染进程） | 左侧可收起边栏；懒加载目录树（一次展开一次 list）；噪音目录过滤；全部展开/收起；点击分发到文件预览面板 | 是 |
 | 聊天路径分发（渲染进程） | 行内 code 路径形态识别纯逻辑 + 点击分发（先例：`mdLinkDispatch.js` 纯函数 seam）；围栏内不识别 | 既有模块扩展（MarkdownRenderer 行内 code 分支） |
 | MarkdownRenderer | 渲染管线复用（非流式模式；projectDir 传项目 ID，文内图片走既有解析机制） | 否（复用） |
 | 浏览器面板 | 槽位互斥的被收起方（实例保活，可见性解耦语义不变） | 否（仅联动） |
@@ -173,7 +173,7 @@
 
 1. **触发**：聊天消息行内 code 路径点击，或树中文件点击 → `openWithPath(projectId, path)`。
 2. **输入校验**：renderer 路径形态判定（纯函数，决定渲染为可点击）；主进程权威校验：projectId → registry 解析根（无根 → E-PREVIEW-NO-ROOT）；路径 normalize + realpath 双检（越界 → E-PREVIEW-OUTSIDE-ROOT，不触达内容读取）。
-3. **核心处理**：stat → 不存在 E-PREVIEW-NOT-FOUND；size > 1,048,576 B → E-PREVIEW-TOO-LARGE；类型判定：`.md/.markdown` → markdown；代码扩展名集 → code（带 hljs 语言键）；图片白名单（jpeg/png/gif/webp/bmp/heic/heif，对齐附件清单）→ image；其余扩展名 → UTF-8 嗅探，可解码 → code（plaintext 兜底），不可解码 → E-PREVIEW-UNSUPPORTED。文本类读取 UTF-8 content。
+3. **核心处理**：stat → 不存在 E-PREVIEW-NOT-FOUND；类型判定：图片白名单（jpeg/png/gif/webp/bmp/heic/heif，对齐附件清单）→ image（不带 content，不受 1MB 文本上限约束）；非图片文本/代码类若 size > 1,048,576 B → E-PREVIEW-TOO-LARGE；`.md/.markdown` → markdown；代码扩展名集 → code（带 hljs 语言键）；其余扩展名 → UTF-8 嗅探，可解码 → code（plaintext 兜底），不可解码 → E-PREVIEW-UNSUPPORTED。文本类读取 UTF-8 content。
 4. **副作用**：面板打开文件 → `POST files/watch` 注册单文件 fs.watch（E2 态不注册）；变更事件 200ms 防抖合并 → SSE `file-preview-changed`；面板关闭/切换文件/切换会话 → `DELETE files/watch/:watchId` 注销。
 5. **输出**：kind=markdown → MarkdownRenderer 渲染视图（默认）/源码视图切换；code → hljs 高亮 + 行号；image → 面板经既有 image 端点取 blob URL 直渲；错误 → 对应错误页（E1/E2/E3/E4/E5/E6）。
 

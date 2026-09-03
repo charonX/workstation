@@ -26,7 +26,7 @@ capability/entity 与 `business-capabilities.md` file-preview 条目一致（两
 ### AI 全量自检结果
 
 - [x] 每个 REQ-ID 至少一个自动化测试（10/10）。
-- [x] 6 个测试文件头部五要素（REQ-TRACE / REQ-VERSION / CAPABILITY-TRACE / ENTITY-TRACE / EXPECTED-TRACE）+ ASSERTIONS-SIGNED 齐全，REQ-VERSION 与 requirements-v1.hash 逐字一致（脚本核验）。
+- [x] 7 个测试文件头部五要素（REQ-TRACE / REQ-VERSION / CAPABILITY-TRACE / ENTITY-TRACE / EXPECTED-TRACE）+ ASSERTIONS-SIGNED 齐全，REQ-VERSION 与 requirements-v1.hash 逐字一致（脚本核验）。
 - [x] 无 `// TODO: HUMAN ASSERTION` 占位；无快照断言（脚本核验）。
 - [x] 边界/错误 case 覆盖：1MB 含本数双边界、符号链接逃逸、空目录、幂等重复调用、SSE 不匹配事件、非项目空间入口显隐、原子写 rename 归并。
 - [x] 测试可执行性：component/api 4 文件已实际运行至 RED（seam 未就绪 / 404 契约未实现，失败信息可读）；E2E 待 BUILD 后由 /qa-runner 执行。
