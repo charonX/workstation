@@ -16,6 +16,7 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +36,34 @@ function readUrl(p) {
 }
 function listUrl(dir) {
   return `/api/agent/files/list?projectId=${encodeURIComponent(projectId)}&dir=${encodeURIComponent(dir)}`;
+}
+
+function rawGet(urlPath, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(baseUrl);
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: urlPath,
+        method: "GET",
+        headers,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          let body = null;
+          try {
+            body = JSON.parse(data);
+          } catch {}
+          resolve({ status: res.statusCode, headers: res.headers, body });
+        });
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 before(async () => {
@@ -262,5 +291,50 @@ describe("REQ-PREVIEW-010 AC6：list 目录列举 golden values", () => {
     const b = await getJson(listUrl("README.md"));
     assert.ok(b.status >= 400);
     assert.equal(b.body.error, "E-PREVIEW-NOT-FOUND");
+  });
+
+  // —— 安全守卫（review 2026-09-03，BUG-001：/api/agent/files/* 本地回环防护与 CORS 收紧）——
+  it("伪造 Host（evil.com，DNS rebinding 形态）→ 403 且无 ACAO 头（锚点 §10.7 / BUG-001）", async () => {
+    // REQ-TRACE: 2026-08-31-file-preview/REQ-PREVIEW-010
+    // CAPABILITY-TRACE: file-preview
+    // ENTITY-TRACE: file-preview-panel
+    // EXPECTED-TRACE: prd.md §10.7（仅允许本地 loopback 访问，非 loopback Host 403 且不输出 ACAO）
+    const r = await rawGet(readUrl("README.md"), { host: "evil.com" });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, "FORBIDDEN");
+    assert.equal(r.headers["access-control-allow-origin"], undefined);
+  });
+
+  it("伪造跨源 Origin（https://evil.example）→ 403 且无 ACAO 头（锚点 §10.7 / BUG-001）", async () => {
+    // REQ-TRACE: 2026-08-31-file-preview/REQ-PREVIEW-010
+    // CAPABILITY-TRACE: file-preview
+    // ENTITY-TRACE: file-preview-panel
+    // EXPECTED-TRACE: prd.md §10.7（跨源 Origin 请求一律 403 阻断）
+    const r = await rawGet(readUrl("README.md"), { origin: "https://evil.example" });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, "FORBIDDEN");
+    assert.equal(r.headers["access-control-allow-origin"], undefined);
+  });
+
+  it("Sec-Fetch-Site: cross-site / cross-origin → 403 且无 ACAO 头（锚点 §10.7 / BUG-001）", async () => {
+    // REQ-TRACE: 2026-08-31-file-preview/REQ-PREVIEW-010
+    // CAPABILITY-TRACE: file-preview
+    // ENTITY-TRACE: file-preview-panel
+    // EXPECTED-TRACE: prd.md §10.7（Sec-Fetch-Site 跨站请求一律 403 阻断）
+    const r = await rawGet(listUrl(""), { "sec-fetch-site": "cross-site" });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, "FORBIDDEN");
+    assert.equal(r.headers["access-control-allow-origin"], undefined);
+  });
+
+  it("本机合法请求（Host=127.0.0.1、无 Origin）→ 正常 200 且响应无 ACAO: * 头（锚点 §10.7 / BUG-001）", async () => {
+    // REQ-TRACE: 2026-08-31-file-preview/REQ-PREVIEW-010
+    // CAPABILITY-TRACE: file-preview
+    // ENTITY-TRACE: file-preview-panel
+    // EXPECTED-TRACE: prd.md §10.7（本机合法请求放行，且不输出 ACAO: * 避免被外源 fetch 窃听）
+    const r = await rawGet(readUrl("README.md"));
+    assert.equal(r.status, 200);
+    assert.equal(r.body.kind, "markdown");
+    assert.equal(r.headers["access-control-allow-origin"], undefined);
   });
 });
