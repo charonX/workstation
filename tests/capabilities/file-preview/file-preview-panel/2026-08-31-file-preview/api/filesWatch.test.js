@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-preview-panel
 // EXPECTED-TRACE: prd.md §10.4 接口3 全部样例 / 接口5 全部样例, §10.3 流A 步骤4, §10.5 决策5（rename 归并）
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // seam：watch 生命周期 HTTP 端点 + 既有会话 SSE 推送（ADR-042 决策1）——
 //   POST   /api/agent/files/watch  {projectId, path} → {watchId}（同键幂等）

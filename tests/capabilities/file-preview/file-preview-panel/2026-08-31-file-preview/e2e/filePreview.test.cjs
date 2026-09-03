@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-preview-panel
 // EXPECTED-TRACE: prd.md §6.1 流A/流C, §6.2 围栏行, §6.3 块1 rows 1-2/块2 rows 1-2/块4, §8 E1-E4, ux/file-preview.html
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // 覆盖只能在真实窗口 + 真实 HTTP/SSE 通道下验证的面板流程：
 // 聊天路径点击打开（流A）、围栏不识别、渲染/源码切换、代码高亮、图片直渲、

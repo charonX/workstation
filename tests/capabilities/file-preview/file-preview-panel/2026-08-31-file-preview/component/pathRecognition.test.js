@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-preview-panel
 // EXPECTED-TRACE: prd.md §6.3 块2 rows 1-2, §6.2 围栏行/SVG行上文（仅行内 code 识别）, §10.5 决策3, ADR-042 决策4
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // seam：聊天路径识别与分发纯模块
 // src/renderer/components/assistant/filePathRecognition.js（先例：mdLinkDispatch.js

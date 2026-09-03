@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-tree
 // EXPECTED-TRACE: prd.md §6.1 流B 步骤2/4, §6.3 块3 rows 1-2, §10.4 接口1
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // seam：文件树 mini-store（先例：browserPanelStore.js）。契约落点
 // src/renderer/components/filetree/fileTreeStore.js，导出工厂：

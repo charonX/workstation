@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-preview-panel
 // EXPECTED-TRACE: prd.md §6.1 流A 步骤2/4、§6.3 块1 row1、§8 错误表全行、§10.3 流A 步骤4/流C、§10.4 接口3/5, ADR-042 决策2
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // seam：文件预览面板 mini-store（先例：browserPanelStore.js 的 useSyncExternalStore
 // 模式）。契约落点 src/renderer/components/preview/filePreviewStore.js，导出工厂：

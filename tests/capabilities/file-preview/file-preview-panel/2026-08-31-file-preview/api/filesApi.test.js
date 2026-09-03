@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-preview-panel
 // EXPECTED-TRACE: prd.md §6.3 块2 row2/块3 row1/块5, §7.1 rows 1-2, §8 E1-E6, §10.4 接口1/2 全部 golden values, ADR-042 决策3
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // seam：HTTP API（ADR-042 决策1，CLI/curl 可复验）——
 //   GET /api/agent/files/read?projectId&path   （prd.md §10.4 接口2）

@@ -4,7 +4,7 @@
 // ENTITY-TRACE: file-tree
 // EXPECTED-TRACE: prd.md §6.1 流B 全步骤, §6.2 非项目空间行, §6.3 块3 rows 1-2, ux/file-preview.html
 // TEST-AUTHOR: agent
-// ASSERTIONS-SIGNED: false
+// ASSERTIONS-SIGNED: true（2026-09-02 assertion signoff，见 signoff.md）
 //
 // 覆盖真实窗口下的文件树行为：入口显隐（E5 前置规避）、顶层条目与噪音过滤、
 // 懒加载展开、全部展开/收起、点击文件分发到文件预览面板、边栏收起。
