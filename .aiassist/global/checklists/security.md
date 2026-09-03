@@ -14,6 +14,8 @@
 - [ ] 代码中无 secrets（密码、api_key、token）
 - [ ] `.gitignore` 覆盖 `.env`、`.env.local`、`*.pem`、`*.key`
 - [ ] `.env.example` 使用占位值，非真实 secret
+- [ ] 外部服务凭据（API Keys / 令牌）落盘必须经系统钥匙串工具（`secretStore`）加密，存储配置文件强制 `0o600` 文件系统权限
+- [ ] 凭据读取端点必须严格脱敏，绝不输出明文或密文 Key（仅暴露 `configured: true`）
 
 ## 认证
 

@@ -5,6 +5,18 @@
 - 在项目演进过程中补充踩坑记录、最佳实践、性能调优等。
 - 保持简洁，优先记录可复用的结论，而非一次性细节。
 
+## 外部服务凭据多服务扩展、部分更新保全与 RSS/Atom 异构解析归一化（2026-09-03，2026-08-26-rsshub-integration）
+
+- **外部服务凭据采用开放字典扩展，严格支持部分更新（Patch）与只读脱敏**：
+  - 现象：若将凭据字段扁平硬编码在全局配置根节点（如 `rsshubBaseUrl` / `rsshubAccessKey`），未来扩展新三方服务（如 Github/OpenAI/自定义源）会导致 settings 结构无限膨胀；而在保存凭据时，若前端仅修改了 Base URL 未传 AccessKey，直接整对象覆盖会导致已有加密秘钥被意外抹除置空。
+  - 结论：凭据存储统一抽象为 `settings.credentials[serviceType]` 开放字典；保存时严格执行“未传敏感字段则保全既有密文”的部分更新语义；写入磁盘严格执行系统钥匙串加密与 `0o600` 文件权限控制；所有读取接口统一脱敏输出（仅输出 `configured: Boolean(...)`），绝不向客户端暴露明文或密文。
+- **异构社交路由自动映射与 Feed 抓取层透明鉴权注入**：
+  - 现象：用户手动拼装 RSSHub 复杂路由极易出错，且不同平台（X 用户名、B站 UID、公众号 ID）的标识格式与路由规范各异；同时，自建受保护 RSSHub 实例若要求 Bearer Token 访问，如果让各上层业务模块分别处理鉴权，会导致逻辑分散且易漏配。
+  - 结论：在内容源领域层（`contentSourceService`）抽象社交路由映射引擎，针对特定类型（如 B 站纯数字 UID）进行前置强校验并自动转换标准路由；在通用抓取层（`feedFetcherService`）根据路由解析出的 `isRsshub` 特征，自动透明注入全局配置的 `Authorization: Bearer <accessKey>`，调用方零感知。
+- **RSS 2.0 与 Atom 双格式解析时间归一化与容错**：
+  - 现象：不同社交资讯源导出的 XML 规范不一致（RSS 2.0 使用 `<pubDate>`，RFC 822 格式；Atom 使用 `<updated>`，ISO 8601 格式），直接透传会导致前端排序错乱与时间解析异常。
+  - 结论：统一在解析层归一化为标准的 `{ title, link, pubDate (ISO 8601), content, author }` 模型；对非合法 XML 或空内容返回结构化错误（400 `E-FEED-PARSE-FAILED`），保障数据管道下游消费的确定性。
+
 ## 内置浏览器面板与受控浏览：WebContentsView 原生渲染管理、通道化安全边界与机器级服务发现（2026-09-03，2026-08-24-embedded-browser）
 
 - **WebContentsView 布局真相持于渲染进程，收起时必须真实 detach 原生视图**：

@@ -5,12 +5,13 @@ story_id: 2026-08-26-rsshub-integration
 intention: >-
   用户希望在工作台中便捷接入各类社交媒体与资讯动态（如 X、公众号、B站等），但目前手动寻找与拼装 RSSHub 路由繁琐，且缺乏对外部服务地址及访问凭据（AccessKey）的可扩展受保护配置与自动路由转换支持。
 
-phase: QA         # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT     # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1
 created: 2026-08-26
-status: active    # active / completed
-completed_at: ""
+status: completed # active / completed
+completed: true
+completed_at: "2026-09-03"
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -22,6 +23,7 @@ history:
   - {at: 2026-08-27, from: TEST, to: ASSERTION-SIGNOFF, note: "编写验收测试骨架与测试计划"}
   - {at: 2026-08-27, from: ASSERTION-SIGNOFF, to: BUILD, note: "断言签核完成，进入实现阶段"}
   - {at: 2026-08-27, from: BUILD, to: QA, note: "全量切片实现完毕，单元测试全绿 (1089/1089 pass)"}
+  - {at: 2026-09-03, from: QA, to: REFLECT, note: "验收通过，全局经验/能力地图/工程规范沉淀完成，story 原地归档完结"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

@@ -33,6 +33,7 @@
 | 浏览器面板 | Browser Panel | 会话区右侧可收起的内嵌浏览器视图（WebContentsView 主进程托管）：同一浏览器实例承载人的交互浏览与 agent 的浏览器工具面；**可见性解耦**——收起 ≠ 关闭，实例生命周期独立于面板可见性（agent 工具照常可用） | browserViewManager（main）+ BrowserPanel（renderer）+ `/api/browser/*` | 预览面板（裸词，2026-09-02 起归「文件预览面板」全名使用）、webview（实现选型词，禁用于领域语言） |
 | 文件预览面板 | File Preview Panel | 会话区右侧可收起的项目内文件**只读**预览视图（React 渲染层，非 WebContentsView——协议白名单不推翻）：Markdown 渲染/源码切换（复用聊天 MarkdownRenderer 管线）、代码高亮、图片直渲；与浏览器面板共享右侧面板容器心智，但内容通道独立（主进程受控读取）；文件外部变更自动刷新（主进程监听） | `src/renderer/components/preview/FilePreviewPanel.jsx` + `filePreviewStore.js` + `format.js` + `/api/agent/files/*` | 预览面板（裸词禁用，与浏览器面板消歧）、文件预览器 |
 | 文件树 | File Tree | 会话区左侧可收起边栏：绑定当前会话项目空间的解析根，懒加载目录树，噪音目录默认隐藏，支持全部展开/收起；点击文件 → 文件预览面板打开；非项目空间无解析根 → 不显示入口 | `src/renderer/components/preview/FileTree.jsx` + `fileTreeStore.js` | 资源管理器、文件浏览器 |
+| 服务凭据 | Service Credentials | 外部服务（如 RSSHub）访问配置的持久化实体：存储服务 Base URL 与加密 AccessKey，支持受控测试连接与只读脱敏读取 | settings.json 的 credentials 字典 + `src/services/credentialsService.js` | 凭据管理、三方服务配置 |
 
 ## 业务概念
 
@@ -93,6 +94,7 @@
 | 解析根 | Preview Root | 文件预览与聊天图片解析共用的根目录真源：当前会话项目空间 → 项目 ID → registry 解析的项目工作目录；相对路径按它解析、绝对路径必须落在它之内（realpath 双检）；非项目空间（通用/飞书/孤儿）无解析根 | 对话空间, Project | 文件预览 / Markdown 图片解析（REQ-AGENT-051 起在用，2026-09-02 补登记） |
 | 噪音目录 | Noise Directories | 文件树默认隐藏的硬编码目录清单（`.git`/`node_modules`/`dist` 等）；第一版不解析 .gitignore | 文件树 | 文件树过滤 |
 | 机器级 Server 注册表 | Machine-level Server Registry | 跨会话与跨进程服务发现通道：固定锚定在机器级路径（`~/.opc-workstation/server.json`，与会话/项目配置目录解耦），桌面主 App 固定以 `owner="app"` 注册，供外部 CLI / Agent 无缝发现运行中的主服务；测试环境通过 `OPC_SERVER_REGISTRY_FILE` 环境变量覆盖提供隔离 | `src/serverRegistry.js` + `src/cli/server.js` | 外部 CLI 与桌面 App 服务发现（ADR-040，REQ-BROWSER-007） |
+| 社交路由自动映射 | Social Route Mapping | 工作台内容源根据社交账号标识（如 X 用户名、B站 UID）自动生成对应 RSSHub 标准路由路径与鉴权标志的转换机制 | 内容源 | 社交动态接入 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -143,6 +145,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-09-03 | 新增实体「服务凭据」；新增概念「社交路由自动映射」 | 2026-08-26-rsshub-integration /reflect |
 | 2026-09-03 | 新增概念「机器级 Server 注册表」（ADR-040，REQ-BROWSER-007 服务发现通道） | 2026-08-24-embedded-browser /reflect |
 | 2026-09-02 | 新增实体「文件预览面板」「文件树」；新增概念「解析根」（REQ-AGENT-051 补登记）「噪音目录」；「预览面板」裸词双向禁用（浏览器面板禁用别名修订注释） | 2026-08-31-file-preview /domain-model |
 | 2026-08-30 | 「人机共驾」修订（断控制后任何 browser 工具 DENIED；解除仅限地址栏/chrome 手势 IPC 导航，页内点击不解除）；「读取类动作」枚举补 auth-check；新增「统一身份池」「人机协同登录引导」「本地采集引擎」 | 2026-08-24-embedded-browser review 修订 |

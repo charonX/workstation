@@ -14,7 +14,7 @@
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | settings | `tests/capabilities/workspace-management/settings/codex-harness-desktop/api/` | REQ-WORKSPACE-001, REQ-WORKSPACE-002, REQ-WORKSPACE-007, REQ-I18N-002 | `settings.test.js`, `bootstrapEnv.test.js`, `settingsServiceLazy.test.js`, `themeLanguage.spec.js` (E2E) |
-| credentials | `tests/capabilities/workspace-management/credentials/2026-08-26-rsshub-integration/api/` | REQ-CRED-001~002 | `credentials.test.js` |
+| credentials | `tests/capabilities/workspace-management/credentials/2026-08-26-rsshub-integration/api/` | REQ-CRED-001~002（2026-09-03 验收） | `credentials.test.js`（7，凭据加密存储/脱敏读取/连通测试/鉴权拦截） |
 | project | `tests/capabilities/workspace-management/project/codex-harness-desktop/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/api/`, `tests/capabilities/workspace-management/project/2026-07-29-multi-agent-skills/e2e/` | REQ-WORKSPACE-003~006, REQ-WORKSPACE-011~013 | `project.test.js`, `onboarding.spec.js` (E2E), `projectAgents.test.js`, `agentTypes.test.cjs` (E2E) |
 | server | `tests/capabilities/workspace-management/server/2026-07-19-media-production-line/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-db-per-path-cache/api/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-service-container/`, `tests/capabilities/workspace-management/server/2026-08-16-deepen-shallow-residue-sweep/api/` | REQ-WORKSPACE-008~010, REQ-WORKSPACE-014~016, REQ-WORKSPACE-017~019, REQ-WORKSPACE-020 | `server.test.js`, `dbPerPathCache.test.js`, `notificationDbPattern.test.js`（BUG-001 回归）, `serviceContainer.test.js`, `serverAssembly.test.js`, `responders.test.js` |
 
@@ -58,8 +58,8 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| content-source | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/`, `.../cli/`, `.../e2e/`, `tests/capabilities/collection-pipeline/content-source/2026-08-26-rsshub-integration/api/` | REQ-SRC-001~006 | `contentSources.test.js` (api), `contentSources.test.js` (cli), `sourcesPage.test.cjs`, `rsshubRouting.test.js`, `feedFetcher.test.js` |
-| collection | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-COLL-001~002 | `dailyDigest.test.js`, `linkCapture.test.js` |
+| content-source | `tests/capabilities/collection-pipeline/content-source/2026-07-19-media-production-line/api/`, `.../cli/`, `.../e2e/`, `tests/capabilities/collection-pipeline/content-source/2026-08-26-rsshub-integration/api/` | REQ-SRC-001~006（2026-09-03 验收） | `contentSources.test.js` (api 10), `contentSources.test.js` (cli 5), `sourcesPage.test.cjs`, `rsshubRouting.test.js` (api 5), `feedFetcher.test.js` (api 4) |
+| collection | `tests/capabilities/collection-pipeline/collection/2026-07-19-media-production-line/api/`, `.../e2e/` | REQ-COLL-001~002 | `dailyDigest.test.js` (2), `linkCapture.test.js` (2) |
 
 ### information-aggregation
 > Dashboard 展示关键指标与最近活动；应用内通知中心。
@@ -160,12 +160,12 @@ file-preview ──> agent-dialogue、workspace-management（项目空间解析�
 
 | 能力 | 实体数 | 测试数 | 最后更新 |
 |------|--------|--------|----------|
-| workspace-management | 3 | 77 | 2026-08-19 |
+| workspace-management | 4 | 84（77 既有 + 7 credentials） | 2026-09-03 |
 | flow-orchestration | 3 | ~91 | 2026-08-19 |
 | scheduling-execution | 3 | ~24 | 2026-08-19 |
 | skill-management | 3 | 122 | 2026-08-01 |
 | channel-integration | 1 | 0 | 2026-07-19 |
-| collection-pipeline | 3 | 0 | 2026-07-19 |
+| collection-pipeline | 2 | 28（content-source 24 + collection 4） | 2026-09-03 |
 | information-aggregation | 2 | 7 | 2026-07-19 |
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
