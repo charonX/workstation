@@ -106,6 +106,15 @@ export function createPreviewImageBlobs() {
     current = null;
   }
 
+  // 无条件释放当前条目（store close/切换/互斥收起三路径经 revokeBlob 统一调用，
+  // 可选增强 seam）：首开 fetch 未就绪即关闭时 store 无 blobUrl 句柄（revoke 无从
+  // 命中），当前条目仅靠本方法回收——关闭即回收，REQ-004 AC3。无条目时 no-op。
+  function disposeCurrent() {
+    if (!current) return;
+    dispose(current);
+    current = null;
+  }
+
   // 面板图片视图订阅：就绪即回调（含立即回放在就绪 URL）；返回退订函数。
   function subscribe(projectId, path, fn) {
     if (!current || current.key !== keyOf(projectId, path)) return () => {};
@@ -125,5 +134,5 @@ export function createPreviewImageBlobs() {
     return current && current.key === keyOf(projectId, path) ? current.url : null;
   }
 
-  return { create, revoke, subscribe, peek };
+  return { create, revoke, disposeCurrent, subscribe, peek };
 }

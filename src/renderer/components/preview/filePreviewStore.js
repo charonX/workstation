@@ -81,13 +81,23 @@ export function createFilePreviewStore(deps) {
   }
 
   function revokeBlob() {
-    if (!blobUrl) return;
     const url = blobUrl;
     blobUrl = null;
+    if (url) {
+      try {
+        imageBlobs.revoke(url);
+      } catch {
+        // revoke 失败不影响面板状态
+      }
+    }
+    // 首开 fetch 未就绪即关闭/切换：store 无 blobUrl 句柄（revoke 无从命中），
+    // 桥内当前条目仍存在——委托桥自清理（可选增强 seam；无该方法时安全 no-op，
+    // 泄漏仍由下一次 create 换 key 捎带 dispose 兜底，有界）。
+    // refresh 走 swapBlobUrl 不经本函数，不会误 dispose 在用 entry。
     try {
-      imageBlobs.revoke(url);
+      imageBlobs.disposeCurrent?.();
     } catch {
-      // revoke 失败不影响面板状态
+      // 桥异常不影响面板状态
     }
   }
 
