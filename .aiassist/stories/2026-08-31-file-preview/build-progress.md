@@ -165,6 +165,9 @@ Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现�
 
 - Slice 3: complete (3c7ca21, tests green E2E 14/14 + unit 1193/1193 + 回归 conversation-space 与 HEAD 持平 73/2 pre-existing + browserPanel/assistantSessions 26/26；锁定测试冲突（默认展开 vs 收起两族互斥）经 SessionList 收起钉住当前会话语义化解，见已知偏差首条)
 - Slice 3: PRD alignment: MISALIGNMENT_FOUND(G1 blob 桥生产 revoke 失效 / G2 孤儿会话入口 / G3 树随会话切换 / G4 偏差登记卫生) → G3 用户裁决「切换即收起」→ fix 0b047dd（G1 桥内 handed 句柄归属、G2 spaceOf gating、G3 cleanup 树收起；2 文件 +25/-4，tests 零触碰）→ 父代理复验 1193/1193 + 14/14 → G4 四项观感偏差补登已知偏差表
+- Slice 3: alignment re-check: G1 残余面（首开即关泄漏）+ N1（树 open 不清跨会话缓存）→ fix 68dbf27（桥 disposeCurrent 可选 seam）+ 1e52174（open 全清；3 文件，tests 零触碰）→ 父代理复验 1193/1193 + 14/14 → re-check ALIGNED（全部缺口逐条取证闭合，无新发现）
+- Slice 3: refactor pass done (0b7703d, tests green 1193/1193 + 14/14, no rollback; kindLabelOf/notify/keyActivate 三 helper 提取；留 /review：emit 模式四份跨模块拷贝、FileTree 噪音目录文案与服务端清单双真源)
+- Slice 3: complete (3c7ca21 + 0b047dd + 68dbf27 + 1e52174, tests green, PRD alignment re-check ALIGNED)
 
 - Slice 2: complete (4482627 + 5e90707, tests green 28/28 + 1193/1193, PRD alignment: MISALIGNMENT_FOUND(3 gaps) → fix → re-check ALIGNED)
 - Slice 2: refactor pass done (5ecf003, tests green 28/28 + 1193/1193, no rollback; 提取 requestRead/setErrorState/swapBlobUrl/setContentState 四 helper，公共契约零变化)
