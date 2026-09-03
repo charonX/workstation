@@ -37,6 +37,9 @@ import { ensureCatalog } from "../modelCatalog.js";
 import SessionList from "../components/assistant/SessionList.jsx";
 import ChatView from "../components/assistant/ChatView.jsx";
 import BrowserPanel from "../components/browser/BrowserPanel.jsx";
+import FilePreviewPanel from "../components/preview/FilePreviewPanel.jsx";
+import FileTree from "../components/filetree/FileTree.jsx";
+import { filePreviewStore } from "../components/preview/filePreviewBus.js";
 import "../components/assistant/assistant.css";
 
 const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
@@ -501,6 +504,10 @@ export default function Assistant() {
             sessionKey: ev.sessionKey || rec.sessionKey || selectedKey,
           });
         }
+      } else if (ev.type === "file-preview-changed") {
+        // 文件预览变更推送（REQ-PREVIEW-009 / ADR-042 决策 1：复用既有会话 SSE
+        // 连接）——帧原样转发预览面板 store 消费（不匹配当前打开文件 → store 忽略）。
+        filePreviewStore.handleSseEvent(ev);
       }
     };
 
@@ -537,6 +544,9 @@ export default function Assistant() {
         // 就绪标记只由「本连接的 onOpen 对齐」置位：断线重连后先全量对齐再续流
         // （F2），发送等待它——effect 首渲染对齐（连接可能尚未建立/已断）不置位。
         if (!disposed) align().then((ok) => { if (ok) alignedRef.current = true; });
+        // 文件预览断线重连兜底（REQ-PREVIEW-009 AC5：SSE 只推增量不做回溯，
+        // 重连后主动 re-read 当前文件一次；面板未打开时 store 内为安全 no-op）。
+        void filePreviewStore.refresh();
       },
       onEvent: (ev) => {
         if (!disposed) handleEvent(ev);
@@ -548,6 +558,9 @@ export default function Assistant() {
     return () => {
       disposed = true;
       unsubscribe();
+      // 会话切换/页面卸载 → 文件预览面板收起并注销 watch（§10.3 流A 步骤4
+      // 「切换会话 → DELETE 注销」，句柄不泄漏；面板未打开时为安全 no-op）。
+      void filePreviewStore.close();
     };
   }, [selectedKey, setStreamingBoth]);
 
@@ -794,6 +807,10 @@ export default function Assistant() {
         onAddProject={handleAddProject}
         onOpenAdmin={handleOpenAdmin}
       />
+      {/* 文件树边栏（REQ-PREVIEW-007）：会话列表与对话窗之间的左侧栏，
+          开合状态经 filePreviewBus 模块级总线共享（ChatView 头部「🗂 文件」
+          按钮驱动）；收起 = 不渲染 */}
+      <FileTree />
       <ChatView
         chatTitle={chatTitle}
         spaceBadge={space.badge}
@@ -836,6 +853,9 @@ export default function Assistant() {
           默认收起；开合状态经 browserPanelStore 模块级总线共享（ChatView 头部
           按钮 / MarkdownRenderer 链接 / agent panel-request-open 事件驱动） */}
       <BrowserPanel />
+      {/* 文件预览面板（REQ-PREVIEW-001）：会话区右栏槽位，与浏览器面板互斥
+          （ADR-042 决策 2，互斥接线在 filePreviewBus 模块级）；收起 = 不渲染 */}
+      <FilePreviewPanel />
     </div>
   );
 }

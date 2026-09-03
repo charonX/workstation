@@ -322,8 +322,10 @@ function MermaidBlock({ code }) {
  * - 无标记/语言未注册 → highlightAuto（子集限定）；
  * - 无匹配 / 未知语言 / 任何异常 → plaintext，不抛错（E4 / REQ-AGENT-048 标准 3）。
  * ignoreIllegals：LLM 输出常见非法语法（代码与文混排/残缺片段），不因 illegal token 抛错。
+ * （story 2026-08-31-file-preview Slice 3：additive 导出——文件预览面板代码视图
+ * 复用同函数同语言集，REQ-PREVIEW-003 AC2。）
  */
-function highlightCode(code, language) {
+export function highlightCode(code, language) {
   try {
     if (language && hljs.getLanguage(language)) {
       return {
@@ -496,6 +498,14 @@ function MdImage({ src, alt, "data-bare-path": bare, ..._rest }) {
 // 分发判定提取自纯模块 ./mdLinkDispatch.js（AC2/AC3 组件测试 seam：mock 桥断言调用）。
 import { dispatchLink, resolveLinkAction } from "./mdLinkDispatch.js";
 
+// —— 本地文件路径点击入口（REQ-PREVIEW-006，story 2026-08-31-file-preview；
+// ADR-042 决策 4：仅行内 code 参与识别，围栏内不识别）——
+// 识别/分发为纯函数 seam（./filePathRecognition.js，先例 mdLinkDispatch）；点击经
+// filePreviewBus 桥打开文件预览面板（相对路径原样透传，主进程按解析根解析）；
+// 渲染期不做存在性预校验（REQ-006 AC5：不存在路径由面板 E2 页兜底）。
+import { isPreviewableFilePath, dispatchFilePathClick } from "./filePathRecognition.js";
+import { openFilePreviewPath, notifyNoProjectRoot } from "../preview/filePreviewBus.js";
+
 function MdLink({ node: _node, href, children, ...props }) {
   const { t } = useTranslation();
   const [menu, setMenu] = useState(null); // { x, y } | null（关联菜单锚点）
@@ -615,7 +625,38 @@ function MdCode({ node: _node, className, children, ...props }) {
   }
 
   const inPre = useContext(InPreContext);
+  // 图片解析根（ProjectDirContext，行 350 声明）复用为预览解析根：项目空间会话 =
+  // 项目 ID（REQ-006 AC4 分发输入）；通用/飞书/孤儿空间 = null/undefined → E5 提示。
+  const previewProjectId = useContext(ProjectDirContext);
   if (!inPre) {
+    // REQ-PREVIEW-006 AC1/AC3：行内 code 路径形态 → 可点击文件预览入口
+    // （围栏内 = inPre 分支，不识别）；行内 code 原视觉保留，仅加可点 affordance。
+    if (isPreviewableFilePath(text)) {
+      const openPreview = () =>
+        dispatchFilePathClick(text, {
+          projectId: previewProjectId,
+          openWithPath: openFilePreviewPath,
+          notifyNoRoot: notifyNoProjectRoot,
+        });
+      return (
+        <code
+          {...props}
+          className={`${className ?? ""} md-file-path`.trim()}
+          data-file-path={text}
+          role="button"
+          tabIndex={0}
+          onClick={openPreview}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openPreview();
+            }
+          }}
+        >
+          {children}
+        </code>
+      );
+    }
     return (
       <code className={className} {...props}>
         {children}

@@ -59,6 +59,13 @@ export default function SessionList({
           {projects.length === 0 && <div className="nav-empty">没有项目会话</div>}
           {projects.map((p) => {
             const isOpen = expanded.has(p.projectId);
+            // 收起钉住当前会话（REQ-AGENT-029 AC6：默认展开/收起不锁定，实现自由）：
+            // 分组收起且含选中会话时，选中项渲染在隐藏容器之外（组内其余条目仍在
+            // 容器内随 hidden 隐藏），保证「当前会话始终可见可点」（file-preview
+            // E2E 锚点：reload 后 data-session-item 直接可点）；展开时全部回归容器，
+            // data-session-item 任一时刻恒唯一（钉住项从容器列表剔除）。
+            const pinned = !isOpen ? (p.sessions.find((s) => s.spaceKey === selectedKey) ?? null) : null;
+            const listed = pinned ? p.sessions.filter((s) => s.spaceKey !== pinned.spaceKey) : p.sessions;
             return (
               <div key={p.projectId}>
                 <div
@@ -94,9 +101,12 @@ export default function SessionList({
                     </span>
                   )}
                 </div>
+                {pinned && (
+                  <SessionItem key={pinned.spaceKey} session={pinned} active onSelect={onSelectSession} />
+                )}
                 <div data-project-sessions={p.projectId} hidden={!isOpen}>
                   {p.sessions.length === 0 && <div className="nav-empty">没有聊天</div>}
-                  {p.sessions.map((s) => (
+                  {listed.map((s) => (
                     <SessionItem key={s.spaceKey} session={s} active={s.spaceKey === selectedKey} onSelect={onSelectSession} />
                   ))}
                 </div>

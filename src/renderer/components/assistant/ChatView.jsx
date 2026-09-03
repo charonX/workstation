@@ -14,6 +14,7 @@ import StatusBar from "./StatusBar.jsx";
 import ModeToolbar from "./ModeToolbar.jsx";
 import TrajectoryView from "../trajectory/TrajectoryView.jsx";
 import { toggleBrowserPanel, useBrowserPanelOpen } from "../browser/browserPanelStore.js";
+import { toggleFileTree, useFileTreeOpen } from "../preview/filePreviewBus.js";
 
 export default function ChatView({
   chatTitle,
@@ -58,6 +59,10 @@ export default function ChatView({
   // 开合状态走 browserPanelStore 模块级总线（与 BrowserPanel/MarkdownRenderer 共享）。
   const { t } = useTranslation();
   const browserOpen = useBrowserPanelOpen();
+  // 「🗂 文件」文件树入口（REQ-PREVIEW-007）：仅项目空间会话渲染（projectDir =
+  // 项目 ID；非项目空间 = undefined → 入口不渲染，REQ-007 AC5 / E5 前置规避）。
+  // 开合状态走 filePreviewBus 模块级总线（与 FileTree 组件共享）。
+  const fileTreeOpen = useFileTreeOpen();
 
   return (
     <main className="assistant-chat">
@@ -83,6 +88,16 @@ export default function ChatView({
             轨迹
           </button>
         </div>
+        {projectDir ? (
+          <button
+            type="button"
+            className={`browser-toggle${fileTreeOpen ? " active" : ""}`}
+            data-testid="open-file-tree"
+            onClick={() => toggleFileTree(projectDir)}
+          >
+            🗂 文件
+          </button>
+        ) : null}
         <button
           type="button"
           className={`browser-toggle${browserOpen ? " active" : ""}`}
