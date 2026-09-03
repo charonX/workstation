@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MarkdownRenderer, { highlightCode } from "../assistant/MarkdownRenderer.jsx";
 import { getProjectDetail } from "../../api/projects.js";
+import { kindLabelOf, formatSize } from "./format.js";
 import {
   filePreviewStore,
   previewImageBlobs,
@@ -56,23 +57,6 @@ const ERROR_META = {
   },
   "E-PREVIEW-READ-FAILED": { title: "读取失败", desc: "读取文件时出现错误。", retry: true },
 };
-
-const KIND_LABEL = { markdown: "Markdown", image: "图片" };
-
-// 头部类型标签（REQ-001 AC1）：markdown/image 用固定文案；code 用 hljs 语言键
-// （无语言 → plaintext 兜底）；其余 kind 原样透出。
-function kindLabelOf(state) {
-  if (!state.kind) return null;
-  if (state.kind === "code") return state.language ?? "plaintext";
-  return KIND_LABEL[state.kind] ?? state.kind;
-}
-
-function formatSize(size) {
-  const n = Number(size) || 0;
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${n} B`;
-}
 
 // 行号列（源码/代码视图共用，ux .pv-source .ln 语义）
 function LineNumbers({ content }) {

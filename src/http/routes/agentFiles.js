@@ -92,6 +92,9 @@ export function resolveAllowedImagePath(root, imagePath) {
 // 1MB 文本读取上限（含本数，prd.md §6.3 块 5：1,048,576 B 正常 / +1 B 拒读）。
 const MAX_PREVIEW_BYTES = 1024 * 1024;
 
+// 20MB 图片读取上限（防御超大图片资产引发 Node OOM 拒绝服务）。
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
 // 图片白名单（ADR-042 决策 3：对齐附件清单 IMAGE_MIME_TYPES，SVG 拒收——read 端点
 // 显式拒 svg，不继承上方 image 端点白名单）。
 const PREVIEW_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"]);
@@ -290,22 +293,30 @@ async function handleFileList(req, res) {
   }
 
   const dirs = [];
-  const files = [];
+  const fileCandidates = [];
   for (const dirent of dirents) {
     if (dirent.isDirectory()) {
       if (NOISE_DIRS.has(dirent.name)) continue; // 噪音目录隐藏
       dirs.push({ name: dirent.name, type: "dir" });
     } else if (dirent.isFile()) {
-      const entry = { name: dirent.name, type: "file" };
-      try {
-        entry.size = (await fs.promises.stat(path.join(abs, dirent.name))).size;
-      } catch {
-        // 竞态删除/不可读：size 字段契约可选（size?: number），省略不拒整表。
-      }
-      files.push(entry);
+      fileCandidates.push(dirent.name);
     }
     // symlink/其他类型：略过（不跟随，规避逃逸面）。
   }
+
+  // 并发获取文件大小（避免单目录大量文件时的串行 I/O 阻塞）。
+  const files = await Promise.all(
+    fileCandidates.map(async (name) => {
+      const entry = { name, type: "file" };
+      try {
+        entry.size = (await fs.promises.stat(path.join(abs, name))).size;
+      } catch {
+        // 竞态删除/不可读：size 字段契约可选（size?: number），省略不拒整表。
+      }
+      return entry;
+    })
+  );
+
   const byName = (a, b) => a.name.localeCompare(b.name);
   dirs.sort(byName);
   files.sort(byName);
@@ -371,6 +382,11 @@ export async function handleAgentFiles(req, res, subPath, body, context) {
   }
   let data;
   try {
+    const st = await fs.promises.stat(allowed.resolvedPath);
+    if (st.size > MAX_IMAGE_BYTES) {
+      res.writeHead(413, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "TOO_LARGE", message: "Image too large" }));
+    }
     data = await fs.promises.readFile(allowed.resolvedPath);
   } catch {
     // 不存在/读取失败：404（不区分错误细节，E3 占位由 renderer 侧呈现）。
