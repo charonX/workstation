@@ -63,7 +63,19 @@ export function createFileTreeStore(deps) {
   }
 
   async function open(projectId) {
-    set({ open: true, projectId, selected: null, allCollapsed: false });
+    // 树绑定当前会话项目空间（G3 决策「收起=丢状态」）：open 即全清目录缓存——
+    // 跨项目切换重开时，旧项目的 expanded/loadedDirs 会阻断重取并渲染陈旧条目名
+    // （entriesByDir 以 dir 为键不含 projectId）；同项目重开的代价是目录需重新
+    // 展开/重取，可接受。collapseAll/expandAll 路径不经 open，loadedDirs 缓存语义不变。
+    loadedDirs.clear();
+    set({
+      open: true,
+      projectId,
+      entriesByDir: {},
+      expanded: new Set(),
+      selected: null,
+      allCollapsed: false,
+    });
     await fetchDir(projectId, "");
   }
 
