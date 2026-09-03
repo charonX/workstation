@@ -6,10 +6,10 @@ intention: >-
   在 workstation 里查看项目内的 Markdown / 代码文件时，只能看到原始文本，
   没有渲染后的预览（Markdown 渲染、代码高亮），阅读和 review 体验差。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUILD            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: BUG            # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-31
 status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
 completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
@@ -25,6 +25,7 @@ history:
   - {at: 2026-09-02, from: CRYSTALLIZE, to: TEST, note: "结晶完成：REQ-PREVIEW-001~010（capability=file-preview，entity=file-preview-panel/file-tree），全部 EXPECTED-TRACE 到 §6.3/§8/§10.4；requirements-v1.hash 落盘；business-capabilities.md 登记 file-preview"}
   - {at: 2026-09-02, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架完成：6 文件 61 用例（component 3 文件 26 例：pathRecognition/filePreviewStore/fileTreeStore 纯 seam；api 2 文件 24 例：filesApi/filesWatch 真实 fs+HTTP+SSE；e2e 2 文件 11 例 Playwright Electron）；全部 EXPECTED-TRACE，无 HUMAN ASSERTION；component/api 已验证 RED 可执行（seam 未就绪/404 清晰失败）；test-plan.md 落盘"}
   - {at: 2026-09-02, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：AI 全量自检零升级点（expected 全量 trace 到 §6.3/§7/§10.4 锚点，安全边界已于 tech-design 人确认）；signoff.md 落盘；BUILD 解锁"}
+  - {at: 2026-09-03, from: BUILD, to: BUG, note: "BUG-001 修复：收紧 agent/files 端点 CORS 与 Host 本地回环守卫（防御跨源恶意读取与 DNS rebinding）"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

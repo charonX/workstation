@@ -21,7 +21,7 @@ import { handleContentSources } from "./routes/contentSources.js";
 import { handleChannel } from "./routes/channel.js";
 import { handleAgentConfirmations } from "./routes/agentConfirmations.js";
 import { handleBrowser } from "./routes/browser.js";
-import { denyBrowserApiIfUnsafe, applyDefaultCors } from "./browserApiGuard.js";
+import { isLoopbackOnlyApi, denyLoopbackApiIfUnsafe, applyLoopbackCors, applyDefaultCors } from "./browserApiGuard.js";
 import { handleAgentSessions, handleAgentLastMode } from "./routes/agentSessions.js";
 import { handleAgentFiles } from "./routes/agentFiles.js";
 
@@ -138,10 +138,10 @@ async function handleRequest(req, res, server) {
   const resource = pathParts[0];
   const subPath = pathParts.slice(1);
 
-  // /api/browser/*：Host/Origin/Sec-Fetch-Site 闸 + 不输出 ACAO（browserApiGuard.js）；
-  // 其余路由保持 ACAO:*（渲染进程 dev 期跨源依赖，不动全局 CORS）。
-  if (resource === "browser") {
-    if (denyBrowserApiIfUnsafe(req, res)) return;
+  // 受保护端点（browser 与 agent/files）：Host/Origin/Sec-Fetch-Site 闸 + 本地 CORS
+  if (isLoopbackOnlyApi(resource, subPath)) {
+    if (denyLoopbackApiIfUnsafe(req, res, `${resource} API is loopback-only`)) return;
+    applyLoopbackCors(req, res);
   } else {
     applyDefaultCors(res);
   }
