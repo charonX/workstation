@@ -39,7 +39,7 @@ import ChatView from "../components/assistant/ChatView.jsx";
 import BrowserPanel from "../components/browser/BrowserPanel.jsx";
 import FilePreviewPanel from "../components/preview/FilePreviewPanel.jsx";
 import FileTree from "../components/filetree/FileTree.jsx";
-import { filePreviewStore } from "../components/preview/filePreviewBus.js";
+import { filePreviewStore, fileTreeStore } from "../components/preview/filePreviewBus.js";
 import "../components/assistant/assistant.css";
 
 const PROJECT_PREFIX_RE = /^ui:project:([^:]+):/;
@@ -561,6 +561,8 @@ export default function Assistant() {
       // 会话切换/页面卸载 → 文件预览面板收起并注销 watch（§10.3 流A 步骤4
       // 「切换会话 → DELETE 注销」，句柄不泄漏；面板未打开时为安全 no-op）。
       void filePreviewStore.close();
+      // 同一切换清理：文件树一并收起（§10.3 步骤 4 清理精神；未打开时为安全 no-op）。
+      fileTreeStore.close();
     };
   }, [selectedKey, setStreamingBoth]);
 
@@ -787,7 +789,10 @@ export default function Assistant() {
   // projectId——主进程按 projects 表 registry 解析实际项目目录（renderer 不持有
   // 绝对路径，白名单判定在主进程）；通用/飞书/孤儿空间 → undefined（无解析根 →
   // Markdown 语法图片占位、裸路径回退原文）。
+  // gating 用 spaceOf 判定（会话 registry 为真源）：孤儿会话（项目已删但会话残留）
+  // spaceKey 同命中正则但项目已不存在，不给解析根/不渲染文件树入口（REQ-007 AC5）。
   const selectedProjectDir = (() => {
+    if (space.kind !== "project") return undefined;
     const m = PROJECT_PREFIX_RE.exec(selectedKey ?? "");
     return m ? m[1] : undefined;
   })();

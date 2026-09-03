@@ -10,6 +10,11 @@
 //   完成后换新 URL、revoke 旧 URL、通知订阅者）。
 // - revoke(url)：与 store 的 close/切换/refresh 换绑调用对称——命中当前条目
 //   即 URL.revokeObjectURL + 清缓存（不泄漏，REQ-004 AC3）。
+//   命中判定除 current.url 外还认「最近一次 create 同步返回给 store 的 URL」
+//   （entry.handed）：后台重取换新后 store 持有的仍是旧 URL，close 时按旧 URL
+//   revoke 也必须释放整个条目（revoke 其 current blob URL），否则新 URL 永不回收；
+//   反之 store 已经再次 create 采纳新 URL 后顺带 revoke 的旧 URL（handed 已更新）
+//   不命中——旧 URL 桥内已自行 revoke，此处安全 no-op，不误杀在用品目。
 // - subscribe/peek：面板图片视图（React 子组件）订阅就绪 URL 渲染 <img>
 //   （MdImage 的 effect 模式是参照）。
 //
@@ -23,7 +28,7 @@ function keyOf(projectId, path) {
 }
 
 export function createPreviewImageBlobs() {
-  let current = null; // { key, url, pending, listeners: Set }
+  let current = null; // { key, url, handed, pending, listeners: Set }
 
   function dispose(entry) {
     if (entry.url) {
@@ -31,6 +36,14 @@ export function createPreviewImageBlobs() {
         URL.revokeObjectURL(entry.url);
       } catch {
         // revoke 失败不影响后续流程
+      }
+    }
+    // 通知订阅者 URL 已失效（面板渲染空态，不留已 revoke 的 URL 在 <img> 上）
+    for (const fn of [...entry.listeners]) {
+      try {
+        fn(null);
+      } catch {
+        // 监听器异常不传染其余订阅者
       }
     }
     entry.listeners.clear();
@@ -72,20 +85,23 @@ export function createPreviewImageBlobs() {
     const key = keyOf(projectId, path);
     if (!current || current.key !== key) {
       if (current) dispose(current);
-      current = { key, url: null, pending: false, listeners: new Set() };
+      current = { key, url: null, handed: null, pending: false, listeners: new Set() };
       startFetch(current, projectId, path);
       return null;
     }
     if (current.url) {
       // 缓存命中（refresh 路径）：后台重取对齐最新字节，同步先返回当前 URL
       if (!current.pending) startFetch(current, projectId, path);
+      // handed = store 视角的当前句柄：close 时 store 按它 revoke，桥须认它释放条目
+      current.handed = current.url;
       return current.url;
     }
     return null; // 首次 fetch 进行中
   }
 
   function revoke(url) {
-    if (!url || !current || current.url !== url) return;
+    // 命中当前 URL 或 store 最近拿到的句柄（后台换新后的旧 URL）→ 释放整个条目
+    if (!url || !current || (current.url !== url && current.handed !== url)) return;
     dispose(current);
     current = null;
   }
