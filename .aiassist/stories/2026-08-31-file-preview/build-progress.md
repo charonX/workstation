@@ -57,6 +57,50 @@
 - 互斥桥调用：测试桩 `isOpen()` 闭包引用未绑定标识符必抛 ReferenceError；实现按「collapse 幂等」语义降级——isOpen 查询失败不阻断 collapse 调用（生产桥正常时仍受 isOpen 门控）。
 - modified 事件 toast 同步于事件消费发出（不等重读完成）：测试仅给两个微任务预算，而 request mock 的 async adoption 链 ≥3 微任务；重读结果随后对齐状态，失败走 error 态。
 
+### Slice 3：React UI 与接线（2026-09-03，commit 3c7ca21）
+
+**PRD → 代码 可追溯性表**（REQ-001~007/009 E2E 闭合行）
+
+| PRD 意图项 | 实现文件 | 测试文件 | 状态 |
+|---|---|---|---|
+| §6.1 流 A 步骤 1-2（行内 code 路径点击 → 面板滑出、头部显示路径、渲染视图） | `MarkdownRenderer.jsx` MdCode 接线（`isPreviewableFilePath` + `dispatchFilePathClick` → `openFilePreviewPath`，`data-file-path` 可点 code）+ `FilePreviewPanel.jsx` | `e2e/filePreview.test.cjs` 流 A | COVERED |
+| §6.2 围栏行 / ADR-042 决策 4（围栏内路径不识别：inline 恰 1 个 data-file-path，pre 内 0 个） | `MarkdownRenderer.jsx`（`InPreContext` 分支只在非 pre 时接线） | `filePreview.test.cjs` REQ-006 AC3 | COVERED |
+| §6.1 流 A 步骤 3 / §6.3 块 1（markdown 渲染视图含 `<h1>`；渲染/源码分段切换；源码视图字面量） | `FilePreviewPanel.jsx` pv-seg + `<MarkdownRenderer>` 复用 + SourceView | `filePreview.test.cjs` REQ-002 AC2 | COVERED |
+| §6.3 块 2 row1（代码视图 hljs 高亮类） | `FilePreviewPanel.jsx` CodeView + `MarkdownRenderer.jsx` 增量导出 `highlightCode` | `filePreview.test.cjs` 代码高亮用例 | COVERED |
+| §6.3 块 2 row2 / ADR-042 决策 3（图片直渲：`src` 匹配 `^blob:`） | `previewImageBlobs.js`（同步 create 起抓 + 订阅就绪 URL + revoke 防泄漏）+ `FilePreviewPanel.jsx` ImageView | `filePreview.test.cjs` 图片用例 | COVERED |
+| §8 错误表 E1–E6 文案原样（E1「仅支持预览项目内文件」/ E2「文件不存在」/ E3「文件过大」+「在系统默认应用打开」/ E4「不支持预览该类型」/ E5「当前会话无项目空间」/ E6「读取失败」+重试） | `FilePreviewPanel.jsx` ERROR_META + ErrorView（preview-error/-code/-open-external/-retry）+ `filePreviewBus.js` `notifyNoProjectRoot`（E5 toast） | `filePreview.test.cjs` E1/E2/E3 用例（E4-E6 错误页组件同码路径） | COVERED |
+| §6.1 流 C / REQ-009（SSE modified → 重读 + toast「文件已被外部修改，已自动刷新」；deleted → E2） | `Assistant.jsx` `handleEvent` 转发 `file-preview-changed` → `filePreviewStore.handleSseEvent`；toast 宿主在面板外常驻 | `filePreview.test.cjs` 流 C 两用例 | COVERED |
+| REQ-009 AC5（SSE 断线重连 → 主动 re-read 兜底） | `Assistant.jsx` SSE `onOpen` → `filePreviewStore.refresh()` | （组件测试覆盖 store 语义；E2E 无重连用例，签核未锁） | COVERED（接线就位） |
+| §10.3 流 A 步骤 4（会话切换 → 面板收起 + DELETE 注销 watch） | `Assistant.jsx` SSE effect cleanup → `filePreviewStore.close()` | `filePreview.test.cjs` preview-close 用例（关闭路径同码） | COVERED |
+| ADR-042 决策 2（与浏览器面板右槽互斥，实例保活） | `filePreviewBus.js` browserSlot 桥 + `subscribeBrowserPanel` 反向互斥 | `filePreview.test.cjs` 槽位互斥用例 | COVERED |
+| §6.1 流 B / REQ-007（文件树入口、懒加载展开、噪音过滤提示、全部收起/展开、选中高亮、点文件开预览） | `ChatView.jsx` 「🗂 文件」入口（仅项目空间）+ `FileTree.jsx` + `filePreviewBus.js` `toggleFileTree` | `e2e/fileTree.test.cjs` 4 用例 | COVERED |
+| REQ-007 AC5（非项目空间入口不出现） | `ChatView.jsx` `projectDir ?` 条件渲染 | `fileTree.test.cjs` 通用空间用例 | COVERED |
+| UX 结构对齐（ux/file-preview.html）：data-testid 全契约（open-file-tree / file-tree / tree-toggle-all / tree-entry-* / file-preview-panel / preview-* / preview-toast） | `FileTree.jsx` / `FilePreviewPanel.jsx` / `ChatView.jsx` | 两套 E2E 全量 | COVERED |
+
+**验证**（最终门禁，全部真实通过）：
+
+```
+npm run test:unit
+# → pass 1193 / fail 0（1193/1193）
+npm run rebuild:electron && npx playwright test \
+  tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/e2e/filePreview.test.cjs \
+  tests/capabilities/file-preview/file-tree/2026-08-31-file-preview/e2e/fileTree.test.cjs
+# → 14 passed（10 + 4）
+# 回归面：
+npx playwright test tests/capabilities/agent-dialogue/conversation-space
+# → 73 passed / 2 failed —— 与干净 HEAD 完全一致（assistantConfirm REQ-AGENT-030 AC3、
+#   assistantFeishu REQ-AGENT-033 AC6 为 pre-existing 失败，HEAD 上同因同现）
+npx playwright test .../browserPanel.test.cjs .../assistantSessions.test.cjs
+# → 26 passed
+```
+
+**已知偏差**（不改测试契约；REFLECT 候选项）：
+- **SessionList 收起分组钉住当前选中会话**（本切片新增 UX 语义，非原型所有）：收起状态下选中项渲染在 `data-project-sessions` 隐藏容器之外，保证「当前会话始终可见可点」。根因：本故事锁定 E2E 锚定 reload 后 `data-session-item` 零点击直接可点（要求分组默认展开），而已有 17 个锁定 E2E（richRender/confirmChain*/statusBar/userBubbleLink/assistantFeishu 孤儿）锚定点项目行一次后容器可见（要求默认收起）——同一结构状态下两族锁定测试互斥。REQ-AGENT-029 AC6 注记「默认展开/收起不锁定（实现自由）」放行默认收起 + 钉住语义；容器 hidden 与 aria-expanded 往返契约（assistantSessions AC6）保持不变。钉住项从容器列表剔除，`data-session-item` 任一时刻恒唯一。REFLECT 需人工确认该观感。
+- **toast 宿主位置**：`preview-toast` 以 `position: fixed` 顶部居中渲染（原型为面板视口内 absolute）——面板关闭/未开时 toast（E5 无根提示）仍需可达，故挂面板外。
+- **`.assistant-chat` z-index 分层**（preview.css）：树（240px）+ 预览面板（800px）同开时 1280×800 窗口下对话窗压至 ~20px，头部按钮溢出到面板下方不可点；仅提升对话窗层级（z-index 2 > 面板 1），不改布局。
+- **MarkdownRenderer 增量导出 `highlightCode`**：面板代码视图复用聊天同一 hljs 管线（语言集对齐 §10.4 接口 2 契约），导出为纯增量，既有渲染路径零变化。
+- **环境注记**（非代码偏差）：`test:unit` 内含 `rebuild:node`（node ABI）、`test:e2e` 内含 `rebuild:electron`（electron ABI），两者互覆 `better-sqlite3/build/Release`；并行跑会让 E2E 应用侧 DB 全部 E-DB-UNWRITABLE。验证门必须串行（本次即按序执行）。
+
 ### Slice 1：服务端 files read/list/watch + SSE 推送（2026-09-02，commit 见下文进度）
 
 **PRD → 代码 可追溯性表**
@@ -114,6 +158,8 @@ Slice 2 PRD 对齐复检（ALIGNED）附带登记，均非为绿硬凑（实现�
 处置建议：不阻断 BUILD；如需补断言走 `/bug` test-gap 或 REFLECT 阶段评估（补断言触及已签核测试文件，需重签）。
 
 ## 进度日志（切片收口）
+
+- Slice 3: complete (3c7ca21, tests green E2E 14/14 + unit 1193/1193 + 回归 conversation-space 与 HEAD 持平 73/2 pre-existing + browserPanel/assistantSessions 26/26；锁定测试冲突（默认展开 vs 收起两族互斥）经 SessionList 收起钉住当前会话语义化解，见已知偏差首条)
 
 - Slice 2: complete (4482627 + 5e90707, tests green 28/28 + 1193/1193, PRD alignment: MISALIGNMENT_FOUND(3 gaps) → fix → re-check ALIGNED)
 - Slice 2: refactor pass done (5ecf003, tests green 28/28 + 1193/1193, no rollback; 提取 requestRead/setErrorState/swapBlobUrl/setContentState 四 helper，公共契约零变化)
