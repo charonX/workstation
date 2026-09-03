@@ -5,6 +5,24 @@
 - 在项目演进过程中补充踩坑记录、最佳实践、性能调优等。
 - 保持简洁，优先记录可复用的结论，而非一次性细节。
 
+## 内置浏览器面板与受控浏览：WebContentsView 原生渲染管理、通道化安全边界与机器级服务发现（2026-09-03，2026-08-24-embedded-browser）
+
+- **WebContentsView 布局真相持于渲染进程，收起时必须真实 detach 原生视图**：
+  - 现象：若仅把 WebContentsView bounds 设为 0×0 或负坐标隐藏，在 macOS 下 Chromium 原生渲染树依然会捕获并遮挡主 UI 鼠标与点击事件，且收起态截图时重挂会导致坐标错位。而在原生视图尚未完成创建时若用户提前展开面板，首帧 bounds 丢失会导致后续首次导航出现 0×0 白屏。
+  - 结论：渲染进程持有面板几何布局与展开状态真相；未创建视图前先在内存缓存 bounds；收起面板时必须执行 `contentView.removeChildView`（detach）彻底从窗体渲染树摘除；展开时再重新挂载（attach）并按缓存恢复 bounds。
+- **敏感控制面与凭据导出的通道化鉴权与 Loopback 守卫**：
+  - 现象：不能仅依赖请求体自声明的参数（如 `{source: "user"}`）来决定权限，外部进程或跨域网页可通过伪造 payload 绕过「一键停止控制」；全局 CORS `*` 加上缺乏 Host 校验，会导致导出明文 Cookie 的接口暴露给任意外网站点。
+  - 结论：操作来源必须由传输通道决定（HTTP 入站一律标记为 agent，IPC 入站才为 user）；所有本地敏感接口（`browser`、`files`）必须配置 `browserApiGuard` 强校验 Host 为 127.0.0.1/localhost，非同源跨站请求直接拒收，严禁向外网站点反射 ACAO。
+- **跨进程服务发现与机器级注册表解耦（BUG-001，ADR-0040）**：
+  - 现象：当 CLI 或外部子进程使用自定义 `configDir` 启动时，如果注册表路径默认拼在 `configDir` 下，就会导致桌面 App 与 CLI 服务注册表分裂；且 main.js 若用 E2E fixture 格式覆盖注册记录会丢弃 `owner` 与 `pid`，造成外部 agent 调用时报 `E-BROWSER-NOT-READY`。
+  - 结论：服务注册表必须解耦于任何特定 profile/configDir，锚定在机器级全局固定路径（`~/.opc-workstation/server.json`）；桌面主应用统一以 `owner="app"` 注册；`discoverServer` 优先识别 `owner="app"`；测试环境通过专用环境变量（`OPC_SERVER_REGISTRY_FILE`）注入 tmp 隔离。
+- **DOM 快照与交互元素截断判定规则**：
+  - 现象：当限制返回最多 50 个可交互元素时，如果注入脚本直接采集 50 个元素，宿主无法判断实际是否有第 51 个元素，导致 `truncated: true` 永远无法正确判定。
+  - 结论：注入脚本必须探测 `LIMIT + 1` 个元素；宿主端判断 `elements.length > LIMIT` 时切片前 50 个并置 `truncated = true`，名实相符。
+- **截图跨会话全局序号持久化**：
+  - 现象：截图序号如果只保存在主进程内存变量中自增，每次应用重启后都会重置为 `browser-1.png`，导致覆盖前序会话留存的重要审计与调试证据。
+  - 结论：初始化时扫描截图存储目录（`<configDir>/browser-shots/`），提取文件名中最大的数字序号 $N$，以 $N+1$ 接着递增，确保不同会话生成的文件不碰撞、不覆盖。
+
 ## 本地回环端点安全守卫、单文件精确 Watch 与展示格式化解耦（2026-09-03，2026-08-31-file-preview）
 
 - **本地敏感数据与工程文件端点必须严格实施 Loopback 守卫，严禁盲目全局 CORS `*`（BUG-001）**：

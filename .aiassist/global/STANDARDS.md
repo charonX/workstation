@@ -61,6 +61,18 @@
 - **动态反射与无 Origin 保守策略**：仅向经过校验的本地回环 Origin（如 Vite dev 服务器 `http://localhost:5173`）动态反射 ACAO 头；对无 Origin 请求（Node CLI / curl）不输出 ACAO 头。
 - **本地跨端口拓扑放行**：Chromium 在处理从 `http://localhost:5173` 到 `http://127.0.0.1:<port>` 的请求时会自动附加 `sec-fetch-site: cross-site`。守卫必须将 `cross-site` 判定与已校验的本地回环 Origin（`LOOPBACK_ORIGIN_RE`）联动，确保桌面端开发与测试正常放行。
 
+## 嵌入式视图与受控代理规范（2026-09-03，2026-08-24-embedded-browser /reflect）
+
+- **WebContentsView 隔离与生命周期**：
+  - 嵌入第三方 Web 视图必须强制设置 `nodeIntegration: false`、`contextIsolation: true`、无 preload 脚本，并使用隔离的 partition（如 `persist:browser`）与桌面主窗口 session 完全物理隔离。
+  - 视图隐藏时必须从宿主窗口真正 `removeChildView`（detach），严禁仅将尺寸设为 0×0 或负坐标沉底，以防原生渲染树捕获并吞没 UI 鼠标与点击事件。
+  - 视图创建前若容器已展开，主进程必须在内存中缓存布局 bounds，待视图真正创建后恢复，杜绝 0×0 白屏。
+- **特权操作来源的通道化强约束**：
+  - 针对带有停止控制（Kill Switch）、人工接管、特权执行的状态机，操作发起者的身份（User vs Agent）必须由底层通信通道决定（如 Electron IPC 固定为 user，本地 HTTP API 固定为 agent），绝不可信任请求体传入的自声明身份字段。
+- **机器级服务发现单一真源**：
+  - 本地跨进程服务注册表（`server.json`）必须锚定在机器级全局固定路径（`~/.opc-workstation/server.json`），与会话/项目级配置目录解耦；桌面 App 主程序统一以 `owner="app"` 注册，测试环境通过 `OPC_SERVER_REGISTRY_FILE` 环境变量覆盖隔离。
+
+
 
 ## 目录结构约定
 

@@ -92,6 +92,7 @@
 | 本地采集引擎 | Local Collection Engine | workstation 内直连目标站点 API 做数据采集的服务（B站/X/微博等）；经统一身份池的 Cookie 受控导出接口复用登录态，自身不持有凭据 | 浏览器面板 | 采集场景的登录态消费方 |
 | 解析根 | Preview Root | 文件预览与聊天图片解析共用的根目录真源：当前会话项目空间 → 项目 ID → registry 解析的项目工作目录；相对路径按它解析、绝对路径必须落在它之内（realpath 双检）；非项目空间（通用/飞书/孤儿）无解析根 | 对话空间, Project | 文件预览 / Markdown 图片解析（REQ-AGENT-051 起在用，2026-09-02 补登记） |
 | 噪音目录 | Noise Directories | 文件树默认隐藏的硬编码目录清单（`.git`/`node_modules`/`dist` 等）；第一版不解析 .gitignore | 文件树 | 文件树过滤 |
+| 机器级 Server 注册表 | Machine-level Server Registry | 跨会话与跨进程服务发现通道：固定锚定在机器级路径（`~/.opc-workstation/server.json`，与会话/项目配置目录解耦），桌面主 App 固定以 `owner="app"` 注册，供外部 CLI / Agent 无缝发现运行中的主服务；测试环境通过 `OPC_SERVER_REGISTRY_FILE` 环境变量覆盖提供隔离 | `src/serverRegistry.js` + `src/cli/server.js` | 外部 CLI 与桌面 App 服务发现（ADR-040，REQ-BROWSER-007） |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -142,6 +143,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-09-03 | 新增概念「机器级 Server 注册表」（ADR-040，REQ-BROWSER-007 服务发现通道） | 2026-08-24-embedded-browser /reflect |
 | 2026-09-02 | 新增实体「文件预览面板」「文件树」；新增概念「解析根」（REQ-AGENT-051 补登记）「噪音目录」；「预览面板」裸词双向禁用（浏览器面板禁用别名修订注释） | 2026-08-31-file-preview /domain-model |
 | 2026-08-30 | 「人机共驾」修订（断控制后任何 browser 工具 DENIED；解除仅限地址栏/chrome 手势 IPC 导航，页内点击不解除）；「读取类动作」枚举补 auth-check；新增「统一身份池」「人机协同登录引导」「本地采集引擎」 | 2026-08-24-embedded-browser review 修订 |
 | 2026-08-25 | 新增实体「浏览器面板」（可见性解耦）；新增概念「人机共驾」「读取类/提交类动作」「协议白名单」 | 2026-08-24-embedded-browser /domain-model |

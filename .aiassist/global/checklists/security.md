@@ -54,6 +54,8 @@
 - [ ] 跨源探查防御：对无 Origin 请求（如跨站 `<img>`/`<script>` 探测）校验 `Sec-Fetch-Site: cross-site/cross-origin` 予以阻断
 - [ ] 仅向合法本地 Origin 反射 CORS 头；CLI/curl 等无 Origin 请求严禁输出 ACAO 头
 - [ ] 本地跨端口联动：对经白名单校验合法的本地 Origin（如 Vite dev 端口），允许其带 `sec-fetch-site: cross-site` 访问本地后端服务
+- [ ] 关键控制权与停止控制（Kill Switch）的来源鉴权必须由入站通信通道物理绑定（HTTP 固定为 agent，IPC 固定为 user），严禁信任请求体自声明字段
+- [ ] 内嵌 WebContentsView 强制设置 `contextIsolation: true`、`nodeIntegration: false`、无 preload，且使用独立 partition（如 `persist:browser`）隔离主应用会话与 Cookie
 
 ## 安全响应头
 

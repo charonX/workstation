@@ -7,13 +7,14 @@ intention: >-
   手动找端口输地址才能验证效果，「对话 → 看结果」的闭环被打断；
   agent 需要浏览网页时用户也看不到它在看什么。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUG # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT             # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-08-24
-status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
-completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+status: completed # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed: true
+completed_at: "2026-09-03"  # /reflect 标记完成时写入，如 2026-08-17。
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -29,6 +30,8 @@ history:
   - {at: 2026-08-28, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 auto 签核通过（signer=AI，零升级点）：6/6 REQ 有测试、expected 逐条交叉验证、安全边界（Cookie 明文导出）威胁建模已入 §10.7+REQ-005；解锁实现"}
   - {at: 2026-08-30, from: BUILD, to: QA, note: "3 slices 全部完成：S1 browserViewManager+路由（17/17）、S2 toolAdapter 五命令（10/10）、S3 渲染层+IPC+链接集成（E2E 17/17）；全量回归 1118/1118；commits 679a1d0→f2c4e53；PRD 对齐 6 缺口闭环（2 code-defect + 2 spec-gap 人裁决 + 2 missing-test）"}
   - {at: 2026-08-31, from: QA, to: BUG, note: "BUG-001：外部 AI/CLI 无法发现运行中 app 的 server（browser read 返 E-BROWSER-NOT-READY）。根因三层：注册表 per-configDir 分裂 + main.js fixture 覆盖注册记录丢 pid/owner + discoverServer owner 语义不覆盖 app。人裁决 req-gap 就地补全：ADR-0040 机器级注册表锚点 + app 固定 owner=app；requirements v3 新增 REQ-BROWSER-007"}
+  - {at: 2026-09-03, from: BUG, to: QA, note: "BUG-001 修复完成并验证：新增 REQ-BROWSER-007 + serverDiscovery 6/6 全绿，全量单元 1197/1197 绿，E2E 21/21 绿，qa-report.md 落盘"}
+  - {at: 2026-09-03, from: QA, to: REFLECT, note: "验收通过，全局 ADR/业务能力/经验沉淀完成，story 原地归档完结"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

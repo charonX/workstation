@@ -212,3 +212,12 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 判定型谓词复用全量投影函数 | 「空世代判定」读整个 JSONL 逐行 parse，长会话 O(文件) 同步解析 | 提取单一行级谓词 + 首行短路（`hasProjectedMessage`）；复杂投影留给真正需要全量数据的调用方 |
 | E2E fixture 使用生产分派节点（agent）做脚手架 | 生产路径废除静默 mock 后（E-AGENT-NO-PROVIDER），旧 E2E 预存失败 | 离线 E2E 脚手架统一用 `setVariables` 等确定性节点；确需 agent 语义时经 `setAgentExecutorForTests` seam 注入 |
 
+## 2026-09-03 追加（2026-08-24-embedded-browser /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 原生视图（WebContentsView）只断言 DOM 存在 | DOM 节点可见不代表底层的 Electron 原生子视图 bounds 正确或未白屏（2026-08-31 发现先展开后导航 0×0 白屏） | E2E 必须穿透主进程通过 `mainWindow.contentView.children` 断言子视图真实存在性与 bounds 非零矩形；收起时断言 childViews 彻底 detach |
+| 集合截断断言仅准备正好 LIMIT 个样本 | 注入脚本若只抓取 50 个元素，宿主无从知晓是否存在第 51 个，导致 `truncated: true` 永远无法被真实触发 | 测试 stub 数据与探测脚本必须构造 `LIMIT + 1`（如 51 个元素），注入层采集 `LIMIT + 1` 供宿主严谨判定 `truncated` |
+| 跨进程服务注册表测试直接写入真实系统路径 | 测试用例污染本机 `~/.opc-workstation/server.json`，打乱正在运行的其他实例并导致并发测试用例冲突 | 通过 `OPC_SERVER_REGISTRY_FILE` 与 `OPC_WORKSTATION_CONFIG_DIR` 环境变量将注册表读写彻底重定向至临时目录（`os.tmpdir()`），测试结束后清理 |
+
+
