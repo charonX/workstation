@@ -24,6 +24,12 @@ story 2026-08-31-file-preview 为项目内文件提供只读预览（Markdown �
 
 4. **聊天路径识别仅行内 code**：仅 `` `path` `` 形态（含路径分隔、尾段有扩展名、无空格无 scheme）转为可点击；代码围栏内不识别（高亮 token 切碎后做链接复杂度高、收益低）。点击后不存在的路径由 E-PREVIEW-NOT-FOUND 错误页兜底，渲染期不做存在性预校验。
 
+5. **本地敏感端点 Loopback 访问控制（2026-09-03 增补，BUG-001）**：
+   - `/api/agent/files/*` 与 `/api/browser/*` 统一由 `browserApiGuard.js` 实施保护，校验 Host（`127.0.0.1[:port]` / `localhost[:port]` 防 DNS rebinding）与 Origin（合法本地回环地址）；
+   - 严禁盲目配置全局 CORS `Access-Control-Allow-Origin: *`，防止恶意外部网页在普通浏览器标签页中跨站读取用户本地代码与配置；
+   - 动态反射 CORS：仅向经过验证的本地回环 Origin 反射 CORS 响应头，无 Origin 请求（Node CLI / curl）不输出 ACAO；
+   - 本地跨端口联动：Chromium 从 Vite dev 端口（`localhost:5173`）访问后端（`127.0.0.1:<port>`）时会附加 `sec-fetch-site: cross-site`，守卫将其与合法 loopback Origin 联动放行，兼顾桌面调试与跨源防护。
+
 ## 后果与影响
 
 ### 积极影响

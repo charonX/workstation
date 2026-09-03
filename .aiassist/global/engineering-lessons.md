@@ -5,6 +5,24 @@
 - 在项目演进过程中补充踩坑记录、最佳实践、性能调优等。
 - 保持简洁，优先记录可复用的结论，而非一次性细节。
 
+## 本地回环端点安全守卫、单文件精确 Watch 与展示格式化解耦（2026-09-03，2026-08-31-file-preview）
+
+- **本地敏感数据与工程文件端点必须严格实施 Loopback 守卫，严禁盲目全局 CORS `*`（BUG-001）**：
+  - 现象：在 `server.js` 中，除 `browser` 外的其他 API 统一落入 `applyDefaultCors(res)` 下发了 `Access-Control-Allow-Origin: *`。任意外部浏览器标签页（如访问恶意网站）均可发起跨站 fetch，静默读取 localhost 上的工程目录与私有源码。
+  - 结论：涉及代码、配置、凭据等本地敏感端点必须由 `browserApiGuard.js` 统一拦截，强制校验 Host（必须为 `127.0.0.1[:port]` 或 `localhost[:port]` 防 DNS Rebinding）与 Origin（必须为合法本地端口）。对无 Origin 请求（Node CLI / curl）不输出 ACAO；仅向经过验证的本地回环 Origin 反射 CORS 头。
+- **本地跨端口架构下不可孤立拒绝 `Sec-Fetch-Site: cross-site`**：
+  - 现象：Electron 渲染进程通过 Vite dev 端口（`http://localhost:5173`）加载时，向后端 API（`http://127.0.0.1:<port>`）发起的请求会被 Chromium 视为跨源（`sec-fetch-site: cross-site`）。如果安全规则只看 `cross-site` 就一律拒收，将直接阻断桌面开发期所有本地通信。
+  - 结论：跨站判定必须与 Origin 联动。当 `Origin` 经校验属于合法本地回环（`LOOPBACK_ORIGIN_RE`）时，即判定为合法的本机通信并予以放行；仅当 `Origin` 缺失（如 cross-site `<img>` / `<script>` 探测）或为非回环地址时才执行阻断。
+- **目录列举必须避免循环串行 `await stat`，采用 `Promise.all` 并发查询**：
+  - 现象：`handleFileList` 中在循环内串行执行 `await fs.promises.stat` 获取文件大小，在单目录含数十甚至数百个文件时会导致严重的事件循环挂起与磁盘 I/O 延迟。
+  - 结论：遍历目录时先过滤噪音目录，文件候选列表通过 `Promise.all(candidates.map(...))` 并行查询 `stat`，将 I/O 延迟从 $O(N)$ 降低为 $O(1)$。
+- **大文件与超大二进制资产必须前置设定内存保护上限**：
+  - 现象：文本读取只设置了 1MB 限制，图片端点缺乏大小防护，读取恶意或超大资产时可能将几十 MB 甚至上百 MB 载荷直接读入 Node Buffer，引发内存耗尽（OOM）导致应用崩溃。
+  - 结论：所有文件读取端点在调用 `fs.promises.readFile` 之前必须先 `stat.size` 预检；文本受 1MB 约束，图片设立 20MB 上限，超限立即返回 413，保护主进程内存安全。
+- **展示格式化纯函数必须独立于 JSX 模块（STANDARDS.md 落实）**：
+  - 现象：在 `FilePreviewPanel.jsx` 内联编写 `formatSize` 与 `kindLabelOf`，导致纯逻辑在 Node.js 测试环境中无法脱离 JSX 编译直接单测，且违反单一职责。
+  - 结论：将格式化逻辑抽取至独立的纯 JS 模块（`src/renderer/components/preview/format.js`），JSX 仅负责 UI 绑定，为纯逻辑提供零依赖的 Node 单元测试接缝。
+
 ## 会话轨迹与时间线交互设计：多步 SDK 事件过滤、断点间隙压缩与回合级性能折叠（2026-08-24，2026-08-22-tool-call-review）
 
 - **工具调用结果导致的多余 `message_end` 必须严格过滤 `role === "assistant"`**：

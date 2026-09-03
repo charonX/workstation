@@ -54,6 +54,13 @@
 - **DOM 挂载树必须在虚拟滚动之上叠加回合/分组折叠**：长列表不仅要在视口内做行级虚拟滚动（如 `react-window` / `useVirtualizer`），多回合/多分组合并场景必须支持将历史折叠为单行摘要栏（$O(1)$ 节点），折叠子项在数据层直接过滤，绝不进入虚拟滚动的高度计算与测量树中。
 - **纯函数状态归约（Model Reducer）必须与 JSX 视图解耦**：时间线投影、区间过滤、回合规整与去重等复杂逻辑必须实现为纯 JS 模块（如 `trajectoryModel.js`），保证在 Node.js 无 DOM 环境中可进行 100% 覆盖的单元测试。
 
+## 本地敏感端点守卫与 CORS 规范（2026-09-03，2026-08-31-file-preview /reflect）
+
+- **本地敏感端点收归 Loopback 守卫**：涉及工程源码、凭据、文件系统操作的本地 HTTP 端点，必须由 `src/http/browserApiGuard.js` 进行本地回环守卫（`isLoopbackOnlyApi` / `denyLoopbackApiIfUnsafe`）。
+- **严禁盲目下发全局 CORS `*`**：受保护端点严禁配置 `Access-Control-Allow-Origin: *`，防止恶意外部网页在普通浏览器标签中直接 fetch 窃取用户本地源码或配置。
+- **动态反射与无 Origin 保守策略**：仅向经过校验的本地回环 Origin（如 Vite dev 服务器 `http://localhost:5173`）动态反射 ACAO 头；对无 Origin 请求（Node CLI / curl）不输出 ACAO 头。
+- **本地跨端口拓扑放行**：Chromium 在处理从 `http://localhost:5173` 到 `http://127.0.0.1:<port>` 的请求时会自动附加 `sec-fetch-site: cross-site`。守卫必须将 `cross-site` 判定与已校验的本地回环 Origin（`LOOPBACK_ORIGIN_RE`）联动，确保桌面端开发与测试正常放行。
+
 
 ## 目录结构约定
 

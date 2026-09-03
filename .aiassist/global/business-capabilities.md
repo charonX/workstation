@@ -136,8 +136,8 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| file-preview-panel | `tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/{unit,component,api,e2e}/` | REQ-PREVIEW-001~006, 008~010（2026-09-02 结晶） | 单元：路径识别纯函数正反矩阵；组件：面板 kind 分支/渲染源码切换/错误态 E1-E6/SSE 消费/槽位互斥；集成：files read|list|watch HTTP 契约 + fs.watch 防抖；E2E：聊天点路径→面板、互斥、自动刷新 |
-| file-tree | `tests/capabilities/file-preview/file-tree/2026-08-31-file-preview/{component,e2e}/` | REQ-PREVIEW-007（2026-09-02 结晶） | 组件：懒加载/噪音过滤/排序/全部展开收起/点击分发；E2E：入口显隐（非项目空间隐藏） |
+| file-preview-panel | `tests/capabilities/file-preview/file-preview-panel/2026-08-31-file-preview/{component,api,e2e}/` | REQ-PREVIEW-001~006, 008~010（2026-09-03 验收） | 组件：`pathRecognition.test.js`（8，纯函数矩阵）、`filePreviewStore.test.js`（9，状态机/错误态/blob URL）；集成：`filesApi.test.js`（22，read/list 契约与本地回环守卫/CORS）、`filesWatch.test.js`（6，单文件监听/防抖/原子写）；E2E：`filePreview.test.cjs`（10，路径点击/渲染/高亮/图片/互斥/外部修改自动刷新） |
+| file-tree | `tests/capabilities/file-preview/file-tree/2026-08-31-file-preview/{component,e2e}/` | REQ-PREVIEW-007（2026-09-03 验收） | 组件：`fileTreeStore.test.js`（9，懒加载/展开收起/选中态）；E2E：`fileTree.test.cjs`（4，目录懒加载/噪音过滤/全部展开收起/非项目空间隐藏） |
 
 ## 能力依赖图
 
@@ -173,4 +173,4 @@ file-preview ──> agent-dialogue、workspace-management（项目空间解析�
 | agent-dialogue | 8 | 423 | 2026-08-24 |
 | plugin-management | 2 | 82 | 2026-08-16 |
 | embedded-browser | 2 | 44（api 27 + e2e 17，2026-08-30 review 轮增补） | 2026-08-28 |
-| file-preview | 2 | 0（2026-09-02 结晶，测试待生成） | 2026-09-02 |
+| file-preview | 2 | 68（单元/组件 54 + E2E 14） | 2026-09-03 |

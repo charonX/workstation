@@ -62,6 +62,8 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 - [ ] 文件系统副作用（symlink、目录、文件写入）在 API 测试中断言实际路径与状态
 - [ ] 删除实体时同步断言相关文件/链接已被清理
 - [ ] main 进程与 renderer 的边界用 Playwright Electron E2E 或 renderer public API 覆盖
+- [ ] Electron 渲染进程通过 Vite dev 端口（`localhost:5173`）加载时，向后台监听的 `127.0.0.1:<port>` 请求会被 Chromium 标记为 `sec-fetch-site: cross-site`，本地安全守卫测试与实现必须将 Origin 校验与 cross-site 判定联动放行
+- [ ] 双循环 Git Commit 分离纪律：测试变更先行提交 `[test]`，实现变更后行提交 `[build]` 或 `[bugfix]`，严禁单 commit 混合 `src/` 与 `tests/`
 
 ## 反模式
 

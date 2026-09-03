@@ -59,6 +59,13 @@
 - [ ] 响应压缩（gzip/brotli）
 - [ ] 合理缓存
 
+### 文件 I/O 与 Watcher
+- [ ] 目录列举元数据查询（如 `stat`）使用 `Promise.all` 并发，严禁循环内串行 `await stat`
+- [ ] 噪音目录（如 `.git`、`node_modules`、`dist`）必须在遍历子项前前置忽略
+- [ ] 大文件与二进制资产前置预检大小（文本 1MB / 图片 20MB 上限），防 Node Buffer 溢出 OOM
+- [ ] 精确单文件 watch，严禁监听整个根目录；引入防抖合并机制（如 200ms）合并高频突发事件与原子写 rename
+- [ ] 面板关闭或切换会话时必须显式 unregister 彻底释放 fs.watch 句柄与 event 监听器
+
 ## 测量命令
 
 ```bash

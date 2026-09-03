@@ -46,6 +46,15 @@
 - [ ] URL 重定向前验证（防 open redirect）
 - [ ] 服务端外部请求使用 allowlist，阻断私有 IP（防 SSRF）
 
+## 本地网络与跨域防护（Loopback API）
+
+- [ ] 本地敏感端点（工程文件、配置、凭据、文件系统）严禁下发全局 `Access-Control-Allow-Origin: *`
+- [ ] 必须校验 Host 头（仅允许 `127.0.0.1[:port]` 或 `localhost[:port]`）防御 DNS Rebinding 攻击
+- [ ] 必须校验 Origin 头并使用本地回环白名单（`http://127.0.0.1[:port]` 或 `http://localhost[:port]`）
+- [ ] 跨源探查防御：对无 Origin 请求（如跨站 `<img>`/`<script>` 探测）校验 `Sec-Fetch-Site: cross-site/cross-origin` 予以阻断
+- [ ] 仅向合法本地 Origin 反射 CORS 头；CLI/curl 等无 Origin 请求严禁输出 ACAO 头
+- [ ] 本地跨端口联动：对经白名单校验合法的本地 Origin（如 Vite dev 端口），允许其带 `sec-fetch-site: cross-site` 访问本地后端服务
+
 ## 安全响应头
 
 ```

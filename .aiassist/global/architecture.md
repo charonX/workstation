@@ -114,4 +114,9 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-035: 独立服务容器 ServiceContainer 与 Server 纯传输化（createServiceContainer 惰性工厂/接线/调度 + server.js 瘦身至 ≤250 行 + server.services 唯一 DI seam）
 - ADR-036: 统一 HTTP 响应助手与生产静默 Mock 清除（responders.js 收敛 5 路由 + 缺 provider 显式 E-AGENT-NO-PROVIDER + cron 描述归位 schedulerService + flowService UI 助手清除）
 - ADR-037: 飞书 /reset 从「单行世代制」改为「归档 + 新行」（归档键 feishu:<chatId>:gen<N> 只读回看；修订 ADR-016 飞书条款）
+- ADR-038: 会话轨迹采用全量自足 Sidecar JSONL（append-only 侧车物理隔离 + 截断保护 + 单点双写）
+- ADR-039: 内置浏览器面板（WebContentsView 主进程托管 + 人机共享单实例 + 渲染进程持布局真相 + persist:browser 分区）
+- ADR-040: server 注册表锚定机器级固定路径（~/.opc-workstation/server.json 与 configDir 解耦，固定 owner 发现）
+- ADR-041: 回合收尾合成泛化（任何终态 stopReason 且无 text_end 均自动合成，消灭 UI 回复中假死）
+- ADR-042: 文件预览面板（HTTP/SSE 数据通道 + 右侧槽位互斥 + 既有图片白名单对齐 + 敏感端点 Loopback 守卫与 CORS 收紧）
 
