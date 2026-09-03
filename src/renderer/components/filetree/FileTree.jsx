@@ -15,6 +15,16 @@
 import { fileTreeStore, useFileTreeState } from "../preview/filePreviewBus.js";
 import "./filetree.css";
 
+// Enter/Space 键盘激活与点击同路（role="button" 行语义）
+function keyActivate(action) {
+  return (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      action();
+    }
+  };
+}
+
 function TreeEntries({ dir, depth, state }) {
   const entries = state.entriesByDir[dir] ?? [];
   return entries.map((entry) => {
@@ -31,12 +41,7 @@ function TreeEntries({ dir, depth, state }) {
             role="button"
             tabIndex={0}
             onClick={() => void fileTreeStore.toggleDir(rel)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                void fileTreeStore.toggleDir(rel);
-              }
-            }}
+            onKeyDown={keyActivate(() => void fileTreeStore.toggleDir(rel))}
           >
             <span className="twisty">▶</span>
             <span className="ficon">📁</span>
@@ -63,12 +68,7 @@ function TreeEntries({ dir, depth, state }) {
         role="button"
         tabIndex={0}
         onClick={() => fileTreeStore.selectFile(rel)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fileTreeStore.selectFile(rel);
-          }
-        }}
+        onKeyDown={keyActivate(() => fileTreeStore.selectFile(rel))}
       >
         <span className="twisty" />
         <span className="ficon">📄</span>

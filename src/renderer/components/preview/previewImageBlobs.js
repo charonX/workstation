@@ -30,6 +30,18 @@ function keyOf(projectId, path) {
 export function createPreviewImageBlobs() {
   let current = null; // { key, url, handed, pending, listeners: Set }
 
+  // 通知条目订阅者（快照遍历；监听器异常不传染其余订阅者）。
+  // url=null 表示 URL 已失效（面板渲染空态，不留已 revoke 的 URL 在 <img> 上）。
+  function notify(listeners, url) {
+    for (const fn of [...listeners]) {
+      try {
+        fn(url);
+      } catch {
+        // 单个监听器异常不影响其余订阅者
+      }
+    }
+  }
+
   function dispose(entry) {
     if (entry.url) {
       try {
@@ -38,14 +50,7 @@ export function createPreviewImageBlobs() {
         // revoke 失败不影响后续流程
       }
     }
-    // 通知订阅者 URL 已失效（面板渲染空态，不留已 revoke 的 URL 在 <img> 上）
-    for (const fn of [...entry.listeners]) {
-      try {
-        fn(null);
-      } catch {
-        // 监听器异常不传染其余订阅者
-      }
-    }
+    notify(entry.listeners, null);
     entry.listeners.clear();
   }
 
@@ -66,13 +71,7 @@ export function createPreviewImageBlobs() {
             // 同上
           }
         }
-        for (const fn of [...entry.listeners]) {
-          try {
-            fn(url);
-          } catch {
-            // 监听器异常不传染其余订阅者
-          }
-        }
+        notify(entry.listeners, url);
       })
       .catch(() => {
         if (current === entry) entry.pending = false; // 失败：保持无 URL（面板维持加载态）
