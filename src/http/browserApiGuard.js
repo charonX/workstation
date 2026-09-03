@@ -23,11 +23,16 @@ export function isLoopbackOnlyApi(resource, subPath = []) {
 
 // 写 403 并返回 true = 已拒绝；false = 放行。
 export function denyLoopbackApiIfUnsafe(req, res, message = "API is loopback-only") {
+  const host = String(req.headers.host ?? "");
+  const origin = req.headers.origin;
+  const secFetchSite = req.headers["sec-fetch-site"];
+
+  const hasValidLoopbackOrigin = Boolean(origin && LOOPBACK_ORIGIN_RE.test(origin));
   const denied =
-    !LOOPBACK_HOST_RE.test(String(req.headers.host ?? "")) ||
-    Boolean(req.headers.origin && !LOOPBACK_ORIGIN_RE.test(req.headers.origin)) ||
-    req.headers["sec-fetch-site"] === "cross-site" ||
-    req.headers["sec-fetch-site"] === "cross-origin";
+    !LOOPBACK_HOST_RE.test(host) ||
+    Boolean(origin && !hasValidLoopbackOrigin) ||
+    ((secFetchSite === "cross-site" || secFetchSite === "cross-origin") && !hasValidLoopbackOrigin);
+
   if (denied) forbidden(res, message);
   return denied;
 }
