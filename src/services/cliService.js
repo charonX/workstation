@@ -1025,3 +1025,5 @@ export function getEffectiveCliServicesSync(projectId, options = {}) {
   }
 }
 
+export { defaultFetchLatest, formatNpmPackageUrl, formatPypiPackageUrl };
+
