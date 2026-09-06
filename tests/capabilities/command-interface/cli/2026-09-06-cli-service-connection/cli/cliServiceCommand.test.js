@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-010
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: command-interface
 // ENTITY-TRACE: cli
 // EXPECTED-TRACE: prd.md §10.4 接口 1/2/3, §11.1 Seam 1/2/3
@@ -85,8 +85,21 @@ describe("REQ-CLI-SERVICE-010 产品 CLI cli-service 命令族", () => {
   });
 
   it("启用未安装的 CLI 时报错且退出码非 0", () => {
-    // codex 未安装时执行 enable
-    const err = runCliExpectFail(["cli-service", "enable", "codex"]);
+    // 隔离 PATH 确保 codex 处于未安装状态
+    const binDir = path.join(workdir, "isolated_bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const nodeBin = path.join(binDir, "node");
+    try {
+      fs.symlinkSync(process.execPath, nodeBin);
+    } catch {
+      // ignore
+    }
+    const err = runCliExpectFail(["cli-service", "enable", "codex"], {
+      env: {
+        ...process.env,
+        PATH: binDir,
+      },
+    });
     assert.ok(
       err.stderr.includes("E-CLI-NOT-INSTALLED") || err.stderr.includes("未安装") || err.stdout.includes("E-CLI-NOT-INSTALLED")
     );

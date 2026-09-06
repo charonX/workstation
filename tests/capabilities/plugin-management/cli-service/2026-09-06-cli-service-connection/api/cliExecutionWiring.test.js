@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-008, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-009
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 5, §8 E5/E6, §10.2, §10.4 接口 4, §10.5 决策 1/4, ADR-043
@@ -8,9 +8,12 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+const ROOT = path.resolve(import.meta.dirname, "../../../../../../");
 
 async function loadPolicyRules() {
   const mod = await import("../../../../../../src/agent/policyRules.js").catch(() => null);
@@ -21,6 +24,12 @@ async function loadPolicyRules() {
 async function loadAgentService() {
   const mod = await import("../../../../../../src/services/agentService.js").catch(() => null);
   assert.ok(mod, "seam 未就绪：src/services/agentService.js");
+  return mod;
+}
+
+async function loadToolAdapter() {
+  const mod = await import("../../../../../../src/agent/toolAdapter.js").catch(() => null);
+  assert.ok(mod, "seam 未就绪：src/agent/toolAdapter.js");
   return mod;
 }
 
@@ -112,5 +121,67 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     // 调用未纳管或未启用的命令：不合并
     const otherEnv = resolveCliEnvForCommand("ls -la", cliServicesSnapshot);
     assert.deepEqual(otherEnv, {});
+  });
+
+  it("未启用清单 CLI 时 toolAdapter 拦截执行并返回 E-CLI-NOT-ENABLED", async () => {
+    const { createSessionToolSurface } = await loadToolAdapter();
+    const surface = createSessionToolSurface({
+      profile: "project",
+      cwd: workdir,
+      boundaryAuthorized: true,
+      cliServices: [], // 未启用任何 CLI
+    });
+
+    // EXPECTED-TRACE: prd.md §8 E6
+    const res = await surface.execute("bash", { command: "claude --version" });
+    assert.ok(res?.errorCode === "E-CLI-NOT-ENABLED", "未启用 CLI 时返回 E-CLI-NOT-ENABLED");
+    assert.ok(res?.errorMessage?.includes("E-CLI-NOT-ENABLED"), "错误信息包含错误码说明");
+  });
+
+  it("CLI 服务超时触发 E-CLI-TIMEOUT 与 SIGKILL 升级", async () => {
+    const { createSessionToolSurface } = await loadToolAdapter();
+
+    // 在临时目录创建模拟耗时阻塞命令
+    const binDir = path.join(workdir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const mockClaude = path.join(binDir, "claude");
+    fs.writeFileSync(mockClaude, "#!/bin/sh\nsleep 10\n", { mode: 0o755 });
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${originalPath}`;
+
+    try {
+      const surface = createSessionToolSurface({
+        profile: "project",
+        cwd: workdir,
+        boundaryAuthorized: true,
+        cliServices: [
+          {
+            id: "claude",
+            command: "claude",
+            env: {},
+            timeoutSec: 1, // 1 秒超时
+          },
+        ],
+      });
+
+      // EXPECTED-TRACE: prd.md §8 E5
+      const res = await surface.execute("bash", { command: "claude" });
+      assert.equal(res?.errorCode, "E-CLI-TIMEOUT", "超时返回 E-CLI-TIMEOUT");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("gen-agent-policy.mjs --check 自动化一致性回归验证", () => {
+    const checkOut = execFileSync(
+      process.execPath,
+      [path.join(ROOT, "scripts/gen-agent-policy.mjs"), "--check"],
+      { encoding: "utf-8" }
+    );
+    assert.ok(
+      checkOut.includes("--check: 一致"),
+      "策略生成器一致性检查必须通过"
+    );
   });
 });

@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-002, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-004, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-005
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 3, §10.4 接口 1/2/3 全部 golden values

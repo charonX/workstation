@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-006
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.1 流 A/B, §6.3 块 4, §7.1, §8 E1
@@ -8,7 +8,82 @@
 
 const { test, expect } = require("@playwright/test");
 
+const STANDARD_SERVICES = [
+  {
+    id: "claude",
+    displayName: "Claude Code",
+    command: "claude",
+    installed: true,
+    version: "1.0.80",
+    latestVersion: "1.0.80",
+    updateAvailable: false,
+    enabled: true,
+    envKeys: ["ANTHROPIC_API_KEY"],
+    timeoutSec: 120,
+    installHint: "npm i -g @anthropic-ai/claude-code",
+  },
+  {
+    id: "codex",
+    displayName: "OpenAI Codex CLI",
+    command: "codex",
+    installed: false,
+    version: null,
+    latestVersion: "unknown",
+    updateAvailable: false,
+    enabled: false,
+    envKeys: [],
+    timeoutSec: 120,
+    installHint: "npm i -g @openai/codex",
+  },
+  {
+    id: "crawl4ai",
+    displayName: "Crawl4AI CLI",
+    command: "crwl",
+    installed: true,
+    version: "0.4.0",
+    latestVersion: "0.4.5",
+    updateAvailable: true,
+    enabled: false,
+    envKeys: [],
+    timeoutSec: 120,
+    installHint: "pip install crawl4ai",
+  },
+];
+
 test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为（E2E）", () => {
+  test.beforeEach(async ({ page }) => {
+    // 默认全局 mock 后端接口，消除对 mock 数据退化的依赖
+    await page.route("**/api/cli-services/project-enablements", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enablements: { claude: ["proj-1"] } }),
+      });
+    });
+
+    await page.route("**/api/projects*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ id: "proj-1", name: "Test Project" }]),
+      });
+    });
+
+    await page.route("**/api/cli-services*", async (route) => {
+      if (route.request().url().includes("refresh=1")) {
+        return route.continue();
+      }
+      if (route.request().url().includes("project-enablements")) {
+        return route.continue();
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ services: STANDARD_SERVICES }),
+      });
+    });
+  });
+
   test("导航至 /cli-services 页面并展示 3 个内置清单服务行", async ({ page }) => {
     await page.goto("/cli-services");
 
@@ -20,55 +95,16 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
     await expect(page.locator("[data-testid='cli-service-row-crawl4ai']")).toBeVisible();
   });
 
-  test("未安装的条目显示安装指引，且全局启用开关处于禁用（disabled）状态", async ({ page }) => {
-    // 拦截 API 响应：模拟 codex 为未安装
-    await page.route("**/api/cli-services*", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          services: [
-            {
-              id: "claude",
-              displayName: "Claude Code",
-              installed: true,
-              version: "1.0.80",
-              latestVersion: "1.0.80",
-              updateAvailable: false,
-              enabled: true,
-              envKeys: [],
-              timeoutSec: 120,
-              installHint: "npm i -g @anthropic-ai/claude-code",
-            },
-            {
-              id: "codex",
-              displayName: "OpenAI Codex CLI",
-              installed: false,
-              version: null,
-              latestVersion: "unknown",
-              updateAvailable: false,
-              enabled: false,
-              envKeys: [],
-              timeoutSec: 120,
-              installHint: "npm i -g @openai/codex",
-            },
-            {
-              id: "crawl4ai",
-              displayName: "Crawl4AI CLI",
-              installed: true,
-              version: "0.4.0",
-              latestVersion: "0.4.5",
-              updateAvailable: true,
-              enabled: false,
-              envKeys: [],
-              timeoutSec: 120,
-              installHint: "pip install crawl4ai",
-            },
-          ],
-        }),
-      });
-    });
+  test("从左侧导航栏点击「CLI 服务」进入页面（AC1）", async ({ page }) => {
+    await page.goto("/");
+    const navLink = page.locator("[data-testid='nav-cli-services']");
+    await expect(navLink).toBeVisible();
+    await navLink.click();
+    await expect(page).toHaveURL(/.*\/cli-services/);
+    await expect(page.locator("[data-testid='cli-services-page']")).toBeVisible();
+  });
 
+  test("未安装的条目显示安装指引，且全局启用开关处于禁用（disabled）状态", async ({ page }) => {
     await page.goto("/cli-services");
 
     // EXPECTED-TRACE: prd.md §6.3 块 4, §8 E1
@@ -87,6 +123,35 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
     // crawl4ai updateAvailable: true
     const crawlRow = page.locator("[data-testid='cli-service-row-crawl4ai']");
     await expect(crawlRow.locator("[data-testid='update-badge']")).toBeVisible();
+    await expect(crawlRow.locator("[data-testid='update-badge']")).toContainText("可更新至 0.4.5");
+  });
+
+  test("未全局启用的 CLI 服务，项目启用按钮处于禁用态（AC6）", async ({ page }) => {
+    await page.goto("/cli-services");
+
+    // codex 未安装且未全局启用
+    const codexProjectToggle = page.locator("[data-testid='cli-service-row-codex'] [data-testid='cli-service-project-toggle']");
+    await expect(codexProjectToggle).toBeDisabled();
+
+    // crawl4ai 已安装但未全局启用
+    const crawlProjectToggle = page.locator("[data-testid='cli-service-row-crawl4ai'] [data-testid='cli-service-project-toggle']");
+    await expect(crawlProjectToggle).toBeDisabled();
+  });
+
+  test("打开环境变量与超时配置弹窗（AC7）", async ({ page }) => {
+    await page.goto("/cli-services");
+
+    const configBtn = page.locator("[data-testid='cli-service-row-claude'] [data-testid='cli-service-config-button']");
+    await configBtn.click();
+
+    const modal = page.locator("[data-testid='cli-service-config-modal']");
+    await expect(modal).toBeVisible();
+
+    const timeoutInput = modal.locator("[data-testid='cli-service-timeout-input']");
+    await expect(timeoutInput).toHaveValue("120");
+
+    // 显示已配置加密的 key 名称
+    await expect(modal.getByText("ANTHROPIC_API_KEY")).toBeVisible();
   });
 
   test("点击顶部刷新按钮触发带 ?refresh=1 的重新探测", async ({ page }) => {
@@ -96,7 +161,7 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ services: [] }),
+        body: JSON.stringify({ services: STANDARD_SERVICES }),
       });
     });
 

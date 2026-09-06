@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-004, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-005
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 3, §7, §7.1, §8 E1/E4, §10.4 接口 2/3/4
@@ -190,5 +190,59 @@ describe("REQ-CLI-SERVICE-004/005 CLI 服务配置持久化、两层启用与安
     });
     cfg = await svc.getConfig("claude");
     assert.deepEqual(cfg.envKeys, ["KEY_THREE"]);
+  });
+
+  it("边界值校验：KEY(128/129)、VALUE(4096/4097)、条目数(50/51)与 timeoutSec(9/10/600/601)", async () => {
+    // 1. timeoutSec 边界：9 失败，10 成功，600 成功，601 失败
+    await assert.rejects(
+      async () => svc.updateConfig("claude", { timeoutSec: 9 }),
+      (err) => err.code === "E-CLI-INVALID-TIMEOUT"
+    );
+    const valid10 = await svc.updateConfig("claude", { timeoutSec: 10 });
+    assert.equal(valid10.timeoutSec, 10);
+
+    const valid600 = await svc.updateConfig("claude", { timeoutSec: 600 });
+    assert.equal(valid600.timeoutSec, 600);
+
+    await assert.rejects(
+      async () => svc.updateConfig("claude", { timeoutSec: 601 }),
+      (err) => err.code === "E-CLI-INVALID-TIMEOUT"
+    );
+
+    // 2. KEY 长度边界：恰好 128 成功，129 失败
+    const key128 = "K" + "A".repeat(127);
+    const validKeyRes = await svc.updateConfig("claude", { env: { [key128]: "valid_val" } });
+    assert.deepEqual(validKeyRes.envKeys, [key128]);
+
+    const key129 = "K" + "A".repeat(128);
+    await assert.rejects(
+      async () => svc.updateConfig("claude", { env: { [key129]: "val" } }),
+      (err) => err.code === "E-CLI-INVALID-ENV-KEY"
+    );
+
+    // 3. VALUE 长度边界：恰好 4096 成功，4097 失败
+    const val4096 = "V".repeat(4096);
+    await svc.updateConfig("claude", { env: { VALID_KEY: val4096 } });
+
+    const val4097 = "V".repeat(4097);
+    await assert.rejects(
+      async () => svc.updateConfig("claude", { env: { VALID_KEY: val4097 } }),
+      (err) => err.code === "E-CLI-INVALID-ENV-KEY"
+    );
+
+    // 4. 条目数边界：恰好 50 条成功，51 条失败
+    const entries50 = Object.fromEntries(
+      Array.from({ length: 50 }, (_, i) => [`ENV_${i}`, `val_${i}`])
+    );
+    const res50 = await svc.updateConfig("claude", { env: entries50 });
+    assert.equal(res50.envKeys.length, 50);
+
+    const entries51 = Object.fromEntries(
+      Array.from({ length: 51 }, (_, i) => [`ENV_${i}`, `val_${i}`])
+    );
+    await assert.rejects(
+      async () => svc.updateConfig("claude", { env: entries51 }),
+      (err) => err.code === "E-CLI-INVALID-ENV-KEY"
+    );
   });
 });

@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-002, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-003
-// REQ-VERSION: v1-hash:7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9
+// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 2, §7, §8 E2/E3, §10.3 流 1, §10.5 决策 3
@@ -125,6 +125,21 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
       svc.probe("crawl4ai", { refresh: true }),
     ]);
     assert.ok(maxActiveCalls <= 4, "全局探测并发执行必须 ≤ 4");
+
+    // 严格压测 ConcurrencyLimiter 全局并发上限 ≤ 4（发起 8 个并发任务）
+    activeCalls = 0;
+    maxActiveCalls = 0;
+    const tasks = Array.from({ length: 8 }, () =>
+      svc._limiter.run(async () => {
+        activeCalls++;
+        maxActiveCalls = Math.max(maxActiveCalls, activeCalls);
+        await new Promise((r) => setTimeout(r, 25));
+        activeCalls--;
+      })
+    );
+    await Promise.all(tasks);
+    assert.ok(maxActiveCalls <= 4, "峰值活跃并发数严禁超过 4");
+    assert.equal(maxActiveCalls, 4, "4 个并发槽位应被充分打满");
   });
 
   it("渠道最新版本检查：当 latestVersion > localVersion 时标记 updateAvailable: true", async () => {
