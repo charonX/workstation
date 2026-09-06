@@ -33,6 +33,15 @@ archive: []
 #    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
 #    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
 
+# 实施切片列表（由 /implementer 维护）
+slices:
+  - { id: 1, name: "registry-and-probe", status: "pending", reqs: ["REQ-CLI-SERVICE-001", "REQ-CLI-SERVICE-002", "REQ-CLI-SERVICE-003"] }
+  - { id: 2, name: "config-persistence-and-security", status: "pending", reqs: ["REQ-CLI-SERVICE-004", "REQ-CLI-SERVICE-005"] }
+  - { id: 3, name: "http-api-and-cli", status: "pending", reqs: ["REQ-CLI-SERVICE-004", "REQ-CLI-SERVICE-005", "REQ-CLI-SERVICE-010"] }
+  - { id: 4, name: "builtin-skills-and-sync", status: "pending", reqs: ["REQ-CLI-SERVICE-007"] }
+  - { id: 5, name: "agent-execution-and-permissions", status: "pending", reqs: ["REQ-CLI-SERVICE-008", "REQ-CLI-SERVICE-009"] }
+  - { id: 6, name: "management-ui", status: "pending", reqs: ["REQ-CLI-SERVICE-006"] }
+
 # 块状态(一挡内按块回流时维护)。
 blocks: {}
 #  stable: [块A, 块B]      # 已稳定,可结晶为 REQ

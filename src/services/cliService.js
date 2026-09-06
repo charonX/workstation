@@ -11,6 +11,52 @@ import { findRegistryItem } from "./cliRegistry.js";
 const PROBE_CACHE_TTL_MS = 60_000; // 60s
 const LATEST_CACHE_TTL_MS = 3_600_000; // 1h
 const PROBE_TIMEOUT_MS = 5_000; // 5s
+const PROBE_ERROR_PREFIX = "E-CLI-PROBE-FAILED";
+
+/**
+ * 格式化探测错误信息
+ * @param {string} reason
+ * @returns {string}
+ */
+function formatProbeError(reason) {
+  return `${PROBE_ERROR_PREFIX}:${reason}`;
+}
+
+/**
+ * 判断错误是否属于可执行命令未找到（如未安装）
+ * @param {any} err
+ * @returns {boolean}
+ */
+function isCommandNotFoundError(err) {
+  return (
+    err?.code === "ENOENT" ||
+    Boolean(err?.message && (err.message.includes("ENOENT") || err.message.includes("Command not found")))
+  );
+}
+
+/**
+ * 校验缓存条目是否在有效期内
+ * @param {{ timestamp: number } | undefined} cached
+ * @param {number} ttlMs
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+function isCacheValid(cached, ttlMs, now = Date.now()) {
+  return Boolean(cached && now - cached.timestamp < ttlMs);
+}
+
+/**
+ * 从命令标准输出中提取语义版本号
+ * @param {string} output
+ * @param {string} [pattern]
+ * @returns {string | null}
+ */
+function parseVersionFromOutput(output, pattern) {
+  const regex = new RegExp(pattern || "(\\d+\\.\\d+\\.\\d+)");
+  const match = output.match(regex);
+  if (!match) return null;
+  return match[1] || match[0];
+}
 
 /**
  * 并发限制器（支持最大并发数与排队唤醒）
@@ -99,34 +145,112 @@ export function compareSemver(a, b) {
 }
 
 /**
+ * 带超时的 JSON HTTP 请求辅助函数
+ * @param {string} url
+ * @param {number} [timeoutMs]
+ */
+async function fetchJsonWithTimeout(url, timeoutMs = PROBE_TIMEOUT_MS) {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Registry returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+/**
+ * 格式化 npm registry API URL
+ * @param {string} pkg
+ * @returns {string}
+ */
+function formatNpmPackageUrl(pkg) {
+  const encodedPkg = pkg.startsWith("@")
+    ? `@${encodeURIComponent(pkg.slice(1))}`
+    : encodeURIComponent(pkg);
+  return `https://registry.npmjs.org/${encodedPkg}/latest`;
+}
+
+/**
+ * 格式化 PyPI API URL
+ * @param {string} pkg
+ * @returns {string}
+ */
+function formatPypiPackageUrl(pkg) {
+  return `https://pypi.org/pypi/${encodeURIComponent(pkg)}/json`;
+}
+
+/**
  * 默认渠道最新版本请求器（npm registry / PyPI）
  */
 async function defaultFetchLatest(pkg, channel) {
   if (channel === "npm") {
-    const encodedPkg = pkg.startsWith("@")
-      ? `@${encodeURIComponent(pkg.slice(1))}`
-      : encodeURIComponent(pkg);
-    const url = `https://registry.npmjs.org/${encodedPkg}/latest`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || !data.version) throw new Error("Invalid npm registry response");
+    const data = await fetchJsonWithTimeout(formatNpmPackageUrl(pkg));
+    if (!data?.version) throw new Error("Invalid npm registry response");
     return data.version;
-  } else if (channel === "pypi") {
-    const url = `https://pypi.org/pypi/${encodeURIComponent(pkg)}/json`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`PyPI registry returned HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || !data.info || !data.info.version) throw new Error("Invalid PyPI response");
+  }
+  if (channel === "pypi") {
+    const data = await fetchJsonWithTimeout(formatPypiPackageUrl(pkg));
+    if (!data?.info?.version) throw new Error("Invalid PyPI response");
     return data.info.version;
   }
   throw new Error(`Unsupported channel: ${channel}`);
+}
+
+/**
+ * 执行底层探测命令并格式化探测结果
+ * @param {import("./cliRegistry.js").CliRegistryItem} item
+ * @param {Function} execFn
+ * @param {ConcurrencyLimiter} limiter
+ */
+async function executeProbe(item, execFn, limiter) {
+  try {
+    const result = await limiter.run(async () => {
+      return await execFn(item.command, item.versionArgs);
+    });
+
+    if (result && result.exitCode !== undefined && result.exitCode !== 0) {
+      return {
+        id: item.id,
+        installed: false,
+        version: null,
+        probeError: formatProbeError(`exit code ${result.exitCode}`),
+      };
+    }
+
+    const output = (result?.stdout || "") + (result?.stderr || "");
+    const version = parseVersionFromOutput(output, item.versionRegex);
+    if (!version) {
+      return {
+        id: item.id,
+        installed: false,
+        version: null,
+        probeError: formatProbeError("Cannot parse version from output"),
+      };
+    }
+
+    return {
+      id: item.id,
+      installed: true,
+      version,
+    };
+  } catch (err) {
+    if (isCommandNotFoundError(err)) {
+      return {
+        id: item.id,
+        installed: false,
+        version: null,
+      };
+    }
+    const reason = err?.code || err?.message || "execution failed";
+    return {
+      id: item.id,
+      installed: false,
+      version: null,
+      probeError: formatProbeError(reason),
+    };
+  }
 }
 
 /**
@@ -161,18 +285,15 @@ export async function createCliService(options = {}) {
           id,
           installed: false,
           version: null,
-          probeError: `E-CLI-PROBE-FAILED:Unknown CLI: ${id}`,
+          probeError: formatProbeError(`Unknown CLI: ${id}`),
         };
       }
 
       const refresh = Boolean(probeOptions?.refresh);
-      const now = Date.now();
+      const cached = svc._probeCache.get(id);
 
-      if (!refresh && svc._probeCache.has(id)) {
-        const cached = svc._probeCache.get(id);
-        if (now - cached.timestamp < PROBE_CACHE_TTL_MS) {
-          return { ...cached.data };
-        }
+      if (!refresh && isCacheValid(cached, PROBE_CACHE_TTL_MS)) {
+        return { ...cached.data };
       }
 
       if (svc._inFlightProbes.has(id)) {
@@ -181,65 +302,8 @@ export async function createCliService(options = {}) {
 
       const probePromise = (async () => {
         try {
-          const result = await svc._limiter.run(async () => {
-            const execFn = svc._stubExecFile || defaultExecFile;
-            return await execFn(item.command, item.versionArgs);
-          });
-
-          if (result && result.exitCode !== undefined && result.exitCode !== 0) {
-            const out = {
-              id: item.id,
-              installed: false,
-              version: null,
-              probeError: `E-CLI-PROBE-FAILED:exit code ${result.exitCode}`,
-            };
-            svc._probeCache.set(id, { timestamp: Date.now(), data: out });
-            return out;
-          }
-
-          const stdout = (result?.stdout || "") + (result?.stderr || "");
-          const regex = new RegExp(item.versionRegex || "(\\d+\\.\\d+\\.\\d+)");
-          const match = stdout.match(regex);
-          if (!match) {
-            const out = {
-              id: item.id,
-              installed: false,
-              version: null,
-              probeError: "E-CLI-PROBE-FAILED:Cannot parse version from output",
-            };
-            svc._probeCache.set(id, { timestamp: Date.now(), data: out });
-            return out;
-          }
-
-          const version = match[1] || match[0];
-          const out = {
-            id: item.id,
-            installed: true,
-            version,
-          };
-          svc._probeCache.set(id, { timestamp: Date.now(), data: out });
-          return out;
-        } catch (err) {
-          if (
-            err.code === "ENOENT" ||
-            err.message?.includes("ENOENT") ||
-            err.message?.includes("Command not found")
-          ) {
-            const out = {
-              id: item.id,
-              installed: false,
-              version: null,
-            };
-            svc._probeCache.set(id, { timestamp: Date.now(), data: out });
-            return out;
-          }
-          const reason = err.code || err.message || "execution failed";
-          const out = {
-            id: item.id,
-            installed: false,
-            version: null,
-            probeError: `E-CLI-PROBE-FAILED:${reason}`,
-          };
+          const execFn = svc._stubExecFile || defaultExecFile;
+          const out = await executeProbe(item, execFn, svc._limiter);
           svc._probeCache.set(id, { timestamp: Date.now(), data: out });
           return out;
         } finally {
@@ -276,11 +340,10 @@ export async function createCliService(options = {}) {
 
       if (channel && pkg) {
         const cacheKey = `${channel}:${pkg}`;
-        const now = Date.now();
         const refresh = Boolean(checkOptions?.refresh);
         const cached = svc._latestVersionCache.get(cacheKey);
 
-        if (!refresh && cached && now - cached.timestamp < LATEST_CACHE_TTL_MS) {
+        if (!refresh && isCacheValid(cached, LATEST_CACHE_TTL_MS)) {
           latestVersion = cached.version;
         } else {
           try {
@@ -288,9 +351,7 @@ export async function createCliService(options = {}) {
             const fetched = await fetchFn(pkg, channel);
             if (fetched) {
               latestVersion = fetched;
-              svc._latestVersionCache.set(cacheKey, { timestamp: now, version: fetched });
-            } else {
-              latestVersion = "unknown";
+              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: fetched });
             }
           } catch {
             latestVersion = "unknown";
