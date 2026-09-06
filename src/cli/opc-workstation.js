@@ -14,6 +14,7 @@ import * as channel from "./commands/channel.js";
 import * as browser from "./commands/browser.js";
 import * as plugin from "./commands/plugin.js";
 import * as mcp from "./commands/mcp.js";
+import * as cliService from "./commands/cliService.js";
 import { release } from "./commands/release.js";
 
 const entities = {
@@ -29,7 +30,8 @@ const entities = {
   channel,
   browser,
   plugin,
-  mcp
+  mcp,
+  "cli-service": cliService
 };
 
 function parseArgs(args) {

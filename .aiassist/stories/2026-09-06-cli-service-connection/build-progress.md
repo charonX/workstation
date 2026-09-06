@@ -9,7 +9,7 @@
 |---|---|---|---|---|---|---|
 | 1 | 内置清单与环境探测 | REQ-CLI-SERVICE-001, 002, 003 | `api/cliRegistry.test.js`、`api/cliProbe.test.js` | `src/services/cliRegistry.js` + `src/services/cliService.js` (probe, checkLatestVersion, 60s TTL cache, concurrency <= 4) | — | 完成 |
 | 2 | 配置持久化与凭据加密 | REQ-CLI-SERVICE-004, 005 | `api/cliServiceConfig.test.js` | `src/db.js` DDL + `src/services/cliService.js` (两层启用、timeoutSec、env secretStore 加密与掩码、effectiveConfig) | Slice 1 | 完成 |
-| 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 待开始 |
+| 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 完成 |
 | 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 待开始 |
 | 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 待开始 |
 | 6 | 前端管理页渲染与交互 | REQ-CLI-SERVICE-006 | `e2e/cliServicesPage.test.cjs` | `src/renderer/pages/CliServices.jsx` + 路由与侧边栏接入 + data-testid 契约 | Slice 3 | 待开始 |
@@ -72,5 +72,34 @@
 - **代码静态检查**：
   - `npm run lint`：`src/db.js` 与 `src/services/cliService.js` 0 error，0 warning。
 - **状态**：
-  Slice 2: complete (tests green, PRD alignment passed)
+  Slice 2: complete (d5411cf..403ab79, tests green, PRD alignment passed)
+  Slice 2: refactor pass done (403ab79..d68119f, tests green, no rollback)
+
+### Slice 3：HTTP API 路由与产品 CLI 命令族（2026-09-06）
+
+#### PRD → 代码 可追溯性表
+
+| REQ-ID | 需求描述 | PRD 章节依据 | 实现代码 | 对应测试 | 验证状态 |
+|---|---|---|---|---|---|
+| REQ-CLI-SERVICE-004 | CLI 服务配置持久化与两层启用（HTTP 路由面） | §6.3 块 3, §7.1 规则 2/3, §8 E1, §10.2, §10.4 接口 1/2/3 | `src/http/routes/cliServices.js` (`handleCliServices`) + `src/http/server.js` (挂载 `case "cli-services":`) | `tests/.../api/cliHttpApi.test.js` (tests 1, 2, 3, 5) | 全绿（4/4 pass） |
+| REQ-CLI-SERVICE-005 | 环境变量配置加密存储与安全回显（HTTP 路由面） | §6.3 块 3, §7 规则 1/2, §8 E4, §10.4 接口 1/2 | `src/http/routes/cliServices.js` (输入校验 400 `E-CLI-INVALID-ENV-KEY`、脱敏回显) | `tests/.../api/cliHttpApi.test.js` (test 4) | 全绿（1/1 pass） |
+| REQ-CLI-SERVICE-010 | 产品 CLI cli-service 命令族 | §10.4 接口 1/2/3, §11.1 Seam 1/2/3 | `src/cli/commands/cliService.js` (`list`, `probe`, `enable`, `disable`, `env`) + `src/cli/opc-workstation.js` (注册 `"cli-service"`) | `tests/.../cli/cliServiceCommand.test.js` (tests 1, 2, 3, 4) | 全绿（4/4 pass） |
+
+#### 验证日志
+
+- **测试命令执行**：
+  - `cliHttpApi.test.js`：5 passed，0 failed，耗时 2024.7ms。覆盖 `GET /api/cli-services`（列表与 golden values、无明文 env 只有 envKeys 数组）、`GET /api/cli-services?refresh=1`（强制重探）、`PUT /api/cli-services/:id`（配置更新、未知 id 返回 404 `E-CLI-UNKNOWN-ID`）、`PUT /api/cli-services/:id` 校验错误返回 400 `E-CLI-INVALID-ENV-KEY`、`PUT /api/cli-services/:id/projects/:projectId` 全局未启用返回 409 `E-CLI-GLOBALLY-DISABLED`。
+  - `cliServiceCommand.test.js`：4 passed，0 failed，耗时 6441.9ms。覆盖 `opc-workstation cli-service list --json`（输出 3 个内置服务条目）、`opc-workstation cli-service probe <id>`（返回指定 CLI 的实时探测结果）、`opc-workstation cli-service env set 与 list`（安全展示 key，绝不打印明文 value）、`opc-workstation cli-service enable <id>`（未安装 CLI 报错 `E-CLI-NOT-INSTALLED` 且退出码非 0）。
+  - 回归测试全绿：
+    - `cliRegistry.test.js`：6 passed，0 failed，耗时 4.0ms。
+    - `cliProbe.test.js`：7 passed，0 failed，耗时 55.4ms。
+    - `cliServiceConfig.test.js`：7 passed，0 failed，耗时 67.8ms。
+    - 5 个套件共计 29 passed，0 failed。
+- **架构约束守卫**：
+  - `src/http/server.js` 行数维持在 248 行，满足 `≤250 行` 架构约束。
+- **代码静态检查**：
+  - `npx oxlint src/http/routes/cliServices.js src/cli/commands/cliService.js`：0 warning，0 error。
+- **状态**：
+  Slice 3: complete (tests green, PRD alignment passed)
+
 

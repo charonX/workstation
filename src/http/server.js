@@ -13,6 +13,7 @@ import { handleExecutions } from "./routes/executions.js";
 import { handleSkills } from "./routes/skills.js";
 import { handlePlugins } from "./routes/plugins.js";
 import { handleMcp } from "./routes/mcp.js";
+import { handleCliServices } from "./routes/cliServices.js";
 import { handleAgents } from "./routes/agents.js";
 import { handleSettings } from "./routes/settings.js";
 import { handleDashboard } from "./routes/dashboard.js";
@@ -179,9 +180,7 @@ async function handleRequest(req, res, server) {
           getSseRegistry: () => services?.getSseRegistry(),
         });
       }
-      if (subPath[0] === "mode" && subPath[1] === "last") {
-        return handleAgentLastMode(req, res, body, { getModeService: () => services?.getModeService() });
-      }
+      if (subPath[0] === "mode" && subPath[1] === "last") return handleAgentLastMode(req, res, body, { getModeService: () => services?.getModeService() });
       if (subPath[0] === "files") return handleAgentFiles(req, res, subPath.slice(1), body, { getFilePreviewWatchService: () => services?.getFilePreviewWatchService() });
       return handleAgentConfirmations(req, res, body, subPath, {
         getConfirmationService: () => services?.getConfirmationService(),
@@ -195,6 +194,7 @@ async function handleRequest(req, res, server) {
     case "skills": return handleSkills(req, res, body, subPath);
     case "plugins": return handlePlugins(req, res, body, subPath);
     case "mcp": return handleMcp(req, res, body, subPath);
+    case "cli-services": return handleCliServices(req, res, body, subPath);
     case "agents": return handleAgents(req, res);
     case "dashboard": return handleDashboard(req, res);
     case "notifications": return handleNotifications(req, res, body, subPath);
