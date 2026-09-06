@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-010
-// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
+// REQ-VERSION: v1-hash:d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff
 // CAPABILITY-TRACE: command-interface
 // ENTITY-TRACE: cli
 // EXPECTED-TRACE: prd.md §10.4 接口 1/2/3, §11.1 Seam 1/2/3

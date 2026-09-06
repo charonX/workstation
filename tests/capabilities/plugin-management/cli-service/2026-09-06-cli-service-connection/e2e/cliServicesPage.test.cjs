@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-006
-// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
+// REQ-VERSION: v1-hash:d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.1 流 A/B, §6.3 块 4, §7.1, §8 E1
@@ -61,7 +61,8 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
       });
     });
 
-    await page.route("**/api/projects*", async (route) => {
+    // 精确匹配 JSON API，不带尾通配：避免命中 Vite 服务的前端模块 /api/projects.js
+    await page.route(/\/api\/projects(\?.*)?$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -70,11 +71,22 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
     });
 
     await page.route("**/api/cli-services*", async (route) => {
-      if (route.request().url().includes("refresh=1")) {
-        return route.continue();
+      const url = route.request().url();
+      // refresh=1 重新探测同样返回 fixture（不 continue 到不存在的后端）
+      if (url.includes("refresh=1")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ services: STANDARD_SERVICES }),
+        });
       }
-      if (route.request().url().includes("project-enablements")) {
-        return route.continue();
+      // project-enablements 聚合端点（LIFO 下先注册的具体路由通常已拦截，此处兜底也显式 fulfill）
+      if (url.includes("project-enablements")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ enablements: { claude: ["proj-1"] } }),
+        });
       }
       await route.fulfill({
         status: 200,

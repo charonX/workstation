@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-008, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-009
-// REQ-VERSION: v1-hash:48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6
+// REQ-VERSION: v1-hash:d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 5, §8 E5/E6, §10.2, §10.4 接口 4, §10.5 决策 1/4, ADR-043
@@ -123,25 +123,43 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     assert.deepEqual(otherEnv, {});
   });
 
-  it("未启用清单 CLI 时 toolAdapter 拦截执行并返回 E-CLI-NOT-ENABLED", async () => {
+  it("未启用清单 CLI 时 toolAdapter 拦截执行并返回 E-CLI-NOT-ENABLED（无进程产生）", async () => {
     const { createSessionToolSurface } = await loadToolAdapter();
-    const surface = createSessionToolSurface({
-      profile: "project",
-      cwd: workdir,
-      boundaryAuthorized: true,
-      cliServices: [], // 未启用任何 CLI
-    });
 
-    // EXPECTED-TRACE: prd.md §8 E6
-    const res = await surface.execute("bash", { command: "claude --version" });
-    assert.ok(res?.errorCode === "E-CLI-NOT-ENABLED", "未启用 CLI 时返回 E-CLI-NOT-ENABLED");
-    assert.ok(res?.errorMessage?.includes("E-CLI-NOT-ENABLED"), "错误信息包含错误码说明");
+    // 无 spawn 断言：放置一个被执行即写标记文件的 mock claude，拦截成立则标记不得出现
+    const binDir = path.join(workdir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const marker = path.join(workdir, "spawned.marker");
+    fs.writeFileSync(
+      path.join(binDir, "claude"),
+      `#!/bin/sh\necho spawned > "${marker}"\n`,
+      { mode: 0o755 }
+    );
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${originalPath}`;
+
+    try {
+      const surface = createSessionToolSurface({
+        profile: "project",
+        cwd: workdir,
+        boundaryAuthorized: true,
+        cliServices: [], // 未启用任何 CLI
+      });
+
+      // EXPECTED-TRACE: prd.md §8 E5
+      const res = await surface.execute("bash", { command: "claude --version" });
+      assert.ok(res?.errorCode === "E-CLI-NOT-ENABLED", "未启用 CLI 时返回 E-CLI-NOT-ENABLED");
+      assert.ok(res?.errorMessage?.includes("E-CLI-NOT-ENABLED"), "错误信息包含错误码说明");
+      assert.ok(!fs.existsSync(marker), "被拦截的命令不得产生任何子进程（E5：不执行，无进程产生）");
+    } finally {
+      process.env.PATH = originalPath;
+    }
   });
 
-  it("CLI 服务超时触发 E-CLI-TIMEOUT 与 SIGKILL 升级", async () => {
+  it("CLI 服务超时触发 E-CLI-TIMEOUT（surface 接线：timeoutSec → execFile timeout）", async () => {
     const { createSessionToolSurface } = await loadToolAdapter();
 
-    // 在临时目录创建模拟耗时阻塞命令
+    // mock 命令正常响应 SIGTERM：验证快照 timeoutSec 传递到 execFile 并映射错误码
     const binDir = path.join(workdir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const mockClaude = path.join(binDir, "claude");
@@ -165,12 +183,34 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
         ],
       });
 
-      // EXPECTED-TRACE: prd.md §8 E5
+      // EXPECTED-TRACE: prd.md §8 E6
+      const started = Date.now();
       const res = await surface.execute("bash", { command: "claude" });
+      const elapsed = Date.now() - started;
       assert.equal(res?.errorCode, "E-CLI-TIMEOUT", "超时返回 E-CLI-TIMEOUT");
+      assert.ok(elapsed < 5000, `SIGTERM 敏感的进程应在超时后即结算（实际 ${elapsed}ms）`);
     } finally {
       process.env.PATH = originalPath;
     }
+  });
+
+  it("SIGTERM 被无视时 runBash 在超时 +500ms 升级 SIGKILL（诚实断言）", async () => {
+    const { runBash } = await loadToolAdapter();
+    assert.equal(typeof runBash, "function", "runBash 作为测试 seam 导出");
+
+    // `trap '' TERM` 使直接子进程（bash 自身）免疫 SIGTERM：只有 SIGKILL 升级路径
+    // 生效才能让 Promise 结算——能 reject 即证明 SIGKILL 真实发出（否则悬挂至测试超时）。
+    // EXPECTED-TRACE: prd.md §8 E6
+    const started = Date.now();
+    await assert.rejects(
+      runBash("trap '' TERM; sleep 10", workdir, { timeout: 1000, isCliService: true }),
+      (err) => err?.code === "E-CLI-TIMEOUT"
+    );
+    const elapsed = Date.now() - started;
+    assert.ok(
+      elapsed >= 1400,
+      `SIGTERM 被无视时须等待 +500ms 的 SIGKILL 升级才结算（实际 ${elapsed}ms；若仅 SIGTERM 生效应约 1000ms 内返回）`
+    );
   });
 
   it("gen-agent-policy.mjs --check 自动化一致性回归验证", () => {
