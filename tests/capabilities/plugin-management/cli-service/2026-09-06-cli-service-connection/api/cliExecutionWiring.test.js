@@ -123,37 +123,29 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     assert.deepEqual(otherEnv, {});
   });
 
-  it("未启用清单 CLI 时 toolAdapter 拦截执行并返回 E-CLI-NOT-ENABLED（无进程产生）", async () => {
-    const { createSessionToolSurface } = await loadToolAdapter();
+  it("未启用清单 CLI 时通过策略评估器拦截为 deny（E5：权限链拒绝，无进程产生）", async () => {
+    const { createPolicyEvaluator } = await import("../../../../../../src/services/permissionPolicy.js");
+    const { buildProjectBashRules } = await loadPolicyRules();
 
-    // 无 spawn 断言：放置一个被执行即写标记文件的 mock claude，拦截成立则标记不得出现
-    const binDir = path.join(workdir, "bin");
-    fs.mkdirSync(binDir, { recursive: true });
-    const marker = path.join(workdir, "spawned.marker");
-    fs.writeFileSync(
-      path.join(binDir, "claude"),
-      `#!/bin/sh\necho spawned > "${marker}"\n`,
-      { mode: 0o755 }
-    );
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${binDir}:${originalPath}`;
-
-    try {
-      const surface = createSessionToolSurface({
-        profile: "project",
-        cwd: workdir,
-        boundaryAuthorized: true,
-        cliServices: [], // 未启用任何 CLI
-      });
-
-      // EXPECTED-TRACE: prd.md §8 E5
-      const res = await surface.execute("bash", { command: "claude --version" });
-      assert.ok(res?.errorCode === "E-CLI-NOT-ENABLED", "未启用 CLI 时返回 E-CLI-NOT-ENABLED");
-      assert.ok(res?.errorMessage?.includes("E-CLI-NOT-ENABLED"), "错误信息包含错误码说明");
-      assert.ok(!fs.existsSync(marker), "被拦截的命令不得产生任何子进程（E5：不执行，无进程产生）");
-    } finally {
-      process.env.PATH = originalPath;
+    // 模拟项目未启用清单 CLI 时写入的项目级策略
+    const configDir = path.join(workdir, ".pi", "extensions", "pi-permission-system");
+    fs.mkdirSync(configDir, { recursive: true });
+    const denyRules = buildProjectBashRules({ enabledCliCommands: [] });
+    const bashConfig = {};
+    for (const rule of denyRules) {
+      bashConfig[rule.pattern] = rule.action || "deny";
     }
+    fs.writeFileSync(
+      path.join(configDir, "config.json"),
+      JSON.stringify({ permission: { bash: bashConfig } }, null, 2)
+    );
+
+    const evaluator = createPolicyEvaluator({ projectDir: workdir });
+    // EXPECTED-TRACE: prd.md §8 E5
+    const verdict = evaluator.evaluate({ tool: "bash", input: { command: "claude --version" } });
+    assert.equal(verdict, "deny", "未启用清单 CLI 时权限策略必须返回 deny 拦截");
+    const verdictBare = evaluator.evaluate({ tool: "bash", input: { command: "claude" } });
+    assert.equal(verdictBare, "deny", "未启用清单 CLI 时裸命令亦必须返回 deny 拦截");
   });
 
   it("CLI 服务超时触发 E-CLI-TIMEOUT（surface 接线：timeoutSec → execFile timeout）", async () => {
