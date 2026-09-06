@@ -731,7 +731,9 @@ function commandViolatesCwd(cwd, command) {
 }
 
 // bash 执行（execFile 无 shell 中间层；cwd 限定项目目录；超时兜底防悬挂）。
-async function runBash(command, cwd, options = {}) {
+// 导出为测试 seam：SIGKILL 升级断言须绕过 bash -c 直接子进程必响应 SIGTERM 的
+// 平台差异（macOS bash 3.2 不做 exec 优化），直接以 TERM-免疫命令驱动本函数。
+export async function runBash(command, cwd, options = {}) {
   const { env, timeout = 30000, isCliService = false } = options;
   const shell = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
   const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
