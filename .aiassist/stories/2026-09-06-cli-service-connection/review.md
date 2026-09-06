@@ -176,11 +176,67 @@
 
 ---
 
-## 结论
+## 结论（第一轮）
 
-- [x] **可进入下一阶段**（已按建议完成全部 23 项阻塞项与关键警告项整改）
-- [ ] 需修复阻塞项后重审
-- [ ] 建议部分回流
+- [ ] ~~可进入下一阶段~~（第一轮整改后被第二轮重审推翻，见下）
+- [x] 需修复阻塞项后重审 —— 第二轮重审结论：仍不可签收，4 项阻塞 → **第三轮修复后阻塞清零（RE2-1~RE2-4 全部 FIXED，验证见下）；待人重新确认决策后可进 REFLECT**
+
+---
+
+## 第二轮重审（修复验证，panel 5  specialist，针对 commit d913aeb + 09bcee7）
+
+> 触发：人完成第一轮整改后请求重审。范围：契约 / 测试（含实际运行）/ 代码 / 安全 / 性能。
+> **总体结果：FAIL —— 4 项阻塞。** 单元/CLI 测试 40/40 绿、全仓回归 1237 绿，但 E2E 0/7 全红，且发现多处「勾选完成但与代码事实不符」。
+
+### 阻塞项（必须修复后才能进 REFLECT）
+
+- [x] **RE2-1 CRITICAL（test）：E2E 0/7 全红，修复后从未绿过** —— **FIXED（第三轮，commit 0101f67 [test]）**
+  - 问题：`cliServicesPage.test.cjs:64` 的 stub glob `**/api/projects*` 命中 Vite 开发服务器的前端模块 `/api/projects.js`，JSON fulfill 导致模块加载失败、页面白屏，7 个用例连锁全红（实测复现）。上一轮「QA 全绿」基于旧版测试 + DEFAULT_SERVICES 兜底；本轮 E2E 改动从未验证通过。
+  - 修复：glob 收窄为正则 `/\/api\/projects(\?.*)?$/`；`refresh=1` 与 `project-enablements` 分支改为显式 fulfill（不再 `route.continue()` 落向死后端）。**重跑验证：E2E 7/7 PASS。**
+
+- [x] **RE2-2 IMPORTANT（code）：CODE-F4 单一真源未收敛，review.md 勾选失实** —— **FIXED（第三轮，commit 9082caf [build]）**
+  - 问题：`agentService.js:264-298` 本地 `getEffectiveCliServicesSync` 原样保留并仍在服役；`cliService.js:923` 新导出的同名函数**零消费方**。三处漂移依旧：db 路径两份拷贝；**agentService 版解密失败仍把密文当 env 值注入子进程（fail-open）**；缺 installed 过滤。
+  - 修复：agentService 本地副本及配套 `decryptEnvEntries`/`safeParseJsonObject` 已删除，改为 import `cliService.js` 的单一定义（fail-closed 抛错 + installed 过滤唯一实现）。验证：grep 全仓仅一处定义，agentService 零本地拷贝。
+
+- [x] **RE2-3 IMPORTANT（code+test）：SIGKILL 升级为死代码，对应测试名不副实** —— **FIXED（第三轮，commits 9082caf/e5d5c41 [build] + 0101f67 [test]）**
+  - 问题：`toolAdapter.js:782-786` 判据 `!child.killed` —— Node 中 SIGTERM **发出时** `killed` 即为 true，500ms 后定时器永远跳过 SIGKILL；对无视 SIGTERM 的进程 Promise 悬挂。测试用 `sleep 10`（响应 SIGTERM 即死）作被测进程，「SIGKILL 升级」断言名不副实（TEST-F1 的诚实通过未达成）。
+  - 修复：判据改为自维护 `settled` 标志（callback 触发才置位）；`runBash` 导出为测试 seam（macOS bash 3.2 无 exec 优化，经 bash -c 无法制造 TERM-免疫直接子进程）；测试拆两层——surface 层断言 timeoutSec→execFile timeout→E-CLI-TIMEOUT 映射，seam 层以 `trap '' TERM` 命令断言结算耗时 ≥1400ms 诚实证明 +500ms SIGKILL 升级。NOT-ENABLED 用例补「无进程产生」标记文件断言；E5/E6 内联标号对调归位。**验证：单元 41/41 PASS。**
+
+- [x] **RE2-4 IMPORTANT（契约）：生效语义残留矛盾 + signoff 与现行契约版本脱节** —— **FIXED（第三轮，commit 39b7bf0 [docs]）**
+  - 问题：(a) `prd.md:153` §10.2 模块表与 `ADR-043:33` 潜在代价仍写「新会话生效」，与本轮 §10.3/§10.5/决策 1 的 split 语义（deny 热生效 / env+skill 冷生效）直接矛盾，各差一行修订；(b) `signoff.md` 仍是旧 REQ 哈希 `7a08fa0c…` 与旧 REQ-009 归属（agent-security/permission）——契约修订后未重签。
+  - 修复：两处表述改为 split 语义；PRD §10.4 补接口 1b（project-enablements 聚合端点完整契约，同时闭合 RE2-7）；§6.1 流表锚点 ID 与 REQ-002 AC4 锚点归位；requirements.md 追加 v1.1 变更记录并重算哈希（`d33ce03b…`）；signoff.md 追加「Assertion 修订签核（v1.1）」段；8 个测试文件 REQ-VERSION 全同步。
+
+### 第三轮修复验证结果（针对 commits 9082caf + e5d5c41 + 39b7bf0 + 0101f67）
+
+- 故事单元/CLI 测试：**41/41 PASS**（较第二轮 +1：SIGKILL 用例拆为两层断言）
+- E2E（Playwright electron）：**7/7 PASS**（RE2-1 修复后首次转绿，AC1/AC6/AC7 断言落地）
+- 全仓单元回归：**298 suites / 1238 tests 全部 PASS**
+- **RE2-1~RE2-4 全部 FIXED，第二轮 4 项阻塞清零。** 剩余 RE2-5/RE2-6/RE2-8/RE2-9/RE2-10 为不阻塞的显性决策项，待人裁决处置。
+
+### 部分修复 / 需人裁决（不阻塞，但必须显性决策）
+
+- [ ] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——`toolAdapter.js:821-828` 保留执行层清单拦截，且新测试把它锁成了契约。需人裁决：ADR-043 修订为「静态规则 + 执行层防御性兜底」，或移除 pre-gate。
+- [ ] **RE2-6（perf）：PERF-F3 只修了一半**——`list()` 已并行化（FIXED），但 latestVersion 外网请求仍在响应关键路径同步 await（冷缓存上界 ≈10s，未安装条目也打外网）。「渠道请求不阻塞响应」承诺仍未兑现，review.md 勾选言过其实。建议缓存未命中先返回 unknown + 后台刷新。
+- [x] **RE2-7（契约）：project-enablements 聚合端点契约不全**——**FIXED（第三轮 39b7bf0）**：PRD §10.4 新增「接口 1b」完整契约块（路径 / 输出 schema `{ enablements: { [serviceId]: string[] } }` / 无副作用说明）。
+- [ ] **RE2-8（安全）：SEC-4 PARTIAL**——密文透传已 fail-closed（FIXED 半），但粒度是「一条坏 key 丢整份快照」且 base64 退化残余风险未按建议记入 ADR-043。SEC-5（危险 env KEY denylist）确认仍为开放接受项。
+- [ ] **RE2-9（test）：TEST-F7/F8 未处理**（渠道契约解析零覆盖；worker seam 错位）——仍为开放警告。
+- [ ] **RE2-10（code）：CODE-F11 PARTIAL**——E-PROJECT-NOT-FOUND 已引入但落到 400 而非契约要求的 404，且不校验项目真实存在。CODE-F9（duck-typing）、CODE-F12（全局禁用不级联）确认未处理（与勾选状态一致）。
+
+### 小项（SUGGESTION，可随手清理）
+
+- 测试：EXPECTED-TRACE 内联标注 E5/E6 互换（值对、标号错）；NOT-ENABLED 用例缺「无进程产生」断言；E2E 全局 stub 的 `route.continue()` 落向无后端 5173 仅靠 LIFO 未炸；VALUE=4096 正向腿只断言不抛错。
+- 契约：prd.md §6.1 流表 4 处锚点 ID 错配（B1↔B2、C1→D1）；REQ-002 AC4 锚点 off-by-one（应为 A5）；requirements.md 变更记录未追加本轮修订行。
+- 代码：`getGlobalCliService` 首建 check-then-set 竞态（建议缓存 Promise）；`handleRefresh` 残留 `length > 0` 守卫；cliService.js:808 悬挂 JSDoc；`handleRouteError` 变异原 error 对象；`isManagedBuiltinSymlink` 口径可收紧到具体 slug 路径。
+- 安全：建议补三条负向回归（cli-services 守卫 403、projectId 遍历拒绝、路径前缀命令不注入）；生产打包 `Origin: null` 场景建议实测一次（与既有守卫端点行为一致，非本轮引入）。
+- 流程：d913aeb `[build]` 混入 6 个契约/文档文件（应 [docs] 单独 commit）。
+
+### 第二轮已验证 FIXED 的项（不再列出明细）
+
+REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、TEST-F2/F4/F6、哈希链路（新 hash `48deb3ad…` 与 8 个测试文件 REQ-VERSION 全同步）。安全修复无编码/大小写绕过；并行化未引入限流竞态；前端重构无重复渲染回归。
+
+### 关于下方「审查人决策记录」
+
+第一轮整改后该记录已填「接受」，但第二轮重审推翻其中多处完成声明（CODE-F4、PERF-F3、TEST-F3/F5、SIGKILL、E2E 全绿口径）。**该决策需人在处理完 RE2-1~RE2-4 后重新确认。**
 
 ---
 
