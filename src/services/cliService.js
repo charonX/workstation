@@ -5,12 +5,17 @@
 // REQ-CLI-SERVICE-005: 环境变量配置加密存储与安全回显
 // EXPECTED-TRACE: prd.md §6.3 块 2/3, §7, §7.1, §8 E1/E2/E3/E4, §10.3 流 1, §10.4 接口 1/2/3/4, §10.5 决策 3/4
 
+import fs from "node:fs";
 import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { getDb } from "../db.js";
 import { encryptSecret, decryptSecret } from "./secretStore.js";
 import { findRegistryItem, getRegistry } from "./cliRegistry.js";
+import * as projectService from "./projectService.js";
+import * as skillService from "./skillService.js";
+import { buildProjectBashRules } from "../agent/policyRules.js";
+import { expandTilde } from "./pathUtils.js";
 
 const PROBE_CACHE_TTL_MS = 60_000; // 60s
 const LATEST_CACHE_TTL_MS = 3_600_000; // 1h
@@ -580,6 +585,79 @@ export async function createCliService(options = {}) {
           enabled = excluded.enabled,
           updated_at = excluded.updated_at
       `).run(projectId, id, isEnabled ? 1 : 0, now);
+
+      // 查询该项目所有已启用的 CLI 服务 ID 集合
+      const enabledRows = d.prepare(`
+        SELECT service_id
+        FROM cli_service_project_enablement
+        WHERE project_id = ? AND enabled = 1
+      `).all(projectId);
+      const enabledServiceIds = enabledRows.map((r) => r.service_id);
+
+      const enabledCliSlugs = [];
+      const enabledCliCommands = [];
+      for (const sid of enabledServiceIds) {
+        const item = findRegistryItem(sid);
+        if (item) {
+          enabledCliSlugs.push(item.builtinSkillSlug);
+          enabledCliCommands.push(item.command);
+        } else {
+          enabledCliSlugs.push(sid);
+          enabledCliCommands.push(sid);
+        }
+      }
+
+      // 获取项目的实际目录（通过 projectService 或项目对象）
+      let projectDir = null;
+      try {
+        const project = projectService.getProjectDetail?.(projectId);
+        if (project?.localPath) {
+          projectDir = path.resolve(expandTilde(project.localPath));
+        }
+      } catch {
+        // ignore
+      }
+      if (!projectDir && (path.isAbsolute(projectId) || projectId.startsWith(".") || projectId.includes(path.sep))) {
+        projectDir = path.resolve(projectId);
+      }
+
+      // 调用 skillService.syncProjectCliSkills(projectDir, { enabledCliSlugs }) 自动收敛技能软链
+      // 调用 buildProjectBashRules({ enabledCliCommands }) 获取未启用 CLI 的 deny 规则，并同步更新项目配置
+      if (projectDir) {
+        await skillService.syncProjectCliSkills(projectDir, { enabledCliSlugs });
+
+        if (fs.existsSync(projectDir)) {
+          const denyRules = buildProjectBashRules({ enabledCliCommands });
+          const configPath = path.join(projectDir, ".pi", "extensions", "pi-permission-system", "config.json");
+          let config = {};
+          if (fs.existsSync(configPath)) {
+            try {
+              config = JSON.parse(fs.readFileSync(configPath, "utf-8")) || {};
+            } catch {
+              config = {};
+            }
+          }
+          if (!config.permission || typeof config.permission !== "object") {
+            config.permission = {};
+          }
+          if (!config.permission.bash || typeof config.permission.bash !== "object") {
+            config.permission.bash = {};
+          }
+          for (const cmd of ["claude", "codex", "crwl"]) {
+            delete config.permission.bash[`${cmd} *`];
+            delete config.permission.bash[cmd];
+          }
+          for (const rule of denyRules) {
+            config.permission.bash[rule.pattern] = rule.action || rule.decision || "deny";
+          }
+          try {
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+          } catch (err) {
+            console.warn?.(`[cliService] 更新项目权限配置失败 ${configPath}: ${err?.message ?? err}`);
+          }
+        }
+      }
 
       return {
         projectId,

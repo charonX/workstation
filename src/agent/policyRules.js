@@ -4,40 +4,10 @@
 
 import { BASH_RULES as SERVICE_BASH_RULES } from "../services/policyRules.js";
 
-const CLI_DEFAULT_BASH_RULES = [
-  {
-    pattern: "claude *",
-    action: "ask",
-    decision: "ask",
-    hotPathVisible: true,
-    family: "cli-service",
-    globs: ["claude *", "claude"],
-  },
-  {
-    pattern: "codex *",
-    action: "ask",
-    decision: "ask",
-    hotPathVisible: true,
-    family: "cli-service",
-    globs: ["codex *", "codex"],
-  },
-  {
-    pattern: "crwl *",
-    action: "ask",
-    decision: "ask",
-    hotPathVisible: true,
-    family: "cli-service",
-    globs: ["crwl *", "crwl"],
-  },
-];
-
-export const BASH_RULES = [
-  ...SERVICE_BASH_RULES.map((rule) => ({
-    ...rule,
-    action: rule.action ?? rule.decision ?? "ask",
-  })),
-  ...CLI_DEFAULT_BASH_RULES,
-];
+export const BASH_RULES = SERVICE_BASH_RULES.map((rule) => ({
+  ...rule,
+  action: rule.action ?? rule.decision ?? "ask",
+}));
 
 const SUPPORTED_CLI_COMMANDS = ["claude", "codex", "crwl"];
 

@@ -725,8 +725,15 @@ async function runBash(command, cwd, { env, timeout } = {}) {
     const out = `${stdout ?? ""}${stderr ? `\n${stderr}` : ""}`.trim();
     return out;
   } catch (err) {
-    if (err?.killed || err?.signal === "SIGTERM" || err?.code === "ETIMEDOUT") {
-      const detail = String(err?.stderr ?? err?.stdout ?? "").trim();
+    if (
+      err?.killed ||
+      err?.signal === "SIGTERM" ||
+      err?.signal === "SIGKILL" ||
+      err?.code === "ETIMEDOUT" ||
+      err?.timedOut ||
+      Boolean(err?.message && (err.message.includes("timed out") || err.message.includes("ETIMEDOUT")))
+    ) {
+      const detail = String(err?.stderr ?? err?.stdout ?? err?.message ?? "").trim();
       throw Object.assign(new Error(detail ? `[E-CLI-TIMEOUT] ${detail}` : "命令执行超时"), { code: "E-CLI-TIMEOUT" });
     }
     const detail = String(err?.stderr ?? err?.message ?? "命令执行失败").trim();
@@ -759,18 +766,35 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getC
       }
       const cmdStr = String(args.command ?? "");
       const snapshot = typeof getCliServices === "function" ? getCliServices() : (Array.isArray(cliServices) ? cliServices : []);
+
+      // 清单命令（claude / codex / crwl）未启用拦截（REQ-CLI-SERVICE-008，包含错误码 E-CLI-NOT-ENABLED）
+      const tokens = cmdStr.trim().split(/\s+/);
+      let cmdToken = null;
+      for (const token of tokens) {
+        if (!token) continue;
+        if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue;
+        cmdToken = token;
+        break;
+      }
+      const cmd = cmdToken ? path.basename(cmdToken).replace(/^["']|["']$/g, "") : "";
+      const MANIFEST_COMMANDS = new Set(["claude", "codex", "crwl"]);
+      if (MANIFEST_COMMANDS.has(cmd)) {
+        const isEnabled = Array.isArray(snapshot) && snapshot.some(
+          (entry) =>
+            entry &&
+            (entry.command === cmd ||
+              entry.id === cmd ||
+              entry.command === cmdToken ||
+              entry.id === cmdToken)
+        );
+        if (!isEnabled) {
+          return errorResult("E-CLI-NOT-ENABLED", `[E-CLI-NOT-ENABLED] CLI 服务未启用：${cmd}（需在项目配置中启用后使用）`);
+        }
+      }
+
       const extraEnv = resolveCliEnvForCommand(cmdStr, snapshot);
       let timeoutSec = 120;
       if (Array.isArray(snapshot) && snapshot.length > 0) {
-        const tokens = cmdStr.trim().split(/\s+/);
-        let cmdToken = null;
-        for (const token of tokens) {
-          if (!token) continue;
-          if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue;
-          cmdToken = token;
-          break;
-        }
-        const cmd = cmdToken ? path.basename(cmdToken) : "";
         const matched = snapshot.find((entry) => entry && (entry.command === cmd || entry.id === cmd));
         if (matched && typeof matched.timeoutSec === "number" && matched.timeoutSec > 0) {
           timeoutSec = matched.timeoutSec;

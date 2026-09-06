@@ -233,6 +233,31 @@ export const BASH_RULES = [
     family: "global-config",
     globs: ["npm config set*", "pnpm config set*"],
   },
+  // cli-service：受管 CLI 服务族（REQ-CLI-SERVICE-008 出厂策略）
+  {
+    pattern: "claude *",
+    action: "ask",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "cli-service",
+    globs: ["claude *"],
+  },
+  {
+    pattern: "codex *",
+    action: "ask",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "cli-service",
+    globs: ["codex *"],
+  },
+  {
+    pattern: "crwl *",
+    action: "ask",
+    decision: "ask",
+    hotPathVisible: true,
+    family: "cli-service",
+    globs: ["crwl *"],
+  },
 ];
 
 // 评估器消费面：全部 bash 破坏性模式（无论 hotPathVisible——不可见族在评估层

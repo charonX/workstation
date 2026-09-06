@@ -77,7 +77,10 @@
       "source *": "ask",
       "git config --global*": "ask",
       "npm config set*": "ask",
-      "pnpm config set*": "ask"
+      "pnpm config set*": "ask",
+      "claude *": "ask",
+      "codex *": "ask",
+      "crwl *": "ask"
     },
     "task list": "allow",
     "task get": "allow",
