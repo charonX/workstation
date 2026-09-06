@@ -215,7 +215,7 @@
 
 ### 部分修复 / 需人裁决（不阻塞，但必须显性决策）
 
-- [ ] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——`toolAdapter.js:821-828` 保留执行层清单拦截，且新测试把它锁成了契约。需人裁决：ADR-043 修订为「静态规则 + 执行层防御性兜底」，或移除 pre-gate。
+- [x] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——**用户决策（选项 B）：移除 toolAdapter pre-gate**。未启用清单命令拦截全权交由 gotgenes 权限策略层（项目级 deny 覆盖），消灭双重真相；更新 `cliExecutionWiring.test.js` 断言为策略评估器返回 deny。
 - [ ] **RE2-6（perf）：PERF-F3 只修了一半**——`list()` 已并行化（FIXED），但 latestVersion 外网请求仍在响应关键路径同步 await（冷缓存上界 ≈10s，未安装条目也打外网）。「渠道请求不阻塞响应」承诺仍未兑现，review.md 勾选言过其实。建议缓存未命中先返回 unknown + 后台刷新。
 - [x] **RE2-7（契约）：project-enablements 聚合端点契约不全**——**FIXED（第三轮 39b7bf0）**：PRD §10.4 新增「接口 1b」完整契约块（路径 / 输出 schema `{ enablements: { [serviceId]: string[] } }` / 无副作用说明）。
 - [ ] **RE2-8（安全）：SEC-4 PARTIAL**——密文透传已 fail-closed（FIXED 半），但粒度是「一条坏 key 丢整份快照」且 base64 退化残余风险未按建议记入 ADR-043。SEC-5（危险 env KEY denylist）确认仍为开放接受项。
