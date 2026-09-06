@@ -60,7 +60,7 @@
 
 1. `probe(id, { refresh })` 通过 `execFile(item.command, item.versionArgs)` 探测命令；若命令存在且输出包含版本字符串（如 `1.0.80 (Claude Code)`），按 `versionRegex`（默认 `(\d+\.\d+\.\d+)`）提取 semver，返回 `{ id, installed: true, version: "1.0.80" }`——EXPECTED-TRACE: PRD §6.3 块 2 row 1。
 2. 若命令不存在（`ENOENT`），返回 `{ id, installed: false, version: null }`，不抛出异常——EXPECTED-TRACE: PRD §6.3 块 2 row 2。
-3. 若执行超过 5 秒超时或退出码非 0 且未输出有效版本，返回 `{ id, installed: false, version: null, probeError: "E-CLI-PROBE-FAILED:<reason>" }`——EXPECTED-TRACE: PRD §6.2 异常行 2, §8 E2。
+3. 探测失败判定：若执行超过 5 秒超时、退出码非 0、或未输出有效版本（三者满足任一），返回 `{ id, installed: false, version: null, probeError: "E-CLI-PROBE-FAILED:<reason>" }`——EXPECTED-TRACE: PRD §6.2 异常行 2, §8 E2。
 4. 缓存行为：探测结果具有 60 秒 TTL 内存短缓存（成功态、失败态均缓存）；60s 内再次调用 `probe(id)` 直接命中缓存不触发 spawn；传入 `refresh: true` 时绕过缓存强制重探——EXPECTED-TRACE: PRD §6.3 块 2 row 3, §10.5 决策 3。
 5. 并发与限流：同 `id` 的并发 probe 请求合并为一个 in-flight Promise；跨条目的全局并发 spawn 限制为 ≤ 4。
 
@@ -227,15 +227,15 @@
 **分类：** P0
 **优先级：** 必须
 **Scope：** `cross-module`
-**Capability：** `agent-security`
-**Entity：** `permission`
+**Capability：** `plugin-management`
+**Entity：** `cli-service`
 **测试类型：** 单元 / 集成
 
 #### 验收标准
 
-1. `src/agent/policyRules.js` 中的 `BASH_RULES` 必须显式包含清单命令规则：`claude *`、`codex *`、`crwl *`，默认权限判定均为 `ask`——EXPECTED-TRACE: PRD §10.2, §10.5 决策 1, ADR-043。
+1. `src/agent/policyRules.js` 与 `src/services/policyRules.js` 中的 `BASH_RULES` 必须显式包含清单命令规则：涵盖带参形态（`claude *`、`codex *`、`crwl *`）与裸命令形态（`claude`、`codex`、`crwl`），默认权限判定均为 `ask`——EXPECTED-TRACE: PRD §10.2, §10.5 决策 1, ADR-043。
 2. 运行规则生成与配平检测（`gen-agent-policy`），确保出厂规则与部署策略 JSON 配平无漂移。
-3. 项目层权限覆盖生成（ADR-022）：针对项目已启用的 CLI 服务，权限规则回落至默认层（用户可配置为 allow 或 ask）；针对项目未启用的 CLI 服务，生成项目层规则覆盖，权限判定为 `deny`。
+3. 项目层权限覆盖生成（ADR-022）：针对项目已启用的 CLI 服务，权限规则回落至默认层（用户可配置为 allow 或 ask）；针对项目未启用的 CLI 服务，生成项目层规则覆盖（包含 `cmd *` 与 `cmd`），权限判定为 `deny`。
 4. 权限执行闭环：当 agent 试图执行未启用的清单命令时，权限链返回拦截判定并回传错误码 `E-CLI-NOT-ENABLED`，不创建任何系统子进程——EXPECTED-TRACE: PRD §6.2 异常行 5, §8 E5。
 
 #### 测试可追溯性

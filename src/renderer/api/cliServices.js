@@ -37,3 +37,11 @@ export function setCliServiceProjectEnabled(id, projectId, enabled) {
     enabled: Boolean(enabled),
   });
 }
+
+/**
+ * 获取所有 CLI 服务的项目启用映射聚合关系
+ */
+export function getCliServiceProjectEnablements() {
+  return get("/api/cli-services/project-enablements");
+}
+

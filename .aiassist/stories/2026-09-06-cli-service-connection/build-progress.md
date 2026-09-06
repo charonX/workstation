@@ -1,6 +1,6 @@
 # BUILD 进度 — 2026-09-06-cli-service-connection
 
-> REQ 版本：v1（hash `7a08fa0c5ef0d0de30c2e6ac387f5cfc7b3534a2baebed30b2dc11edbe6563a9`）
+> REQ 版本：v1（hash `48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6`）
 > 门 1 已通过（signoff.md，AI 全量自检零升级点）。测试已锁定，实现者对业务测试只读。
 
 ## 切片划分（按 requirements.md 与技术架构分层）
@@ -182,9 +182,17 @@
 - **业务测试全绿**：
   - 8 个测试文件（7 个单元/API/CLI + 1 个 E2E）全部通过（40 passed, 0 failed）。
 - **全量回归验证**：
-  - `npm run test:unit` 全量通过（1233 passed, 0 failed, 298 suites）。
+  - `npm run test:unit` 全量通过（1237 passed, 0 failed, 298 suites）。
   - `scripts/gen-agent-policy.mjs --check` 策略配平一致（0 drift）。
   - 静态检查 `oxlint` 0 errors, 0 warnings。
   - 架构约束 `src/http/server.js` 行数维持 248 行（≤ 250 行）。
-- **流转决定**：
-  - BUILD 阶段顺利结束，推进至 **QA** 阶段（运行 `/qa-runner`）。
+
+## 审查整改完成总结（2026-09-06）
+
+按审查报告 `.aiassist/stories/2026-09-06-cli-service-connection/review.md` 全面完成 23 项阻塞项整改：
+1. **Group A 契约修订**：PRD、requirements.md、ADR-043、CONTEXT.md 全面对齐澄清（split 生效机制、REQ-002 AC3 三独立错误条件、REQ-009 实体对齐、timeoutSec 契约锚点、bare 命令匹配安全规范）。更新 requirements-v1.hash（`48deb3ad82e7d8647777c3836ee1a5eb7b81bbb743e89b6380a264857ddc6dd6`）并同步至全量 8 个测试文件头部。
+2. **Group B 安全漏洞修复**：`/api/cli-services` 纳入 `browserApiGuard.js` Loopback 保护；修复 `projectId` 路径遍历（删除回退分支并增加格式校验）；修复 basename 匹配注入漏洞（提取 `cliEnvResolver.js`，严格限制仅裸命令且无路径分隔符注入 env）。
+3. **Group C 正确性与性能**：`getGlobalCliService` 实例记忆化修复短缓存与限流失效；管理页移除 `DEFAULT_SERVICES` 假数据；保护用户自建软链不被覆写；导出单一真源 `getEffectiveCliServicesSync`；回退 `agentService` 权限 fail-open 变更；`toolAdapter` 增加 500ms 后 SIGKILL 升级并恢复缺省 30s 超时；采用 `responders.js` 统一助手；`x-opc-config-dir` 限制仅测试模式；`listProjectEnablements` 消除 N+1 串行查询；`cliService.list` 并行探测；`getService` 单条探测优化。
+4. **Group D 测试缺口补齐**：补齐 E-CLI-NOT-ENABLED、E-CLI-TIMEOUT + SIGKILL、`gen-agent-policy.mjs --check` 自动化断言；严格压测 ConcurrencyLimiter 并发限制 ≤ 4；E2E 统一 fixture 并补齐 AC1/AC6/AC7 用例；`cliServiceCommand.test.js` 隔离 PATH 固化未安装断言；补齐表单边界值用例（KEY 128/129、VALUE 4096/4097、条目数 50/51、timeoutSec 9/10/600/601）。
+5. **最终验证**：业务测试 7 suites 40 tests 全绿，全仓单元回归 298 suites 1237 tests 全绿，静态检查 0 error，一致性检查通过。
+

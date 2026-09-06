@@ -30,6 +30,11 @@ export function buildProjectBashRules({ enabledCliCommands = [] } = {}) {
         action: "deny",
         decision: "deny",
       });
+      rules.push({
+        pattern: cmd,
+        action: "deny",
+        decision: "deny",
+      });
     }
   }
 

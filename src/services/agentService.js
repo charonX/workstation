@@ -297,67 +297,11 @@ function getEffectiveCliServicesSync(projectId) {
   }
 }
 
-/**
- * 从待执行命令行中提取主命令名称与完整命令标记（剥离前导环境变量与外层引号）
- * @param {string} commandLine
- * @returns {{ cmdToken: string, cmd: string } | null}
- */
-export function extractCommandTokens(commandLine) {
-  if (!commandLine || typeof commandLine !== "string") return null;
-  const trimmed = commandLine.trim();
-  if (!trimmed) return null;
-
-  const tokens = trimmed.split(/\s+/);
-  for (const token of tokens) {
-    if (!token || /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
-      continue;
-    }
-    const cleanToken = token.replace(/^["']|["']$/g, "");
-    const cmd = path.basename(cleanToken);
-    return { cmdToken: cleanToken, cmd };
-  }
-  return null;
-}
-
-/**
- * 在快照中匹配与命令行对应的 CLI 服务配置
- * @param {string} commandLine
- * @param {Array<Object>} [cliServicesSnapshot]
- * @returns {Object | null}
- */
-export function findMatchedCliService(commandLine, cliServicesSnapshot = []) {
-  if (!Array.isArray(cliServicesSnapshot) || cliServicesSnapshot.length === 0) {
-    return null;
-  }
-  const extracted = extractCommandTokens(commandLine);
-  if (!extracted) return null;
-  const { cmd, cmdToken } = extracted;
-
-  return (
-    cliServicesSnapshot.find(
-      (entry) =>
-        entry &&
-        (entry.command === cmd ||
-          entry.id === cmd ||
-          entry.command === cmdToken ||
-          entry.id === cmdToken)
-    ) ?? null
-  );
-}
-
-/**
- * 根据待执行命令行匹配并解析 CLI 服务注入的环境变量
- * @param {string} commandLine - 命令行字符串
- * @param {Array<Object>} [cliServicesSnapshot] - 会话缓存的 cliServices 快照
- * @returns {Record<string, string>} 解密后的环境变量字典
- */
-export function resolveCliEnvForCommand(commandLine, cliServicesSnapshot = []) {
-  const matched = findMatchedCliService(commandLine, cliServicesSnapshot);
-  if (matched && matched.env && typeof matched.env === "object") {
-    return { ...matched.env };
-  }
-  return {};
-}
+export {
+  extractCommandTokens,
+  findMatchedCliService,
+  resolveCliEnvForCommand,
+} from "../agent/cliEnvResolver.js";
 
 /**
  * 构造 session-config IPC 消息（单点解密注入 cliServices 快照）
@@ -376,12 +320,7 @@ export function createModuleConfigMessage(spaceKey, sessionOrOptions = {}, sourc
   const spaceAssembly = resolveSpaceAssembly(spaceKey);
   const spaceCwd = spaceAssembly.cwd;
   const skillPaths = spaceAssembly.skillPaths;
-  const permissionProfile =
-    spaceAssembly.permissionProfile !== "default"
-      ? spaceAssembly.permissionProfile
-      : pid
-      ? "project"
-      : "default";
+  const permissionProfile = spaceAssembly.permissionProfile;
 
   const defaultJudge = buildJudgePayload();
 

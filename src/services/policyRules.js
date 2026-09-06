@@ -240,7 +240,7 @@ export const BASH_RULES = [
     decision: "ask",
     hotPathVisible: true,
     family: "cli-service",
-    globs: ["claude *"],
+    globs: ["claude *", "claude"],
   },
   {
     pattern: "codex *",
@@ -248,7 +248,7 @@ export const BASH_RULES = [
     decision: "ask",
     hotPathVisible: true,
     family: "cli-service",
-    globs: ["codex *"],
+    globs: ["codex *", "codex"],
   },
   {
     pattern: "crwl *",
@@ -256,7 +256,7 @@ export const BASH_RULES = [
     decision: "ask",
     hotPathVisible: true,
     family: "cli-service",
-    globs: ["crwl *"],
+    globs: ["crwl *", "crwl"],
   },
 ];
 

@@ -18,6 +18,7 @@ const LOOPBACK_ORIGIN_RE = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 export function isLoopbackOnlyApi(resource, subPath = []) {
   if (resource === "browser") return true;
   if (resource === "agent" && subPath[0] === "files") return true;
+  if (resource === "cli-services") return true;
   return false;
 }
 

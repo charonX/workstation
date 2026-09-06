@@ -13,8 +13,8 @@ story 2026-09-06-cli-service-connection 把本机 CLI 服务（首批 claude / c
 
 ## 决策
 
-1. **权限接线 = 静态生成**：清单内 CLI 命令（`claude`/`codex`/`crwl`）进 `policyRules.js` BASH_RULES 出厂规则表，默认 ask（用户可在权限配置调 allow）；两层启用状态生成项目层覆盖——未启用 → deny，启用 → 回落默认层；新会话生效。对齐 MCP 默认层合并与项目覆盖先例（ADR-020/022/025），零新机制。
-   - 已知约束：bash glob 对整条命令字符串匹配，`claude x && rm -rf /` 类组合命令的逃逸面由「默认 ask + 出厂破坏性 pattern 兜底」缓解，不追求名单语义绝对化。
+1. **权限接线 = 静态生成**：清单内 CLI 命令（`claude`/`codex`/`crwl`）进 `policyRules.js` BASH_RULES 出厂规则表，同时覆盖带参（`cmd *`）与裸命令（`cmd`）形态，默认 ask（用户可在权限配置调 allow）；两层启用状态生成项目层覆盖——未启用 → deny，启用 → 回落默认层。显式确认分裂生效语义：权限基于 ADR-022 mtime 热生效（即时 deny 阻断未启用 CLI 防止逃逸），而环境变量快照基于 session-config 冷注入（新会话生效，保障会话中凭据一致性不发生漂移）。对齐 MCP 默认层合并与项目覆盖先例（ADR-020/022/025），零新机制。
+   - 安全约束：环境变量注入仅匹配裸命令（不含 `/` 或 `\` 路径分隔符），任何路径前缀调用不注入受管 env；组合命令逃逸面由出厂破坏性 pattern 兜底。
 
 2. **内置 skill = 真 SKILL.md 缝**：每 CLI 一份内置 SKILL.md 作为应用自带只读目录注册进技能库（新增「内置来源」目录类）；CLI 项目启用 ⇄ 自动 link/unlink（复用收敛机制幂等重建）；用户覆盖 = 自建同 slug skill 优先或手动 unlink 后自管。零新装配代码，天然满足「内置 + 可覆盖」。
 

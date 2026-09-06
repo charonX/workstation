@@ -1,6 +1,6 @@
 # CLI 服务连接管理与环境检测
 
-> 状态：探索期
+> 状态：验收期（复核修订）
 > 故事 ID：`2026-09-06-cli-service-connection`
 > 最后更新：2026-09-06
 
@@ -83,17 +83,17 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 
 ### 6.3 预期值锚点（Expected-Value Anchors）
 
-| 稳定块 | 输入 | 预期输出/结果 | 依据 |
-|---|---|---|---|
-| 1 | 内置清单 | 恰好 3 条目，id 顺序为 `["claude","codex","crawl4ai"]`；claude 条目：`command:"claude"`、`versionArgs:["--version"]`、`channel:"npm"`、`package:"@anthropic-ai/claude-code"`；codex 条目：`command:"codex"`、`channel:"npm"`、`package:"@openai/codex"`；crawl4ai 条目：`command:"crwl"`、`channel:"pypi"`、`package:"crawl4ai"` | 访谈确认首批清单；npm/PyPI 包名为官方分发名；crawl4ai CLI 入口为 `crwl`（[官方 CLI 文档](https://docs.crawl4ai.com/core/cli/)） |
-| 2 | 本机存在 `claude`，`claude --version` 输出 `1.0.80 (Claude Code)` | 探测结果含 `{id:"claude", installed:true, version:"1.0.80"}`（版本用每条目配置的 regex 提取首个 semver） | 版本解析规则 = 每条目 `versionRegex`，默认 `(\d+\.\d+\.\d+)` |
-| 2 | 本机不存在 `codex` 命令 | `{id:"codex", installed:false, version:null}`，UI 标灰 + 显示该条目 `installHint` | 访谈确认「展示未安装 + 安装指引」 |
-| 2 | npm registry 返回 `@anthropic-ai/claude-code` latest `1.0.90`，本地 `1.0.80` | 条目含 `latestVersion:"1.0.90"`、`updateAvailable:true` | semver 比较，`latest > local` 即 true |
-| 2 | 连续两次探测间隔 < TTL（60s） | 第二次命中缓存，不重新 spawn | 访谈确认「实时探测 + 短缓存」，TTL=60s |
-| 3 | 保存 env `{"ANTHROPIC_API_KEY":"sk-ant-xxx"}` | DB 中 value 经 secretStore 加密存储；任何 API 响应中 value 不出现明文（返回掩码如 `"********"` 或仅 key 名） | 对齐 mcpService bearer token 处理（secretStore） |
-| 3 | 全局开关开、项目未启用 → `effectiveConfig(projectId)` | 该项目可用 CLI 清单不含此项 | 对齐 `mcp_project_enablement` 两层语义（全局开 ∧ 项目启用） |
-| 4 | 页面加载且三项均未安装 | 3 行均标灰、均显示安装指引、启用开关均 disabled | 流 A + E1 |
-| 5 | 项目内 agent 会话装配（codex 已全局开 + 项目启用） | 该项目的 linked skill 列表含内置 skill `cli-codex`（指向内置来源只读目录），会话 additionalSkillPaths 含其路径；skill 文本含命令名 `codex`、一次性调用示例、超时约束 | /tech-design 决策 2（真 SKILL.md 缝，复用 listLinkedSkillPaths 全链路） |
+| 锚点ID | 稳定块 | 输入 | 预期输出/结果 | 依据 |
+|---|---|---|---|---|
+| A1 | 1 | 内置清单 | 恰好 3 条目，id 顺序为 `["claude","codex","crawl4ai"]`；claude 条目：`command:"claude"`、`versionArgs:["--version"]`、`channel:"npm"`、`package:"@anthropic-ai/claude-code"`；codex 条目：`command:"codex"`、`channel:"npm"`、`package:"@openai/codex"`；crawl4ai 条目：`command:"crwl"`、`channel:"pypi"`、`package:"crawl4ai"` | 访谈确认首批清单；npm/PyPI 包名为官方分发名；crawl4ai CLI 入口为 `crwl`（[官方 CLI 文档](https://docs.crawl4ai.com/core/cli/)） |
+| A2 | 2 | 本机存在 `claude`，`claude --version` 输出 `1.0.80 (Claude Code)` | 探测结果含 `{id:"claude", installed:true, version:"1.0.80"}`（版本用每条目配置的 regex 提取首个 semver） | 版本解析规则 = 每条目 `versionRegex`，默认 `(\d+\.\d+\.\d+)` |
+| A3 | 2 | 本机不存在 `codex` 命令 | `{id:"codex", installed:false, version:null}`，UI 标灰 + 显示该条目 `installHint` | 访谈确认「展示未安装 + 安装指引」 |
+| A4 | 2 | npm registry 返回 `@anthropic-ai/claude-code` latest `1.0.90`，本地 `1.0.80` | 条目含 `latestVersion:"1.0.90"`、`updateAvailable:true` | semver 比较，`latest > local` 即 true |
+| A5 | 2 | 连续两次探测间隔 < TTL（60s） | 第二次命中缓存，不重新 spawn | 访谈确认「实时探测 + 短缓存」，TTL=60s |
+| B1 | 3 | 保存 env `{"ANTHROPIC_API_KEY":"sk-ant-xxx"}` | DB 中 value 经 secretStore 加密存储；任何 API 响应中 value 不出现明文与密文（仅返回 `envKeys` 键名数组） | 对齐 mcpService bearer token 处理（secretStore）与 §10.4 接口契约 |
+| B2 | 3 | 全局开关开、项目未启用 → `effectiveConfig(projectId)` | 该项目可用 CLI 清单不含此项 | 对齐 `mcp_project_enablement` 两层语义（全局开 ∧ 项目启用） |
+| C1 | 4 | 页面加载且三项均未安装 | 3 行均标灰、均显示安装指引、启用开关均 disabled | 流 A + E1 |
+| D1 | 5 | 项目内 agent 会话装配（codex 已全局开 + 项目启用） | 该项目的 linked skill 列表含内置 skill `cli-codex`（指向内置来源只读目录），会话 additionalSkillPaths 含其路径；skill 文本含命令名 `codex`、一次性调用示例、超时约束 | /tech-design 决策 2（真 SKILL.md 缝，复用 listLinkedSkillPaths 全链路） |
 
 ## 7. 表单与输入验证（Form / Input Validation）
 
@@ -178,7 +178,7 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 ### 10.3 数据流
 
 1. **环境检测**：打开管理页/产品 CLI `cli-service list` → GET /api/cli-services → cliService.probe() 逐条目：缓存命中（TTL 60s，含失败态）直接返回；未命中且同 id 无 in-flight → 限流（全局 ≤4 并发）spawn `execFile(command, versionArgs)`（无 shell，参数数组，无注入面）→ versionRegex 提取 semver → 写缓存。版本检查独立缓存（TTL 1h）：npm `GET https://registry.npmjs.org/<pkg>/latest` / PyPI `GET https://pypi.org/pypi/<pkg>/json`，失败降级 `latestVersion:"unknown"` 不阻塞。
-2. **启用配置**：用户开全局开关（前置：installed=true，否则 E1）→ 写 DB → 项目勾选启用 → 写 enablement 表 → 触发两个装配副作用：①项目层权限覆盖生成（ADR-022 语义，新会话生效）；②内置 skill 自动 link 到项目（收敛机制幂等）。禁用反向：deny 覆盖 + unlink。
+2. **启用配置**：用户开全局开关（前置：installed=true，否则 E1）→ 写 DB → 项目勾选启用 → 写 enablement 表 → 触发两个装配副作用：①项目层权限覆盖生成（ADR-022 语义：权限策略基于 mtime 保存即生效，即时 deny 阻断未启用 CLI；而环境变量快照基于 session-config 冷注入，新会话生效避免会话中凭据漂移）；②内置 skill 自动 link 到项目（收敛机制幂等，严格保留用户自有软链与目录）。禁用反向：deny 覆盖 + unlink。
 3. **agent 调用**：agent 经内置 skill 指导发起 bash 调用（如 `codex exec "..."`）→ gotgenes bash 规则裁决（出厂 ask / 项目层覆盖；ask 走授权桥确认挂起）→ 放行后 worker bash 执行检出命令属于已启用 CLI → 合并 session-config 快照中的 env → spawn 一次性任务 → stdout/stderr/exit code 回传（输出按 256KB 截断单真源 shrinkToolCarrier 对齐，ADR-029）；超时（默认 120s，10–600 可配）杀进程 E6。
 
 ### 10.4 接口契约
@@ -189,7 +189,7 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 |---|---|
 | 调用方 | 管理页 / 产品 CLI |
 | 被调用方 | cliService |
-| 输入 | 无（query `?refresh=1` 绕过缓存强制重探） |
+| 输入 | query `?refresh=1`（绕过缓存强制重探）；query `?project=<id>`（投影指定项目下的启用状态，对齐 plugins?project= 先例）；端点亦支持全项目启用态聚合读取 |
 | 输出 | `{ services: [{ id, displayName, installed, version, latestVersion, updateAvailable, enabled, envKeys: string[], timeoutSec, installHint, probeError? }] }` |
 | 业务错误 | 无（探测失败是数据不是错误：`installed:false` 或 `probeError` 字段） |
 | 系统错误 | 500 `E-CLI-REGISTRY-CORRUPT`（内置清单缺失——启动期自检应拦截） |
@@ -231,14 +231,19 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 | 项目 | 说明 |
 |---|---|
 | 调用方 | agentService.buildConfigMessage（session-config 唯一构造点） |
-| 输出 | `[{ id, command, env: {KEY: 解密明文} }]`——仅含「全局开 ∧ 项目启用 ∧ installed」的条目；env 解密只发生在此快照注入（对齐 ADR-025「快照是唯一解密点」） |
+| 输出 | `[{ id, command, env: {KEY: 解密明文}, timeoutSec: number }]`——仅含「全局开 ∧ 项目启用 ∧ installed」的条目；env 解密只发生在此快照注入（对齐 ADR-025「快照是唯一解密点」）；包含可配 timeoutSec 供 worker 执行超时控制 |
 | 副作用 | 读 DB + secretStore 解密；不写 |
+
+#### 命令匹配与安全注入契约（TECH-3 / SEC-3）
+
+1. **环境变量注入匹配**：仅当命令的首个可执行 token（剥离前导 KEY=VALUE 环境变量与引号）为裸命令（即不含 `/` 或 `\` 路径分隔符，且严格匹配 `entry.command` 或 `entry.id`）时，才注入快照环境变量；任何以 `./` 或全路径形态调用的命令绝不注入受管环境变量，防止未授权二进制劫持凭据。
+2. **权限规则匹配**：出厂规则表 `BASH_RULES` 与项目层覆盖规则必须同时覆盖带参形态（`cmd *`）与裸命令形态（`cmd`），确保无参调用同样受到权限管控，消除 deny 绕过漏洞。
 
 ### 10.5 关键决策
 
 | 决策 | 选项 | 选择理由 | 风险 |
 |---|---|---|---|
-| 1. 权限接线 = 静态生成 | 静态生成（出厂规则表加清单命令默认 ask + 两层启用生成项目层覆盖，新会话生效）vs 动态 pre-gate（classifyBashToolCall 清单感知） | 用户确认；零新机制，完全对齐 MCP 默认层/项目覆盖先例（ADR-020/022/025） | 启用变更需新会话生效（与 MCP 一致，用户已有心智）；组合命令（`claude x && rm -rf /`）逃逸面受 glob 整条匹配约束——缓解：默认 ask 而非 allow，高危命令段仍有出厂破坏性 pattern 兜底 |
+| 1. 权限接线 = 静态生成 | 静态生成（出厂规则表加清单命令默认 ask + 两层启用生成项目层覆盖）vs 动态 pre-gate | 用户确认；零新机制，完全对齐 MCP 默认层/项目覆盖先例（ADR-020/022/025）。显式记录分裂生效语义：权限基于 ADR-022 mtime 热生效（即时阻断未启用 CLI 防止逃逸），而环境变量快照基于 session-config 冷注入（新会话加载最新凭据，避免热会话凭据漂移） | 组合命令逃逸面受 glob 整条匹配约束——缓解：默认 ask 而非 allow，高危命令段仍有出厂破坏性 pattern 兜底 |
 | 2. 内置 skill = 真 SKILL.md 缝 | 真 SKILL.md（内置来源目录 + 启用自动 link，复用 listLinkedSkillPaths 全链路）vs systemPrompt 文本段 | 用户确认；零新装配代码；天然满足「内置 skill + 可覆盖」（用户自建同 slug skill 优先/手动 unlink 自管） | 「内置来源」是技能库目录类型的小扩展；启用态与 link 态需收敛保持一致（复用既有幂等收敛） |
 | 3. 探测缓存并发模型 | per-entry 缓存 TTL 60s（含失败态）+ 版本检查 1h + in-flight 合并 + 全局并发 ≤4 | 用户确认；UI 打开页与 CLI list 并发触发不产生重复 spawn | 缓存窗口内状态滞后（可 `?refresh=1` 强制重探） |
 | 4. env 注入 = session-config 快照 | 快照注入（buildConfigMessage 携带解密 env，worker bash 执行按命令匹配合并）vs 调用时实时查库 | 对齐 ADR-025 快照模式；worker 无 DB 访问；解密点唯一 | worker 内存持有明文密钥（与 MCP bearer 快照同风险级，已接受先例） |

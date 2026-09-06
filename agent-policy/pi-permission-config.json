@@ -79,8 +79,11 @@
       "npm config set*": "ask",
       "pnpm config set*": "ask",
       "claude *": "ask",
+      "claude": "ask",
       "codex *": "ask",
-      "crwl *": "ask"
+      "codex": "ask",
+      "crwl *": "ask",
+      "crwl": "ask"
     },
     "task list": "allow",
     "task get": "allow",

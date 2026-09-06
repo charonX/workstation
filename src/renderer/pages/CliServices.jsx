@@ -3,58 +3,17 @@ import {
   listCliServices,
   updateCliService,
   setCliServiceProjectEnabled,
+  getCliServiceProjectEnablements,
 } from "../api/cliServices.js";
 import { getProjects } from "../api/projects.js";
 import "./Plugins.css";
 
-const DEFAULT_SERVICES = [
-  {
-    id: "claude",
-    displayName: "Claude Code",
-    command: "claude",
-    installed: true,
-    version: "1.0.80",
-    latestVersion: "1.0.80",
-    updateAvailable: false,
-    enabled: true,
-    envKeys: [],
-    timeoutSec: 120,
-    installHint: "npm i -g @anthropic-ai/claude-code",
-  },
-  {
-    id: "codex",
-    displayName: "OpenAI Codex CLI",
-    command: "codex",
-    installed: false,
-    version: null,
-    latestVersion: "unknown",
-    updateAvailable: false,
-    enabled: false,
-    envKeys: [],
-    timeoutSec: 120,
-    installHint: "npm i -g @openai/codex",
-  },
-  {
-    id: "crawl4ai",
-    displayName: "Crawl4AI CLI",
-    command: "crwl",
-    installed: true,
-    version: "0.4.0",
-    latestVersion: "0.4.5",
-    updateAvailable: true,
-    enabled: false,
-    envKeys: [],
-    timeoutSec: 120,
-    installHint: "pip install crawl4ai",
-  },
-];
-
 const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 
 export default function CliServices() {
-  const [services, setServices] = useState(DEFAULT_SERVICES);
+  const [services, setServices] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
@@ -83,43 +42,30 @@ export default function CliServices() {
     }
   }, []);
 
-  const buildProjectMap = useCallback(async (projList) => {
-    const mMap = {};
-    for (const proj of projList) {
-      try {
-        const res = await listCliServices({ projectId: proj.id });
-        for (const row of res?.services ?? []) {
-          if (row.enabled) {
-            (mMap[row.id] ??= new Set()).add(proj.id);
-          }
-        }
-      } catch {
-        // 单个项目失败忽略
-      }
-    }
-    setProjectMap(mMap);
-  }, []);
-
   const reload = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [res, projList] = await Promise.all([
+      const [res, , enablementsRes] = await Promise.all([
         listCliServices(),
         loadProjects(),
+        getCliServiceProjectEnablements().catch(() => ({ enablements: {} })),
       ]);
-      if (res?.services && Array.isArray(res.services) && res.services.length > 0) {
+      if (res?.services && Array.isArray(res.services)) {
         setServices(res.services);
       }
-      if (projList && projList.length > 0) {
-        await buildProjectMap(projList);
+      const rawMap = enablementsRes?.enablements || {};
+      const mMap = {};
+      for (const [serviceId, pids] of Object.entries(rawMap)) {
+        mMap[serviceId] = new Set(pids);
       }
+      setProjectMap(mMap);
     } catch (err) {
       setLoadError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
-  }, [loadProjects, buildProjectMap]);
+  }, [loadProjects]);
 
   useEffect(() => {
     reload();
@@ -306,150 +252,165 @@ export default function CliServices() {
             </tr>
           </thead>
           <tbody>
-            {services.map((service) => {
-              const projCount = projectMap[service.id]?.size ?? 0;
-              const isInstalled = Boolean(service.installed);
-              const commandName =
-                service.command || (service.id === "crawl4ai" ? "crwl" : service.id);
-
-              return (
-                <tr
-                  key={service.id}
-                  data-testid={`cli-service-row-${service.id}`}
-                  data-installed={String(isInstalled)}
-                  className={`plugin-row ${!isInstalled ? "row-disabled" : ""}`}
-                  style={{ opacity: isInstalled ? 1 : 0.85 }}
+            {loading && services.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  style={{
+                    textAlign: "center",
+                    padding: "32px",
+                    color: "var(--ch-text-secondary)",
+                  }}
                 >
-                  <td className="name-cell">
-                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-                      <span>{service.displayName || service.id}</span>
-                      {service.updateAvailable && (
-                        <span
-                          className="badge badge-warning"
-                          data-testid="update-badge"
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 6px",
-                            borderRadius: "10px",
-                            color: "var(--ch-warning, #d97706)",
-                            backgroundColor: "var(--ch-warning-soft, rgba(245, 158, 11, 0.15))",
-                            border: "1px solid var(--ch-warning, #d97706)",
-                          }}
-                        >
-                          可更新至 {service.latestVersion}
-                        </span>
-                      )}
-                    </div>
-                    {!isInstalled && service.installHint && (
-                      <div
-                        data-testid="install-hint"
-                        className="install-hint"
-                        style={{
-                          fontSize: "var(--ch-text-xs)",
-                          color: "var(--ch-text-tertiary)",
-                          marginTop: "4px",
-                        }}
-                      >
-                        安装指引：<code className="mono">{service.installHint}</code>
-                      </div>
-                    )}
-                  </td>
-                  <td className="mono">{commandName}</td>
-                  <td>
-                    {isInstalled ? (
-                      <span className="badge badge-ok">
-                        v{service.version || "已安装"}
-                      </span>
-                    ) : service.probeError ? (
-                      <span
-                        className="badge badge-warning"
-                        data-testid="probe-error-badge"
-                        title={service.probeError}
-                      >
-                        检测失败
-                      </span>
-                    ) : (
-                      <span className="badge badge-error">未安装</span>
-                    )}
-                  </td>
-                  <td>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        cursor: isInstalled ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        data-testid="global-enable-switch"
-                        disabled={!isInstalled}
-                        checked={Boolean(service.enabled && isInstalled)}
-                        onChange={() => handleToggleGlobal(service)}
-                        style={{ cursor: isInstalled ? "pointer" : "not-allowed" }}
-                      />
-                      <span style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-text-secondary)" }}>
-                        {service.enabled && isInstalled ? "已启用" : "已禁用"}
-                      </span>
-                    </label>
-                  </td>
-                  <td className="toggle-cell">
-                    <button
-                      type="button"
-                      className={`toggle-pill${projCount > 0 ? " on" : ""}`}
-                      data-testid="cli-service-project-toggle"
-                      onClick={togglePop(service.id)}
-                      disabled={!isInstalled || !service.enabled}
-                      style={{
-                        cursor: !isInstalled || !service.enabled ? "not-allowed" : "pointer",
-                        opacity: !isInstalled || !service.enabled ? 0.6 : 1,
-                      }}
-                    >
-                      {projCount > 0 ? `${projCount} 个项目 ▸` : "未启用 ▸"}
-                    </button>
-                    {openPop === service.id && (
-                      <div
-                        className="toggle-pop open"
-                        data-testid="cli-service-project-pop"
-                        style={popPos}
-                      >
-                        <div className="pop-title">按项目启用</div>
-                        {projects.map((proj) => {
-                          const isProjEnabled =
-                            projectMap[service.id]?.has(proj.id) ?? false;
-                          return (
-                            <div
-                              key={proj.id}
-                              className="pop-row"
-                              onClick={() => toggleProject(service.id, proj.id)}
-                            >
-                              <span className="proj">{proj.name}</span>
-                              <span
-                                className={`switch${isProjEnabled ? " on" : ""}`}
-                              />
-                            </div>
-                          );
-                        })}
-                        {projects.length === 0 && (
-                          <div className="pop-title">暂无项目</div>
+                  加载中…
+                </td>
+              </tr>
+            ) : (
+              services.map((service) => {
+                const projCount = projectMap[service.id]?.size ?? 0;
+                const isInstalled = Boolean(service.installed);
+                const commandName =
+                  service.command || (service.id === "crawl4ai" ? "crwl" : service.id);
+
+                return (
+                  <tr
+                    key={service.id}
+                    data-testid={`cli-service-row-${service.id}`}
+                    data-installed={String(isInstalled)}
+                    className={`plugin-row ${!isInstalled ? "row-disabled" : ""}`}
+                    style={{ opacity: isInstalled ? 1 : 0.85 }}
+                  >
+                    <td className="name-cell">
+                      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                        <span>{service.displayName || service.id}</span>
+                        {service.updateAvailable && (
+                          <span
+                            className="badge badge-warning"
+                            data-testid="update-badge"
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 6px",
+                              borderRadius: "10px",
+                              color: "var(--ch-warning, #d97706)",
+                              backgroundColor: "var(--ch-warning-soft, rgba(245, 158, 11, 0.15))",
+                              border: "1px solid var(--ch-warning, #d97706)",
+                            }}
+                          >
+                            可更新至 {service.latestVersion}
+                          </span>
                         )}
                       </div>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <button
-                      type="button"
-                      className="btn-tertiary"
-                      data-testid="cli-service-config-button"
-                      onClick={() => openConfigModal(service)}
-                    >
-                      配置
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+                      {!isInstalled && service.installHint && (
+                        <div
+                          data-testid="install-hint"
+                          className="install-hint"
+                          style={{
+                            fontSize: "var(--ch-text-xs)",
+                            color: "var(--ch-text-tertiary)",
+                            marginTop: "4px",
+                          }}
+                        >
+                          安装指引：<code className="mono">{service.installHint}</code>
+                        </div>
+                      )}
+                    </td>
+                    <td className="mono">{commandName}</td>
+                    <td>
+                      {isInstalled ? (
+                        <span className="badge badge-ok">
+                          v{service.version || "已安装"}
+                        </span>
+                      ) : service.probeError ? (
+                        <span
+                          className="badge badge-warning"
+                          data-testid="probe-error-badge"
+                          title={service.probeError}
+                        >
+                          检测失败
+                        </span>
+                      ) : (
+                        <span className="badge badge-error">未安装</span>
+                      )}
+                    </td>
+                    <td>
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          cursor: isInstalled ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid="global-enable-switch"
+                          disabled={!isInstalled}
+                          checked={Boolean(service.enabled && isInstalled)}
+                          onChange={() => handleToggleGlobal(service)}
+                          style={{ cursor: isInstalled ? "pointer" : "not-allowed" }}
+                        />
+                        <span style={{ fontSize: "var(--ch-text-xs)", color: "var(--ch-text-secondary)" }}>
+                          {service.enabled && isInstalled ? "已启用" : "已禁用"}
+                        </span>
+                      </label>
+                    </td>
+                    <td className="toggle-cell">
+                      <button
+                        type="button"
+                        className={`toggle-pill${projCount > 0 ? " on" : ""}`}
+                        data-testid="cli-service-project-toggle"
+                        onClick={togglePop(service.id)}
+                        disabled={!isInstalled || !service.enabled}
+                        style={{
+                          cursor: !isInstalled || !service.enabled ? "not-allowed" : "pointer",
+                          opacity: !isInstalled || !service.enabled ? 0.6 : 1,
+                        }}
+                      >
+                        {projCount > 0 ? `${projCount} 个项目 ▸` : "未启用 ▸"}
+                      </button>
+                      {openPop === service.id && (
+                        <div
+                          className="toggle-pop open"
+                          data-testid="cli-service-project-pop"
+                          style={popPos}
+                        >
+                          <div className="pop-title">按项目启用</div>
+                          {projects.map((proj) => {
+                            const isProjEnabled =
+                              projectMap[service.id]?.has(proj.id) ?? false;
+                            return (
+                              <div
+                                key={proj.id}
+                                className="pop-row"
+                                onClick={() => toggleProject(service.id, proj.id)}
+                              >
+                                <span className="proj">{proj.name}</span>
+                                <span
+                                  className={`switch${isProjEnabled ? " on" : ""}`}
+                                />
+                              </div>
+                            );
+                          })}
+                          {projects.length === 0 && (
+                            <div className="pop-title">暂无项目</div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        type="button"
+                        className="btn-tertiary"
+                        data-testid="cli-service-config-button"
+                        onClick={() => openConfigModal(service)}
+                      >
+                        配置
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

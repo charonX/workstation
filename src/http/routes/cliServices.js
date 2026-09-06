@@ -5,41 +5,32 @@
 
 import os from "node:os";
 import path from "node:path";
-import { createCliService } from "../../services/cliService.js";
+import { getGlobalCliService } from "../../services/cliService.js";
 import { findRegistryItem } from "../../services/cliRegistry.js";
-
-function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, { "Content-Type": "application/json" });
-  return res.end(JSON.stringify(data));
-}
-
-function decodeParam(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
+import { ok, notFound, mapError, decodeParam } from "../responders.js";
 
 function isRefreshQuery(query) {
   return query?.refresh === "1" || query?.refresh === "true" || query?.refresh === true;
 }
 
 function resolveConfigDir(req) {
+  if (process.env.NODE_ENV === "test" && req?.headers?.["x-opc-config-dir"]) {
+    return req.headers["x-opc-config-dir"];
+  }
   return (
-    req?.headers?.["x-opc-config-dir"] ||
     process.env.OPC_WORKSTATION_CONFIG_DIR ||
     path.join(os.homedir(), ".opc-workstation")
   );
 }
 
 function notFoundService(res, id) {
-  return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
+  res.writeHead(404, { "Content-Type": "application/json" });
+  return res.end(JSON.stringify({ error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` }));
 }
 
 function handleRouteError(res, err, fallbackStatus = 500) {
   const code = err?.code;
-  let status = fallbackStatus;
+  let status = err?.status || fallbackStatus;
   if (code === "E-CLI-UNKNOWN-ID") {
     status = 404;
   } else if (code === "E-CLI-NOT-INSTALLED" || code === "E-CLI-GLOBALLY-DISABLED") {
@@ -47,10 +38,7 @@ function handleRouteError(res, err, fallbackStatus = 500) {
   } else if (code === "E-CLI-INVALID-TIMEOUT" || code === "E-CLI-INVALID-ENV-KEY" || code === "VALIDATION_ERROR") {
     status = 400;
   }
-  return sendJson(res, status, {
-    error: code || (status === 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR"),
-    message: err?.message || String(err),
-  });
+  return mapError(res, Object.assign(err || {}, { status }), status);
 }
 
 function readRequestBody(req) {
@@ -104,7 +92,17 @@ async function parseRequestInput(req, p1, p2) {
  */
 export async function handleCliServices(req, res, p1, p2) {
   const { body, subPath, query } = await parseRequestInput(req, p1, p2);
-  const cliService = await createCliService({ configDir: resolveConfigDir(req) });
+  const cliService = await getGlobalCliService({ configDir: resolveConfigDir(req) });
+
+  // 聚合查询: GET /api/cli-services/project-enablements
+  if (subPath.length === 1 && subPath[0] === "project-enablements" && req.method === "GET") {
+    try {
+      const enablements = cliService.listProjectEnablements();
+      return ok(res, { enablements });
+    } catch (err) {
+      return handleRouteError(res, err, 500);
+    }
+  }
 
   // 接口 1: GET /api/cli-services
   if (subPath.length === 0 && req.method === "GET") {
@@ -113,21 +111,22 @@ export async function handleCliServices(req, res, p1, p2) {
         refresh: isRefreshQuery(query),
         projectId: query.project || undefined,
       });
-      return sendJson(res, 200, { services });
+      return ok(res, { services });
     } catch (err) {
       return handleRouteError(res, err, 500);
     }
   }
 
-  // 接口 1: GET /api/cli-services/:id 或 GET /api/cli-services/:id/probe
+  // 接口 1: GET /api/cli-services/:id 或 GET /api/cli-services/:id/probe (单服务探测优化，避免全部探一遍)
   if ((subPath.length === 1 || (subPath.length === 2 && subPath[1] === "probe")) && req.method === "GET") {
     const id = decodeParam(subPath[0]);
     if (!findRegistryItem(id)) return notFoundService(res, id);
     try {
-      const services = await cliService.list({ refresh: isRefreshQuery(query) });
-      const service = services.find((s) => s.id === id);
-      if (!service) return notFoundService(res, id);
-      return sendJson(res, 200, service);
+      const service = await cliService.getService(id, {
+        refresh: isRefreshQuery(query),
+        projectId: query.project || undefined,
+      });
+      return ok(res, service);
     } catch (err) {
       return handleRouteError(res, err, 500);
     }
@@ -140,7 +139,7 @@ export async function handleCliServices(req, res, p1, p2) {
     if (!findRegistryItem(id)) return notFoundService(res, id);
     try {
       const updatedConfig = await cliService.setProjectEnabled(projectId, id, Boolean(body?.enabled));
-      return sendJson(res, 200, { service: updatedConfig });
+      return ok(res, { service: updatedConfig });
     } catch (err) {
       return handleRouteError(res, err, 400);
     }
@@ -164,11 +163,11 @@ export async function handleCliServices(req, res, p1, p2) {
       if (!updatedConfig) {
         updatedConfig = await cliService.getConfig(id);
       }
-      return sendJson(res, 200, { service: updatedConfig });
+      return ok(res, { service: updatedConfig });
     } catch (err) {
       return handleRouteError(res, err, 500);
     }
   }
 
-  return sendJson(res, 404, { error: "NOT_FOUND", message: "Not found" });
+  return notFound(res, "Not found");
 }

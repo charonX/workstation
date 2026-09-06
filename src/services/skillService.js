@@ -994,6 +994,18 @@ function pointsToTarget(linkPath, targetDir) {
   }
 }
 
+function isManagedBuiltinSymlink(linkPath) {
+  try {
+    const rawTarget = readLinkAbsTarget(linkPath);
+    if (!rawTarget) return false;
+    const realTarget = realpathBestEffort(rawTarget);
+    const realBuiltinRoot = realpathBestEffort(BUILTIN_SKILLS_ROOT);
+    return isInsideOrEqual(comparisonKey(realTarget), comparisonKey(realBuiltinRoot));
+  } catch {
+    return false;
+  }
+}
+
 export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [] } = {}) {
   const projectDir = resolveProjectDir(projectDirOrId);
   if (!projectDir) return;
@@ -1013,6 +1025,11 @@ export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [
       lst = null;
     }
 
+    // 若目标路径已存在非符号链接（真实文件/目录），或者已存在指向非内置目录的用户自有软链，绝对不触碰
+    if (lst?.isSymbolicLink() && !isManagedBuiltinSymlink(linkPath)) {
+      continue;
+    }
+
     if (isEnabled) {
       const builtinPath = getBuiltinSkillPath(slug);
       if (!builtinPath) continue;
@@ -1024,7 +1041,7 @@ export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [
         fs.rmSync(linkPath, { force: true });
         createSymlink(builtinPath, linkPath);
       }
-    } else if (lst?.isSymbolicLink()) {
+    } else if (lst?.isSymbolicLink() && isManagedBuiltinSymlink(linkPath)) {
       fs.rmSync(linkPath, { force: true });
     }
   }

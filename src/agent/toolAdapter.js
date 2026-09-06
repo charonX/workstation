@@ -37,8 +37,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { resolveCliEnvForCommand, findMatchedCliService, extractCommandTokens } from "../services/agentService.js";
+import { resolveCliEnvForCommand, findMatchedCliService, extractCommandTokens } from "./cliEnvResolver.js";
 import { SUPPORTED_CLI_COMMANDS } from "./policyRules.js";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
 // 保证 ToolDefinition.parameters 与 pi 会话工具注册的 schema 兼容。
@@ -732,35 +731,65 @@ function commandViolatesCwd(cwd, command) {
 }
 
 // bash 执行（execFile 无 shell 中间层；cwd 限定项目目录；超时兜底防悬挂）。
-const execFileAsync = promisify(execFile);
-
-async function runBash(command, cwd, { env, timeout } = {}) {
+async function runBash(command, cwd, options = {}) {
+  const { env, timeout = 30000, isCliService = false } = options;
   const shell = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
   const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
   const execOptions = {
     cwd,
-    timeout: typeof timeout === "number" && timeout > 0 ? timeout : 120000,
+    timeout: typeof timeout === "number" && timeout > 0 ? timeout : 30000,
+    killSignal: "SIGTERM",
     ...(env && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
   };
-  try {
-    const { stdout, stderr } = await execFileAsync(shell, args, execOptions);
-    const out = `${stdout ?? ""}${stderr ? `\n${stderr}` : ""}`.trim();
-    return out;
-  } catch (err) {
-    if (
-      err?.killed ||
-      err?.signal === "SIGTERM" ||
-      err?.signal === "SIGKILL" ||
-      err?.code === "ETIMEDOUT" ||
-      err?.timedOut ||
-      Boolean(err?.message && (err.message.includes("timed out") || err.message.includes("ETIMEDOUT")))
-    ) {
-      const detail = String(err?.stderr ?? err?.stdout ?? err?.message ?? "").trim();
-      throw Object.assign(new Error(detail ? `[E-CLI-TIMEOUT] ${detail}` : "命令执行超时"), { code: "E-CLI-TIMEOUT" });
+
+  return new Promise((resolve, reject) => {
+    let forceKillTimer = null;
+    let child = null;
+
+    try {
+      child = execFile(shell, args, execOptions, (err, stdout, stderr) => {
+        if (forceKillTimer) clearTimeout(forceKillTimer);
+        if (err) {
+          const isTimeout =
+            err.killed ||
+            err.signal === "SIGTERM" ||
+            err.signal === "SIGKILL" ||
+            err.code === "ETIMEDOUT" ||
+            err.timedOut ||
+            Boolean(err.message && (err.message.includes("timed out") || err.message.includes("ETIMEDOUT")));
+
+          if (isTimeout) {
+            const detail = String(stderr ?? stdout ?? err.message ?? "").trim();
+            if (isCliService) {
+              return reject(Object.assign(new Error(detail ? `[E-CLI-TIMEOUT] ${detail}` : "命令执行超时"), { code: "E-CLI-TIMEOUT" }));
+            }
+            return reject(Object.assign(new Error(detail ? `[ETIMEDOUT] ${detail}` : "命令执行超时"), { code: "E-AGENT-BASH" }));
+          }
+          const detail = String(stderr ?? err.message ?? "命令执行失败").trim();
+          return reject(Object.assign(new Error(detail || "命令执行失败"), { code: "E-AGENT-BASH" }));
+        }
+        const out = `${stdout ?? ""}${stderr ? `\n${stderr}` : ""}`.trim();
+        resolve(out);
+      });
+
+      // SIGKILL 升级兜底：进程超时被发 SIGTERM 500ms 后依然存活则强制 SIGKILL
+      if (execOptions.timeout > 0 && child) {
+        forceKillTimer = setTimeout(() => {
+          try {
+            if (child.pid && !child.killed) {
+              child.kill("SIGKILL");
+            }
+          } catch {
+            // ignore
+          }
+        }, execOptions.timeout + 500);
+        forceKillTimer.unref?.();
+      }
+    } catch (err) {
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      reject(err);
     }
-    const detail = String(err?.stderr ?? err?.message ?? "命令执行失败").trim();
-    throw Object.assign(new Error(detail || "命令执行失败"), { code: "E-AGENT-BASH" });
-  }
+  });
 }
 
 async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getCliServices, cliServices }) {
@@ -799,11 +828,13 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getC
       }
 
       const extraEnv = resolveCliEnvForCommand(cmdStr, snapshot);
-      let timeoutSec = 120;
-      if (matchedCli && typeof matchedCli.timeoutSec === "number" && matchedCli.timeoutSec > 0) {
-        timeoutSec = matchedCli.timeoutSec;
+      const isCliService = Boolean(matchedCli);
+      let timeoutMs = 30000;
+      if (matchedCli) {
+        const timeoutSec = typeof matchedCli.timeoutSec === "number" && matchedCli.timeoutSec > 0 ? matchedCli.timeoutSec : 120;
+        timeoutMs = timeoutSec * 1000;
       }
-      return { output: await runBash(cmdStr, cwd, { env: extraEnv, timeout: timeoutSec * 1000 }) };
+      return { output: await runBash(cmdStr, cwd, { env: extraEnv, timeout: timeoutMs, isCliService }) };
     }
     default:
       throw commandError(`不支持该操作：${name} 不在 agent 工具面内`);

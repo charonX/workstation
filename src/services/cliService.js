@@ -416,6 +416,9 @@ async function assertInstalled(id, probeFn) {
  */
 function resolveProjectDir(projectId) {
   if (!projectId || typeof projectId !== "string") return null;
+  if (projectId.includes("..") || projectId.includes("/") || projectId.includes("\\")) {
+    return null;
+  }
   try {
     const project = projectService.getProjectDetail?.(projectId);
     if (project?.localPath) {
@@ -423,9 +426,6 @@ function resolveProjectDir(projectId) {
     }
   } catch {
     // ignore
-  }
-  if (path.isAbsolute(projectId) || projectId.startsWith(".") || projectId.includes(path.sep)) {
-    return path.resolve(projectId);
   }
   return null;
 }
@@ -645,8 +645,8 @@ export async function createCliService(options = {}) {
      * @returns {Promise<Object>}
      */
     async setProjectEnabled(projectId, id, enabled) {
-      if (!projectId) {
-        throw createCliError("E-INVALID-ARGS", "setProjectEnabled: projectId is required");
+      if (!projectId || typeof projectId !== "string" || !projectId.trim() || projectId.includes("..") || projectId.includes("/") || projectId.includes("\\")) {
+        throw createCliError("E-PROJECT-NOT-FOUND", "项目不存在或 ID 非法");
       }
       assertKnownCli(id);
 
@@ -807,58 +807,152 @@ export async function createCliService(options = {}) {
 
     /**
      * 获取全部内置 CLI 服务列表、检测状态与项目级启用态
+    /**
+     * 获取单个 CLI 服务的探测状态与配置信息
+     * @param {string} id
+     * @param {Object} [options]
+     * @param {boolean} [options.refresh] - 是否刷新探测缓存
+     * @param {string} [options.projectId] - 若指定项目 ID 则返回该项目启用态
+     * @returns {Promise<Object>}
+     */
+    async getService(id, options = {}) {
+      const item = assertKnownCli(id);
+      const refresh = Boolean(options.refresh);
+      const projectId = options.projectId;
+      const probeFn = resolveProbeFn(this);
+
+      const probeRes = await probeFn(item.id, { refresh });
+      const versionRes = await svc.checkLatestVersion(
+        {
+          id: item.id,
+          version: probeRes.version,
+          installed: probeRes.installed,
+        },
+        { refresh }
+      );
+
+      const d = db();
+      const row = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(item.id);
+
+      let enabled = row ? row.enabled === 1 : false;
+      if (projectId) {
+        const projRow = d
+          .prepare("SELECT enabled FROM cli_service_project_enablement WHERE service_id = ? AND project_id = ?")
+          .get(item.id, projectId);
+        enabled = projRow ? projRow.enabled === 1 : false;
+      }
+
+      return {
+        id: item.id,
+        displayName: item.displayName,
+        command: item.command,
+        installed: probeRes.installed,
+        version: probeRes.version,
+        latestVersion: versionRes.latestVersion,
+        updateAvailable: versionRes.updateAvailable,
+        enabled,
+        envKeys: extractEnvKeys(row),
+        timeoutSec: row?.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
+        installHint: item.installHint,
+        ...(probeRes.probeError ? { probeError: probeRes.probeError } : {}),
+      };
+    },
+
+    /**
+     * 列出所有 CLI 服务的探测状态与配置信息（支持并行探测）
      * @param {Object} [listOptions]
      * @param {boolean} [listOptions.refresh] - 是否刷新探测缓存
      * @param {string} [listOptions.projectId] - 若指定项目 ID 则返回该项目启用态
      * @returns {Promise<Array<Object>>}
      */
     async list(listOptions = {}) {
-      const d = db();
-      const refresh = Boolean(listOptions.refresh);
-      const projectId = listOptions.projectId;
       const items = getRegistry();
-      const results = [];
-      const probeFn = resolveProbeFn(this);
+      return await Promise.all(items.map((item) => svc.getService(item.id, listOptions)));
+    },
 
-      for (const item of items) {
-        const probeRes = await probeFn(item.id, { refresh });
-        const versionRes = await svc.checkLatestVersion(
-          {
-            id: item.id,
-            version: probeRes.version,
-            installed: probeRes.installed,
-          },
-          { refresh }
-        );
-
-        const row = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(item.id);
-
-        let enabled = row ? row.enabled === 1 : false;
-        if (projectId) {
-          const projRow = d
-            .prepare("SELECT enabled FROM cli_service_project_enablement WHERE service_id = ? AND project_id = ?")
-            .get(item.id, projectId);
-          enabled = projRow ? projRow.enabled === 1 : false;
-        }
-
-        results.push({
-          id: item.id,
-          displayName: item.displayName,
-          command: item.command,
-          installed: probeRes.installed,
-          version: probeRes.version,
-          latestVersion: versionRes.latestVersion,
-          updateAvailable: versionRes.updateAvailable,
-          enabled,
-          envKeys: extractEnvKeys(row),
-          timeoutSec: row?.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
-          installHint: item.installHint,
-          ...(probeRes.probeError ? { probeError: probeRes.probeError } : {}),
-        });
+    /**
+     * 聚合获取所有已开启的 CLI 服务与项目的启用映射关系（避免 N+1 请求）
+     * @returns {Record<string, string[]>} 格式为 { [serviceId]: [projectId1, projectId2, ...] }
+     */
+    listProjectEnablements() {
+      const d = db();
+      const rows = d.prepare("SELECT service_id, project_id FROM cli_service_project_enablement WHERE enabled = 1").all();
+      const map = {};
+      for (const r of rows) {
+        if (!map[r.service_id]) map[r.service_id] = [];
+        map[r.service_id].push(r.project_id);
       }
-      return results;
+      return map;
     },
   };
 
   return svc;
 }
+
+const serviceInstances = new Map();
+
+/**
+ * 获取或创建全局单例 CLI 服务实例（按 configDir 记忆化缓存）
+ * @param {Object} [options]
+ * @returns {Promise<Object>}
+ */
+export async function getGlobalCliService(options = {}) {
+  const configDir =
+    options.configDir || process.env.OPC_WORKSTATION_CONFIG_DIR || path.join(os.homedir(), ".opc-workstation");
+  let instance = serviceInstances.get(configDir);
+  if (!instance) {
+    instance = await createCliService({ ...options, configDir });
+    serviceInstances.set(configDir, instance);
+  }
+  return instance;
+}
+
+/**
+ * 重置单例实例缓存（供测试清理）
+ */
+export function resetCliServiceInstances() {
+  serviceInstances.clear();
+}
+
+/**
+ * 同步从 SQLite 获取项目的有效 CLI 服务快照并解密环境变量（供 session-config 纯同步构造点消费，单一真源）
+ * @param {string} projectId
+ * @param {Object} [options]
+ * @returns {Array<{ id: string, command: string, env: Record<string, string>, timeoutSec: number }>}
+ */
+export function getEffectiveCliServicesSync(projectId, options = {}) {
+  if (!projectId || typeof projectId !== "string") return [];
+  try {
+    const configDir = options.configDir || process.env.OPC_WORKSTATION_CONFIG_DIR || path.join(os.homedir(), ".opc-workstation");
+    const dbPath = options.dbPath || resolveDbPath(configDir);
+    if (!fs.existsSync(dbPath)) return [];
+    const d = getDb(dbPath);
+    const rows = d
+      .prepare(`
+        SELECT s.*
+        FROM cli_services s
+        JOIN cli_service_project_enablement e ON e.service_id = s.id
+        WHERE s.enabled = 1 AND e.project_id = ? AND e.enabled = 1
+        ORDER BY s.id
+      `)
+      .all(projectId);
+
+    const result = [];
+    for (const row of rows) {
+      const item = findRegistryItem(row.id);
+      if (!item) continue;
+      const rawEnv = jsonParse(row.env, {});
+      result.push({
+        id: row.id,
+        command: item.command,
+        env: decryptEnvMap(rawEnv),
+        timeoutSec: row.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.warn?.(`[cliService] getEffectiveCliServicesSync 失败 session=${projectId}: ${err?.message ?? err}`);
+    return [];
+  }
+}
+

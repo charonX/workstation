@@ -101,7 +101,7 @@
 | 两层启用 | Two-layer Enablement | 全局开关 ∧ 项目启用 = 项目内可用；MCP Server（`mcp_project_enablement`）与 CLI 服务共用此语义 | MCP Server, CLI 服务 | 启用管理 / effectiveConfig |
 | env 注入 | Env Injection | 为 CLI 服务配置的 KEY=VALUE 环境变量：KEY 正则 `^[A-Z_][A-Z0-9_]*$`，value 经 secretStore 加密存储、API 不明文回显，调用时注入子进程环境 | CLI 服务, 服务凭据 | CLI 服务配置 |
 | 分发渠道 | Distribution Channel | CLI 服务最新版本的查询来源（npm registry / PyPI / GitHub releases），内置清单逐条目标明 | CLI 服务 | 更新提示 |
-| 内置 Skill | Built-in Skill | 随工作台发行、不进技能库的 Skill（如 CLI 服务调用说明）；只读，用户可覆盖（覆盖机制随 2026-09-06-cli-service-connection 技术方案定） | Skill, CLI 服务 | agent 调用面 |
+| 内置 Skill | Built-in Skill | 随工作台发行的只读内置 Skill（如 CLI 服务调用说明）；作为内置来源目录注册进技能库，随项目启用自动建立符号链接，用户可自建同名 Skill 覆盖（ADR-043） | Skill, CLI 服务 | agent 调用面 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
