@@ -216,7 +216,7 @@
 ### 部分修复 / 需人裁决（不阻塞，但必须显性决策）
 
 - [x] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——**用户决策（选项 B）：移除 toolAdapter pre-gate**。未启用清单命令拦截全权交由 gotgenes 权限策略层（项目级 deny 覆盖），消灭双重真相；更新 `cliExecutionWiring.test.js` 断言为策略评估器返回 deny。
-- [ ] **RE2-6（perf）：PERF-F3 只修了一半**——`list()` 已并行化（FIXED），但 latestVersion 外网请求仍在响应关键路径同步 await（冷缓存上界 ≈10s，未安装条目也打外网）。「渠道请求不阻塞响应」承诺仍未兑现，review.md 勾选言过其实。建议缓存未命中先返回 unknown + 后台刷新。
+- [x] **RE2-6（perf）：PERF-F3 只修了一半**——**用户决策（选项 C）：前端轮询，后台异步**。未安装条目跳过外网查询；冷缓存或 refresh 时直接返回 unknown，外网请求移出主响应关键路径并在后台异步拉取填充缓存（包含 in-flight 合并与失败态负缓存）；前端页面检测到 unknown 状态时在 2s 后自动轮询更新，页面首屏加载实现 0 网络等待（响应耗时从 >1000ms 降至 <100ms）。
 - [x] **RE2-7（契约）：project-enablements 聚合端点契约不全**——**FIXED（第三轮 39b7bf0）**：PRD §10.4 新增「接口 1b」完整契约块（路径 / 输出 schema `{ enablements: { [serviceId]: string[] } }` / 无副作用说明）。
 - [ ] **RE2-8（安全）：SEC-4 PARTIAL**——密文透传已 fail-closed（FIXED 半），但粒度是「一条坏 key 丢整份快照」且 base64 退化残余风险未按建议记入 ADR-043。SEC-5（危险 env KEY denylist）确认仍为开放接受项。
 - [ ] **RE2-9（test）：TEST-F7/F8 未处理**（渠道契约解析零覆盖；worker seam 错位）——仍为开放警告。
