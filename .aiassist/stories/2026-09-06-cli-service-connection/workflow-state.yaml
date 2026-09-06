@@ -35,8 +35,8 @@ archive: []
 
 # 实施切片列表（由 /implementer 维护）
 slices:
-  - { id: 1, name: "registry-and-probe", status: "pending", reqs: ["REQ-CLI-SERVICE-001", "REQ-CLI-SERVICE-002", "REQ-CLI-SERVICE-003"] }
-  - { id: 2, name: "config-persistence-and-security", status: "pending", reqs: ["REQ-CLI-SERVICE-004", "REQ-CLI-SERVICE-005"] }
+  - { id: 1, name: "registry-and-probe", status: "completed", reqs: ["REQ-CLI-SERVICE-001", "REQ-CLI-SERVICE-002", "REQ-CLI-SERVICE-003"] }
+  - { id: 2, name: "config-persistence-and-security", status: "completed", reqs: ["REQ-CLI-SERVICE-004", "REQ-CLI-SERVICE-005"] }
   - { id: 3, name: "http-api-and-cli", status: "pending", reqs: ["REQ-CLI-SERVICE-004", "REQ-CLI-SERVICE-005", "REQ-CLI-SERVICE-010"] }
   - { id: 4, name: "builtin-skills-and-sync", status: "pending", reqs: ["REQ-CLI-SERVICE-007"] }
   - { id: 5, name: "agent-execution-and-permissions", status: "pending", reqs: ["REQ-CLI-SERVICE-008", "REQ-CLI-SERVICE-009"] }

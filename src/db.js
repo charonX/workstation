@@ -100,6 +100,8 @@ export function resetDb(dbPath) {
     DROP TABLE IF EXISTS mcp_servers;
     DROP TABLE IF EXISTS mcp_project_enablement;
     DROP TABLE IF EXISTS mcp_permission_defaults;
+    DROP TABLE IF EXISTS cli_service_project_enablement;
+    DROP TABLE IF EXISTS cli_services;
   `);
   // REQ-WORKSPACE-015 AC5（dbPerPathCache.test.js）：resetDb 语义 = 重置该路径库全部表，
   // 含调用方自定义表（用例中手工创建的 t 不在固定 DROP 列表内）。固定列表之外遗留表动态清除。
@@ -225,6 +227,27 @@ const MCP_DDL = `
     pattern TEXT PRIMARY KEY,
     verdict TEXT NOT NULL CHECK (verdict IN ('allow', 'ask', 'deny'))
   );
+`;
+
+// REQ-CLI-SERVICE-004 接口契约：cli_services + cli_service_project_enablement。
+// id 主键；enabled 全局开关；env 密文字典 JSON；timeout_sec 默认 120s；updated_at。
+// cli_service_project_enablement（service_id + project_id 复合主键，幂等重写）。
+const CLI_SERVICES_DDL = `
+  CREATE TABLE IF NOT EXISTS cli_services (
+    id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    env TEXT NOT NULL DEFAULT '{}',
+    timeout_sec INTEGER NOT NULL DEFAULT 120,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS cli_service_project_enablement (
+    project_id TEXT NOT NULL,
+    service_id TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (service_id, project_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cli_service_project_enablement_project ON cli_service_project_enablement(project_id);
 `;
 
 function initSchema(database) {
@@ -365,6 +388,8 @@ function initSchema(database) {
     ${EXECUTION_NODES_DDL}
 
     ${MCP_DDL}
+
+    ${CLI_SERVICES_DDL}
   `);
 }
 
@@ -467,4 +492,6 @@ function migrateSchema(database) {
   if (!hasColumn(database, "mcp_servers", "token_enc")) {
     database.exec(`ALTER TABLE mcp_servers ADD COLUMN token_enc TEXT`);
   }
+  // REQ-CLI-SERVICE-004：cli_services + 项目启用映射（旧库补建，与 initSchema 同 DDL，幂等）。
+  database.exec(CLI_SERVICES_DDL);
 }

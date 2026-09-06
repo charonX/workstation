@@ -8,7 +8,7 @@
 | Slice | 名称 | REQ-ID | 对应测试文件 | 范围 | 依赖 | 状态 |
 |---|---|---|---|---|---|---|
 | 1 | 内置清单与环境探测 | REQ-CLI-SERVICE-001, 002, 003 | `api/cliRegistry.test.js`、`api/cliProbe.test.js` | `src/services/cliRegistry.js` + `src/services/cliService.js` (probe, checkLatestVersion, 60s TTL cache, concurrency <= 4) | — | 完成 |
-| 2 | 配置持久化与凭据加密 | REQ-CLI-SERVICE-004, 005 | `api/cliServiceConfig.test.js` | `src/db.js` DDL + `src/services/cliService.js` (两层启用、timeoutSec、env secretStore 加密与掩码、effectiveConfig) | Slice 1 | 待开始 |
+| 2 | 配置持久化与凭据加密 | REQ-CLI-SERVICE-004, 005 | `api/cliServiceConfig.test.js` | `src/db.js` DDL + `src/services/cliService.js` (两层启用、timeoutSec、env secretStore 加密与掩码、effectiveConfig) | Slice 1 | 完成 |
 | 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 待开始 |
 | 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 待开始 |
 | 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 待开始 |
@@ -48,4 +48,29 @@
   - `cliProbe.test.js`：7 passed，0 failed，耗时 80.7ms。覆盖已安装 CLI 解析、未安装 CLI（ENOENT 返回 `installed: false, version: null` 且不抛错）、超时/失败返回 `E-CLI-PROBE-FAILED:<reason>`、60s TTL 短缓存与 refresh 绕过、同 id 并发合并与全局并发 ≤ 4 限流、渠道最新版本比较与更新标记、网络失败优雅降级（`unknown`, `updateAvailable: false`）。
 - **代码静态检查**：
   - `npm run lint`：`src/services/cliRegistry.js` 与 `src/services/cliService.js` 0 error，0 warning。
-- **状态**：Slice 1 全部完成。
+- **状态**：
+  Slice 1: complete (c787e30..ea70df9, tests green, PRD alignment passed)
+  Slice 1: refactor pass done (ea70df9..d5411cf, tests green, no rollback)
+
+### Slice 2：配置持久化与凭据加密（2026-09-06）
+
+#### PRD → 代码 可追溯性表
+
+| REQ-ID | 需求描述 | PRD 章节依据 | 实现代码 | 对应测试 | 验证状态 |
+|---|---|---|---|---|---|
+| REQ-CLI-SERVICE-004 | CLI 服务配置持久化与两层启用 | §6.3 块 3 row 2, §7.1 规则 2/3, §7 规则 4, §8 E1, §10.2, §10.4 接口 2/3/4 | `src/db.js` (CLI_SERVICES_DDL, initSchema, migrateSchema, resetDb) + `src/services/cliService.js` (`setGlobalEnabled`, `setProjectEnabled`, `updateConfig`, `effectiveConfig`) | `tests/.../api/cliServiceConfig.test.js` (tests 1, 2, 3, 4) | 全绿（4/4 pass） |
+| REQ-CLI-SERVICE-005 | 环境变量配置加密存储与安全回显 | §6.3 块 3 row 1, §7 规则 1/2/3, §8 E4, §10.4 接口 1/2, §10.5 决策 4 | `src/services/cliService.js` (`updateConfig` 校验+加密, `getConfig` envKeys 脱敏, `_getRawDbRow`) + `src/services/secretStore.js` | `tests/.../api/cliServiceConfig.test.js` (tests 5, 6, 7) | 全绿（3/3 pass） |
+
+#### 验证日志
+
+- **测试命令执行**：
+  - `cliServiceConfig.test.js`：7 passed，0 failed，耗时 49.2ms。覆盖未安装 CLI 禁用全局开启（`E-CLI-NOT-INSTALLED`）、全局未启用禁止在项目启用（`E-CLI-GLOBALLY-DISABLED`）、调用超时范围校验 10-600s（`E-CLI-INVALID-TIMEOUT`）、两层启用与 effectiveConfig 计算（仅全局开 ∧ 项目开 ∧ 已安装 返回解密 env）、环境变量输入校验（正则与非空检查 `E-CLI-INVALID-ENV-KEY`）、环境变量加密存储与 API 脱敏仅返回 envKeys、全量替换覆盖语义。
+  - 回归测试全绿：
+    - `cliRegistry.test.js`：6 passed，0 failed，耗时 1.5ms。
+    - `cliProbe.test.js`：7 passed，0 failed，耗时 51.3ms。
+    - `dbPerPathCache.test.js`：11 passed，0 failed，耗时 71.6ms。
+- **代码静态检查**：
+  - `npm run lint`：`src/db.js` 与 `src/services/cliService.js` 0 error，0 warning。
+- **状态**：
+  Slice 2: complete (tests green, PRD alignment passed)
+
