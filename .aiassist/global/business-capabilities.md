@@ -88,7 +88,7 @@
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
-| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `.../2026-07-29-multi-agent-skills/cli/`, `.../2026-08-12-pi-mcp-plugin/cli/` | REQ-CLI-001~002, REQ-AGENT-090 | `cli.test.js`, `skillCli.test.js`, `pluginMcpCli.test.js`（4 用例：plugin/mcp 命令族映射 + 错误码 + enable/disable 对照） |
+| cli | `tests/capabilities/command-interface/cli/codex-harness-desktop/cli/`, `.../2026-07-29-multi-agent-skills/cli/`, `.../2026-08-12-pi-mcp-plugin/cli/`, `.../2026-09-06-cli-service-connection/cli/` | REQ-CLI-001~002, REQ-AGENT-090, REQ-CLI-SERVICE-010（2026-09-06 结晶） | `cli.test.js`, `skillCli.test.js`, `pluginMcpCli.test.js`, `cliServiceCommand.test.js` |
 
 ### agent-dialogue
 > 内置对话 agent（PI 运行时 + 飞书入口 + UI 会话中心）：配置、对话空间会话（空间=会话，多会话列表）、用户绑定、确认挂起、命令直通、卡片流式（含定型：PATCH settings 关 streaming_mode + summary 换正文摘要）、权限策略（gotgenes+授权桥：唯一执行者/单一评估，ADR-017 补充）、会话生命周期（淘汰/懒恢复/水合窗口/同组单活）、权限出厂策略单一真源（规则表+生成配平）、对话富呈现（GFM/高亮/Mermaid/KaTeX/图片/工具折叠块，ADR-021 安全边界）。（2026-08-02-builtin-agent 登记；2026-08-02-ui-copilot 扩展并验收 2026-08-07；2026-08-07-pi-agent-consolidation 验收 2026-08-08；2026-08-08-pi-agent-ux-enrichment 验收 2026-08-10）
@@ -116,12 +116,13 @@
 | trajectory (2026-08-22-tool-call-review) | `tests/capabilities/agent-dialogue/trajectory/2026-08-22-tool-call-review/api/`, `.../e2e/` | REQ-AGENT-127~135（2026-08-23 结晶，2026-08-24 验收） | `trajectoryRecorder.test.js`（11 用例：多步 span/重启 maxTurn/截断保护）, `trajectoryApi.test.js`（5 用例：游标分页/before 窗口/损坏容错）, `trajectoryModel.test.js`（8 用例：乱序合并/选区/空闲折叠/Turn 手风琴）, `trajectoryView.test.cjs`（6 E2E 用例：Tab/空态/Inspector/时间线选区/虚拟滚动/子执行跳转） |
 
 ### plugin-management
-> PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）。（2026-08-12-pi-mcp-plugin 登记）
+> PI 插件（extension）管理：npm/git/本地来源安装、按项目启用（官方包机制全量复用，ADR-024）；MCP server 一等配置实体 + 内置桥（DB 快照注入，ADR-025）+ broker 权限接线（gotgenes mcp 面）；CLI 服务一等配置实体 + 环境检测与版本检查 + 两层启用 + 内置 SKILL.md 缝 + env 快照注入（ADR-043）。（2026-08-12-pi-mcp-plugin 登记，2026-09-06-cli-service-connection 扩展）
 
 | 实体 | 测试目录 | 覆盖的 REQ-ID | 测试文件 |
 |------|----------|---------------|----------|
 | extension | `tests/capabilities/plugin-management/extension/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/`（CLI 归 command-interface） | REQ-AGENT-078~083, 089（2026-08-16 验收） | api `extensionService.test.js`（12）、`workerAssembly.test.js`（6）+ E2E `pluginsPage.test.cjs`（6）：三来源安装/清单/项目启用/装配链路/故障隔离（ADR-024） |
 | mcp-server | `tests/capabilities/plugin-management/mcp-server/2026-08-12-pi-mcp-plugin/api/`, `.../e2e/` | REQ-AGENT-084~088（2026-08-16 验收） | api 9 文件（40 用例：`mcpService`/`mcpBridge`/`mcpPermissionBroker`/`mcpPermissionDefaults`/`mcpProbeTools`/`policyRulesMcp`/`mcpHttpUpdate`/`mcpHttpProjectList`/`channelParity`）+ E2E `mcpPage.test.cjs`（13）、`permissionMcpGroup.test.cjs`（5）：CRUD/桥装配/broker 接线/默认权限层/工具探测/飞书同工（ADR-025） |
+| cli-service | `tests/capabilities/plugin-management/cli-service/2026-09-06-cli-service-connection/api/`, `.../e2e/` | REQ-CLI-SERVICE-001~009（2026-09-06 结晶） | api：`cliRegistry.test.js`, `cliProbe.test.js`, `cliServiceConfig.test.js`, `cliHttpApi.test.js`, `cliSkillSync.test.js`, `cliExecutionWiring.test.js`；e2e：`cliServicesPage.test.cjs` |
 
 ### embedded-browser
 > 内置浏览器面板（WebContentsView 主进程托管，ADR-039）：人机共享单实例——用户手动浏览（地址栏协议白名单、弹窗拦截）+ agent 读取工具面（navigate/read/scroll/screenshot，全 query 级）；人机共驾不加锁（停止控制 = agentControlRevoked，手动导航解除）；可见性解耦（收起不断连）；聊天链接默认面板打开；登录态持久化（persist:browser 分区）+ Cookie 受控导出/清理 + `browser auth-check` 人机协同登录引导（Auth Hub）；机器级 server 注册表锚点（ADR-040，REQ-BROWSER-007）。（2026-08-24-embedded-browser 登记，2026-09-03 验收）
@@ -169,8 +170,8 @@ file-preview ──> agent-dialogue、workspace-management（项目空间解析�
 | information-aggregation | 2 | 7 | 2026-07-19 |
 | app-distribution | 1 | 17 | 2026-08-02 |
 | internationalization-theme | 2 | 13 | 2026-07-16 |
-| command-interface | 1 | 8 | 2026-08-16 |
+| command-interface | 1 | 8（既有，+cliServiceCommand 待 BUILD 落地） | 2026-09-06 |
 | agent-dialogue | 8 | 423 | 2026-08-24 |
-| plugin-management | 2 | 82 | 2026-08-16 |
+| plugin-management | 3 | 82（既有，+7 测试待 BUILD 落地） | 2026-09-06 |
 | embedded-browser | 2 | 57（单元/集成 36 + E2E 21） | 2026-09-03 |
 | file-preview | 2 | 68（单元/组件 54 + E2E 14） | 2026-09-03 |

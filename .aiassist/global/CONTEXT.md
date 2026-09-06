@@ -34,6 +34,7 @@
 | 文件预览面板 | File Preview Panel | 会话区右侧可收起的项目内文件**只读**预览视图（React 渲染层，非 WebContentsView——协议白名单不推翻）：Markdown 渲染/源码切换（复用聊天 MarkdownRenderer 管线）、代码高亮、图片直渲；与浏览器面板共享右侧面板容器心智，但内容通道独立（主进程受控读取）；文件外部变更自动刷新（主进程监听） | `src/renderer/components/preview/FilePreviewPanel.jsx` + `filePreviewStore.js` + `format.js` + `/api/agent/files/*` | 预览面板（裸词禁用，与浏览器面板消歧）、文件预览器 |
 | 文件树 | File Tree | 会话区左侧可收起边栏：绑定当前会话项目空间的解析根，懒加载目录树，噪音目录默认隐藏，支持全部展开/收起；点击文件 → 文件预览面板打开；非项目空间无解析根 → 不显示入口 | `src/renderer/components/preview/FileTree.jsx` + `fileTreeStore.js` | 资源管理器、文件浏览器 |
 | 服务凭据 | Service Credentials | 外部服务（如 RSSHub）访问配置的持久化实体：存储服务 Base URL 与加密 AccessKey，支持受控测试连接与只读脱敏读取 | settings.json 的 credentials 字典 + `src/services/credentialsService.js` | 凭据管理、三方服务配置 |
+| CLI 服务 | CLI Service | 工作台纳管的**本机可执行命令行服务**（支持范围由内置清单定义，首批 claude / codex / crawl4ai）：可环境检测（安装状态/版本/更新提示）、可 env 注入配置、两层启用后供 agent 以一次性任务形态调用 | `cliService`（计划）+ 管理页 `/cli-services`（计划） | 外部服务、CLI 工具（裸词） |
 
 ## 业务概念
 
@@ -95,6 +96,12 @@
 | 噪音目录 | Noise Directories | 文件树默认隐藏的硬编码目录清单（`.git`/`node_modules`/`dist` 等）；第一版不解析 .gitignore | 文件树 | 文件树过滤 |
 | 机器级 Server 注册表 | Machine-level Server Registry | 跨会话与跨进程服务发现通道：固定锚定在机器级路径（`~/.opc-workstation/server.json`，与会话/项目配置目录解耦），桌面主 App 固定以 `owner="app"` 注册，供外部 CLI / Agent 无缝发现运行中的主服务；测试环境通过 `OPC_SERVER_REGISTRY_FILE` 环境变量覆盖提供隔离 | `src/serverRegistry.js` + `src/cli/server.js` | 外部 CLI 与桌面 App 服务发现（ADR-040，REQ-BROWSER-007） |
 | 社交路由自动映射 | Social Route Mapping | 工作台内容源根据社交账号标识（如 X 用户名、B站 UID）自动生成对应 RSSHub 标准路由路径与鉴权标志的转换机制 | 内容源 | 社交动态接入 |
+| 内置清单 | Built-in CLI Registry | 工作台代码内置的支持 CLI 定义表（id/显示名/检测命令/版本解析 regex/分发渠道/安装指引/内置 skill 引用）；不支持用户自定义条目 | CLI 服务 | CLI 服务管理页 / 环境检测 |
+| 环境检测 | Environment Probe | 对内置清单条目实时探测本机命令存在性 + `--version` 版本解析，结果短缓存（TTL 60s，失败态同样缓存），并按分发渠道查询最新版本得出更新提示 | CLI 服务 | CLI 服务管理页 / agent 可用性发现 |
+| 两层启用 | Two-layer Enablement | 全局开关 ∧ 项目启用 = 项目内可用；MCP Server（`mcp_project_enablement`）与 CLI 服务共用此语义 | MCP Server, CLI 服务 | 启用管理 / effectiveConfig |
+| env 注入 | Env Injection | 为 CLI 服务配置的 KEY=VALUE 环境变量：KEY 正则 `^[A-Z_][A-Z0-9_]*$`，value 经 secretStore 加密存储、API 不明文回显，调用时注入子进程环境 | CLI 服务, 服务凭据 | CLI 服务配置 |
+| 分发渠道 | Distribution Channel | CLI 服务最新版本的查询来源（npm registry / PyPI / GitHub releases），内置清单逐条目标明 | CLI 服务 | 更新提示 |
+| 内置 Skill | Built-in Skill | 随工作台发行、不进技能库的 Skill（如 CLI 服务调用说明）；只读，用户可覆盖（覆盖机制随 2026-09-06-cli-service-connection 技术方案定） | Skill, CLI 服务 | agent 调用面 |
 
 ## 「agent」一词三义（2026-08-08 归位，B11）
 
@@ -105,6 +112,16 @@
 | PI 对话 agent | PI conversational agent | **交互会话**形态的 agent：有会话生命周期、有看门狗心跳、经权限层，服务对话空间（飞书/UI 通用/UI 项目）；「内置 agent」默认指它 | `src/agent/worker.js`（PI 运行时子进程）、`src/services/agentService.js`（看门狗/水合） | 对话空间 / 会话区 |
 | flow 的 agent 节点 | Flow agent node | flow 图中的**一次性执行**节点：经 Claude Agent SDK 执行，无会话、无看门狗、bypassPermissions；与本 story 权限/生命周期议题零交叠（D3） | `src/flowEngine/claudeAgentAdapter.js` | flow 执行（provider=anthropic） |
 | Agent Registry 外部 agent CLI | External agent CLI | Agent Registry 目录约定表（75 项，vercel-labs/skills 快照）中的**外部 agent**：skill 安装兼容层（软链分发目标），非运行时 agent | Agent Registry（`agentTypes` / 建链 / 收敛） | 项目创建/编辑、技能分发 |
+
+## 「CLI」三词消歧（2026-09-06 登记，2026-09-06-cli-service-connection）
+
+> 「CLI」在工作台语境有三个互不重叠的义项；阅读/写作时必须消歧。同一命令（如 `claude`）可同时是 CLI 服务（被 agent 调用）和 Agent Registry 外部 agent CLI（skill 分发目标），义项不混。
+
+| 义项 | 定义 | 代码映射 |
+|------|------|----------|
+| 产品 CLI | 工作台自己的命令行入口：`opc-workstation <entity> <action>` 经本地 HTTP API 调用服务 | `src/cli/` |
+| Agent Registry 外部 agent CLI | 目录约定表中的外部 agent：skill 软链分发目标，**非运行时 agent**（见「agent 一词三义」） | Agent Registry（`agentTypes` / 建链 / 收敛） |
+| CLI 服务 | 被 agent 以一次性任务形态**调用**的本机可执行命令实体（本 story 新增） | `cliService`（计划） |
 
 ## 会话生命周期术语（2026-08-08 归位，B11 + review-tech 警告5 扩围）
 
@@ -145,6 +162,7 @@
 
 | 日期 | 变更 | 触发 story |
 |------|------|------------|
+| 2026-09-06 | 新增实体「CLI 服务」；新增概念「内置清单」「环境检测」「两层启用」「env 注入」「分发渠道」「内置 Skill」；新增「CLI 三词消歧」段 | 2026-09-06-cli-service-connection /domain-model |
 | 2026-09-03 | 新增实体「服务凭据」；新增概念「社交路由自动映射」 | 2026-08-26-rsshub-integration /reflect |
 | 2026-09-03 | 新增概念「机器级 Server 注册表」（ADR-040，REQ-BROWSER-007 服务发现通道） | 2026-08-24-embedded-browser /reflect |
 | 2026-09-02 | 新增实体「文件预览面板」「文件树」；新增概念「解析根」（REQ-AGENT-051 补登记）「噪音目录」；「预览面板」裸词双向禁用（浏览器面板禁用别名修订注释） | 2026-08-31-file-preview /domain-model |
