@@ -37,14 +37,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { resolveCliEnvForCommand, findMatchedCliService, extractCommandTokens } from "./cliEnvResolver.js";
-import { SUPPORTED_CLI_COMMANDS } from "./policyRules.js";
+import { resolveCliEnvForCommand, findMatchedCliService } from "./cliEnvResolver.js";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
 // 保证 ToolDefinition.parameters 与 pi 会话工具注册的 schema 兼容。
 import { Type } from "@earendil-works/pi-ai";
 import { setServerBaseUrlOverride, getServerBaseUrlOverride } from "../cli/server.js";
-
-const SUPPORTED_CLI_COMMANDS_SET = new Set(SUPPORTED_CLI_COMMANDS);
 import { comparisonKey, isInsideOrEqual, realpathBestEffort } from "../services/pathUtils.js";
 import * as channel from "../cli/commands/channel.js";
 import * as browser from "../cli/commands/browser.js";
@@ -826,14 +823,7 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getC
       const cmdStr = String(args.command ?? "");
       const snapshot = typeof getCliServices === "function" ? getCliServices() : (Array.isArray(cliServices) ? cliServices : []);
 
-      // 受管清单 CLI 命令未启用拦截与环境配置匹配（REQ-CLI-SERVICE-008）
-      const commandTokens = extractCommandTokens(cmdStr);
       const matchedCli = findMatchedCliService(cmdStr, snapshot);
-      if (commandTokens && SUPPORTED_CLI_COMMANDS_SET.has(commandTokens.cmd)) {
-        if (!matchedCli) {
-          return errorResult("E-CLI-NOT-ENABLED", `[E-CLI-NOT-ENABLED] CLI 服务未启用：${commandTokens.cmd}（需在项目配置中启用后使用）`);
-        }
-      }
 
       const extraEnv = resolveCliEnvForCommand(cmdStr, snapshot);
       const isCliService = Boolean(matchedCli);
