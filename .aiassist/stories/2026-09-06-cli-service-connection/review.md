@@ -218,7 +218,7 @@
 - [x] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——**用户决策（选项 B）：移除 toolAdapter pre-gate**。未启用清单命令拦截全权交由 gotgenes 权限策略层（项目级 deny 覆盖），消灭双重真相；更新 `cliExecutionWiring.test.js` 断言为策略评估器返回 deny。
 - [x] **RE2-6（perf）：PERF-F3 只修了一半**——**用户决策（选项 C）：前端轮询，后台异步**。未安装条目跳过外网查询；冷缓存或 refresh 时直接返回 unknown，外网请求移出主响应关键路径并在后台异步拉取填充缓存（包含 in-flight 合并与失败态负缓存）；前端页面检测到 unknown 状态时在 2s 后自动轮询更新，页面首屏加载实现 0 网络等待（响应耗时从 >1000ms 降至 <100ms）。
 - [x] **RE2-7（契约）：project-enablements 聚合端点契约不全**——**FIXED（第三轮 39b7bf0）**：PRD §10.4 新增「接口 1b」完整契约块（路径 / 输出 schema `{ enablements: { [serviceId]: string[] } }` / 无副作用说明）。
-- [ ] **RE2-8（安全）：SEC-4 PARTIAL**——密文透传已 fail-closed（FIXED 半），但粒度是「一条坏 key 丢整份快照」且 base64 退化残余风险未按建议记入 ADR-043。SEC-5（危险 env KEY denylist）确认仍为开放接受项。
+- [x] **RE2-8（安全）：SEC-4 & SEC-5**——**用户决策（选项 A）：完整加固**。SEC-4：`decryptEnvMap` 实现单 key 级 fail-closed 容错（单个坏 key 记录 warn 日志并跳过，正常 key 继续注入，避免整份快照丢失），ADR-043 补充非 Electron 模式 base64 退化残余风险记录；SEC-5：`validateEnvMap` 增加高危进程注入类变量黑名单（BASH_ENV, LD_PRELOAD, DYLD_INSERT_LIBRARIES, NODE_OPTIONS 等），配置时返回 400 拦截。
 - [ ] **RE2-9（test）：TEST-F7/F8 未处理**（渠道契约解析零覆盖；worker seam 错位）——仍为开放警告。
 - [ ] **RE2-10（code）：CODE-F11 PARTIAL**——E-PROJECT-NOT-FOUND 已引入但落到 400 而非契约要求的 404，且不校验项目真实存在。CODE-F9（duck-typing）、CODE-F12（全局禁用不级联）确认未处理（与勾选状态一致）。
 
