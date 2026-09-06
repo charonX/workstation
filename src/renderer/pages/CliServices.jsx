@@ -360,6 +360,14 @@ export default function CliServices() {
                       <span className="badge badge-ok">
                         v{service.version || "已安装"}
                       </span>
+                    ) : service.probeError ? (
+                      <span
+                        className="badge badge-warning"
+                        data-testid="probe-error-badge"
+                        title={service.probeError}
+                      >
+                        检测失败
+                      </span>
                     ) : (
                       <span className="badge badge-error">未安装</span>
                     )}
