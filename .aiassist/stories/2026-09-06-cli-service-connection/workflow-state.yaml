@@ -1,0 +1,53 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-09-06-cli-service-connection
+intention: >-
+  agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前只支持 MCP 连接，
+  CLI 服务既不纳入管理，也不知道当前环境里装了哪些、可用性如何，
+  agent 无法稳定使用。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: BUILD       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-09-06
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-09-06, from: -, to: THINK, note: "创建 story（初衷：CLI 服务连接管理 + 环境检测，类比已有 MCP 连接）"}
+  - {at: 2026-09-06, from: THINK, to: PRD, note: "需求洞察完成，确认方向 A（对齐 MCP 实体模式），见 interview-notes.md"}
+  - {at: 2026-09-06, from: PRD, to: DESIGN, note: "PRD v0.1 落盘（complex，结晶前需 /tech-design 补全 §10），进入 UX 探索"}
+  - {at: 2026-09-06, from: DESIGN, to: DOMAIN-MODEL, note: "用户决定跳过 DESIGN：管理页照搬 Mcp.jsx 模式，不做单独 UX 探索"}
+  - {at: 2026-09-06, from: DOMAIN-MODEL, to: TECH-DESIGN, note: "CONTEXT.md 沉淀 CLI 服务等术语 + CLI 三词消歧；complex story 进入技术方案深潜"}
+  - {at: 2026-09-06, from: TECH-DESIGN, to: CRYSTALLIZE, note: "§10 深潜完成：权限静态生成/真 SKILL.md 缝/探测缓存模型/env 快照注入，ADR-043 落盘；移动块 2 收敛"}
+  - {at: 2026-09-06, from: CRYSTALLIZE, to: TEST, note: "需求结晶完成：10 个 REQ（REQ-CLI-SERVICE-001~010），哈希写入 requirements-v1.hash"}
+  - {at: 2026-09-06, from: TEST, to: ASSERTION-SIGNOFF, note: "测试骨架编写完成：8 个测试文件（6 API/单元 + 1 E2E + 1 CLI），test-plan.md 落盘"}
+  - {at: 2026-09-06, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，门 1 断言签核锁定，解锁 BUILD 实现"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+#  - {attempt: 1, date: 2026-07-03, reason_file: archive/attempt-1/reason.md, root_layer: PRD}
+#    root_layer 取值:THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN —— 表示这次回流判定根因活在哪一层。
+#    TECH-DESIGN 语义 = 重做 prd.md §10 技术方案（仅 complex story）。
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+#  stable: [块A, 块B]      # 已稳定,可结晶为 REQ
+#  moving: [块C]           # 还在动,暂不入 REQ(被推翻的块降级回这里)
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
