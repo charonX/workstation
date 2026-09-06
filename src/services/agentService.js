@@ -56,9 +56,7 @@ import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFai
 import { isFeishuArchiveKey } from "./sessionDomain.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
 import { createMcpService } from "./mcpService.js";
-import { getDb } from "../db.js";
-import { decryptSecret } from "./secretStore.js";
-import { findRegistryItem } from "./cliRegistry.js";
+import { getEffectiveCliServicesSync } from "./cliService.js";
 import { limitSize } from "../agent/turnEventPipeline.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
@@ -219,82 +217,6 @@ function getGlobalMcpService() {
     defaultMcpServiceInstance = createMcpService();
   }
   return defaultMcpServiceInstance;
-}
-
-/**
- * 安全解析 JSON 对象
- * @param {any} value
- * @param {Object} [fallback]
- * @returns {Object}
- */
-function safeParseJsonObject(value, fallback = {}) {
-  if (!value || typeof value !== "string") return fallback;
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch {}
-  return fallback;
-}
-
-/**
- * 环境变量字典逐项解密
- * @param {Record<string, string>} rawEnv
- * @returns {Record<string, string>}
- */
-function decryptEnvEntries(rawEnv) {
-  const decrypted = {};
-  if (!rawEnv || typeof rawEnv !== "object") return decrypted;
-  for (const [k, v] of Object.entries(rawEnv)) {
-    try {
-      decrypted[k] = decryptSecret(v);
-    } catch {
-      decrypted[k] = v;
-    }
-  }
-  return decrypted;
-}
-
-/**
- * 同步从 SQLite 数据库获取指定项目的有效 CLI 服务快照并解密环境变量
- * @param {string} projectId
- * @returns {Array<{ id: string, command: string, env: Record<string, string>, timeoutSec: number }>}
- */
-function getEffectiveCliServicesSync(projectId) {
-  if (!projectId) return [];
-  try {
-    const configDir = process.env.OPC_WORKSTATION_CONFIG_DIR || path.join(os.homedir(), ".opc-workstation");
-    const dbPath = process.env.DB_PATH || path.join(configDir, "data.db");
-    if (!fs.existsSync(dbPath)) return [];
-    const d = getDb(dbPath);
-    const rows = d
-      .prepare(`
-        SELECT s.*
-        FROM cli_services s
-        JOIN cli_service_project_enablement e ON e.service_id = s.id
-        WHERE s.enabled = 1 AND e.project_id = ? AND e.enabled = 1
-        ORDER BY s.id
-      `)
-      .all(projectId);
-
-    const result = [];
-    for (const row of rows) {
-      const item = findRegistryItem(row.id);
-      if (!item) continue;
-      const rawEnv = safeParseJsonObject(row.env);
-      result.push({
-        id: row.id,
-        command: item.command,
-        env: decryptEnvEntries(rawEnv),
-        timeoutSec: row.timeout_sec ?? 120,
-      });
-    }
-    return result;
-  } catch (err) {
-    console.warn?.(`[agentService] cliServices 快照获取失败 session=${projectId}: ${err?.message ?? err}`);
-    return [];
-  }
 }
 
 export {

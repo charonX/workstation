@@ -745,9 +745,14 @@ async function runBash(command, cwd, options = {}) {
   return new Promise((resolve, reject) => {
     let forceKillTimer = null;
     let child = null;
+    // callback 是否已结算：execFile 超时触发内部 kill(SIGTERM) 后 child.killed 即为
+    // true（只表示信号已发出，不代表进程已退出），不能用作 SIGKILL 判据——进程无视
+    // SIGTERM 时 callback 不触发，settled 保持 false，500ms 后才真正补 SIGKILL。
+    let settled = false;
 
     try {
       child = execFile(shell, args, execOptions, (err, stdout, stderr) => {
+        settled = true;
         if (forceKillTimer) clearTimeout(forceKillTimer);
         if (err) {
           const isTimeout =
@@ -772,11 +777,12 @@ async function runBash(command, cwd, options = {}) {
         resolve(out);
       });
 
-      // SIGKILL 升级兜底：进程超时被发 SIGTERM 500ms 后依然存活则强制 SIGKILL
+      // SIGKILL 升级兜底：超时 SIGTERM 发出 500ms 后 callback 仍未 settle
+      //（进程无视 SIGTERM 悬挂）则强制 SIGKILL
       if (execOptions.timeout > 0 && child) {
         forceKillTimer = setTimeout(() => {
           try {
-            if (child.pid && !child.killed) {
+            if (!settled && child.pid) {
               child.kill("SIGKILL");
             }
           } catch {
