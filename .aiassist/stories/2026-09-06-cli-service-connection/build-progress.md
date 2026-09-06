@@ -175,3 +175,16 @@
   - `npx oxlint src/renderer/api/cliServices.js src/renderer/pages/CliServices.jsx src/renderer/App.jsx src/renderer/components/layout/Sidebar.jsx src/renderer/hooks/useSettings.jsx src/renderer/main.jsx src/agent/toolAdapter.js`：0 warning，0 error。
 - **状态**：
   Slice 6: complete (tests green, PRD alignment passed)
+
+## BUILD 阶段完成总结
+
+- **切片全量完成**：6 个实施切片（Slice 1 ~ 6）全部完成，覆盖 10 个 REQ（REQ-CLI-SERVICE-001 ~ REQ-CLI-SERVICE-010）。
+- **业务测试全绿**：
+  - 8 个测试文件（7 个单元/API/CLI + 1 个 E2E）全部通过（40 passed, 0 failed）。
+- **全量回归验证**：
+  - `npm run test:unit` 全量通过（1233 passed, 0 failed, 298 suites）。
+  - `scripts/gen-agent-policy.mjs --check` 策略配平一致（0 drift）。
+  - 静态检查 `oxlint` 0 errors, 0 warnings。
+  - 架构约束 `src/http/server.js` 行数维持 248 行（≤ 250 行）。
+- **流转决定**：
+  - BUILD 阶段顺利结束，推进至 **QA** 阶段（运行 `/qa-runner`）。
