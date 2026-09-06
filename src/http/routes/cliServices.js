@@ -31,7 +31,7 @@ function notFoundService(res, id) {
 function handleRouteError(res, err, fallbackStatus = 500) {
   const code = err?.code;
   let status = err?.status || fallbackStatus;
-  if (code === "E-CLI-UNKNOWN-ID") {
+  if (code === "E-CLI-UNKNOWN-ID" || code === "E-PROJECT-NOT-FOUND") {
     status = 404;
   } else if (code === "E-CLI-NOT-INSTALLED" || code === "E-CLI-GLOBALLY-DISABLED") {
     status = 409;

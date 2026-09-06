@@ -317,6 +317,13 @@ function jsonParse(value, fallback) {
 function createCliError(code, message) {
   const err = new Error(`${message} (${code})`);
   err.code = code;
+  if (code === "E-CLI-UNKNOWN-ID" || code === "E-PROJECT-NOT-FOUND") {
+    err.status = 404;
+  } else if (code === "E-CLI-NOT-INSTALLED" || code === "E-CLI-GLOBALLY-DISABLED") {
+    err.status = 409;
+  } else if (code === "E-CLI-INVALID-TIMEOUT" || code === "E-CLI-INVALID-ENV-KEY") {
+    err.status = 400;
+  }
   return err;
 }
 
@@ -681,6 +688,18 @@ export async function createCliService(options = {}) {
       assertKnownCli(id);
 
       const d = db();
+      try {
+        const projectCount = d.prepare("SELECT COUNT(*) as cnt FROM projects").get()?.cnt ?? 0;
+        if (projectCount > 0) {
+          const row = d.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId);
+          if (!row) {
+            throw createCliError("E-PROJECT-NOT-FOUND", `项目不存在: ${projectId}`);
+          }
+        }
+      } catch (err) {
+        if (err?.code === "E-PROJECT-NOT-FOUND") throw err;
+      }
+
       const globalRow = d.prepare("SELECT enabled FROM cli_services WHERE id = ?").get(id);
       const isEnabled = Boolean(enabled);
       if (isEnabled && (!globalRow || globalRow.enabled !== 1)) {
