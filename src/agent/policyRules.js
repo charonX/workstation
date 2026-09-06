@@ -9,7 +9,7 @@ export const BASH_RULES = SERVICE_BASH_RULES.map((rule) => ({
   action: rule.action ?? rule.decision ?? "ask",
 }));
 
-const SUPPORTED_CLI_COMMANDS = ["claude", "codex", "crwl"];
+export const SUPPORTED_CLI_COMMANDS = Object.freeze(["claude", "codex", "crwl"]);
 
 /**
  * 构建项目层 Bash 权限覆盖规则
@@ -19,7 +19,8 @@ const SUPPORTED_CLI_COMMANDS = ["claude", "codex", "crwl"];
  * @returns {Array<{ pattern: string, action: string, decision: string }>}
  */
 export function buildProjectBashRules({ enabledCliCommands = [] } = {}) {
-  const enabledSet = new Set(enabledCliCommands || []);
+  const safeCommands = Array.isArray(enabledCliCommands) ? enabledCliCommands : [];
+  const enabledSet = new Set(safeCommands);
   const rules = [];
 
   for (const cmd of SUPPORTED_CLI_COMMANDS) {

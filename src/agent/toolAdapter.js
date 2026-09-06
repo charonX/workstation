@@ -38,11 +38,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolveCliEnvForCommand } from "../services/agentService.js";
+import { resolveCliEnvForCommand, findMatchedCliService, extractCommandTokens } from "../services/agentService.js";
+import { SUPPORTED_CLI_COMMANDS } from "./policyRules.js";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
 // 保证 ToolDefinition.parameters 与 pi 会话工具注册的 schema 兼容。
 import { Type } from "@earendil-works/pi-ai";
 import { setServerBaseUrlOverride, getServerBaseUrlOverride } from "../cli/server.js";
+
+const SUPPORTED_CLI_COMMANDS_SET = new Set(SUPPORTED_CLI_COMMANDS);
 import { comparisonKey, isInsideOrEqual, realpathBestEffort } from "../services/pathUtils.js";
 import * as channel from "../cli/commands/channel.js";
 import * as browser from "../cli/commands/browser.js";
@@ -767,38 +770,19 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getC
       const cmdStr = String(args.command ?? "");
       const snapshot = typeof getCliServices === "function" ? getCliServices() : (Array.isArray(cliServices) ? cliServices : []);
 
-      // 清单命令（claude / codex / crwl）未启用拦截（REQ-CLI-SERVICE-008，包含错误码 E-CLI-NOT-ENABLED）
-      const tokens = cmdStr.trim().split(/\s+/);
-      let cmdToken = null;
-      for (const token of tokens) {
-        if (!token) continue;
-        if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue;
-        cmdToken = token;
-        break;
-      }
-      const cmd = cmdToken ? path.basename(cmdToken).replace(/^["']|["']$/g, "") : "";
-      const MANIFEST_COMMANDS = new Set(["claude", "codex", "crwl"]);
-      if (MANIFEST_COMMANDS.has(cmd)) {
-        const isEnabled = Array.isArray(snapshot) && snapshot.some(
-          (entry) =>
-            entry &&
-            (entry.command === cmd ||
-              entry.id === cmd ||
-              entry.command === cmdToken ||
-              entry.id === cmdToken)
-        );
-        if (!isEnabled) {
-          return errorResult("E-CLI-NOT-ENABLED", `[E-CLI-NOT-ENABLED] CLI 服务未启用：${cmd}（需在项目配置中启用后使用）`);
+      // 受管清单 CLI 命令未启用拦截与环境配置匹配（REQ-CLI-SERVICE-008）
+      const commandTokens = extractCommandTokens(cmdStr);
+      const matchedCli = findMatchedCliService(cmdStr, snapshot);
+      if (commandTokens && SUPPORTED_CLI_COMMANDS_SET.has(commandTokens.cmd)) {
+        if (!matchedCli) {
+          return errorResult("E-CLI-NOT-ENABLED", `[E-CLI-NOT-ENABLED] CLI 服务未启用：${commandTokens.cmd}（需在项目配置中启用后使用）`);
         }
       }
 
       const extraEnv = resolveCliEnvForCommand(cmdStr, snapshot);
       let timeoutSec = 120;
-      if (Array.isArray(snapshot) && snapshot.length > 0) {
-        const matched = snapshot.find((entry) => entry && (entry.command === cmd || entry.id === cmd));
-        if (matched && typeof matched.timeoutSec === "number" && matched.timeoutSec > 0) {
-          timeoutSec = matched.timeoutSec;
-        }
+      if (matchedCli && typeof matchedCli.timeoutSec === "number" && matchedCli.timeoutSec > 0) {
+        timeoutSec = matchedCli.timeoutSec;
       }
       return { output: await runBash(cmdStr, cwd, { env: extraEnv, timeout: timeoutSec * 1000 }) };
     }

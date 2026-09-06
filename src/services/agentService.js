@@ -222,6 +222,41 @@ function getGlobalMcpService() {
 }
 
 /**
+ * 安全解析 JSON 对象
+ * @param {any} value
+ * @param {Object} [fallback]
+ * @returns {Object}
+ */
+function safeParseJsonObject(value, fallback = {}) {
+  if (!value || typeof value !== "string") return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {}
+  return fallback;
+}
+
+/**
+ * 环境变量字典逐项解密
+ * @param {Record<string, string>} rawEnv
+ * @returns {Record<string, string>}
+ */
+function decryptEnvEntries(rawEnv) {
+  const decrypted = {};
+  if (!rawEnv || typeof rawEnv !== "object") return decrypted;
+  for (const [k, v] of Object.entries(rawEnv)) {
+    try {
+      decrypted[k] = decryptSecret(v);
+    } catch {
+      decrypted[k] = v;
+    }
+  }
+  return decrypted;
+}
+
+/**
  * 同步从 SQLite 数据库获取指定项目的有效 CLI 服务快照并解密环境变量
  * @param {string} projectId
  * @returns {Array<{ id: string, command: string, env: Record<string, string>, timeoutSec: number }>}
@@ -247,22 +282,11 @@ function getEffectiveCliServicesSync(projectId) {
     for (const row of rows) {
       const item = findRegistryItem(row.id);
       if (!item) continue;
-      let rawEnv = {};
-      try {
-        rawEnv = row.env ? JSON.parse(row.env) : {};
-      } catch {}
-      const decryptedEnv = {};
-      for (const [k, v] of Object.entries(rawEnv)) {
-        try {
-          decryptedEnv[k] = decryptSecret(v);
-        } catch {
-          decryptedEnv[k] = v;
-        }
-      }
+      const rawEnv = safeParseJsonObject(row.env);
       result.push({
         id: row.id,
         command: item.command,
-        env: decryptedEnv,
+        env: decryptEnvEntries(rawEnv),
         timeoutSec: row.timeout_sec ?? 120,
       });
     }
@@ -274,46 +298,64 @@ function getEffectiveCliServicesSync(projectId) {
 }
 
 /**
+ * 从待执行命令行中提取主命令名称与完整命令标记（剥离前导环境变量与外层引号）
+ * @param {string} commandLine
+ * @returns {{ cmdToken: string, cmd: string } | null}
+ */
+export function extractCommandTokens(commandLine) {
+  if (!commandLine || typeof commandLine !== "string") return null;
+  const trimmed = commandLine.trim();
+  if (!trimmed) return null;
+
+  const tokens = trimmed.split(/\s+/);
+  for (const token of tokens) {
+    if (!token || /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      continue;
+    }
+    const cleanToken = token.replace(/^["']|["']$/g, "");
+    const cmd = path.basename(cleanToken);
+    return { cmdToken: cleanToken, cmd };
+  }
+  return null;
+}
+
+/**
+ * 在快照中匹配与命令行对应的 CLI 服务配置
+ * @param {string} commandLine
+ * @param {Array<Object>} [cliServicesSnapshot]
+ * @returns {Object | null}
+ */
+export function findMatchedCliService(commandLine, cliServicesSnapshot = []) {
+  if (!Array.isArray(cliServicesSnapshot) || cliServicesSnapshot.length === 0) {
+    return null;
+  }
+  const extracted = extractCommandTokens(commandLine);
+  if (!extracted) return null;
+  const { cmd, cmdToken } = extracted;
+
+  return (
+    cliServicesSnapshot.find(
+      (entry) =>
+        entry &&
+        (entry.command === cmd ||
+          entry.id === cmd ||
+          entry.command === cmdToken ||
+          entry.id === cmdToken)
+    ) ?? null
+  );
+}
+
+/**
  * 根据待执行命令行匹配并解析 CLI 服务注入的环境变量
  * @param {string} commandLine - 命令行字符串
  * @param {Array<Object>} [cliServicesSnapshot] - 会话缓存的 cliServices 快照
  * @returns {Record<string, string>} 解密后的环境变量字典
  */
 export function resolveCliEnvForCommand(commandLine, cliServicesSnapshot = []) {
-  if (!commandLine || typeof commandLine !== "string" || !Array.isArray(cliServicesSnapshot)) {
-    return {};
-  }
-
-  const trimmed = commandLine.trim();
-  if (!trimmed) return {};
-
-  const tokens = trimmed.split(/\s+/);
-  let cmdToken = null;
-  for (const token of tokens) {
-    if (!token) continue;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
-      continue;
-    }
-    cmdToken = token;
-    break;
-  }
-  if (!cmdToken) return {};
-
-  const cmd = path.basename(cmdToken);
-
-  const matched = cliServicesSnapshot.find(
-    (entry) =>
-      entry &&
-      (entry.command === cmd ||
-        entry.id === cmd ||
-        entry.command === cmdToken ||
-        entry.id === cmdToken)
-  );
-
+  const matched = findMatchedCliService(commandLine, cliServicesSnapshot);
   if (matched && matched.env && typeof matched.env === "object") {
     return { ...matched.env };
   }
-
   return {};
 }
 
@@ -358,9 +400,17 @@ export function createModuleConfigMessage(spaceKey, sessionOrOptions = {}, sourc
   if (sessionOrOptions && Array.isArray(sessionOrOptions.stubCliServices)) {
     cliServices = sessionOrOptions.stubCliServices;
   } else if (typeof context.getCliServices === "function") {
-    cliServices = context.getCliServices(pid);
+    try {
+      cliServices = context.getCliServices(pid);
+    } catch (err) {
+      const logger = context.log ?? console.warn;
+      logger(`cliServices 计算失败 session=${spaceKey} err=${err?.message ?? String(err)}`);
+    }
   } else if (pid) {
     cliServices = getEffectiveCliServicesSync(pid);
+  }
+  if (!Array.isArray(cliServices)) {
+    cliServices = [];
   }
 
   const contextCwd = context.cwd ?? (typeof cwd !== "undefined" ? cwd : process.cwd());
