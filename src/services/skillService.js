@@ -925,39 +925,73 @@ export function deleteSource(slug) {
 
 // ---------- builtin CLI skills (REQ-CLI-SERVICE-007) ----------
 
-function resolveProjectDir(projectDirOrId) {
-  if (!projectDirOrId) return null;
+const BUILTIN_CLI_SLUGS = ["cli-claude", "cli-codex", "cli-crawl4ai"];
+
+function resolveProjectInfo(projectDirOrId) {
+  if (!projectDirOrId) return { projectId: null, projectDir: null };
   if (typeof projectDirOrId === "object") {
-    const raw = projectDirOrId.localPath || projectDirOrId.projectDir;
-    return raw ? path.resolve(expandTilde(raw)) : null;
+    const rawDir = projectDirOrId.localPath || projectDirOrId.projectDir;
+    return {
+      projectId: projectDirOrId.id || null,
+      projectDir: rawDir ? path.resolve(expandTilde(rawDir)) : null
+    };
   }
-  if (typeof projectDirOrId !== "string" || projectDirOrId.trim() === "") return null;
+  if (typeof projectDirOrId !== "string" || projectDirOrId.trim() === "") {
+    return { projectId: null, projectDir: null };
+  }
   const candidate = expandTilde(projectDirOrId.trim());
   if (isDirectory(candidate)) {
-    return path.resolve(candidate);
+    const resolvedDir = path.resolve(candidate);
+    let projectId = null;
+    try {
+      const found = projectService.listProjects?.().find(
+        (p) => p.localPath && path.resolve(expandTilde(p.localPath)) === resolvedDir
+      );
+      if (found) {
+        projectId = found.id;
+      }
+    } catch {
+      // ignore
+    }
+    return { projectId: projectId || candidate, projectDir: resolvedDir };
   }
+
+  let projectId = candidate;
+  let resolvedDir = null;
   try {
     const detail = projectService.getProjectDetail?.(candidate) ||
       projectService.listProjects?.().find((p) => p.id === candidate);
     if (detail?.localPath) {
-      return path.resolve(expandTilde(detail.localPath));
+      resolvedDir = path.resolve(expandTilde(detail.localPath));
     }
   } catch {
     // ignore
   }
-  if (path.isAbsolute(candidate) || candidate.startsWith(".") || candidate.includes(path.sep)) {
-    return path.resolve(candidate);
+
+  if (!resolvedDir && (path.isAbsolute(candidate) || candidate.startsWith(".") || candidate.includes(path.sep))) {
+    resolvedDir = path.resolve(candidate);
   }
-  return null;
+
+  return { projectId, projectDir: resolvedDir };
+}
+
+function resolveProjectDir(projectDirOrId) {
+  return resolveProjectInfo(projectDirOrId).projectDir;
 }
 
 export function getBuiltinSkillPath(slug) {
   if (!slug || typeof slug !== "string") return null;
   const targetDir = path.join(BUILTIN_SKILLS_ROOT, slug);
-  if (isDirectory(targetDir)) {
-    return targetDir;
+  return isDirectory(targetDir) ? targetDir : null;
+}
+
+function pointsToTarget(linkPath, targetDir) {
+  try {
+    const currentTarget = readLinkAbsTarget(linkPath);
+    return Boolean(currentTarget && realpathBestEffort(currentTarget) === realpathBestEffort(targetDir));
+  } catch {
+    return false;
   }
-  return null;
 }
 
 export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [] } = {}) {
@@ -965,8 +999,7 @@ export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [
   if (!projectDir) return;
   const skillsDir = path.join(projectDir, ".skills");
 
-  const slugs = ["cli-claude", "cli-codex", "cli-crawl4ai"];
-  for (const slug of slugs) {
+  for (const slug of BUILTIN_CLI_SLUGS) {
     const linkPath = path.join(skillsDir, slug);
     const isEnabled = Array.isArray(enabledCliSlugs) && (
       enabledCliSlugs.includes(slug) ||
@@ -987,27 +1020,40 @@ export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [
       if (!lst) {
         fs.mkdirSync(skillsDir, { recursive: true });
         createSymlink(builtinPath, linkPath);
-      } else if (lst.isSymbolicLink()) {
-        let currentTarget = null;
-        try {
-          currentTarget = readLinkAbsTarget(linkPath);
-        } catch {
-          currentTarget = null;
-        }
-        if (!currentTarget || realpathBestEffort(currentTarget) !== realpathBestEffort(builtinPath)) {
-          fs.rmSync(linkPath, { force: true });
-          createSymlink(builtinPath, linkPath);
-        }
-      } else {
-        // Exists and is not a symlink (user custom version): never touch or overwrite!
-      }
-    } else {
-      if (lst && lst.isSymbolicLink()) {
+      } else if (lst.isSymbolicLink() && !pointsToTarget(linkPath, builtinPath)) {
         fs.rmSync(linkPath, { force: true });
+        createSymlink(builtinPath, linkPath);
       }
-      // If not a symlink, never touch!
+    } else if (lst?.isSymbolicLink()) {
+      fs.rmSync(linkPath, { force: true });
     }
   }
+}
+
+function scanSkillSymlinksInDir(skillsDir) {
+  if (!isDirectory(skillsDir)) return [];
+  const results = [];
+  let entries = [];
+  try {
+    entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(skillsDir, entry.name);
+    try {
+      const lst = fs.lstatSync(entryPath);
+      if (lst.isSymbolicLink()) {
+        const absTarget = readLinkAbsTarget(entryPath);
+        if (fs.existsSync(path.join(absTarget, "SKILL.md"))) {
+          results.push({ linkPath: path.resolve(entryPath), targetPath: path.resolve(absTarget) });
+        }
+      }
+    } catch {
+      // ignore unreadable or broken links
+    }
+  }
+  return results;
 }
 
 // ---------- linked skill paths for session assembly (REQ-AGENT-031 / REQ-CLI-SERVICE-007) ----------
@@ -1022,43 +1068,7 @@ export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [
 export function listLinkedSkillPaths(projectIdOrDir) {
   const root = repoRoot();
   const paths = [];
-
-  let projectId = null;
-  let projectDir = null;
-
-  if (projectIdOrDir && typeof projectIdOrDir === "object") {
-    projectId = projectIdOrDir.id || null;
-    projectDir = projectIdOrDir.localPath ? path.resolve(expandTilde(projectIdOrDir.localPath)) : null;
-  } else if (typeof projectIdOrDir === "string" && projectIdOrDir.trim() !== "") {
-    const raw = expandTilde(projectIdOrDir.trim());
-    if (isDirectory(raw)) {
-      projectDir = path.resolve(raw);
-      try {
-        const found = projectService.listProjects?.().find(
-          (p) => p.localPath && path.resolve(expandTilde(p.localPath)) === projectDir
-        );
-        if (found) {
-          projectId = found.id;
-        }
-      } catch {
-        // ignore
-      }
-      if (!projectId) {
-        projectId = raw;
-      }
-    } else {
-      projectId = projectIdOrDir.trim();
-      try {
-        const detail = projectService.getProjectDetail?.(projectId) ||
-          projectService.listProjects?.().find((p) => p.id === projectId);
-        if (detail?.localPath) {
-          projectDir = path.resolve(expandTilde(detail.localPath));
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }
+  const { projectId, projectDir } = resolveProjectInfo(projectIdOrDir);
 
   // 1. 原有技能库关联记录
   if (root && projectId) {
@@ -1077,29 +1087,9 @@ export function listLinkedSkillPaths(projectIdOrDir) {
   // 2. 检查项目的 .skills 目录（REQ-CLI-SERVICE-007）
   if (projectDir) {
     const skillsDir = path.join(projectDir, ".skills");
-    if (isDirectory(skillsDir)) {
-      let entries = [];
-      try {
-        entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-      } catch {
-        entries = [];
-      }
-      for (const entry of entries) {
-        const entryPath = path.join(skillsDir, entry.name);
-        try {
-          const lst = fs.lstatSync(entryPath);
-          if (lst.isSymbolicLink()) {
-            const absTarget = readLinkAbsTarget(entryPath);
-            if (fs.existsSync(path.join(absTarget, "SKILL.md"))) {
-              const absLink = path.resolve(entryPath);
-              if (!paths.includes(absLink) && !paths.includes(absTarget)) {
-                paths.push(absLink);
-              }
-            }
-          }
-        } catch {
-          // ignore unreadable or broken links
-        }
+    for (const { linkPath, targetPath } of scanSkillSymlinksInDir(skillsDir)) {
+      if (!paths.includes(linkPath) && !paths.includes(targetPath)) {
+        paths.push(linkPath);
       }
     }
   }
