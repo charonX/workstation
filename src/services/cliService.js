@@ -28,6 +28,19 @@ const MAX_ENV_ENTRIES = 50;
 const MAX_ENV_KEY_LENGTH = 128;
 const MAX_ENV_VALUE_LENGTH = 4096;
 const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
+const DANGEROUS_ENV_KEYS = new Set([
+  "BASH_ENV",
+  "ENV",
+  "CDPATH",
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "NODE_OPTIONS",
+  "PYTHONPATH",
+  "RUBYOPT",
+  "PERL5OPT",
+]);
 
 /**
  * 格式化探测错误信息
@@ -351,6 +364,9 @@ function validateEnvMap(env) {
     if (typeof k !== "string" || k.length === 0 || k.length > MAX_ENV_KEY_LENGTH || !ENV_KEY_REGEX.test(k)) {
       throw createCliError("E-CLI-INVALID-ENV-KEY", `环境变量 KEY 非法: ${k}`);
     }
+    if (DANGEROUS_ENV_KEYS.has(k)) {
+      throw createCliError("E-CLI-INVALID-ENV-KEY", `环境变量 KEY 禁止使用系统保留或注入类变量: ${k}`);
+    }
     if (typeof v !== "string" || v.length === 0 || v.length > MAX_ENV_VALUE_LENGTH) {
       throw createCliError(
         "E-CLI-INVALID-ENV-KEY",
@@ -381,7 +397,11 @@ function encryptEnvMap(env) {
 function decryptEnvMap(encryptedMap) {
   const decrypted = {};
   for (const [k, enc] of Object.entries(encryptedMap)) {
-    decrypted[k] = decryptSecret(enc);
+    try {
+      decrypted[k] = decryptSecret(enc);
+    } catch (err) {
+      console.warn?.(`[cliService] 解密环境变量 ${k} 失败，跳过注入: ${err?.message ?? err}`);
+    }
   }
   return decrypted;
 }
