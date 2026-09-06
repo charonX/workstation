@@ -510,6 +510,7 @@ export async function createCliService(options = {}) {
     _probeCache: new Map(),
     _inFlightProbes: new Map(),
     _latestVersionCache: new Map(),
+    _inFlightVersionChecks: new Map(),
     _limiter: new ConcurrencyLimiter(4),
 
     /**
@@ -586,17 +587,26 @@ export async function createCliService(options = {}) {
 
         if (!refresh && isCacheValid(cached, LATEST_CACHE_TTL_MS)) {
           latestVersion = cached.version;
+        } else if (svc._inFlightVersionChecks.has(cacheKey)) {
+          latestVersion = await svc._inFlightVersionChecks.get(cacheKey);
         } else {
-          try {
-            const fetchFn = svc._stubFetchLatest || defaultFetchLatest;
-            const fetched = await fetchFn(pkg, channel);
-            if (fetched) {
-              latestVersion = fetched;
-              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: fetched });
+          const checkPromise = (async () => {
+            try {
+              const fetchFn = svc._stubFetchLatest || defaultFetchLatest;
+              const fetched = await fetchFn(pkg, channel);
+              const resultVersion = fetched || "unknown";
+              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: resultVersion });
+              return resultVersion;
+            } catch {
+              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: "unknown" });
+              return "unknown";
+            } finally {
+              svc._inFlightVersionChecks.delete(cacheKey);
             }
-          } catch {
-            latestVersion = "unknown";
-          }
+          })();
+
+          svc._inFlightVersionChecks.set(cacheKey, checkPromise);
+          latestVersion = await checkPromise;
         }
       }
 
@@ -818,18 +828,57 @@ export async function createCliService(options = {}) {
     async getService(id, options = {}) {
       const item = assertKnownCli(id);
       const refresh = Boolean(options.refresh);
+      const syncVersion = Boolean(options.syncVersion);
       const projectId = options.projectId;
       const probeFn = resolveProbeFn(this);
 
       const probeRes = await probeFn(item.id, { refresh });
-      const versionRes = await svc.checkLatestVersion(
-        {
-          id: item.id,
-          version: probeRes.version,
-          installed: probeRes.installed,
-        },
-        { refresh }
-      );
+
+      let latestVersion = "unknown";
+      let updateAvailable = false;
+
+      // 仅当本机已安装时感知渠道版本；未安装直接跳过外网开销（PERF-F3 / RE2-6 选项 C）
+      if (probeRes.installed) {
+        if (syncVersion) {
+          const versionRes = await svc.checkLatestVersion(
+            {
+              id: item.id,
+              version: probeRes.version,
+              installed: probeRes.installed,
+            },
+            { refresh }
+          );
+          latestVersion = versionRes.latestVersion;
+          updateAvailable = versionRes.updateAvailable;
+        } else {
+          const cacheKey = `${item.channel}:${item.package}`;
+          const cached = svc._latestVersionCache.get(cacheKey);
+          const validCache = !refresh && isCacheValid(cached, LATEST_CACHE_TTL_MS);
+
+          if (validCache && cached) {
+            latestVersion = cached.version;
+            if (probeRes.version && latestVersion !== "unknown") {
+              updateAvailable = compareSemver(latestVersion, probeRes.version) > 0;
+            }
+          } else {
+            // 冷缓存或刷新时：返回 stale 缓存或 unknown，并在后台异步拉取最新版本，不阻塞主响应关键路径
+            if (cached?.version && !refresh) {
+              latestVersion = cached.version;
+              if (probeRes.version && latestVersion !== "unknown") {
+                updateAvailable = compareSemver(latestVersion, probeRes.version) > 0;
+              }
+            }
+            svc.checkLatestVersion(
+              {
+                id: item.id,
+                version: probeRes.version,
+                installed: probeRes.installed,
+              },
+              { refresh }
+            ).catch(() => {});
+          }
+        }
+      }
 
       const d = db();
       const row = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(item.id);
@@ -848,8 +897,8 @@ export async function createCliService(options = {}) {
         command: item.command,
         installed: probeRes.installed,
         version: probeRes.version,
-        latestVersion: versionRes.latestVersion,
-        updateAvailable: versionRes.updateAvailable,
+        latestVersion,
+        updateAvailable,
         enabled,
         envKeys: extractEnvKeys(row),
         timeoutSec: row?.timeout_sec ?? DEFAULT_TIMEOUT_SEC,

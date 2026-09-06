@@ -71,6 +71,32 @@ export default function CliServices() {
     reload();
   }, [reload]);
 
+  // 后台版本轮询：若有已安装但最新版本尚未查回（unknown）的条目，静默轮询刷新（上限 3 次）
+  const [pollCount, setPollCount] = useState(0);
+
+  useEffect(() => {
+    if (pollCount >= 3) return;
+    const hasPendingVersion = services.some(
+      (s) => s.installed && (s.latestVersion === "unknown" || !s.latestVersion)
+    );
+    if (!hasPendingVersion) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await listCliServices();
+        if (res?.services && Array.isArray(res.services)) {
+          setServices(res.services);
+        }
+      } catch {
+        // 静默失败
+      } finally {
+        setPollCount((c) => c + 1);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [services, pollCount]);
+
   // 点击弹层外部关闭
   useEffect(() => {
     const onDocClick = (e) => {
@@ -84,6 +110,7 @@ export default function CliServices() {
   const handleRefresh = async () => {
     setRefreshing(true);
     setLoadError(null);
+    setPollCount(0);
     try {
       const res = await listCliServices({ refresh: true });
       if (res?.services && Array.isArray(res.services) && res.services.length > 0) {
