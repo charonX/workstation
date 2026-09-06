@@ -181,4 +181,60 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
     assert.equal(info.latestVersion, "unknown");
     assert.equal(info.updateAvailable, false);
   });
+
+  it("渠道契约解析验证：defaultFetchLatest 正确拼装 npm 与 PyPI 端点并解析 JSON 响应（TEST-F7）", async () => {
+    const { defaultFetchLatest } = await loadCliService();
+    assert.equal(typeof defaultFetchLatest, "function", "导出 defaultFetchLatest 函数");
+
+    const originalFetch = global.fetch;
+    const requestedUrls = [];
+
+    global.fetch = async (url) => {
+      requestedUrls.push(String(url));
+      if (String(url).includes("registry.npmjs.org")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            name: "@anthropic-ai/claude-code",
+            version: "1.0.95",
+            "dist-tags": { latest: "1.0.95" },
+          }),
+        };
+      }
+      if (String(url).includes("pypi.org")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            info: {
+              name: "crawl4ai",
+              version: "0.4.8",
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+
+    try {
+      // 1. 验证 npm scoped 包 URL 转义与 version 解析
+      const npmVersion = await defaultFetchLatest("@anthropic-ai/claude-code", "npm");
+      assert.equal(npmVersion, "1.0.95", "正确解析 npm registry 的 version 字段");
+      assert.ok(
+        requestedUrls[0].includes("registry.npmjs.org/@anthropic-ai%2Fclaude-code/latest"),
+        "npm 包名 scoped 斜杠需被 URL 编码为 %2F"
+      );
+
+      // 2. 验证 PyPI JSON API URL 与 info.version 解析
+      const pypiVersion = await defaultFetchLatest("crawl4ai", "pypi");
+      assert.equal(pypiVersion, "0.4.8", "正确解析 PyPI 的 info.version 字段");
+      assert.ok(
+        requestedUrls[1].includes("pypi.org/pypi/crawl4ai/json"),
+        "PyPI 端点需为 /pypi/<pkg>/json"
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

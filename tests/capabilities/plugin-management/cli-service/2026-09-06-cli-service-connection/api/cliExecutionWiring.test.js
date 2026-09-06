@@ -27,6 +27,12 @@ async function loadAgentService() {
   return mod;
 }
 
+async function loadCliEnvResolver() {
+  const mod = await import("../../../../../../src/agent/cliEnvResolver.js").catch(() => null);
+  assert.ok(mod, "seam 未就绪：src/agent/cliEnvResolver.js");
+  return mod;
+}
+
 async function loadToolAdapter() {
   const mod = await import("../../../../../../src/agent/toolAdapter.js").catch(() => null);
   assert.ok(mod, "seam 未就绪：src/agent/toolAdapter.js");
@@ -102,8 +108,8 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     assert.equal(configMsg.cliServices[0].env.ANTHROPIC_API_KEY, "sk-ant-plaintext-secret", "快照包含解密后的环境变量");
   });
 
-  it("worker 在执行匹配命令时合并对应 CLI 的环境变量，未启用命令不注入", async () => {
-    const { resolveCliEnvForCommand } = await loadAgentService();
+  it("worker 在执行匹配命令时合并对应 CLI 的环境变量，未启用命令不注入（TEST-F8: 对齐 cliEnvResolver seam）", async () => {
+    const { resolveCliEnvForCommand } = await loadCliEnvResolver();
     assert.equal(typeof resolveCliEnvForCommand, "function", "导出 resolveCliEnvForCommand 辅助函数");
 
     const cliServicesSnapshot = [
@@ -121,6 +127,10 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     // 调用未纳管或未启用的命令：不合并
     const otherEnv = resolveCliEnvForCommand("ls -la", cliServicesSnapshot);
     assert.deepEqual(otherEnv, {});
+
+    // agentService 兼容性导出一致性
+    const agentSvc = await loadAgentService();
+    assert.equal(agentSvc.resolveCliEnvForCommand, resolveCliEnvForCommand, "agentService 统一复用 cliEnvResolver 导出");
   });
 
   it("未启用清单 CLI 时通过策略评估器拦截为 deny（E5：权限链拒绝，无进程产生）", async () => {
