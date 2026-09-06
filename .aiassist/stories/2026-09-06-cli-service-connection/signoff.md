@@ -18,7 +18,7 @@
 | REQ-CLI-SERVICE-006 | plugin-management / cli-service | `e2e/cliServicesPage.test.cjs` | ✅ |
 | REQ-CLI-SERVICE-007 | plugin-management / cli-service | `api/cliSkillSync.test.js` | ✅ |
 | REQ-CLI-SERVICE-008 | plugin-management / cli-service | `api/cliExecutionWiring.test.js` | ✅ |
-| REQ-CLI-SERVICE-009 | agent-security / permission | `api/cliExecutionWiring.test.js` | ✅ |
+| REQ-CLI-SERVICE-009 | plugin-management / cli-service（v1.1 修订归位，原 agent-security / permission） | `api/cliExecutionWiring.test.js` | ✅ |
 | REQ-CLI-SERVICE-010 | command-interface / cli | `tests/capabilities/command-interface/cli/.../cli/cliServiceCommand.test.js` | ✅ |
 
 capability/entity 与 `business-capabilities.md` 条目一致（`plugin-management` 下新增实体 `cli-service`，`command-interface` 下扩充 `cli`，测试目录严格映射）。
@@ -60,3 +60,29 @@ capability/entity 与 `business-capabilities.md` 条目一致（`plugin-manageme
 - **范围决策**：PRD §14 自检查表全 PASS，移动块（调用历史）与范围外（自动安装等）已显式排除，无悬空 GAP。
 
 **结论：无升级项，AI 全量自检通过，断言签核锁定。BUILD 解锁。**
+
+---
+
+## Assertion 修订签核（v1.1，review 后契约修订）
+
+- 日期：2026-09-06
+- signer：**AI**（修订内容均源自 review.md 第一轮人裁决方向与第二轮重审发现；无新增升级点）
+- REQ 版本：v1.1（hash `d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff`）
+- 修订背景：第一轮 /review 发现契约漂移与缺口（REQ-F1/F2/F3、TECH-1/2/3/4），第二轮重审发现 signoff 与现行契约版本脱节（RE2-4），本轮闭环。
+
+### 修订内容
+
+1. REQ-002 AC3 探测失败条件对齐 PRD §8 E2 三独立条件（超时 / 非零退出 / 无法解析版本，任一即失败）。
+2. REQ-008 AC2 快照格式补 `timeoutSec: number`，PRD §10.4 接口 4 同步补锚点（TECH-2/REQ-F3）。
+3. REQ-009 capability/entity 归位 `plugin-management / cli-service`，与 business-capabilities.md、测试目录一致（REQ-F2）。
+4. PRD §10.3/§10.5/ADR-043 显式记录 split 生效语义：权限 deny 规则 mtime 热生效（ADR-022），env 快照与 skill link 冷生效（新会话）；§10.2 模块表与 ADR-043 潜在代价的残留「新会话生效」blanket 表述已清除（TECH-1/RE2-4）。
+5. PRD §10.4 新增「命令匹配与安全注入契约」（裸命令精确匹配、路径分隔符禁止注入、出厂 globs 双形态）与接口 1b（`GET /api/cli-services/project-enablements` 聚合端点）（TECH-3/TECH-4/RE2-7）。
+6. PRD §6.1 流表锚点 ID 错配修正（B1↔B2、C1→D1）；REQ-002 AC4 锚点标注修正为 §6.3 锚点 A5。
+
+### 修订后自检
+
+- [x] `requirements-v1.hash` 已重算（SHA-256 全文）并与 8 个测试文件 `REQ-VERSION` 头同步（随 [test] commit 09bcee7 之后的同步提交落地）。
+- [x] 修订未新增 REQ、未改变任何已锁定断言的 expected 值（仅语义对齐与标注修正）。
+- [x] 受影响 REQ（002/008/009）的现有测试断言与新契约文本一致（第二轮重审 test-engineer 实测 40/40 通过）。
+
+**结论：修订签核完成，契约与签核记录恢复一致。**

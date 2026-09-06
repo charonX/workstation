@@ -61,7 +61,7 @@
 1. `probe(id, { refresh })` 通过 `execFile(item.command, item.versionArgs)` 探测命令；若命令存在且输出包含版本字符串（如 `1.0.80 (Claude Code)`），按 `versionRegex`（默认 `(\d+\.\d+\.\d+)`）提取 semver，返回 `{ id, installed: true, version: "1.0.80" }`——EXPECTED-TRACE: PRD §6.3 块 2 row 1。
 2. 若命令不存在（`ENOENT`），返回 `{ id, installed: false, version: null }`，不抛出异常——EXPECTED-TRACE: PRD §6.3 块 2 row 2。
 3. 探测失败判定：若执行超过 5 秒超时、退出码非 0、或未输出有效版本（三者满足任一），返回 `{ id, installed: false, version: null, probeError: "E-CLI-PROBE-FAILED:<reason>" }`——EXPECTED-TRACE: PRD §6.2 异常行 2, §8 E2。
-4. 缓存行为：探测结果具有 60 秒 TTL 内存短缓存（成功态、失败态均缓存）；60s 内再次调用 `probe(id)` 直接命中缓存不触发 spawn；传入 `refresh: true` 时绕过缓存强制重探——EXPECTED-TRACE: PRD §6.3 块 2 row 3, §10.5 决策 3。
+4. 缓存行为：探测结果具有 60 秒 TTL 内存短缓存（成功态、失败态均缓存）；60s 内再次调用 `probe(id)` 直接命中缓存不触发 spawn；传入 `refresh: true` 时绕过缓存强制重探——EXPECTED-TRACE: PRD §6.3 锚点 A5, §10.5 决策 3。
 5. 并发与限流：同 `id` 的并发 probe 请求合并为一个 in-flight Promise；跨条目的全局并发 spawn 限制为 ≤ 4。
 
 #### 测试可追溯性
@@ -276,3 +276,4 @@
 | 版本 | 哈希 | 日期 | 变更内容 | 触发重签的 REQ-ID |
 |---|---|---|---|---|
 | v1 | 见 requirements-v1.hash | 2026-09-06 | 初版（10 个 REQ，覆盖全部 5 个稳定块及产品 CLI 接缝，全部 trace 到 PRD v0.1 锚点） | 全部 |
+| v1.1 | 见 requirements-v1.hash | 2026-09-06 | 第一轮 review 后契约修订：REQ-002 AC3 对齐 PRD §8 E2 三独立条件；REQ-008 AC2 快照补 timeoutSec 锚点；REQ-009 归属归位 plugin-management/cli-service；REQ-002 AC4 锚点标注修正为 §6.3 锚点 A5 | REQ-CLI-SERVICE-002 / 008 / 009 |

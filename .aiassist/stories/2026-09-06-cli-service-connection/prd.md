@@ -57,16 +57,16 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | 在某 CLI 行打开全局开关 | 全局启用成功，该行变为可用态 | §6.3 锚点 B1 |
+| 1 | 在某 CLI 行打开全局开关 | 全局启用成功，该行变为可用态 | §6.3 锚点 B2 |
 | 2 | 在项目启用 popover 中勾选当前项目 | 项目启用成功 | 两层启用：全局开 ∧ 项目启用 = 项目内可用 |
-| 3 | 添加 env 项 `FOO=bar` 保存 | 保存成功；列表/详情不回显 value 明文 | §6.3 锚点 B2 |
-| 4 | （agent 侧）在启用了该 CLI 的项目里发起相关任务 | agent 上下文含该 CLI 的内置 skill 调用说明，可通过执行通道调用 | §6.3 锚点 C1 |
+| 3 | 添加 env 项 `FOO=bar` 保存 | 保存成功；列表/详情不回显 value 明文 | §6.3 锚点 B1 |
+| 4 | （agent 侧）在启用了该 CLI 的项目里发起相关任务 | agent 上下文含该 CLI 的内置 skill 调用说明，可通过执行通道调用 | §6.3 锚点 D1 |
 
 **流 C：agent 调用 CLI（稳定块 5）**
 
 | 步骤 | 用户动作 | 系统响应 | 验收锚点 |
 |---|---|---|---|
-| 1 | agent 依据内置 skill 发起一次 CLI 调用（一次性任务：命令 + 参数 + 超时） | 权限链裁决（broker/policy rules）；放行则 spawn 执行并回传 stdout/stderr/exit code | §6.3 锚点 C1 |
+| 1 | agent 依据内置 skill 发起一次 CLI 调用（一次性任务：命令 + 参数 + 超时） | 权限链裁决（broker/policy rules）；放行则 spawn 执行并回传 stdout/stderr/exit code | §6.3 锚点 D1 |
 | 2 | 权限拒绝时 | agent 收到拒绝结果，不执行 | §8 错误态 E5 |
 
 ### 6.2 分支与异常
@@ -150,7 +150,7 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 | HTTP 路由 /api/cli-services | 列表（含探测结果）/刷新探测/启用/env/超时/项目启用 | 是 |
 | 管理页（renderer） | 独立页 CliServices + 侧边栏导航，照搬 Mcp.jsx 模式 | 是 |
 | policyRules（ADR-020 真源） | BASH_RULES 增加清单命令出厂规则（默认 ask）；重新生成部署 JSON | 否（扩展） |
-| 项目权限覆盖层（ADR-022） | 两层启用状态生成项目层 bash 规则覆盖：未启用 → deny；启用 → 回落默认层；新会话生效 | 否（复用） |
+| 项目权限覆盖层（ADR-022） | 两层启用状态生成项目层 bash 规则覆盖：未启用 → deny；启用 → 回落默认层；权限规则 mtime 热生效（ADR-022），env/skill 装配冷生效（新会话，见 §10.5 决策 1） | 否（复用） |
 | skillService | 新增「内置来源」目录类（应用自带只读 SKILL.md 目录注册进技能库）；CLI 项目启用 ⇄ 自动 link/unlink 对应内置 skill（复用收敛机制） | 否（扩展） |
 | agentService.buildConfigMessage | session-config 唯一构造点：追加已启用 CLI 的 env 解密快照（cliServices 段） | 否（扩展） |
 | worker bash 执行 | 命中已启用清单命令时合并该 CLI 的 env 快照进子进程环境 | 否（扩展） |
@@ -203,6 +203,19 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 | 正常（本机实测 2026-09-06） | `GET /api/cli-services` | claude 条目：`{id:"claude", installed:true, version:"2.1.246", latestVersion:"2.1.263", updateAvailable:true}`；codex 条目：`{id:"codex", installed:false, version:null}` |
 | 边界（缓存内二次请求） | 60s 内第二次 GET | 响应字节级一致，无新 spawn |
 | 异常（渠道不可达） | PyPI 超时 | crawl4ai 条目 `latestVersion:"unknown"`，其余字段正常 |
+
+#### 接口 1b：GET /api/cli-services/project-enablements（全项目启用态聚合）
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | 管理页（项目启用 popover 回显，单次请求替代逐项目 N+1） |
+| 被调用方 | cliService.listProjectEnablements |
+| 输入 | 无 |
+| 输出 | `{ enablements: { [serviceId]: string[] } }`——serviceId → 已启用该项目服务（enabled=1）的 projectId 数组；无启用关系的 serviceId 不出现 |
+| 业务错误 | 无 |
+| 系统错误 | 500（DB 读失败） |
+| 副作用 | 无（直查 `cli_service_project_enablement` 表，不探测、不请求渠道、不解密） |
+| 幂等性 | 是 |
 
 #### 接口 2：PUT /api/cli-services/:id（配置：启用/env/超时）
 
