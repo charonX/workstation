@@ -44,6 +44,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 import * as settingsService from "./settingsService.js";
 import { DEFAULT_MODELS } from "./settingsService.js";
 import * as projectService from "./projectService.js";
@@ -55,6 +56,9 @@ import { createSessionStore, generationFromRef, sessionRefFor, degradePersistFai
 import { isFeishuArchiveKey } from "./sessionDomain.js";
 import { createModeService, AGENT_MODES } from "./modeService.js";
 import { createMcpService } from "./mcpService.js";
+import { getDb } from "../db.js";
+import { decryptSecret } from "./secretStore.js";
+import { findRegistryItem } from "./cliRegistry.js";
 import { limitSize } from "../agent/turnEventPipeline.js";
 
 // provider → 默认模型（对齐 pi-ai provider 模型名；faux 供测试 seam 使用）。
@@ -181,7 +185,11 @@ const PROJECT_SPACE_RE = /^ui:project:([^:]+):/;
 
 function projectIdOf(spaceKey) {
   const m = PROJECT_SPACE_RE.exec(String(spaceKey ?? ""));
-  return m ? m[1] : null;
+  if (m) return m[1];
+  if (typeof spaceKey === "string" && spaceKey.length > 0 && !spaceKey.includes(":")) {
+    return spaceKey;
+  }
+  return null;
 }
 
 // 项目空间装配解析：项目详情 → 项目目录 realpath + 关联 skills 技能库绝对路径。
@@ -192,14 +200,205 @@ function resolveSpaceAssembly(spaceKey) {
   if (!pid) {
     return { cwd: null, skillPaths: [], permissionProfile: "default" };
   }
-  const project = projectService.getProjectDetail(pid);
-  if (!project || typeof project.localPath !== "string" || project.localPath === "") {
+  try {
+    const project = projectService.getProjectDetail(pid);
+    if (!project || typeof project.localPath !== "string" || project.localPath === "") {
+      return { cwd: null, skillPaths: [], permissionProfile: "default" };
+    }
+    const cwd = realpathBestEffort(path.resolve(expandTilde(project.localPath)));
+    const skillPaths = skillService.listLinkedSkillPaths(project.id);
+    return { cwd, skillPaths, permissionProfile: "project" };
+  } catch {
     return { cwd: null, skillPaths: [], permissionProfile: "default" };
   }
-  const cwd = realpathBestEffort(path.resolve(expandTilde(project.localPath)));
-  const skillPaths = skillService.listLinkedSkillPaths(project.id);
-  return { cwd, skillPaths, permissionProfile: "project" };
 }
+
+let defaultMcpServiceInstance = null;
+function getGlobalMcpService() {
+  if (!defaultMcpServiceInstance) {
+    defaultMcpServiceInstance = createMcpService();
+  }
+  return defaultMcpServiceInstance;
+}
+
+/**
+ * 同步从 SQLite 数据库获取指定项目的有效 CLI 服务快照并解密环境变量
+ * @param {string} projectId
+ * @returns {Array<{ id: string, command: string, env: Record<string, string>, timeoutSec: number }>}
+ */
+function getEffectiveCliServicesSync(projectId) {
+  if (!projectId) return [];
+  try {
+    const configDir = process.env.OPC_WORKSTATION_CONFIG_DIR || path.join(os.homedir(), ".opc-workstation");
+    const dbPath = process.env.DB_PATH || path.join(configDir, "data.db");
+    if (!fs.existsSync(dbPath)) return [];
+    const d = getDb(dbPath);
+    const rows = d
+      .prepare(`
+        SELECT s.*
+        FROM cli_services s
+        JOIN cli_service_project_enablement e ON e.service_id = s.id
+        WHERE s.enabled = 1 AND e.project_id = ? AND e.enabled = 1
+        ORDER BY s.id
+      `)
+      .all(projectId);
+
+    const result = [];
+    for (const row of rows) {
+      const item = findRegistryItem(row.id);
+      if (!item) continue;
+      let rawEnv = {};
+      try {
+        rawEnv = row.env ? JSON.parse(row.env) : {};
+      } catch {}
+      const decryptedEnv = {};
+      for (const [k, v] of Object.entries(rawEnv)) {
+        try {
+          decryptedEnv[k] = decryptSecret(v);
+        } catch {
+          decryptedEnv[k] = v;
+        }
+      }
+      result.push({
+        id: row.id,
+        command: item.command,
+        env: decryptedEnv,
+        timeoutSec: row.timeout_sec ?? 120,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.warn?.(`[agentService] cliServices 快照获取失败 session=${projectId}: ${err?.message ?? err}`);
+    return [];
+  }
+}
+
+/**
+ * 根据待执行命令行匹配并解析 CLI 服务注入的环境变量
+ * @param {string} commandLine - 命令行字符串
+ * @param {Array<Object>} [cliServicesSnapshot] - 会话缓存的 cliServices 快照
+ * @returns {Record<string, string>} 解密后的环境变量字典
+ */
+export function resolveCliEnvForCommand(commandLine, cliServicesSnapshot = []) {
+  if (!commandLine || typeof commandLine !== "string" || !Array.isArray(cliServicesSnapshot)) {
+    return {};
+  }
+
+  const trimmed = commandLine.trim();
+  if (!trimmed) return {};
+
+  const tokens = trimmed.split(/\s+/);
+  let cmdToken = null;
+  for (const token of tokens) {
+    if (!token) continue;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      continue;
+    }
+    cmdToken = token;
+    break;
+  }
+  if (!cmdToken) return {};
+
+  const cmd = path.basename(cmdToken);
+
+  const matched = cliServicesSnapshot.find(
+    (entry) =>
+      entry &&
+      (entry.command === cmd ||
+        entry.id === cmd ||
+        entry.command === cmdToken ||
+        entry.id === cmdToken)
+  );
+
+  if (matched && matched.env && typeof matched.env === "object") {
+    return { ...matched.env };
+  }
+
+  return {};
+}
+
+/**
+ * 构造 session-config IPC 消息（单点解密注入 cliServices 快照）
+ * @param {string} spaceKey - 项目 ID 或会话键
+ * @param {Object} [sessionOrOptions] - 会话句柄或选项对象
+ * @param {string} [source] - 消息源标记（如 "hydration"）
+ * @param {Object} [context] - 上下文依赖注入（cwd, keySecrets, modeService 等）
+ * @returns {Object}
+ */
+export function createModuleConfigMessage(spaceKey, sessionOrOptions = {}, source, context = {}) {
+  let pid = projectIdOf(spaceKey);
+  if (!pid && typeof spaceKey === "string" && !spaceKey.includes(":")) {
+    pid = spaceKey;
+  }
+
+  const spaceAssembly = resolveSpaceAssembly(spaceKey);
+  const spaceCwd = spaceAssembly.cwd;
+  const skillPaths = spaceAssembly.skillPaths;
+  const permissionProfile =
+    spaceAssembly.permissionProfile !== "default"
+      ? spaceAssembly.permissionProfile
+      : pid
+      ? "project"
+      : "default";
+
+  const defaultJudge = buildJudgePayload();
+
+  let mcpSnapshot;
+  if (permissionProfile === "project" && pid) {
+    try {
+      const mcpSvc = context.getMcpService ? context.getMcpService() : getGlobalMcpService();
+      mcpSnapshot = mcpSvc.effectiveConfig(pid);
+    } catch (err) {
+      const logger = context.log ?? console.warn;
+      logger(`mcpSnapshot 计算失败（跳过注入） session=${spaceKey} err=${err?.message ?? String(err)}`);
+    }
+  }
+
+  let cliServices = [];
+  if (sessionOrOptions && Array.isArray(sessionOrOptions.stubCliServices)) {
+    cliServices = sessionOrOptions.stubCliServices;
+  } else if (typeof context.getCliServices === "function") {
+    cliServices = context.getCliServices(pid);
+  } else if (pid) {
+    cliServices = getEffectiveCliServicesSync(pid);
+  }
+
+  const contextCwd = context.cwd ?? (typeof cwd !== "undefined" ? cwd : process.cwd());
+  const keySec = context.keySecrets;
+
+  const s = sessionOrOptions || {};
+  let apiKey;
+  if (s.apiKey !== undefined) {
+    apiKey = s.apiKey;
+  } else if (s.keyRef && keySec) {
+    apiKey = keySec.get(s.keyRef);
+  }
+
+  const modeSvc = context.modeService;
+  const mode = modeSvc?.getMode ? modeSvc.getMode(spaceKey) : (s.mode ?? "auto");
+
+  return {
+    type: "session-config",
+    sessionKey: spaceKey,
+    provider: s.provider,
+    model: s.model,
+    keyRef: s.keyRef,
+    sessionRef: s.sessionRef,
+    apiKey,
+    systemPrompt: s.systemPrompt !== undefined ? s.systemPrompt : buildSystemPrompt(s.identity),
+    cwd: spaceCwd ?? (s.cwd || contextCwd),
+    skillPaths: skillPaths ?? [],
+    permissionProfile,
+    mode,
+    cliServices,
+    ...(s.toolContext ? { toolContext: s.toolContext } : {}),
+    ...(source ? { source } : {}),
+    ...(defaultJudge ? { defaultJudge } : {}),
+    ...(mcpSnapshot !== undefined ? { mcpSnapshot } : {}),
+  };
+}
+
+export { createModuleConfigMessage as buildConfigMessage };
 
 // —— 共享工具 ——
 
@@ -391,7 +590,7 @@ function createInMemoryAgentService(options = {}) {
     getSession(spaceKey) {
       return sessions.get(spaceKey);
     },
-    prompt(spaceKey, text, attachments) {
+    prompt(spaceKey, text, _attachments) {
       const session = sessions.get(spaceKey);
       if (!session) return Promise.reject(noSessionError());
       // REQ-AGENT-097（B6）：内存内核无图片数据面（附件读图注入归 worker 进程侧
@@ -570,6 +769,7 @@ function createProcessAgentService(options = {}) {
     if (!mcpServiceInstance) mcpServiceInstance = createMcpService();
     return mcpServiceInstance;
   }
+
 
   // 水合窗口判定（REQ-AGENT-038 标准 1/2、签核裁决 10：边界含——mtime === 截止
   // 算窗口内，≤）。sessionRef 即 JSONL 绝对路径（sessionStore sessionRefFor）。
@@ -1120,59 +1320,14 @@ function createProcessAgentService(options = {}) {
   // 后水合者冷却刚水合的，idleMs=1 reason=group-cool）。缺省 undefined =
   // 用户活动路径（新建/懒恢复/evicted 重投）照常冷却（B3 语义）。
   function buildConfigMessage(spaceKey, session, source) {
-    // M2 按空间装配（REQ-AGENT-031/032 IPC 契约）：项目空间 = 项目目录 realpath
-    // + 关联 skills 技能库绝对路径 + "project"；通用/飞书 = 现状默认 cwd + 空
-    // skillPaths + "default"。
-    const { cwd: spaceCwd, skillPaths, permissionProfile } = resolveSpaceAssembly(spaceKey);
-    // Slice 3（REQ-AGENT-096，B5）：defaultJudge 随 session-config 注入（数据流 5）——
-    // auto 判断锚定默认组合（buildJudgePayload：defaultModel + 条目 key 解密，一次
-    // 注入仅内存——key 不落日志/JSONL，sendToChild 只记消息类型）。懒恢复/水合/
-    // 重建共用本装配：每次读磁盘最新默认，Settings 改默认 → 新会话/懒恢复自然带新值
-    // （REQ-096 标准 4）。
-    const defaultJudge = buildJudgePayload();
-    // Slice 2 补全（REQ-AGENT-085 标准 1 生产接线，G1）：项目空间会话装配时经
-    // session-config 携带 mcpService.effectiveConfig 快照 → worker 装配 MCP 桥 →
-    // agent 可用已启用 server 的工具。注入点 = 唯一的 session-config 构造处
-    // （新建/懒恢复/水合/重建/toolContext 热更共用本函数）；每次读库最新配置——
-    // 改库后新会话自然生效（REQ-085 标准 3）。项目空间（permissionProfile==="project"）
-    // → 计算快照；通用/飞书 → 不携带（worker 侧缺省空配置，桥 factory 仍在但无 server）。
-    // DB 不可用/表缺失 → 跳过注入不阻断会话（fail-safe，worker 回落空配置）。
-    let mcpSnapshot;
-    if (permissionProfile === "project") {
-      const pid = projectIdOf(spaceKey);
-      if (pid) {
-        try {
-          mcpSnapshot = getMcpService().effectiveConfig(pid);
-        } catch (err) {
-          log(`mcpSnapshot 计算失败（跳过注入） session=${spaceKey} err=${err?.message ?? String(err)}`);
-        }
-      }
-    }
-    return {
-      type: "session-config",
-      sessionKey: spaceKey,
-      provider: session.provider,
-      model: session.model,
-      keyRef: session.keyRef,
-      sessionRef: session.sessionRef,
-      // 一次性注入：key 明文经 IPC 下发子进程（仅内存，不落日志/JSONL）。
-      apiKey: keySecrets.get(session.keyRef),
-      systemPrompt: buildSystemPrompt(session.identity),
-      cwd: spaceCwd ?? cwd,
-      skillPaths,
-      permissionProfile,
-      // Slice 3（REQ-AGENT-070）：会话初始模式（modeService：显式会话值/lastMode
-      // 默认——首次 auto，REQ-AGENT-072 标准 3）；worker 侧随 session-config 注入，
-      // 后续切换经 mode-change IPC 热更新。
-      mode: modeService.getMode(spaceKey),
-      // 工具上下文（Slice 8 G1 接线）：绑定默认目标候选 → worker 工具面消费。
-      ...(session.toolContext ? { toolContext: session.toolContext } : {}),
-      // BUG-003：来源标记（"hydration" = 系统恢复，不触发同组冷却）。
-      ...(source ? { source } : {}),
-      ...(defaultJudge ? { defaultJudge } : {}),
-      // MCP 生效配置快照（项目空间；REQ-AGENT-085 生产接线，G1）。
-      ...(mcpSnapshot !== undefined ? { mcpSnapshot } : {}),
-    };
+    return createModuleConfigMessage(spaceKey, session, source, {
+      cwd,
+      keySecrets,
+      modeService,
+      buildJudgePayload,
+      getMcpService,
+      log,
+    });
   }
 
   // 会话上下文重建（tech-design 数据流 7）：sessionRef 换代 + 新 key 一次性注入

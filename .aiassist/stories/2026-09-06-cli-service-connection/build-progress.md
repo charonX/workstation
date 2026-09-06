@@ -11,7 +11,7 @@
 | 2 | 配置持久化与凭据加密 | REQ-CLI-SERVICE-004, 005 | `api/cliServiceConfig.test.js` | `src/db.js` DDL + `src/services/cliService.js` (两层启用、timeoutSec、env secretStore 加密与掩码、effectiveConfig) | Slice 1 | 完成 |
 | 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 完成 |
 | 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 完成 |
-| 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 待开始 |
+| 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 完成 |
 | 6 | 前端管理页渲染与交互 | REQ-CLI-SERVICE-006 | `e2e/cliServicesPage.test.cjs` | `src/renderer/pages/CliServices.jsx` + 路由与侧边栏接入 + data-testid 契约 | Slice 3 | 待开始 |
 
 ## 关键既有资产（实现参考先例）
@@ -128,4 +128,26 @@
 - **状态**：
   Slice 4: complete (tests green, PRD alignment passed)
 
+### Slice 5：权限策略、执行接线与快照解密注入（2026-09-06）
 
+#### PRD → 代码 可追溯性表
+
+| REQ-ID | 需求描述 | PRD 章节依据 | 实现代码 | 对应测试 | 验证状态 |
+|---|---|---|---|---|---|
+| REQ-CLI-SERVICE-008 | 权限策略出厂规则与项目层覆盖 | §6.3 块 5, §8 E5, §10.2, §10.5 决策 1, ADR-043 | `src/agent/policyRules.js` (`BASH_RULES`, `buildProjectBashRules`) | `tests/.../api/cliExecutionWiring.test.js` (tests 1, 2) | 全绿（2/2 pass） |
+| REQ-CLI-SERVICE-009 | 执行接线、环境变量注入与超时控制 | §6.3 块 5, §8 E6, §10.4 接口 4, §10.5 决策 4, ADR-043 | `src/services/agentService.js` (`buildConfigMessage`, `resolveCliEnvForCommand`) + `src/agent/worker.js` + `src/agent/toolAdapter.js` | `tests/.../api/cliExecutionWiring.test.js` (tests 3, 4) | 全绿（2/2 pass） |
+
+#### 验证日志
+
+- **测试命令执行**：
+  - `cliExecutionWiring.test.js`：4 passed，0 failed，耗时 490.8ms。覆盖出厂规则表包含清单命令（`claude`, `codex`, `crwl`）且默认判定为 `ask`；项目层规则对未启用 CLI 生成 `deny` 覆盖、已启用 CLI 回落出厂层；`buildConfigMessage` 在 `session-config` 中单点解密注入 `cliServices` 快照；`resolveCliEnvForCommand` 匹配命令提取环境变量并在 worker bash 中合并注入，未启用/未匹配命令不注入。
+  - 回归测试全绿：
+    - `tests/capabilities/plugin-management/cli-service/2026-09-06-cli-service-connection/api/*.test.js`（6 个套件共 32 passed，0 failed）。
+    - `systemPrompt.test.js`（7 passed，0 failed）。
+    - `mcpBridge.test.js`（4 passed，0 failed）。
+- **Golden Consistency 验证**：
+  - `node scripts/gen-agent-policy.mjs --check`：一致，退出码 0。
+- **代码静态检查**：
+  - `npx oxlint src/agent/policyRules.js src/services/agentService.js src/agent/worker.js src/agent/toolAdapter.js`：0 warning，0 error。
+- **状态**：
+  Slice 5: complete (tests green, PRD alignment passed)

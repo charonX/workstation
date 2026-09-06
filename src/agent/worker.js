@@ -79,6 +79,9 @@ const keySecrets = new Map();
 // 惰性读取（toolSurface 按 execute 时取值，session-config 热更新即时生效）。
 const toolContexts = new Map(); // sessionKey → { defaultTarget: { flowId, projectId } | null }
 
+// CLI 服务快照（Slice 5，REQ-CLI-SERVICE-008/009）：sessionKey → [{ id, command, env, timeoutSec }]
+const sessionCliServices = new Map();
+
 // —— Slice 3（REQ-AGENT-070）：会话模式（strict/standard/auto）——
 // session-config 携带初始模式（主进程 modeService.getMode——显式会话值/lastMode）；
 // mode-change IPC 热更新（切换生效于下一个评估，PRD §6.2：当前操作不受影响）；
@@ -560,6 +563,7 @@ const trajectoryRecorder = createTrajectoryRecorder({
 });
 // 装配态 Map 登记（worker 持有、管线统一清理——淘汰/重置一条路径，修手抄清单抄岔）。
 turnPipeline.registerSessionScopedMap(toolContexts);
+turnPipeline.registerSessionScopedMap(sessionCliServices);
 turnPipeline.registerSessionScopedMap(sessionQueues);
 turnPipeline.registerSessionScopedMap(sessionModes);
 turnPipeline.registerSessionScopedMap(judgeModels);
@@ -892,6 +896,12 @@ async function handleSessionConfig(msg) {
   } else {
     toolContexts.delete(sessionKey);
   }
+  // CLI 服务快照缓存（Slice 5，REQ-CLI-SERVICE-008/009）
+  if (Array.isArray(msg.cliServices)) {
+    sessionCliServices.set(sessionKey, msg.cliServices);
+  } else {
+    sessionCliServices.delete(sessionKey);
+  }
   // Slice 3（REQ-AGENT-070）：会话模式随 session-config 注入（初始模式 = 主进程
   // modeService.getMode——显式会话值/lastMode；热更新时同样刷新，mode-change IPC
   // 与其等价）。
@@ -1098,6 +1108,7 @@ async function createSessionEntry(msg) {
     // 缺省回退注册表发现——仅手工调试/旧主进程形态，守卫见 cli/server.js）。
     ...(process.env.OPC_AGENT_SERVER_BASE_URL ? { baseUrl: process.env.OPC_AGENT_SERVER_BASE_URL } : {}),
     getDefaultTarget: () => toolContexts.get(sessionKey)?.defaultTarget ?? null,
+    getCliServices: () => sessionCliServices.get(sessionKey) ?? [],
     boundaryAuthorized: gotgenesAssembled,
     ...(gotgenesAssembled
       ? {}

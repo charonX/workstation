@@ -38,6 +38,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveCliEnvForCommand } from "../services/agentService.js";
 // PI 工具参数 schema 使用与 pi 相同的 typebox 实例（pi-ai 声明的依赖并再导出），
 // 保证 ToolDefinition.parameters 与 pi 会话工具注册的 schema 兼容。
 import { Type } from "@earendil-works/pi-ai";
@@ -711,20 +712,29 @@ function commandViolatesCwd(cwd, command) {
 // bash 执行（execFile 无 shell 中间层；cwd 限定项目目录；超时兜底防悬挂）。
 const execFileAsync = promisify(execFile);
 
-async function runBash(command, cwd) {
+async function runBash(command, cwd, { env, timeout } = {}) {
   const shell = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
   const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
+  const execOptions = {
+    cwd,
+    timeout: typeof timeout === "number" && timeout > 0 ? timeout : 120000,
+    ...(env && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
+  };
   try {
-    const { stdout, stderr } = await execFileAsync(shell, args, { cwd, timeout: 30000 });
+    const { stdout, stderr } = await execFileAsync(shell, args, execOptions);
     const out = `${stdout ?? ""}${stderr ? `\n${stderr}` : ""}`.trim();
     return out;
   } catch (err) {
+    if (err?.killed || err?.signal === "SIGTERM" || err?.code === "ETIMEDOUT") {
+      const detail = String(err?.stderr ?? err?.stdout ?? "").trim();
+      throw Object.assign(new Error(detail ? `[E-CLI-TIMEOUT] ${detail}` : "命令执行超时"), { code: "E-CLI-TIMEOUT" });
+    }
     const detail = String(err?.stderr ?? err?.message ?? "命令执行失败").trim();
     throw Object.assign(new Error(detail || "命令执行失败"), { code: "E-AGENT-BASH" });
   }
 }
 
-async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
+async function executeFsTool(name, args, { cwd, boundaryAuthorized = false, getCliServices, cliServices }) {
   switch (name) {
     case "read": {
       // BUG-005：相对路径基准 = 会话项目目录（cwd）——authorized 分支此前以
@@ -747,7 +757,26 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
       if (!boundaryAuthorized && commandViolatesCwd(cwd, args.command)) {
         return errorResult(BOUNDARY_ERROR_CODE, BOUNDARY_ERROR_MESSAGE);
       }
-      return { output: await runBash(String(args.command ?? ""), cwd) };
+      const cmdStr = String(args.command ?? "");
+      const snapshot = typeof getCliServices === "function" ? getCliServices() : (Array.isArray(cliServices) ? cliServices : []);
+      const extraEnv = resolveCliEnvForCommand(cmdStr, snapshot);
+      let timeoutSec = 120;
+      if (Array.isArray(snapshot) && snapshot.length > 0) {
+        const tokens = cmdStr.trim().split(/\s+/);
+        let cmdToken = null;
+        for (const token of tokens) {
+          if (!token) continue;
+          if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue;
+          cmdToken = token;
+          break;
+        }
+        const cmd = cmdToken ? path.basename(cmdToken) : "";
+        const matched = snapshot.find((entry) => entry && (entry.command === cmd || entry.id === cmd));
+        if (matched && typeof matched.timeoutSec === "number" && matched.timeoutSec > 0) {
+          timeoutSec = matched.timeoutSec;
+        }
+      }
+      return { output: await runBash(cmdStr, cwd, { env: extraEnv, timeout: timeoutSec * 1000 }) };
     }
     default:
       throw commandError(`不支持该操作：${name} 不在 agent 工具面内`);
@@ -756,7 +785,7 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
 
 // —— 会话工具面（REQ-AGENT-032 public seam）——
 // createSessionToolSurface({ profile, cwd, commandsDir, baseUrl, sessionKey,
-//   getDefaultTarget, onConfirmRequest, boundaryAuthorized }) → { listTools,
+//   getDefaultTarget, onConfirmRequest, boundaryAuthorized, getCliServices }) → { listTools,
 //   execute, onEvent, emit, toPiToolDefinitions }（形态与 createToolSurface 一致）。
 // - profile="default"（通用/飞书空间）= CLI 基线（createToolSurface 等价，无
 //   read/write/bash——分级硬边界）；
@@ -767,7 +796,18 @@ async function executeFsTool(name, args, { cwd, boundaryAuthorized = false }) {
 //   工具面不再二次硬拦截（批准后操作真实执行）；缺省 false = 无授权裁决时保持
 //   拦截（工具面行为层断言「未授权 fail-closed」不变）。
 export function createSessionToolSurface(options = {}) {
-  const { profile = "default", cwd, commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest, boundaryAuthorized = false } = options;
+  const {
+    profile = "default",
+    cwd,
+    commandsDir,
+    baseUrl,
+    sessionKey,
+    getDefaultTarget,
+    onConfirmRequest,
+    boundaryAuthorized = false,
+    getCliServices,
+    cliServices,
+  } = options;
   const cli = createToolSurface({ commandsDir, baseUrl, sessionKey, getDefaultTarget, onConfirmRequest });
   if (profile !== "project") return cli;
 
@@ -814,7 +854,7 @@ export function createSessionToolSurface(options = {}) {
       if (!tool) return cli.execute(name, args, toolCallId);
       emit({ type: "tool_execution_start", name, status: "running" });
       try {
-        const result = await executeFsTool(name, args, { cwd, boundaryAuthorized });
+        const result = await executeFsTool(name, args, { cwd, boundaryAuthorized, getCliServices, cliServices });
         if (result?.errorCode) {
           emitToolError(emit, name, result.errorCode, result.errorMessage ?? "操作失败", toolCallId);
         } else {
