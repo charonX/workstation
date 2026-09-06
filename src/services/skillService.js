@@ -2,10 +2,15 @@ import { execFile, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as settingsService from "./settingsService.js";
 import * as projectService from "./projectService.js";
 import * as agentRegistryService from "./agentRegistryService.js";
 import { expandTilde, comparisonKey, isInsideOrEqual, realpathBestEffort } from "./pathUtils.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const BUILTIN_SKILLS_ROOT = path.resolve(__dirname, "../../builtin/skills");
 
 // Skill service (ADR-011 revision): disk is the single source of truth.
 // - The skill library is a workstation-private directory (settings.skillRepoPath);
@@ -918,7 +923,94 @@ export function deleteSource(slug) {
   return { deleted: slug };
 }
 
-// ---------- linked skill paths for session assembly (REQ-AGENT-031) ----------
+// ---------- builtin CLI skills (REQ-CLI-SERVICE-007) ----------
+
+function resolveProjectDir(projectDirOrId) {
+  if (!projectDirOrId) return null;
+  if (typeof projectDirOrId === "object") {
+    const raw = projectDirOrId.localPath || projectDirOrId.projectDir;
+    return raw ? path.resolve(expandTilde(raw)) : null;
+  }
+  if (typeof projectDirOrId !== "string" || projectDirOrId.trim() === "") return null;
+  const candidate = expandTilde(projectDirOrId.trim());
+  if (isDirectory(candidate)) {
+    return path.resolve(candidate);
+  }
+  try {
+    const detail = projectService.getProjectDetail?.(candidate) ||
+      projectService.listProjects?.().find((p) => p.id === candidate);
+    if (detail?.localPath) {
+      return path.resolve(expandTilde(detail.localPath));
+    }
+  } catch {
+    // ignore
+  }
+  if (path.isAbsolute(candidate) || candidate.startsWith(".") || candidate.includes(path.sep)) {
+    return path.resolve(candidate);
+  }
+  return null;
+}
+
+export function getBuiltinSkillPath(slug) {
+  if (!slug || typeof slug !== "string") return null;
+  const targetDir = path.join(BUILTIN_SKILLS_ROOT, slug);
+  if (isDirectory(targetDir)) {
+    return targetDir;
+  }
+  return null;
+}
+
+export async function syncProjectCliSkills(projectDirOrId, { enabledCliSlugs = [] } = {}) {
+  const projectDir = resolveProjectDir(projectDirOrId);
+  if (!projectDir) return;
+  const skillsDir = path.join(projectDir, ".skills");
+
+  const slugs = ["cli-claude", "cli-codex", "cli-crawl4ai"];
+  for (const slug of slugs) {
+    const linkPath = path.join(skillsDir, slug);
+    const isEnabled = Array.isArray(enabledCliSlugs) && (
+      enabledCliSlugs.includes(slug) ||
+      enabledCliSlugs.includes(slug.replace(/^cli-/, ""))
+    );
+
+    let lst = null;
+    try {
+      lst = fs.lstatSync(linkPath);
+    } catch {
+      lst = null;
+    }
+
+    if (isEnabled) {
+      const builtinPath = getBuiltinSkillPath(slug);
+      if (!builtinPath) continue;
+
+      if (!lst) {
+        fs.mkdirSync(skillsDir, { recursive: true });
+        createSymlink(builtinPath, linkPath);
+      } else if (lst.isSymbolicLink()) {
+        let currentTarget = null;
+        try {
+          currentTarget = readLinkAbsTarget(linkPath);
+        } catch {
+          currentTarget = null;
+        }
+        if (!currentTarget || realpathBestEffort(currentTarget) !== realpathBestEffort(builtinPath)) {
+          fs.rmSync(linkPath, { force: true });
+          createSymlink(builtinPath, linkPath);
+        }
+      } else {
+        // Exists and is not a symlink (user custom version): never touch or overwrite!
+      }
+    } else {
+      if (lst && lst.isSymbolicLink()) {
+        fs.rmSync(linkPath, { force: true });
+      }
+      // If not a symlink, never touch!
+    }
+  }
+}
+
+// ---------- linked skill paths for session assembly (REQ-AGENT-031 / REQ-CLI-SERVICE-007) ----------
 
 // M2（2026-08-02-ui-copilot REQ-AGENT-031 标准 1）：项目关联 skills 的技能库
 // 绝对路径列表——会话装配 skillPaths 的读取 API（agentService → worker
@@ -926,17 +1018,92 @@ export function deleteSource(slug) {
 // （agent 目录缺失/注册表漂移）或被手动删除，记录仍在——与 listProjectSkills
 // 的磁盘扫描视图互补）。逐条解析为技能库内绝对目录；记录中的陈旧项（skill 已
 // 从库中移除）跳过。技能库未配置 → 空数组。
-export function listLinkedSkillPaths(projectId) {
+// REQ-CLI-SERVICE-007: 增强支持扫描项目 .skills 目录下指向有效 SKILL.md 的软链收编。
+export function listLinkedSkillPaths(projectIdOrDir) {
   const root = repoRoot();
-  if (!root) return [];
   const paths = [];
-  for (const { slug, skillName } of readLinkedRecord(projectId)) {
-    try {
-      paths.push(path.resolve(resolveSkillTargetDir(slug, skillName)));
-    } catch {
-      // Stale record entry: the skill is gone from the library.
+
+  let projectId = null;
+  let projectDir = null;
+
+  if (projectIdOrDir && typeof projectIdOrDir === "object") {
+    projectId = projectIdOrDir.id || null;
+    projectDir = projectIdOrDir.localPath ? path.resolve(expandTilde(projectIdOrDir.localPath)) : null;
+  } else if (typeof projectIdOrDir === "string" && projectIdOrDir.trim() !== "") {
+    const raw = expandTilde(projectIdOrDir.trim());
+    if (isDirectory(raw)) {
+      projectDir = path.resolve(raw);
+      try {
+        const found = projectService.listProjects?.().find(
+          (p) => p.localPath && path.resolve(expandTilde(p.localPath)) === projectDir
+        );
+        if (found) {
+          projectId = found.id;
+        }
+      } catch {
+        // ignore
+      }
+      if (!projectId) {
+        projectId = raw;
+      }
+    } else {
+      projectId = projectIdOrDir.trim();
+      try {
+        const detail = projectService.getProjectDetail?.(projectId) ||
+          projectService.listProjects?.().find((p) => p.id === projectId);
+        if (detail?.localPath) {
+          projectDir = path.resolve(expandTilde(detail.localPath));
+        }
+      } catch {
+        // ignore
+      }
     }
   }
+
+  // 1. 原有技能库关联记录
+  if (root && projectId) {
+    for (const { slug, skillName } of readLinkedRecord(projectId)) {
+      try {
+        const resolved = path.resolve(resolveSkillTargetDir(slug, skillName));
+        if (!paths.includes(resolved)) {
+          paths.push(resolved);
+        }
+      } catch {
+        // Stale record entry: the skill is gone from the library.
+      }
+    }
+  }
+
+  // 2. 检查项目的 .skills 目录（REQ-CLI-SERVICE-007）
+  if (projectDir) {
+    const skillsDir = path.join(projectDir, ".skills");
+    if (isDirectory(skillsDir)) {
+      let entries = [];
+      try {
+        entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+      } catch {
+        entries = [];
+      }
+      for (const entry of entries) {
+        const entryPath = path.join(skillsDir, entry.name);
+        try {
+          const lst = fs.lstatSync(entryPath);
+          if (lst.isSymbolicLink()) {
+            const absTarget = readLinkAbsTarget(entryPath);
+            if (fs.existsSync(path.join(absTarget, "SKILL.md"))) {
+              const absLink = path.resolve(entryPath);
+              if (!paths.includes(absLink) && !paths.includes(absTarget)) {
+                paths.push(absLink);
+              }
+            }
+          }
+        } catch {
+          // ignore unreadable or broken links
+        }
+      }
+    }
+  }
+
   return paths;
 }
 

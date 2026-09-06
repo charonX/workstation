@@ -10,7 +10,7 @@
 | 1 | 内置清单与环境探测 | REQ-CLI-SERVICE-001, 002, 003 | `api/cliRegistry.test.js`、`api/cliProbe.test.js` | `src/services/cliRegistry.js` + `src/services/cliService.js` (probe, checkLatestVersion, 60s TTL cache, concurrency <= 4) | — | 完成 |
 | 2 | 配置持久化与凭据加密 | REQ-CLI-SERVICE-004, 005 | `api/cliServiceConfig.test.js` | `src/db.js` DDL + `src/services/cliService.js` (两层启用、timeoutSec、env secretStore 加密与掩码、effectiveConfig) | Slice 1 | 完成 |
 | 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 完成 |
-| 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 待开始 |
+| 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 完成 |
 | 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 待开始 |
 | 6 | 前端管理页渲染与交互 | REQ-CLI-SERVICE-006 | `e2e/cliServicesPage.test.cjs` | `src/renderer/pages/CliServices.jsx` + 路由与侧边栏接入 + data-testid 契约 | Slice 3 | 待开始 |
 
@@ -101,5 +101,31 @@
   - `npx oxlint src/http/routes/cliServices.js src/cli/commands/cliService.js`：0 warning，0 error。
 - **状态**：
   Slice 3: complete (tests green, PRD alignment passed)
+
+### Slice 4：内置 Skill 自动收敛与项目链接（2026-09-06）
+
+#### PRD → 代码 可追溯性表
+
+| REQ-ID | 需求描述 | PRD 章节依据 | 实现代码 | 对应测试 | 验证状态 |
+|---|---|---|---|---|---|
+| REQ-CLI-SERVICE-007 | 内置 Skill 自动收敛与项目链接（真 SKILL.md 缝） | §6.3 块 5, §10.5 决策 2, ADR-043 | `builtin/skills/cli-claude/SKILL.md` + `builtin/skills/cli-codex/SKILL.md` + `builtin/skills/cli-crawl4ai/SKILL.md` + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`, `listLinkedSkillPaths`) | `tests/.../api/cliSkillSync.test.js` (tests 1, 2, 3) | 全绿（3/3 pass） |
+
+#### 验证日志
+
+- **测试命令执行**：
+  - `cliSkillSync.test.js`：3 passed，0 failed，耗时 32.9ms。覆盖应用内置技能目录包含 3 个只读 SKILL.md 文件（含 YAML frontmatter `name:`、CLI 定位与参数规范、一次性调用规范与超时限制）、项目启用 CLI 服务时自动创建软链并被 `listLinkedSkillPaths` 收编、项目禁用时软链自动移除、用户自建同名 Skill 享有更高优先级（内置版本不覆盖自建版本）。
+  - 回归测试全绿：
+    - `cliRegistry.test.js`：6 passed，0 failed。
+    - `cliProbe.test.js`：7 passed，0 failed。
+    - `cliServiceConfig.test.js`：7 passed，0 failed。
+    - `cliHttpApi.test.js`：5 passed，0 failed。
+    - `cliServiceCommand.test.js`：4 passed，0 failed。
+    - `skillInjection.test.js`：6 passed，0 failed。
+    - `skillSync.test.js`：11 passed，0 failed。
+    - 共计 49 passed，0 failed。
+- **代码静态检查**：
+  - `npx oxlint src/services/skillService.js`：新改动 0 warning，0 error。
+- **状态**：
+  Slice 4: complete (tests green, PRD alignment passed)
 
 
