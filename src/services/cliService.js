@@ -16,6 +16,13 @@ const PROBE_CACHE_TTL_MS = 60_000; // 60s
 const LATEST_CACHE_TTL_MS = 3_600_000; // 1h
 const PROBE_TIMEOUT_MS = 5_000; // 5s
 const PROBE_ERROR_PREFIX = "E-CLI-PROBE-FAILED";
+const DEFAULT_TIMEOUT_SEC = 120;
+const MIN_TIMEOUT_SEC = 10;
+const MAX_TIMEOUT_SEC = 600;
+const MAX_ENV_ENTRIES = 50;
+const MAX_ENV_KEY_LENGTH = 128;
+const MAX_ENV_VALUE_LENGTH = 4096;
+const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 
 /**
  * 格式化探测错误信息
@@ -284,6 +291,120 @@ function jsonParse(value, fallback) {
 }
 
 /**
+ * 创建带标准错误码的 Error 对象
+ * @param {string} code
+ * @param {string} message
+ * @returns {Error}
+ */
+function createCliError(code, message) {
+  const err = new Error(`${message} (${code})`);
+  err.code = code;
+  return err;
+}
+
+/**
+ * 校验条目在内置清单中存在
+ * @param {string} id
+ * @returns {import("./cliRegistry.js").CliRegistryItem}
+ */
+function assertKnownCli(id) {
+  const item = findRegistryItem(id);
+  if (!item) {
+    throw createCliError("E-CLI-UNKNOWN-ID", `未知 CLI 服务: ${id}`);
+  }
+  return item;
+}
+
+/**
+ * 校验超时时长（10–600 秒整数）
+ * @param {number} timeoutSec
+ */
+function validateTimeout(timeoutSec) {
+  if (
+    typeof timeoutSec !== "number" ||
+    !Number.isInteger(timeoutSec) ||
+    timeoutSec < MIN_TIMEOUT_SEC ||
+    timeoutSec > MAX_TIMEOUT_SEC
+  ) {
+    throw createCliError("E-CLI-INVALID-TIMEOUT", "超时需在 10–600 秒之间");
+  }
+}
+
+/**
+ * 校验环境变量字典合法性
+ * @param {Record<string, string>} env
+ */
+function validateEnvMap(env) {
+  if (!env || typeof env !== "object" || Array.isArray(env)) {
+    throw createCliError("E-CLI-INVALID-ENV-KEY", "环境变量 KEY 非法");
+  }
+  const entries = Object.entries(env);
+  if (entries.length > MAX_ENV_ENTRIES) {
+    throw createCliError("E-CLI-INVALID-ENV-KEY", "单个 CLI 最多 50 条 env");
+  }
+  for (const [k, v] of entries) {
+    if (typeof k !== "string" || k.length === 0 || k.length > MAX_ENV_KEY_LENGTH || !ENV_KEY_REGEX.test(k)) {
+      throw createCliError("E-CLI-INVALID-ENV-KEY", `环境变量 KEY 非法: ${k}`);
+    }
+    if (typeof v !== "string" || v.length === 0 || v.length > MAX_ENV_VALUE_LENGTH) {
+      throw createCliError(
+        "E-CLI-INVALID-ENV-KEY",
+        "环境变量 KEY 非法: VALUE 不能为空且长度不能超过 4096"
+      );
+    }
+  }
+}
+
+/**
+ * 将明文环境变量字典逐项加密
+ * @param {Record<string, string>} env
+ * @returns {Record<string, string>}
+ */
+function encryptEnvMap(env) {
+  const encrypted = {};
+  for (const [k, v] of Object.entries(env)) {
+    encrypted[k] = encryptSecret(v);
+  }
+  return encrypted;
+}
+
+/**
+ * 将密文环境变量字典逐项解密
+ * @param {Record<string, string>} encryptedMap
+ * @returns {Record<string, string>}
+ */
+function decryptEnvMap(encryptedMap) {
+  const decrypted = {};
+  for (const [k, enc] of Object.entries(encryptedMap)) {
+    decrypted[k] = decryptSecret(enc);
+  }
+  return decrypted;
+}
+
+/**
+ * 从数据库行提取脱敏 envKeys 列表
+ * @param {any} row
+ * @returns {string[]}
+ */
+function extractEnvKeys(row) {
+  if (!row?.env) return [];
+  const parsed = jsonParse(row.env, {});
+  return Object.keys(parsed);
+}
+
+/**
+ * 校验 CLI 是否已安装，未安装时阻断启用
+ * @param {string} id
+ * @param {Function} probeFn
+ */
+async function assertInstalled(id, probeFn) {
+  const probeRes = await probeFn(id);
+  if (!probeRes?.installed) {
+    throw createCliError("E-CLI-NOT-INSTALLED", "未安装无法启用");
+  }
+}
+
+/**
  * 创建 CLI 服务实例
  * @param {Object} [options]
  * @param {string} [options.configDir] - 配置目录
@@ -294,6 +415,8 @@ export async function createCliService(options = {}) {
     options.configDir || process.env.OPC_WORKSTATION_CONFIG_DIR || path.join(os.homedir(), ".opc-workstation");
   const dbPath = options.dbPath || resolveDbPath(configDir);
   const db = () => getDb(dbPath);
+  const resolveProbeFn = (ctx) =>
+    ctx && typeof ctx.probe === "function" ? ctx.probe.bind(ctx) : svc.probe;
 
   const svc = {
     configDir,
@@ -410,38 +533,21 @@ export async function createCliService(options = {}) {
      * @returns {Promise<Object>}
      */
     async setGlobalEnabled(id, enabled) {
-      const item = findRegistryItem(id);
-      if (!item) {
-        const err = new Error(`未知 CLI 服务: ${id} (E-CLI-UNKNOWN-ID)`);
-        err.code = "E-CLI-UNKNOWN-ID";
-        throw err;
-      }
-
+      assertKnownCli(id);
       const isEnabled = Boolean(enabled);
       if (isEnabled) {
-        const probeFn = this && typeof this.probe === "function" ? this.probe.bind(this) : svc.probe;
-        const probeRes = await probeFn(id);
-        if (!probeRes?.installed) {
-          const err = new Error("未安装无法启用 (E-CLI-NOT-INSTALLED)");
-          err.code = "E-CLI-NOT-INSTALLED";
-          throw err;
-        }
+        await assertInstalled(id, resolveProbeFn(this));
       }
 
       const d = db();
       const now = new Date().toISOString();
-      const existing = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(id);
-      if (existing) {
-        d.prepare("UPDATE cli_services SET enabled = ?, updated_at = ? WHERE id = ?").run(
-          isEnabled ? 1 : 0,
-          now,
-          id
-        );
-      } else {
-        d.prepare(
-          "INSERT INTO cli_services (id, enabled, env, timeout_sec, updated_at) VALUES (?, ?, '{}', 120, ?)"
-        ).run(id, isEnabled ? 1 : 0, now);
-      }
+      d.prepare(`
+        INSERT INTO cli_services (id, enabled, env, timeout_sec, updated_at)
+        VALUES (?, ?, '{}', 120, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at
+      `).run(id, isEnabled ? 1 : 0, now);
 
       return await svc.getConfig(id);
     },
@@ -455,31 +561,24 @@ export async function createCliService(options = {}) {
      */
     async setProjectEnabled(projectId, id, enabled) {
       if (!projectId) {
-        const err = new Error("setProjectEnabled: projectId is required (E-INVALID-ARGS)");
-        err.code = "E-INVALID-ARGS";
-        throw err;
+        throw createCliError("E-INVALID-ARGS", "setProjectEnabled: projectId is required");
       }
-      const item = findRegistryItem(id);
-      if (!item) {
-        const err = new Error(`未知 CLI 服务: ${id} (E-CLI-UNKNOWN-ID)`);
-        err.code = "E-CLI-UNKNOWN-ID";
-        throw err;
-      }
+      assertKnownCli(id);
 
       const d = db();
       const globalRow = d.prepare("SELECT enabled FROM cli_services WHERE id = ?").get(id);
       const isEnabled = Boolean(enabled);
       if (isEnabled && (!globalRow || globalRow.enabled !== 1)) {
-        const err = new Error("全局未启用禁止在项目内启用 (E-CLI-GLOBALLY-DISABLED)");
-        err.code = "E-CLI-GLOBALLY-DISABLED";
-        throw err;
+        throw createCliError("E-CLI-GLOBALLY-DISABLED", "全局未启用禁止在项目内启用");
       }
 
       const now = new Date().toISOString();
       d.prepare(`
         INSERT INTO cli_service_project_enablement (project_id, service_id, enabled, updated_at)
         VALUES (?, ?, ?, ?)
-        ON CONFLICT(service_id, project_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
+        ON CONFLICT(service_id, project_id) DO UPDATE SET
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at
       `).run(projectId, id, isEnabled ? 1 : 0, now);
 
       return {
@@ -501,94 +600,38 @@ export async function createCliService(options = {}) {
      * @returns {Promise<Object>}
      */
     async updateConfig(id, patch = {}) {
-      const item = findRegistryItem(id);
-      if (!item) {
-        const err = new Error(`未知 CLI 服务: ${id} (E-CLI-UNKNOWN-ID)`);
-        err.code = "E-CLI-UNKNOWN-ID";
-        throw err;
-      }
+      assertKnownCli(id);
 
       if (patch.timeoutSec !== undefined) {
-        const t = patch.timeoutSec;
-        if (typeof t !== "number" || !Number.isInteger(t) || t < 10 || t > 600) {
-          const err = new Error("超时需在 10–600 秒之间 (E-CLI-INVALID-TIMEOUT)");
-          err.code = "E-CLI-INVALID-TIMEOUT";
-          throw err;
-        }
+        validateTimeout(patch.timeoutSec);
       }
-
-      const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
       if (patch.env !== undefined) {
-        if (!patch.env || typeof patch.env !== "object" || Array.isArray(patch.env)) {
-          const err = new Error("环境变量 KEY 非法 (E-CLI-INVALID-ENV-KEY)");
-          err.code = "E-CLI-INVALID-ENV-KEY";
-          throw err;
-        }
-        const entries = Object.entries(patch.env);
-        if (entries.length > 50) {
-          const err = new Error("单个 CLI 最多 50 条 env (E-CLI-INVALID-ENV-KEY)");
-          err.code = "E-CLI-INVALID-ENV-KEY";
-          throw err;
-        }
-        for (const [k, v] of entries) {
-          if (typeof k !== "string" || k.length === 0 || k.length > 128 || !ENV_KEY_RE.test(k)) {
-            const err = new Error(`环境变量 KEY 非法: ${k} (E-CLI-INVALID-ENV-KEY)`);
-            err.code = "E-CLI-INVALID-ENV-KEY";
-            throw err;
-          }
-          if (typeof v !== "string" || v.length === 0 || v.length > 4096) {
-            const err = new Error("环境变量 KEY 非法: VALUE 不能为空且长度不能超过 4096 (E-CLI-INVALID-ENV-KEY)");
-            err.code = "E-CLI-INVALID-ENV-KEY";
-            throw err;
-          }
-        }
+        validateEnvMap(patch.env);
       }
-
       if (patch.enabled === true) {
-        const probeFn = this && typeof this.probe === "function" ? this.probe.bind(this) : svc.probe;
-        const probeRes = await probeFn(id);
-        if (!probeRes?.installed) {
-          const err = new Error("未安装无法启用 (E-CLI-NOT-INSTALLED)");
-          err.code = "E-CLI-NOT-INSTALLED";
-          throw err;
-        }
+        await assertInstalled(id, resolveProbeFn(this));
       }
 
       const d = db();
       const existing = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(id);
       const now = new Date().toISOString();
 
-      let nextEnabled = existing ? existing.enabled : 0;
-      if (patch.enabled !== undefined) {
-        nextEnabled = patch.enabled ? 1 : 0;
-      }
+      const nextEnabled =
+        patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : (existing?.enabled ?? 0);
+      const nextTimeoutSec =
+        patch.timeoutSec !== undefined ? patch.timeoutSec : (existing?.timeout_sec ?? DEFAULT_TIMEOUT_SEC);
+      const nextEnvJson =
+        patch.env !== undefined ? JSON.stringify(encryptEnvMap(patch.env)) : (existing?.env ?? "{}");
 
-      let nextTimeoutSec = existing ? existing.timeout_sec : 120;
-      if (patch.timeoutSec !== undefined) {
-        nextTimeoutSec = patch.timeoutSec;
-      }
-
-      let nextEnvJson = existing ? existing.env : "{}";
-      if (patch.env !== undefined) {
-        const encrypted = {};
-        for (const [k, v] of Object.entries(patch.env)) {
-          encrypted[k] = encryptSecret(v);
-        }
-        nextEnvJson = JSON.stringify(encrypted);
-      }
-
-      if (existing) {
-        d.prepare(`
-          UPDATE cli_services
-          SET enabled = ?, env = ?, timeout_sec = ?, updated_at = ?
-          WHERE id = ?
-        `).run(nextEnabled, nextEnvJson, nextTimeoutSec, now, id);
-      } else {
-        d.prepare(`
-          INSERT INTO cli_services (id, enabled, env, timeout_sec, updated_at)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(id, nextEnabled, nextEnvJson, nextTimeoutSec, now);
-      }
+      d.prepare(`
+        INSERT INTO cli_services (id, enabled, env, timeout_sec, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          enabled = excluded.enabled,
+          env = excluded.env,
+          timeout_sec = excluded.timeout_sec,
+          updated_at = excluded.updated_at
+      `).run(id, nextEnabled, nextEnvJson, nextTimeoutSec, now);
 
       return await svc.getConfig(id);
     },
@@ -599,23 +642,16 @@ export async function createCliService(options = {}) {
      * @returns {Promise<Object>}
      */
     async getConfig(id) {
-      const item = findRegistryItem(id);
-      if (!item) {
-        const err = new Error(`未知 CLI 服务: ${id} (E-CLI-UNKNOWN-ID)`);
-        err.code = "E-CLI-UNKNOWN-ID";
-        throw err;
-      }
+      assertKnownCli(id);
 
       const d = db();
       const row = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(id);
-      const parsedEnv = row ? jsonParse(row.env, {}) : {};
-      const envKeys = Object.keys(parsedEnv);
 
       return {
         id,
         enabled: row ? row.enabled === 1 : false,
-        timeoutSec: row?.timeout_sec ?? 120,
-        envKeys,
+        timeoutSec: row?.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
+        envKeys: extractEnvKeys(row),
         updatedAt: row?.updated_at ?? null,
       };
     },
@@ -639,7 +675,7 @@ export async function createCliService(options = {}) {
         .all(projectId);
 
       const result = [];
-      const probeFn = this && typeof this.probe === "function" ? this.probe.bind(this) : svc.probe;
+      const probeFn = resolveProbeFn(this);
 
       for (const row of rows) {
         const item = findRegistryItem(row.id);
@@ -648,16 +684,11 @@ export async function createCliService(options = {}) {
         if (!probeRes?.installed) continue;
 
         const rawEnv = jsonParse(row.env, {});
-        const decryptedEnv = {};
-        for (const [k, enc] of Object.entries(rawEnv)) {
-          decryptedEnv[k] = decryptSecret(enc);
-        }
-
         result.push({
           id: row.id,
           command: item.command,
-          env: decryptedEnv,
-          timeoutSec: row.timeout_sec ?? 120,
+          env: decryptEnvMap(rawEnv),
+          timeoutSec: row.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
         });
       }
 
@@ -687,7 +718,7 @@ export async function createCliService(options = {}) {
       const projectId = listOptions.projectId;
       const items = getRegistry();
       const results = [];
-      const probeFn = this && typeof this.probe === "function" ? this.probe.bind(this) : svc.probe;
+      const probeFn = resolveProbeFn(this);
 
       for (const item of items) {
         const probeRes = await probeFn(item.id, { refresh });
@@ -701,8 +732,6 @@ export async function createCliService(options = {}) {
         );
 
         const row = d.prepare("SELECT * FROM cli_services WHERE id = ?").get(item.id);
-        const parsedEnv = row ? jsonParse(row.env, {}) : {};
-        const envKeys = Object.keys(parsedEnv);
 
         let enabled = row ? row.enabled === 1 : false;
         if (projectId) {
@@ -721,8 +750,8 @@ export async function createCliService(options = {}) {
           latestVersion: versionRes.latestVersion,
           updateAvailable: versionRes.updateAvailable,
           enabled,
-          envKeys,
-          timeoutSec: row?.timeout_sec ?? 120,
+          envKeys: extractEnvKeys(row),
+          timeoutSec: row?.timeout_sec ?? DEFAULT_TIMEOUT_SEC,
           installHint: item.installHint,
           ...(probeRes.probeError ? { probeError: probeRes.probeError } : {}),
         });
