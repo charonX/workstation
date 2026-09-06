@@ -21,6 +21,80 @@ function decodeParam(value) {
   }
 }
 
+function isRefreshQuery(query) {
+  return query?.refresh === "1" || query?.refresh === "true" || query?.refresh === true;
+}
+
+function resolveConfigDir(req) {
+  return (
+    req?.headers?.["x-opc-config-dir"] ||
+    process.env.OPC_WORKSTATION_CONFIG_DIR ||
+    path.join(os.homedir(), ".opc-workstation")
+  );
+}
+
+function notFoundService(res, id) {
+  return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
+}
+
+function handleRouteError(res, err, fallbackStatus = 500) {
+  const code = err?.code;
+  let status = fallbackStatus;
+  if (code === "E-CLI-UNKNOWN-ID") {
+    status = 404;
+  } else if (code === "E-CLI-NOT-INSTALLED" || code === "E-CLI-GLOBALLY-DISABLED") {
+    status = 409;
+  } else if (code === "E-CLI-INVALID-TIMEOUT" || code === "E-CLI-INVALID-ENV-KEY" || code === "VALIDATION_ERROR") {
+    status = 400;
+  }
+  return sendJson(res, status, {
+    error: code || (status === 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR"),
+    message: err?.message || String(err),
+  });
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        resolve({});
+      }
+    });
+    req.on("error", () => resolve({}));
+  });
+}
+
+async function parseRequestInput(req, p1, p2) {
+  if (Array.isArray(p2)) {
+    // server.js 派发: p1 = body, p2 = subPath
+    let query = {};
+    try {
+      const parsedUrl = new URL(req.url, "http://127.0.0.1");
+      query = Object.fromEntries(parsedUrl.searchParams);
+    } catch {
+      query = {};
+    }
+    return { body: p1 || {}, subPath: p2, query };
+  }
+
+  // 单元测试直调: p1 = pathname, p2 = query
+  const query = p2 || {};
+  const cleanPath = typeof p1 === "string" ? p1.split("?")[0] : "";
+  const subPath = cleanPath.replace(/^\/api\/cli-services\/?/, "").split("/").filter(Boolean);
+  let body = req.body && typeof req.body === "object" ? req.body : {};
+  if (!req.body && req.method !== "GET") {
+    body = await readRequestBody(req);
+  }
+  return { body, subPath, query };
+}
+
 /**
  * CLI 服务 HTTP 请求分发
  * @param {import("node:http").IncomingMessage} req
@@ -29,110 +103,53 @@ function decodeParam(value) {
  * @param {any} p2 - server.js 模式为 subPath，测试直调模式为 query
  */
 export async function handleCliServices(req, res, p1, p2) {
-  let body = {};
-  let subPath = [];
-  let query = {};
+  const { body, subPath, query } = await parseRequestInput(req, p1, p2);
+  const cliService = await createCliService({ configDir: resolveConfigDir(req) });
 
-  if (Array.isArray(p2)) {
-    // server.js 派发: p1 = body, p2 = subPath
-    body = p1 || {};
-    subPath = p2;
-    try {
-      const parsedUrl = new URL(req.url, "http://127.0.0.1");
-      query = Object.fromEntries(parsedUrl.searchParams);
-    } catch {
-      query = {};
-    }
-  } else if (typeof p1 === "string") {
-    // 单元测试直调: p1 = pathname, p2 = query
-    query = p2 || {};
-    const cleanPath = p1.split("?")[0];
-    subPath = cleanPath.replace(/^\/api\/cli-services\/?/, "").split("/").filter(Boolean);
-    if (req.body && typeof req.body === "object") {
-      body = req.body;
-    } else {
-      body = await new Promise((resolve) => {
-        if (req.method === "GET") return resolve({});
-        let raw = "";
-        req.on("data", (chunk) => {
-          raw += chunk;
-        });
-        req.on("end", () => {
-          if (!raw) return resolve({});
-          try {
-            resolve(JSON.parse(raw));
-          } catch {
-            resolve({});
-          }
-        });
-      });
-    }
-  }
-
-  const configDir =
-    req.headers?.["x-opc-config-dir"] ||
-    process.env.OPC_WORKSTATION_CONFIG_DIR ||
-    path.join(os.homedir(), ".opc-workstation");
-  const cliService = await createCliService({ configDir });
-
-  // GET /api/cli-services
+  // 接口 1: GET /api/cli-services
   if (subPath.length === 0 && req.method === "GET") {
     try {
-      const refresh = query.refresh === "1" || query.refresh === "true" || query.refresh === true;
-      const projectId = query.project || undefined;
-      const services = await cliService.list({ refresh, projectId });
+      const services = await cliService.list({
+        refresh: isRefreshQuery(query),
+        projectId: query.project || undefined,
+      });
       return sendJson(res, 200, { services });
     } catch (err) {
-      return sendJson(res, 500, { error: err?.code || "INTERNAL_ERROR", message: err.message });
+      return handleRouteError(res, err, 500);
     }
   }
 
-  // GET /api/cli-services/:id 或 GET /api/cli-services/:id/probe
+  // 接口 1: GET /api/cli-services/:id 或 GET /api/cli-services/:id/probe
   if ((subPath.length === 1 || (subPath.length === 2 && subPath[1] === "probe")) && req.method === "GET") {
     const id = decodeParam(subPath[0]);
-    if (!findRegistryItem(id)) {
-      return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
-    }
+    if (!findRegistryItem(id)) return notFoundService(res, id);
     try {
-      const refresh = query.refresh === "1" || query.refresh === "true" || query.refresh === true;
-      const services = await cliService.list({ refresh });
+      const services = await cliService.list({ refresh: isRefreshQuery(query) });
       const service = services.find((s) => s.id === id);
-      if (!service) {
-        return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
-      }
+      if (!service) return notFoundService(res, id);
       return sendJson(res, 200, service);
     } catch (err) {
-      return sendJson(res, 500, { error: err?.code || "INTERNAL_ERROR", message: err.message });
+      return handleRouteError(res, err, 500);
     }
   }
 
-  // PUT /api/cli-services/:id/projects/:projectId
+  // 接口 3: PUT /api/cli-services/:id/projects/:projectId
   if (subPath.length === 3 && subPath[1] === "projects" && req.method === "PUT") {
     const id = decodeParam(subPath[0]);
     const projectId = decodeParam(subPath[2]);
-    if (!findRegistryItem(id)) {
-      return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
-    }
+    if (!findRegistryItem(id)) return notFoundService(res, id);
     try {
       const updatedConfig = await cliService.setProjectEnabled(projectId, id, Boolean(body?.enabled));
       return sendJson(res, 200, { service: updatedConfig });
     } catch (err) {
-      if (err?.code === "E-CLI-GLOBALLY-DISABLED") {
-        return sendJson(res, 409, { error: "E-CLI-GLOBALLY-DISABLED", message: err.message });
-      }
-      if (err?.code === "E-CLI-UNKNOWN-ID") {
-        return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: err.message });
-      }
-      return sendJson(res, 400, { error: err?.code || "VALIDATION_ERROR", message: err.message });
+      return handleRouteError(res, err, 400);
     }
   }
 
-  // PUT /api/cli-services/:id
+  // 接口 2: PUT /api/cli-services/:id
   if (subPath.length === 1 && req.method === "PUT") {
     const id = decodeParam(subPath[0]);
-    if (!findRegistryItem(id)) {
-      return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: `未知 CLI 服务 id: ${id}` });
-    }
+    if (!findRegistryItem(id)) return notFoundService(res, id);
     try {
       let updatedConfig;
       if (body.enabled !== undefined) {
@@ -149,16 +166,7 @@ export async function handleCliServices(req, res, p1, p2) {
       }
       return sendJson(res, 200, { service: updatedConfig });
     } catch (err) {
-      if (err?.code === "E-CLI-NOT-INSTALLED") {
-        return sendJson(res, 409, { error: "E-CLI-NOT-INSTALLED", message: err.message });
-      }
-      if (err?.code === "E-CLI-INVALID-TIMEOUT" || err?.code === "E-CLI-INVALID-ENV-KEY") {
-        return sendJson(res, 400, { error: err.code, message: err.message });
-      }
-      if (err?.code === "E-CLI-UNKNOWN-ID") {
-        return sendJson(res, 404, { error: "E-CLI-UNKNOWN-ID", message: err.message });
-      }
-      return sendJson(res, 500, { error: err?.code || "INTERNAL_ERROR", message: err.message });
+      return handleRouteError(res, err, 500);
     }
   }
 

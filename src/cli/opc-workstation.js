@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { argv, exit, stderr, stdout } from "node:process";
-import { ensureServer, stopManagedServer } from "./server.js";
+import { stopManagedServer } from "./server.js";
 import * as settings from "./commands/settings.js";
 import * as project from "./commands/project.js";
 import * as flow from "./commands/flow.js";
