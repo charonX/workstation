@@ -26,6 +26,7 @@ module.exports = defineConfig({
     /* Collect trace and screenshot on failure for evidence */
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173",
   },
 
   /* Configure projects for major desktop browsers */

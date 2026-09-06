@@ -60,6 +60,7 @@ import * as source from "../cli/commands/source.js";
 import * as task from "../cli/commands/task.js";
 import * as plugin from "../cli/commands/plugin.js";
 import * as mcp from "../cli/commands/mcp.js";
+import * as cliService from "../cli/commands/cliService.js";
 
 // 命令模块表（release 按 REQ-AGENT-013 排除，不 import）。
 const COMMAND_MODULES = {
@@ -76,6 +77,7 @@ const COMMAND_MODULES = {
   browser,
   plugin,
   mcp,
+  cliService,
 };
 
 // —— argsSchema 工具 ——
@@ -294,6 +296,23 @@ export const TOOL_DEFS = [
     description: "停用 MCP server 的项目启用（高危-确认）；name 为位置参数",
     argsSchema: obj({ name: str("server 名称（必填）"), project: str("项目 ID（必填）") }, ["name", "project"]),
     positionalFrom: ["name"] },
+
+  // cliService（REQ-CLI-SERVICE-010）
+  { name: "cliService list", module: "cliService", fn: "list", riskLevel: "query",
+    description: "列出已配置的 CLI 服务清单及探测状态",
+    argsSchema: obj({ refresh: boolean("是否强制刷新"), project: str("项目 ID") }) },
+  { name: "cliService probe", module: "cliService", fn: "probe", riskLevel: "query",
+    description: "实时探测指定 CLI 服务的安装与版本状态",
+    argsSchema: obj({ id: str("CLI 服务 ID（必填）") }, ["id"]),
+    positionalFrom: ["id"] },
+  { name: "cliService enable", module: "cliService", fn: "enable", riskLevel: "confirm",
+    description: "启用 CLI 服务（全局或项目级）",
+    argsSchema: obj({ id: str("CLI 服务 ID（必填）"), project: str("项目 ID") }, ["id"]),
+    positionalFrom: ["id"] },
+  { name: "cliService disable", module: "cliService", fn: "disable", riskLevel: "confirm",
+    description: "禁用 CLI 服务（全局或项目级）",
+    argsSchema: obj({ id: str("CLI 服务 ID（必填）"), project: str("项目 ID") }, ["id"]),
+    positionalFrom: ["id"] },
 
   // browser（REQ-BROWSER-002/006，story 2026-08-24-embedded-browser，PRD §10.4 接口6：
   // agent 浏览器读取工具集 + 登录探测；riskLevel 均=query——本期只做预览/读取，无写入

@@ -10,6 +10,7 @@ import Sources from "./pages/Sources.jsx";
 import Notifications from "./pages/Notifications.jsx";
 import Skills from "./pages/Skills.jsx";
 import Mcp from "./pages/Mcp.jsx";
+import CliServices from "./pages/CliServices.jsx";
 import Plugins from "./pages/Plugins.jsx";
 import Settings from "./pages/Settings.jsx";
 import Assistant from "./pages/Assistant.jsx";
@@ -34,6 +35,7 @@ function AdminZone() {
           <Route path="/skills" element={<Skills />} />
           {/* BUG-013（REQ-AGENT-084 IA 注记）：MCP 独立页，导航位于技能之下 */}
           <Route path="/mcp" element={<Mcp />} />
+          <Route path="/cli-services" element={<CliServices />} />
           <Route path="/plugins" element={<Plugins />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

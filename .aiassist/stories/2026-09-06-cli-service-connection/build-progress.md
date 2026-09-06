@@ -12,7 +12,7 @@
 | 3 | HTTP API 与产品 CLI | REQ-CLI-SERVICE-004, 005, 010 | `api/cliHttpApi.test.js`、`cli/cliServiceCommand.test.js` | `src/http/routes/cliServices.js` + `src/http/server.js` 挂载 + `src/cli/commands/cliService.js` + `src/cli/opc-workstation.js` 挂载 | Slice 2 | 完成 |
 | 4 | 内置 Skill 与软链收敛 | REQ-CLI-SERVICE-007 | `api/cliSkillSync.test.js` | `builtin/skills/` 3 份 SKILL.md + `src/services/skillService.js` (`getBuiltinSkillPath`, `syncProjectCliSkills`) | — | 完成 |
 | 5 | 权限策略与 worker 执行接线 | REQ-CLI-SERVICE-008, 009 | `api/cliExecutionWiring.test.js` | `src/services/policyRules.js` BASH_RULES + `src/agent/policyRules.js` + `src/services/agentService.js` (buildConfigMessage 快照注入、resolveCliEnvForCommand) + worker 执行合并 | Slice 2 | 完成 |
-| 6 | 前端管理页渲染与交互 | REQ-CLI-SERVICE-006 | `e2e/cliServicesPage.test.cjs` | `src/renderer/pages/CliServices.jsx` + 路由与侧边栏接入 + data-testid 契约 | Slice 3 | 待开始 |
+| 6 | 前端管理页渲染与交互 | REQ-CLI-SERVICE-006 | `e2e/cliServicesPage.test.cjs` | `src/renderer/pages/CliServices.jsx` + 路由与侧边栏接入 + data-testid 契约 | Slice 3 | 完成 |
 
 ## 关键既有资产（实现参考先例）
 
@@ -151,3 +151,27 @@
   - `npx oxlint src/agent/policyRules.js src/services/agentService.js src/agent/worker.js src/agent/toolAdapter.js`：0 warning，0 error。
 - **状态**：
   Slice 5: complete (tests green, PRD alignment passed)
+
+### Slice 6：前端管理页渲染与交互（2026-09-06）
+
+#### PRD → 代码 可追溯性表
+
+| REQ-ID | 需求描述 | PRD 章节依据 | 实现代码 | 对应测试 | 验证状态 |
+|---|---|---|---|---|---|
+| REQ-CLI-SERVICE-006 | CLI 服务管理页列表呈现、状态徽标、刷新与启用交互 | §6.1 流 A/B, §6.3 块 4, §7.1, §8 E1 | `src/renderer/api/cliServices.js` + `src/renderer/pages/CliServices.jsx` + `src/renderer/App.jsx` + `src/renderer/components/layout/Sidebar.jsx` | `tests/.../e2e/cliServicesPage.test.cjs` | 全绿（4/4 pass） |
+
+#### 验证日志
+
+- **测试命令执行**：
+  - `npx playwright test tests/capabilities/plugin-management/cli-service/2026-09-06-cli-service-connection/e2e/cliServicesPage.test.cjs`：4 passed，0 failed，耗时 1.2s。
+    - 用例 1：导航至 `/cli-services` 页面并展示 3 个内置清单服务行（`claude`, `codex`, `crawl4ai`）。
+    - 用例 2：未安装条目显示安装指引（`installHint`），且全局启用开关处于禁用（disabled）状态。
+    - 用例 3：检测到新版本可用时（`updateAvailable: true`）展示更新提示徽标（`update-badge`）。
+    - 用例 4：点击顶部刷新按钮（`refresh-probe-button`）触发带 `?refresh=1` 的重新探测。
+  - 回归测试全绿：
+    - `tests/capabilities/plugin-management/cli-service/2026-09-06-cli-service-connection/api/*.test.js` 与 `cli/*.test.js`（32 passed，0 failed）。
+    - `toolSurface.test.js`（5 passed，0 failed）。
+- **代码静态检查**：
+  - `npx oxlint src/renderer/api/cliServices.js src/renderer/pages/CliServices.jsx src/renderer/App.jsx src/renderer/components/layout/Sidebar.jsx src/renderer/hooks/useSettings.jsx src/renderer/main.jsx src/agent/toolAdapter.js`：0 warning，0 error。
+- **状态**：
+  Slice 6: complete (tests green, PRD alignment passed)

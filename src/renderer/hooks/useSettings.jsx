@@ -26,6 +26,13 @@ export function SettingsProvider({ children }) {
         applyToDocument(data);
       } catch (err) {
         if (cancelled) return;
+        // 纯浏览器/测试环境无主进程服务时，平滑回退至默认设置，避免阻塞页面挂载
+        if (typeof window !== "undefined" && !window.opc?.apiBaseUrl) {
+          const fallback = { theme: "dark", density: "comfortable", language: "zh-CN" };
+          setSettings(fallback);
+          applyToDocument(fallback);
+          return;
+        }
         setError(err.message || "Failed to load settings");
       } finally {
         if (!cancelled) setLoading(false);
