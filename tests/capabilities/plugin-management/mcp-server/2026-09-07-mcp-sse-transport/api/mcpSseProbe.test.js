@@ -158,4 +158,21 @@ describe("REQ-MCP-SSE-003 探测按声明 transport 分派", () => {
       `http 探测不回归: ${JSON.stringify(tools)}`
     );
   });
+
+  it("标准 5b：回归——stdio 条目探测既有 stdio fixture 仍成功（review test-F2 补强）", async () => {
+    // EXPECTED-TRACE: prd.md §8 回归面（REQ-AGENT-084 AC7：stdio 仍走 StdioClientTransport）
+    const STDIO_SERVER = path.join(ROOT, "tests/fixtures/mcp-stdio-server/server.mjs");
+    await svc.create({
+      name: "local-stdio",
+      type: "stdio",
+      command: process.execPath,
+      args: [STDIO_SERVER],
+    });
+
+    const tools = await svc.probeTools("local-stdio");
+    assert.ok(
+      (tools ?? []).some((t) => t.name === "fixture_ping"),
+      `stdio 探测不回归: ${JSON.stringify(tools)}`
+    );
+  });
 });

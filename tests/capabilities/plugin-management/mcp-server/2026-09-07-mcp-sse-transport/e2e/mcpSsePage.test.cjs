@@ -63,6 +63,9 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
     await expect(firstWindow.locator("[data-testid='mcp-env-input']")).toBeHidden();
     await expect(firstWindow.locator("[data-testid='mcp-url-input']")).toBeVisible();
     await expect(firstWindow.locator("[data-testid='mcp-auth-seg']")).toBeVisible();
+    // review test-F3 补强：AC2 要求 url/auth/token/headers 可见——headers 输入框补断言
+    //（token 框按先例为选 Bearer 后条件显示，不在此断言）
+    await expect(firstWindow.locator("[data-testid='mcp-headers-input']")).toBeVisible();
 
     // 回归：切回 stdio 恢复本地命令字段（§8 回归面）
     await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='stdio']").click();
@@ -72,6 +75,19 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
 
   test("选 sse 填表提交 → 列表出现该 server，badge 为 sse，API 回读 type=sse", async () => {
     // EXPECTED-TRACE: prd.md §6.3 块 4 row 1-2, §6.1 步骤 2
+    // review test-F1 修复（2026-09-07 人裁决）：POST 请求体形状必须有直接断言落点——
+    // 拦截 POST /api/mcp，断言 body.type==="sse" 且不含 command/args/env 键（REQ-004 AC3）。
+    let postBody = null;
+    firstWindow.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/mcp")) {
+        try {
+          postBody = JSON.parse(req.postData() ?? "null");
+        } catch {
+          postBody = null;
+        }
+      }
+    });
+
     await firstWindow.locator("[data-testid='mcp-add-button']").click();
     await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
     await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-crawl4ai");
@@ -79,6 +95,13 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
     await firstWindow.locator("[data-testid='mcp-auth-seg'] button", { hasText: "Bearer Token" }).click();
     await firstWindow.locator("[data-testid='mcp-token-input']").fill("e2e-sse-token");
     await firstWindow.locator("[data-testid='mcp-form-submit']").click();
+
+    // REQ-004 AC3 显式锚点：POST 请求体含 type:"sse" 且不含 command/args/env 键
+    expect(postBody, "提交触发 POST /api/mcp").toBeTruthy();
+    expect(postBody.type).toBe("sse");
+    expect("command" in postBody).toBe(false);
+    expect("args" in postBody).toBe(false);
+    expect("env" in postBody).toBe(false);
 
     const row = firstWindow.locator("[data-testid='mcp-row-e2e-crawl4ai']");
     await expect(row).toBeVisible();
