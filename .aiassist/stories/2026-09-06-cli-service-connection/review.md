@@ -258,7 +258,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
   - 裁决建议（两 specialist 一致）：**改 REQ，不补代码**——RE2-5 选项 B 是人裁决的架构方向，gotgenes 策略层无法产出本应用自定义错误码，补回 = 复活已否决的双重真相（与 ADR-043「替代方案-动态 pre-gate：拒绝」冲突）。
   - 修复链路：REQ-009 AC4 改写为「权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程」→ 重算 requirements-v1.hash → 同步 8 个测试文件 REQ-VERSION → signoff.md 追加 v1.2 签核段并修订 :50 → prd.md:123 删死错误码（软层对齐）→ prd.md:291 §11 测试决策 item 5（仍写「权限拒绝路径（E5）…spawn stub」）同步修订。
 
-- [ ] **RE4-2 IMPORTANT（code/perf）：RE2-6 选项 C 的失败恢复设计名存实亡（两处联动缺陷）**
+- [x] **RE4-2 IMPORTANT（code/perf）：RE2-6 选项 C 的失败恢复设计名存实亡（两处联动缺陷）**——**用户决策（选项 A）：完整修复**。缺陷 (a)：`getService` 中移除 `&& !refresh` 限制，刷新期间保留有效 stale 缓存展示（stale-while-revalidate），避免断网刷新时版本号与更新徽标被清空抹成 unknown；缺陷 (b)：`checkLatestVersion` 外网 fetch 失败时不写入长 TTL 负缓存，允许前端 2s×3 次轮询真正触发后台重试与恢复，同时依靠 in-flight 合并防止网络并发击穿。
   - (a) `cliService.js:895-909` getService refresh 路径丢弃 stale 缓存：`validCache = !refresh && …` 恒 false 后，`if (cached?.version && !refresh)` 也恒 false——refresh 时即使缓存有可展示的 stale 版本也退化为 unknown，与分支注释「返回 stale 缓存或 unknown」自相矛盾。失败场景：点「重新探测」时断网 → 已有版本号与「可更新」徽标从 UI 消失。修复：去掉 :904 的 `&& !refresh`。
   - (b) `cliService.js:627-629` 失败负缓存把 unknown 粘住 1 小时：fetch 失败写 `_latestVersionCache {version:"unknown"}`（TTL 1h），此后非 refresh 请求全部命中 valid cache 直接返回，**不再触发后台重拉**——前端 3 次轮询在负缓存有效期内全部空转，轮询机制失效，网络恢复后版本列卡 unknown 长达 1 小时。修复：失败态用短负缓存 TTL（30-60s），或失败时不写缓存（缺缓存时每轮轮询经 in-flight 合并恰好触发一次重试）。
   - 正面确认：in-flight 合并无竞态无泄漏、轮询可终止且 cleanup 正确、未安装条目跳过外网意图达成。
