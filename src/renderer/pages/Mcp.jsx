@@ -650,9 +650,10 @@ export default function Mcp() {
               )}
             </div>
             <div className="modal-footer">
-              {/* REQ-MCP-SSE-005：测试连接结果区（成功列工具名+描述；失败呈后端「连接失败：…」） */}
+              {/* REQ-MCP-SSE-005：测试连接结果区（成功列工具名+描述；失败呈后端「连接失败：…」）。
+                  BUG-002：容器定界（maxHeight + 纵向滚动 + 长词断行），超长描述不撑爆 footer。 */}
               {(connTesting || connResult) && (
-                <div data-testid="mcp-test-conn-result" style={{ width: "100%", textAlign: "left", fontSize: "var(--ch-text-xs)" }}>
+                <div data-testid="mcp-test-conn-result" style={{ width: "100%", textAlign: "left", fontSize: "var(--ch-text-xs)", maxHeight: 180, overflowY: "auto", wordBreak: "break-word" }}>
                   {connTesting && <span className="loading-text">探测中…</span>}
                   {!connTesting && connResult?.ok && (
                     <div>
