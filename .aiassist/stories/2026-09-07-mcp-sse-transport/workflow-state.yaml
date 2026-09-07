@@ -1,0 +1,44 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-09-07-mcp-sse-transport
+intention: >-
+  接入只提供 legacy SSE 端点的 MCP 服务(如 crawl4ai /mcp/sse)时无法显式配置 transport,依赖适配器自动回落,探测报假阴性,接入结果不可预期。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: BUILD      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-09-07
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-09-07, from: -, to: THINK, note: "创建 story：MCP 配置原生支持 SSE transport（动机：接入远程 crawl4ai）"}
+  - {at: 2026-09-07, from: THINK, to: PRD, note: "完成需求洞察：type 三选 stdio/http/sse、探测同修、UI 本期、http 取消自动回落、WS 出范围"}
+  - {at: 2026-09-07, from: PRD, to: DESIGN, note: "PRD v0.1 完成（simple，§6-11 完整，5 稳定块）；UI 仅扩展现有 seg 控件，DESIGN 可轻量确认后直入结晶自动链"}
+  - {at: 2026-09-07, from: DESIGN, to: CRYSTALLIZE, note: "用户确认跳过 DESIGN（复用现有 seg 表单模式）；DOMAIN-MODEL 轻量过：CONTEXT.md 新增「Transport 类型」术语；simple story 跳过 TECH-DESIGN；进入结晶自动链"}
+  - {at: 2026-09-07, from: CRYSTALLIZE, to: TEST, note: "结晶 REQ-MCP-SSE-001~004（capability=plugin-management, entity=mcp-server），requirements-v1.hash 已算，能力地图已更新；自动链续跑 test-author"}
+  - {at: 2026-09-07, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：api 19 用例（RED 17/绿 2 回归守卫）+ e2e 4 用例 + mcp-sse-server fixture；无升级点；自动链续跑 signoff"}
+  - {at: 2026-09-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：AI 全量自检无升级项（signoff.md），就地补全 PRD 空 url 错误消息字面量 + 探测 description 改非空断言；BUILD 解锁"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []              # [flow-a.html, flow-b.html, ...]
+
+# 已生成的变体(按需)。
+variants:
+  active: []                # [dark, compact, ...]
