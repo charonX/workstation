@@ -81,6 +81,7 @@
 | REQ-MCP-SSE-004 | AC5: 回归——stdio/http 原有表单与字段切换行为不回归 | `mcpSsePage.test.cjs` 用例 2 | `src/renderer/pages/Mcp.jsx`: 保持原有 stdio/http 分支逻辑 | PASS |
 
 - **验证记录**：
-  - `Slice 2: complete (e2e 4/4 passed, api 19/19 passed, PRD alignment passed)`
+  - `Slice 2: complete (7320953, e2e 4/4 passed, api 19/19 passed, PRD alignment passed)`
+  - `Slice 2: refactor pass done (7320953..7320953, tests green, no changes needed)`
 
 
