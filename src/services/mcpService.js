@@ -1,7 +1,7 @@
 // src/services/mcpService.js
 // REQ-AGENT-084：MCP server 配置 CRUD + 项目级启用 + effectiveConfig 快照（B4）。
 //
-// ServerRow = { id, name, type: "stdio"|"http", command?, args?, env?, url?, headers?,
+// ServerRow = { id, name, type: "stdio"|"http"|"sse", command?, args?, env?, url?, headers?,
 //               auth?: "none"|"bearer"|"oauth", enabled /* 全局开关默认 true */ }
 //
 // bearer token（BUG-006，REQ-AGENT-084 标准 6）：create/update 接受 token 明文入参，
@@ -26,7 +26,7 @@ import { listMcpPermissionDefaults, replaceMcpPermissionDefaults } from "./mcpPe
 // REQ-AGENT-084 AC7（BUG-013）：工具探测走官方 MCP client SDK（@modelcontextprotocol/client，
 // pi-mcp-adapter 传递依赖）。main/worker bundle 均已 external（regex 含子路径），运行期从
 // node_modules / asar 加载——SDK 内部 spawn/fetch 不可内联（BUG-002 同因）。
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { Client, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 
 // 探测超时：即连即断的管理面操作，不给长窗口。
@@ -49,6 +49,7 @@ function resolveDbPath() {
 // slug 安全字符：字母/数字开头，可含 . _ -
 const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const HEADER_KEY_RE = /^[A-Za-z0-9._-]+$/;
 
 function jsonParse(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -105,20 +106,21 @@ function toDbColumns(row, existingTokenEnc) {
  * 明文 token 永不落库。
  */
 function computeTokenEnc(row, existingTokenEnc) {
-  if (row.type !== "http" || row.auth !== "bearer") return null;
+  if ((row.type !== "http" && row.type !== "sse") || row.auth !== "bearer") return null;
   if (typeof row.token === "string" && row.token.trim() !== "") {
     return encryptSecret(row.token.trim());
   }
   return existingTokenEnc ?? null;
 }
 
-/** env/headers 必须是 { KEY: string }，KEY 为合法环境变量名（错误文案含 KEY=VALUE）。 */
+/** env/headers 必须是 { KEY: string }，KEY 为合法环境变量名或 HTTP header 名（错误文案含 KEY=VALUE）。 */
 function validateKeyValue(obj, fieldLabel) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
     throw new Error(`${fieldLabel} 格式为 KEY=VALUE`);
   }
+  const keyRe = fieldLabel === "headers" ? HEADER_KEY_RE : ENV_KEY_RE;
   for (const [key, value] of Object.entries(obj)) {
-    if (!ENV_KEY_RE.test(key)) {
+    if (!keyRe.test(key)) {
       throw new Error(`${fieldLabel} 格式为 KEY=VALUE（KEY 不合法: ${key}）`);
     }
     if (typeof value !== "string") {
@@ -198,19 +200,20 @@ function normalizeRow(row) {
   };
 }
 
-/** 对齐 pi-mcp-adapter ServerEntry：stdio 输出 command/args/env；http 输出 url/headers/auth/bearerToken。 */
+/** 对齐 pi-mcp-adapter ServerEntry：stdio 输出 command/args/env；http/sse 输出 url/headers/auth/bearerToken/httpTransport。 */
 function toBridgeEntry(row, tokenEnc) {
   const entry = {};
   if (row.type === "stdio") {
     if (row.command) entry.command = row.command;
     if (Array.isArray(row.args) && row.args.length > 0) entry.args = row.args;
     if (row.env && Object.keys(row.env).length > 0) entry.env = row.env;
-  } else if (row.type === "http") {
+  } else if (row.type === "http" || row.type === "sse") {
     if (row.url) entry.url = row.url;
     if (row.headers && Object.keys(row.headers).length > 0) entry.headers = row.headers;
     if (row.auth && row.auth !== "none") entry.auth = row.auth; // "bearer" | "oauth"
     // BUG-006：快照是唯一解密点——桥据此注入 Authorization: Bearer 头
     if (row.auth === "bearer" && tokenEnc) entry.bearerToken = decryptSecret(tokenEnc);
+    entry.httpTransport = row.type === "sse" ? "sse" : "streamable-http";
   }
   return entry;
 }
@@ -230,10 +233,10 @@ export function createMcpService() {
       validateName(d, normalized.name);
       if (normalized.type === "stdio") {
         validateStdio(normalized);
-      } else if (normalized.type === "http") {
+      } else if (normalized.type === "http" || normalized.type === "sse") {
         validateHttp(normalized);
       } else {
-        throw new Error("type 不合法: 仅支持 stdio/http");
+        throw new Error("type 不合法: 仅支持 stdio/http/sse");
       }
       const id = crypto.randomUUID();
       const createdAt = timestamp();
@@ -301,8 +304,13 @@ export function createMcpService() {
       };
       // 既有密文：bearer 未给新 token 时保留；校验「bearer 必须有 token 来源」也认它。
       const existingTokenEnc = d.prepare("SELECT token_enc FROM mcp_servers WHERE id = ?").get(existing.id)?.token_enc ?? null;
-      if (merged.type === "stdio") validateStdio(merged);
-      else if (merged.type === "http") validateHttp(merged, existingTokenEnc);
+      if (merged.type === "stdio") {
+        validateStdio(merged);
+      } else if (merged.type === "http" || merged.type === "sse") {
+        validateHttp(merged, existingTokenEnc);
+      } else {
+        throw new Error("type 不合法: 仅支持 stdio/http/sse");
+      }
       d.prepare(
         `UPDATE mcp_servers SET type = ?, command = ?, args = ?, env = ?, url = ?, headers = ?, auth = ?, token_enc = ?, enabled = ?
          WHERE id = ?`
@@ -386,6 +394,13 @@ export function createMcpService() {
           // 探测继承默认环境（PATH 等）+ 配置的 env——否则 npx 类命令找不到。
           env: { ...getDefaultEnvironment(), ...(bridge.env ?? {}) },
           stderr: "pipe",
+        });
+      } else if (server.type === "sse") {
+        const headers = { ...(bridge.headers ?? {}) };
+        if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
+        transport = new SSEClientTransport(new URL(server.url), {
+          eventSourceInit: { headers },
+          requestInit: { headers },
         });
       } else {
         const headers = { ...(bridge.headers ?? {}) };
