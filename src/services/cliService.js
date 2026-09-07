@@ -622,10 +622,12 @@ export async function createCliService(options = {}) {
               const fetchFn = svc._stubFetchLatest || defaultFetchLatest;
               const fetched = await fetchFn(pkg, channel);
               const resultVersion = fetched || "unknown";
-              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: resultVersion });
+              if (resultVersion !== "unknown") {
+                svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: resultVersion });
+              }
               return resultVersion;
             } catch {
-              svc._latestVersionCache.set(cacheKey, { timestamp: Date.now(), version: "unknown" });
+              // 失败时不写入长 TTL 负缓存，避免锁定 unknown 阻断后续轮询与恢复
               return "unknown";
             } finally {
               svc._inFlightVersionChecks.delete(cacheKey);
@@ -900,10 +902,10 @@ export async function createCliService(options = {}) {
               updateAvailable = compareSemver(latestVersion, probeRes.version) > 0;
             }
           } else {
-            // 冷缓存或刷新时：返回 stale 缓存或 unknown，并在后台异步拉取最新版本，不阻塞主响应关键路径
-            if (cached?.version && !refresh) {
+            // 冷缓存或刷新时：若已有有效版本则展示 stale 缓存（避免 UI 闪烁回 unknown），并在后台异步拉取最新版本
+            if (cached?.version && cached.version !== "unknown") {
               latestVersion = cached.version;
-              if (probeRes.version && latestVersion !== "unknown") {
+              if (probeRes.version) {
                 updateAvailable = compareSemver(latestVersion, probeRes.version) > 0;
               }
             }
