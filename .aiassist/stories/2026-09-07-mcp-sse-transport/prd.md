@@ -1,6 +1,6 @@
 # MCP 注册原生支持 SSE transport
 
-> 状态：探索期
+> 状态：已锁定
 > 故事 ID：`2026-09-07-mcp-sse-transport`
 > 最后更新：2026-09-07
 
@@ -224,7 +224,7 @@
 |---|---|---|---|
 | 1 注册校验/存储 | mcpService.create/update/list（直接调 service，临时 DB） | 集成（api 层） | 真实 SQLite 临时库 |
 | 2 桥接快照 | mcpService.effectiveConfig | 集成 | 真实临时库 + 预置加密 token |
-| 3 探测分派 | mcpService.probeTools | 集成 | 本地 legacy-SSE MCP stub server（MCP SDK SSEServerTransport 起在随机端口）；失败用例指向已关闭端口 |
+| 3 探测分派 | mcpService.probeTools | 集成 | 本地 legacy-SSE MCP stub server（**手写最小协议 fixture** `tests/fixtures/mcp-sse-server/`，不依赖 MCP SDK——SDK 在本仓库仅为传递依赖且与生产 client 包跨大版本）；失败用例指向已关闭端口 |
 | 4 UI 三选 | Mcp.jsx 表单结构/行为 | 组件/浏览器结构行为测试（既有 renderer 测试模式） | stub API |
 | 5 http 不回落 | effectiveConfig 输出断言（httpTransport:"streamable-http"） | 并入块 2 集成测试 | 同上 |
 
@@ -247,6 +247,7 @@
 
 - **行为变更记录**：本 story 上线后，`type: http` 条目在会话桥接中显式声明 `httpTransport:"streamable-http"`，pi-mcp-adapter 不再对其执行 SSE 自动回落。若有 http 条目实际指向 SSE-only 端点且此前靠回落工作，需管理员将其 type 改为 sse。
 - 动机场景（crawl4ai 部署于远程服务器，`CRAWL4AI_API_TOKEN` bearer 鉴权，端点 `/mcp/sse`）作为本 story 的 QA 验收基准。
+- **范围决议（2026-09-07 review 后人确认）**：BUILD 阶段一并移除了 crawl4ai 的 CLI 服务纳管（`cliRegistry`/`policyRules`/`skillService`/CliServices UI/内置 skill，commit `9682aac`/`0c69a02`）。该变更未含在已签核 REQ 内，属范围扩张；review code-F1 检出后人裁决**确认该决策**（crawl4ai 接入统一走 MCP SSE），补记于 ADR-043 修订记录，已完成 story 2026-09-06-cli-service-connection 的 spec 按双真值规则不回改。
 
 ## 14. PRD 完整性自检查
 
@@ -266,3 +267,4 @@
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v0.1 | 2026-09-07 | 初稿（访谈确认方向 A：type 三选 + 探测同修 + UI 本期 + http 不回落 + WS 出范围） | AI + 人 |
+| v0.2 | 2026-09-07 | signoff 就地补全（空 url 错误消息字面量）；review 修订：§11.1 stub 方案对齐手写 fixture、§13 增补 crawl4ai CLI 移除范围决议 | AI + 人 |

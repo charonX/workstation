@@ -84,10 +84,12 @@ SSE transport 本体（PRD/tech/req/security 四层 PASS，实现 19/19 契约�
 
 ## 审查人决策记录
 
-<!-- 人填写：是否接受本 review 结论，以及理由。 -->
+**决策**：有条件接受
 
-**决策**：接受 / 有条件接受 / 不接受
+**理由**：SSE transport 本体五层质量达标（prd/tech/req/security PASS，实现 19/19 + 40/40 + 42/42 三链全绿）；两个阻塞项均有明确修复路径。code-F1 属"合理决策走了错误流程"——crawl4ai 真实部署形态是远程服务，移除 CLI 纳管与本 story 初衷（MCP SSE 接入）自洽，予以确认但要求补全记录。
 
-**理由**：
+**下一步动作**（2026-09-07 已执行）：
 
-**下一步动作**：
+1. **code-F1**：确认决策——ADR-043 增补修订记录（crawl4ai 移出 CLI 清单，改由 MCP SSE 对接）、CONTEXT.md「CLI 服务」与 business-capabilities.md cli-service 行同步修订、本 story PRD §13/v0.2 与 signoff.md v1.1 补记范围决议。已完成 story spec 按双真值规则不回改。
+2. **test-F1**：已补 `page.on("request")` 拦截断言（e2e 用例 3：POST body `type==="sse"` 且不含 command/args/env 键）；同轮补强 test-F2（mcpSseProbe 标准 5b stdio 探测回归，api 20/20 绿）与 test-F3（headers 字段可见性断言）。
+3. **遗留非阻塞项**：security-F1（Authorization 大小写变体）、F2（探测解密 fail-closed 粒度）、F3（URL userinfo）挂账至 signoff.md v1.1，后续 story/bug 收口；tech-F1（§11.1 文本对齐手写 fixture）已就地修订；tech-F4（「http 不回落」语义沉淀）交 /reflect。

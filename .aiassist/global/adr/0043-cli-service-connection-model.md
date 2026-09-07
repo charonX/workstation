@@ -3,6 +3,16 @@
 ## 状态
 已接受 (Accepted) — 2026-09-06
 
+## 修订记录
+
+### 2026-09-07 修订：首批清单移除 crawl4ai（claude / codex 保留）
+
+- **决定**：crawl4ai 不再作为本机 CLI 服务纳管；接入 crawl4ai 改由 MCP SSE（story 2026-09-07-mcp-sse-transport，`type:"sse"` 显式 transport）。
+- **理由**：crawl4ai 的真实部署形态是远程服务（Docker，REST + `/mcp/sse`），本机 `crwl` CLI 纳管价值低且与 MCP 接入面重复。
+- **流程说明**：该变更在 2026-09-07-mcp-sse-transport BUILD 阶段先行落地（commit `9682aac`/`0c69a02`），属未经签核的范围扩张；review 检出（code-F1）后由人裁决确认（见该 story `review.md` 审查人决策记录），在此补记。原 REQ-CLI-SERVICE-001「清单恰好 3 项」断言随之失效，测试已同步改为 2 项；已完成 story 的 spec 按双真值规则不回改，意图真值以本修订为准。
+- **影响面**：`cliRegistry` / `policyRules` / `skillService` / CliServices UI / 内置 skill `cli-crawl4ai` 同步删除；存量用户 DB 中 `cli_services`/`cli_service_project_enablement` 的 crawl4ai 行残留（幂等无害，不做迁移）。
+- **教训**：实现侧的范围扩张必须先回规格层裁决再动手（详见 2026-09-07-mcp-sse-transport review.md code-F1）。
+
 ## 背景与问题
 
 story 2026-09-06-cli-service-connection 把本机 CLI 服务（首批 claude / codex / crawl4ai）纳为一等配置实体（检测/管理/两层启用/agent 一次性调用），三个决策点有真实取舍且难逆转：

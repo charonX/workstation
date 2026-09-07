@@ -64,3 +64,12 @@ capability/entity 与 `business-capabilities.md` 一致（`plugin-management` / 
 - **范围决策**：WS 出范围、http 取消回落，均为访谈中用户逐项拍板（非 AI 自决）；PRD §14 自检查全 PASS，无悬空 GAP。
 
 **结论：无升级项，AI 全量自检通过，断言签核锁定。BUILD 解锁。**
+
+---
+
+## Assertion v1.1 补记（2026-09-07，review 后）
+
+- **范围扩张追认**：BUILD 阶段的 crawl4ai CLI 移除（commit `9682aac`/`0c69a02`）未经本签核授权，review code-F1 检出后由人裁决**确认**（见 `review.md` 审查人决策记录）；意图真值补记于 ADR-043 修订记录与本 story PRD §13/v0.2。本 story 已签核的 4 条 REQ 与 expected 锚点**不受影响**，requirements v1 哈希不变。
+- **测试补强（test-F1/F2/F3 修复）**：`mcpSsePage.test.cjs` 用例 3 补 POST 请求体拦截断言（`type:"sse"` 且不含 command/args/env 键，REQ-004 AC3 落点闭合）；用例 2 补 `mcp-headers-input` 可见性断言；`mcpSseProbe.test.js` 补标准 5b stdio 探测回归（REQ-003 AC5 完整化）。均为对既签 AC 的断言补强，未改动任何 expected 值。
+- **挂账**：PRD §11.1 块 4 seam 实际落地为 Electron 真实后端 E2E（高于计划的 stub API 组件测试，置信度更高），已在 review.md 记录。
+- **遗留（非阻塞，后续 story/bug 收口）**：security-F1（bearer 时拒绝大小写变体 `authorization` 用户 header）、F2（probeTools 解密纳入 try / effectiveConfig 单 key fail-closed）、F3（URL userinfo 拦截）。
