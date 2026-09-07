@@ -690,22 +690,19 @@ export async function createCliService(options = {}) {
       assertKnownCli(id);
 
       const d = db();
-      try {
-        const projectCount = d.prepare("SELECT COUNT(*) as cnt FROM projects").get()?.cnt ?? 0;
-        if (projectCount > 0) {
-          const row = d.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId);
-          if (!row) {
-            throw createCliError("E-PROJECT-NOT-FOUND", `项目不存在: ${projectId}`);
-          }
-        }
-      } catch (err) {
-        if (err?.code === "E-PROJECT-NOT-FOUND") throw err;
-      }
-
       const globalRow = d.prepare("SELECT enabled FROM cli_services WHERE id = ?").get(id);
       const isEnabled = Boolean(enabled);
       if (isEnabled && (!globalRow || globalRow.enabled !== 1)) {
         throw createCliError("E-CLI-GLOBALLY-DISABLED", "全局未启用禁止在项目内启用");
+      }
+
+      try {
+        const row = d.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId);
+        if (!row) {
+          throw createCliError("E-PROJECT-NOT-FOUND", `项目不存在: ${projectId}`);
+        }
+      } catch (err) {
+        if (err?.code === "E-PROJECT-NOT-FOUND") throw err;
       }
 
       const now = new Date().toISOString();
