@@ -7,6 +7,7 @@
 //   GET    /api/mcp/permission-defaults           → mcpService.listPermissionDefaults（BUG-014 默认层）
 //   PUT    /api/mcp/permission-defaults { rules } → mcpService.replacePermissionDefaults（全量替换）
 //   GET    /api/mcp/:name/tools                   → mcpService.probeTools（BUG-013 AC7 工具探测）
+//   POST   /api/mcp/probe  { 内联配置 }            → mcpService.probeConfig（REQ-MCP-SSE-005 ad-hoc 测试连接，无持久化）
 //   POST   /api/mcp                               → mcpService.create
 //   PUT    /api/mcp/:name                         → mcpService.update（BUG-008）
 //   DELETE /api/mcp/:name                         → mcpService.remove
@@ -63,6 +64,20 @@ export async function handleMcp(req, res, body, pathParts) {
       }
     }
     return notFound(res);
+  }
+
+  // REQ-MCP-SSE-005（req-gap 补全）：未落库配置的 ad-hoc 测试连接——body 为内联
+  // server 配置，即连即断、无持久化。literal 分支必须先于 /:name 通配命中。
+  if (pathParts.length === 1 && pathParts[0] === "probe" && req.method === "POST") {
+    try {
+      return ok(res, await getService().probeConfig(body || {}));
+    } catch (err) {
+      // 业务错误（校验字面量 / 连接失败 / 探测超时）→ 4xx；error/message 同载业务
+      // 文案（「连接失败：…」等），对齐 mcpAdhocProbe 契约与渲染端 client 读取形态。
+      const message = err?.message ?? String(err);
+      res.writeHead(err?.status || 400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: message, message }));
+    }
   }
 
   const name = decodeParam(pathParts[0]);

@@ -33,6 +33,7 @@ export function setPluginProjectEnabled(name, projectId, enabled) {
 //   POST   /api/mcp/:name/global-enabled { enabled }          → 全局开关
 //   POST   /api/mcp/:name/project-enable { projectId, enabled } → 按项目启用
 //   GET    /api/mcp/:name/tools → probeTools（BUG-013 AC7：直连拉 tools/list，{ tools: [...] }）
+//   POST   /api/mcp/probe { 内联配置 } → probeConfig（REQ-MCP-SSE-005：ad-hoc 测试连接，无持久化）
 export function listMcpServers(projectId) {
   // BUG-012：带 projectId 时走项目感知清单（row.enabled = 该项目启用态）——
   // 对齐 listPlugins(projectId) 先例；无参保持全局开关语义。
@@ -69,6 +70,13 @@ export function setMcpProjectEnabled(name, projectId, enabled) {
 // 连接失败时 get() 抛业务错误（message 含「连接失败」），调用方呈弹窗错误态。
 export function listMcpTools(name) {
   return get(`/api/mcp/${encodeURIComponent(name)}/tools`);
+}
+
+// REQ-MCP-SSE-005（req-gap 补全）：未落库配置的 ad-hoc 测试连接——弹窗「测试连接」
+// 按钮，body 为当前表单内联配置；即连即断、无持久化。连接失败时抛业务错误
+//（message 含「连接失败：…」）。
+export function probeMcpConfig(payload) {
+  return post("/api/mcp/probe", payload);
 }
 
 // BUG-014（REQ-AGENT-087 默认层）：用户级默认权限——MCP 页「默认权限」区编辑，

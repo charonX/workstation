@@ -31,6 +31,7 @@ import {
   setMcpGlobalEnabled,
   setMcpProjectEnabled,
   listMcpTools,
+  probeMcpConfig,
   getMcpPermissionDefaults,
   putMcpPermissionDefaults,
 } from "../api/plugins.js";
@@ -80,6 +81,11 @@ export default function Mcp() {
   });
   const [mcpFormError, setMcpFormError] = useState(null);
   const [mcpSaving, setMcpSaving] = useState(false);
+
+  // REQ-MCP-SSE-005：弹窗「测试连接」——未落库内联配置 ad-hoc 探测结果
+  //（connResult = { ok: true, tools } | { ok: false, error } | null）。
+  const [connTesting, setConnTesting] = useState(false);
+  const [connResult, setConnResult] = useState(null);
 
   // 工具清单弹窗（AC7）：toolsOpen 非空 = 打开的 server 名。
   const [toolsName, setToolsName] = useState(null);
@@ -200,6 +206,7 @@ export default function Mcp() {
     setEditingMcp(null);
     setMcpForm({ name: "", type: "stdio", command: "", args: "", env: "", url: "", auth: "none", token: "", headers: "" });
     setMcpFormError(null);
+    setConnResult(null);
     setAddMcpOpen(true);
   };
 
@@ -222,6 +229,7 @@ export default function Mcp() {
       headers: kvLines(server.headers),
     });
     setMcpFormError(null);
+    setConnResult(null);
     setAddMcpOpen(true);
   };
 
@@ -269,6 +277,44 @@ export default function Mcp() {
       setMcpFormError(err?.message || String(err));
     } finally {
       setMcpSaving(false);
+    }
+  };
+
+  // REQ-MCP-SSE-005：弹窗「测试连接」——用当前表单值组装 payload（与 submit 组装
+  // 同构，但不送 name/enabled），POST /api/mcp/probe ad-hoc 探测；不触发保存、不关闭弹窗。
+  const handleTestConn = async () => {
+    // 编辑模式 + bearer + token 留空：已存 token 不可用于 ad-hoc 探测（API 不回明文）。
+    if (editingMcp && mcpForm.type !== "stdio" && mcpForm.auth === "bearer" && mcpForm.token.trim() === "") {
+      setConnResult({ ok: false, error: "编辑模式测试连接需重填 token" });
+      return;
+    }
+    const body = { type: mcpForm.type };
+    if (mcpForm.type === "stdio") {
+      body.command = mcpForm.command.trim();
+      body.args = mcpForm.args
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const env = parseKeyValueLines(mcpForm.env);
+      if (env !== null) body.env = env;
+    } else {
+      body.url = mcpForm.url.trim();
+      body.auth = mcpForm.auth;
+      if (mcpForm.auth === "bearer" && mcpForm.token.trim() !== "") {
+        body.token = mcpForm.token.trim();
+      }
+      const headers = parseKeyValueLines(mcpForm.headers);
+      if (headers !== null) body.headers = headers;
+    }
+    setConnTesting(true);
+    setConnResult(null);
+    try {
+      const res = await probeMcpConfig(body);
+      setConnResult({ ok: true, tools: Array.isArray(res?.tools) ? res.tools : [] });
+    } catch (err) {
+      setConnResult({ ok: false, error: err?.message || String(err) });
+    } finally {
+      setConnTesting(false);
     }
   };
 
@@ -604,6 +650,41 @@ export default function Mcp() {
               )}
             </div>
             <div className="modal-footer">
+              {/* REQ-MCP-SSE-005：测试连接结果区（成功列工具名+描述；失败呈后端「连接失败：…」） */}
+              {(connTesting || connResult) && (
+                <div data-testid="mcp-test-conn-result" style={{ width: "100%", textAlign: "left", fontSize: "var(--ch-text-xs)" }}>
+                  {connTesting && <span className="loading-text">探测中…</span>}
+                  {!connTesting && connResult?.ok && (
+                    <div>
+                      <div style={{ color: "var(--ch-success, inherit)" }}>
+                        连接成功，共 {connResult.tools.length} 个工具
+                      </div>
+                      {connResult.tools.length > 0 && (
+                        <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                          {connResult.tools.map((t) => (
+                            <li key={t.name}>
+                              <span className="mono">{t.name}</span>
+                              {t.description ? ` — ${t.description}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {!connTesting && connResult && !connResult.ok && (
+                    <span style={{ color: "var(--ch-error)" }}>{connResult.error}</span>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                data-testid="mcp-test-conn-button"
+                onClick={handleTestConn}
+                disabled={connTesting}
+              >
+                {connTesting ? "探测中…" : "测试连接"}
+              </button>
               <button type="button" className="btn btn-ghost" onClick={() => setAddMcpOpen(false)}>取消</button>
               <button
                 type="button"

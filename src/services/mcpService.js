@@ -218,6 +218,60 @@ function toBridgeEntry(row, tokenEnc) {
   return entry;
 }
 
+/**
+ * probeTools / probeConfig 共享的 connect/listTools helper（REQ-MCP-SSE-005）：
+ * 按声明 type 建 transport（stdio→StdioClientTransport 继承默认环境；sse→SSEClientTransport
+ * headers 双注入 eventSourceInit/requestInit；http→StreamableHTTPClientTransport，
+ * bearer 均加 Authorization 头），即连即断拉 tools/list。
+ * 连接/握手失败 → 「连接失败：…」；超时 → 「探测超时（Ns）」。
+ */
+async function probeEntry(type, bridge, url) {
+  let transport;
+  if (type === "stdio") {
+    transport = new StdioClientTransport({
+      command: bridge.command,
+      args: bridge.args ?? [],
+      // 探测继承默认环境（PATH 等）+ 配置的 env——否则 npx 类命令找不到。
+      env: { ...getDefaultEnvironment(), ...(bridge.env ?? {}) },
+      stderr: "pipe",
+    });
+  } else if (type === "sse") {
+    const headers = { ...(bridge.headers ?? {}) };
+    if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
+    transport = new SSEClientTransport(new URL(url), {
+      eventSourceInit: { headers },
+      requestInit: { headers },
+    });
+  } else {
+    const headers = { ...(bridge.headers ?? {}) };
+    if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
+    transport = new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers },
+    });
+  }
+
+  const client = new Client({ name: "opc-workstation-probe", version: "0.0.0" });
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`探测超时（${PROBE_TIMEOUT_MS / 1000}s）`)), PROBE_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([
+      (async () => {
+        await client.connect(transport);
+        return await client.listTools();
+      })(),
+      timeout,
+    ]);
+    return (result.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" }));
+  } catch (err) {
+    throw new Error(`连接失败：${err?.message ?? String(err)}`);
+  } finally {
+    clearTimeout(timer);
+    await client.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 服务
 // ---------------------------------------------------------------------------
@@ -385,51 +439,33 @@ export function createMcpService() {
       if (!row) throw new Error(`MCP server 不存在: ${name}`);
       const server = rowToServerRow(row);
       const bridge = toBridgeEntry(server, row.token_enc);
+      return probeEntry(server.type, bridge, server.url);
+    },
 
-      let transport;
-      if (server.type === "stdio") {
-        transport = new StdioClientTransport({
-          command: bridge.command,
-          args: bridge.args ?? [],
-          // 探测继承默认环境（PATH 等）+ 配置的 env——否则 npx 类命令找不到。
-          env: { ...getDefaultEnvironment(), ...(bridge.env ?? {}) },
-          stderr: "pipe",
-        });
-      } else if (server.type === "sse") {
-        const headers = { ...(bridge.headers ?? {}) };
-        if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
-        transport = new SSEClientTransport(new URL(server.url), {
-          eventSourceInit: { headers },
-          requestInit: { headers },
-        });
+    /**
+     * REQ-MCP-SSE-005：未落库配置的 ad-hoc 测试连接（req-gap 补全）。
+     * 输入为弹窗内联配置（无需 name）；校验与 create 同构（stdio→validateStdio，
+     * http/sse→validateHttp——ad-hoc 无既有密文，auth=bearer 必须内联带 token）。
+     * 无持久化：不写 mcp_servers、不经 token_enc；内联 token 明文仅在请求
+     * 生命周期内用于连接注入，不落库、不回显。
+     */
+    async probeConfig(row) {
+      const normalized = normalizeRow(row);
+      if (normalized.type === "stdio") {
+        validateStdio(normalized);
+      } else if (normalized.type === "http" || normalized.type === "sse") {
+        validateHttp(normalized);
       } else {
-        const headers = { ...(bridge.headers ?? {}) };
-        if (bridge.bearerToken) headers.Authorization = `Bearer ${bridge.bearerToken}`;
-        transport = new StreamableHTTPClientTransport(new URL(server.url), {
-          requestInit: { headers },
-        });
+        throw new Error("type 不合法: 仅支持 stdio/http/sse");
       }
-
-      const client = new Client({ name: "opc-workstation-probe", version: "0.0.0" });
-      let timer;
-      const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`探测超时（${PROBE_TIMEOUT_MS / 1000}s）`)), PROBE_TIMEOUT_MS);
-      });
-      try {
-        const result = await Promise.race([
-          (async () => {
-            await client.connect(transport);
-            return await client.listTools();
-          })(),
-          timeout,
-        ]);
-        return (result.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" }));
-      } catch (err) {
-        throw new Error(`连接失败：${err?.message ?? String(err)}`);
-      } finally {
-        clearTimeout(timer);
-        await client.close().catch(() => {});
+      const bridge = toBridgeEntry(normalized, null);
+      // 内联 token 明文直接注入 Authorization 头（解密点逻辑不适用于 ad-hoc，
+      // 明文不出本函数、不进响应）。
+      if (bridge.auth === "bearer" && typeof normalized.token === "string" && normalized.token.trim() !== "") {
+        bridge.bearerToken = normalized.token.trim();
       }
+      const tools = await probeEntry(normalized.type, bridge, normalized.url);
+      return { tools };
     },
   };
 }
