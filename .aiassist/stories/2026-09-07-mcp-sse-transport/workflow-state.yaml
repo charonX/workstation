@@ -8,7 +8,7 @@ intention: >-
 phase: BUG       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
-bug-counter: 1    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+bug-counter: 2    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-09-07
 status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
 completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
@@ -26,6 +26,7 @@ history:
   - {at: 2026-09-07, from: QA, to: QA, note: "末端 review FAIL→修复闭环：code-F1 crawl4ai CLI 移除经人裁决确认（ADR-043 修订补记）；test-F1/F2/F3 断言补强（api 20/20 绿）；review.md 决策记录已填，signoff v1.1"}
   - {at: 2026-09-07, from: QA, to: BUG, note: "BUG-001 req-gap（人裁决就地补全）：添加/编辑弹窗缺测试连接——补 REQ-MCP-SSE-005 + requirements v2 + signoff v1.2 + 回归测试（RED 证实）"}
   - {at: 2026-09-07, from: BUG, to: BUG, note: "BUG-001 修复完成：probeConfig + POST /api/mcp/probe + 弹窗测试连接按钮；api 25/25 + 旧 MCP 回归 40/40 绿；[bugfix] BUG-001 已提交"}
+  - {at: 2026-09-07, from: BUG, to: BUG, note: "BUG-002 code-defect（人裁决）：测试连接结果区无定界被超长描述撑爆——回归 RED 证实后修复（maxHeight+滚动+断行），story e2e 7/7 绿；[bugfix] BUG-002 已提交"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
