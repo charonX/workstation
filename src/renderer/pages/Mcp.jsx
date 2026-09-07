@@ -262,7 +262,6 @@ export default function Mcp() {
     setMcpSaving(true);
     setMcpFormError(null);
     try {
-      const savedName = editingMcp ? editingMcp.name : body.name;
       if (editingMcp) {
         await updateMcpServer(editingMcp.name, body);
       } else {
@@ -271,8 +270,6 @@ export default function Mcp() {
       setAddMcpOpen(false);
       setEditingMcp(null);
       await reload();
-      // AC7：保存后自动连接拉取工具（失败呈弹窗错误态，不影响保存结果）。
-      openTools(savedName);
     } catch (err) {
       setMcpFormError(err?.message || String(err));
     } finally {
@@ -356,6 +353,39 @@ export default function Mcp() {
   };
 
   const mcpCount = (name) => mcpProjectMap[name]?.size ?? 0;
+
+  const getFieldError = (fieldName) => {
+    if (!mcpFormError) return null;
+    const msg = mcpFormError.toLowerCase();
+    if (fieldName === "name") {
+      if (mcpFormError.includes("名称") || msg.includes("name") || mcpFormError.includes("已存在")) return mcpFormError;
+    }
+    if (fieldName === "url") {
+      if (msg.includes("url")) return mcpFormError;
+    }
+    if (fieldName === "command") {
+      if (mcpFormError.includes("命令") || msg.includes("command")) return mcpFormError;
+    }
+    if (fieldName === "token" || fieldName === "auth") {
+      if (msg.includes("token") || msg.includes("auth")) return mcpFormError;
+    }
+    if (fieldName === "headers") {
+      if (msg.includes("headers") || (mcpForm.type !== "stdio" && mcpFormError.includes("KEY=VALUE"))) return mcpFormError;
+    }
+    if (fieldName === "env") {
+      if (msg.includes("env") || (mcpForm.type === "stdio" && mcpFormError.includes("KEY=VALUE"))) return mcpFormError;
+    }
+    return null;
+  };
+
+  const nameError = getFieldError("name");
+  const urlError = getFieldError("url");
+  const commandError = getFieldError("command");
+  const tokenError = getFieldError("token");
+  const headersError = getFieldError("headers");
+  const envError = getFieldError("env");
+  const isFieldMapped = Boolean(nameError || urlError || commandError || tokenError || headersError || envError);
+  const generalError = !isFieldMapped ? mcpFormError : null;
 
   return (
     <div className="page plugins-page" data-testid="mcp-page">
@@ -506,15 +536,19 @@ export default function Mcp() {
               <button type="button" className="icon-btn" onClick={() => setAddMcpOpen(false)} aria-label="close">✕</button>
             </div>
             <div className="modal-body">
-              <div className="field">
+              <div className={`field${nameError ? " invalid" : ""}`}>
                 <label>名称（库内唯一）</label>
                 <input
                   data-testid="mcp-name-input"
                   placeholder="local-db"
                   value={mcpForm.name}
                   disabled={!!editingMcp}
-                  onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })}
+                  onChange={(e) => {
+                    setMcpForm({ ...mcpForm, name: e.target.value });
+                    setMcpFormError(null);
+                  }}
                 />
+                <span className="err">{nameError}</span>
               </div>
               <div className="field">
                 <label>连接类型</label>
@@ -523,7 +557,10 @@ export default function Mcp() {
                     type="button"
                     className={mcpForm.type === "stdio" ? "active" : ""}
                     data-type="stdio"
-                    onClick={() => setMcpForm({ ...mcpForm, type: "stdio", command: "", args: "", env: "" })}
+                    onClick={() => {
+                      setMcpForm({ ...mcpForm, type: "stdio", command: "", args: "", env: "" });
+                      setMcpFormError(null);
+                    }}
                   >
                     stdio（本地命令）
                   </button>
@@ -531,7 +568,10 @@ export default function Mcp() {
                     type="button"
                     className={mcpForm.type === "http" ? "active" : ""}
                     data-type="http"
-                    onClick={() => setMcpForm({ ...mcpForm, type: "http", url: "", headers: "" })}
+                    onClick={() => {
+                      setMcpForm({ ...mcpForm, type: "http", url: "", headers: "" });
+                      setMcpFormError(null);
+                    }}
                   >
                     HTTP（远程服务）
                   </button>
@@ -539,7 +579,10 @@ export default function Mcp() {
                     type="button"
                     className={mcpForm.type === "sse" ? "active" : ""}
                     data-type="sse"
-                    onClick={() => setMcpForm({ ...mcpForm, type: "sse", url: "", headers: "" })}
+                    onClick={() => {
+                      setMcpForm({ ...mcpForm, type: "sse", url: "", headers: "" });
+                      setMcpFormError(null);
+                    }}
                   >
                     SSE（流式服务）
                   </button>
@@ -548,15 +591,19 @@ export default function Mcp() {
 
               {mcpForm.type === "stdio" && (
                 <>
-                  <div className="field">
+                  <div className={`field${commandError ? " invalid" : ""}`}>
                     <label>启动命令</label>
                     <input
                       data-testid="mcp-command-input"
                       className="mono"
                       placeholder="npx"
                       value={mcpForm.command}
-                      onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value })}
+                      onChange={(e) => {
+                        setMcpForm({ ...mcpForm, command: e.target.value });
+                        setMcpFormError(null);
+                      }}
                     />
+                    <span className="err">{commandError}</span>
                   </div>
                   <div className="field">
                     <label>参数（每行一个）</label>
@@ -569,7 +616,7 @@ export default function Mcp() {
                       onChange={(e) => setMcpForm({ ...mcpForm, args: e.target.value })}
                     />
                   </div>
-                  <div className="field">
+                  <div className={`field${envError ? " invalid" : ""}`}>
                     <label>环境变量（KEY=VALUE，每行一条）</label>
                     <textarea
                       data-testid="mcp-env-input"
@@ -577,15 +624,19 @@ export default function Mcp() {
                       rows="2"
                       placeholder="DB_PATH=./data/app.db"
                       value={mcpForm.env}
-                      onChange={(e) => setMcpForm({ ...mcpForm, env: e.target.value })}
+                      onChange={(e) => {
+                        setMcpForm({ ...mcpForm, env: e.target.value });
+                        setMcpFormError(null);
+                      }}
                     />
+                    <span className="err">{envError}</span>
                   </div>
                 </>
               )}
 
               {(mcpForm.type === "http" || mcpForm.type === "sse") && (
                 <>
-                  <div className={`field${mcpFormError ? " invalid" : ""}`}>
+                  <div className={`field${urlError ? " invalid" : ""}`}>
                     <label>服务 URL</label>
                     <input
                       data-testid="mcp-url-input"
@@ -597,7 +648,7 @@ export default function Mcp() {
                         setMcpFormError(null);
                       }}
                     />
-                    <span className="err">{mcpFormError}</span>
+                    <span className="err">{urlError}</span>
                   </div>
                   <div className="field">
                     <label>认证</label>
@@ -607,7 +658,10 @@ export default function Mcp() {
                           key={a}
                           type="button"
                           className={mcpForm.auth === a ? "active" : ""}
-                          onClick={() => setMcpForm({ ...mcpForm, auth: a })}
+                          onClick={() => {
+                            setMcpForm({ ...mcpForm, auth: a });
+                            setMcpFormError(null);
+                          }}
                         >
                           {a === "none" ? "无" : a === "bearer" ? "Bearer Token" : "OAuth"}
                         </button>
@@ -616,7 +670,7 @@ export default function Mcp() {
                     <span className="hint">Bearer token 加密存系统凭据库（不明文落库）；OAuth 授权链接将在对话中呈现（见 oauth-present 原型）</span>
                   </div>
                   {mcpForm.auth === "bearer" && (
-                    <div className="field">
+                    <div className={`field${tokenError ? " invalid" : ""}`}>
                       <label>Bearer Token</label>
                       <input
                         data-testid="mcp-token-input"
@@ -624,12 +678,16 @@ export default function Mcp() {
                         className="mono"
                         placeholder={editingMcp ? "留空 = 保持原 token 不变；填写 = 轮换" : "粘贴 token，保存后不再回显"}
                         value={mcpForm.token}
-                        onChange={(e) => setMcpForm({ ...mcpForm, token: e.target.value })}
+                        onChange={(e) => {
+                          setMcpForm({ ...mcpForm, token: e.target.value });
+                          setMcpFormError(null);
+                        }}
                       />
                       <span className="hint">加密存储于系统凭据库（macOS Keychain）；保存/列表均不回显明文</span>
+                      <span className="err">{tokenError}</span>
                     </div>
                   )}
-                  <div className="field">
+                  <div className={`field${headersError ? " invalid" : ""}`}>
                     <label>请求头（KEY=VALUE，每行一条，可选）</label>
                     <textarea
                       data-testid="mcp-headers-input"
@@ -637,15 +695,19 @@ export default function Mcp() {
                       rows="2"
                       placeholder="X-Team-Id=core"
                       value={mcpForm.headers}
-                      onChange={(e) => setMcpForm({ ...mcpForm, headers: e.target.value })}
+                      onChange={(e) => {
+                        setMcpForm({ ...mcpForm, headers: e.target.value });
+                        setMcpFormError(null);
+                      }}
                     />
+                    <span className="err">{headersError}</span>
                   </div>
                 </>
               )}
 
-              {mcpFormError && mcpForm.type === "stdio" && (
-                <div className="form-error" style={{ color: "var(--ch-error)", fontSize: "var(--ch-text-xs)" }}>
-                  {mcpFormError}
+              {generalError && (
+                <div className="form-error" style={{ color: "var(--ch-error)", fontSize: "var(--ch-text-xs)", marginTop: "8px" }}>
+                  {generalError}
                 </div>
               )}
             </div>
