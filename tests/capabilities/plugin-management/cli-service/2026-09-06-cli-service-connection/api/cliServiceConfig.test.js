@@ -28,6 +28,10 @@ describe("REQ-CLI-SERVICE-004/005 CLI 服务配置持久化、两层启用与安
     process.env.OPC_WORKSTATION_CONFIG_DIR = workdir;
     const { createCliService } = await loadCliService();
     svc = await createCliService({ configDir: workdir });
+    const { getDb } = await import("../../../../../../src/db.js");
+    const d = getDb(path.join(workdir, "data.db"));
+    d.prepare("INSERT OR IGNORE INTO projects (id, name, sourceType, updatedAt) VALUES (?, ?, 'local', ?)").run("proj-1", "Test Project 1", new Date().toISOString());
+    d.prepare("INSERT OR IGNORE INTO projects (id, name, sourceType, updatedAt) VALUES (?, ?, 'local', ?)").run("proj-2", "Test Project 2", new Date().toISOString());
   });
 
   afterEach(() => {
@@ -243,6 +247,22 @@ describe("REQ-CLI-SERVICE-004/005 CLI 服务配置持久化、两层启用与安
     await assert.rejects(
       async () => svc.updateConfig("claude", { env: entries51 }),
       (err) => err.code === "E-CLI-INVALID-ENV-KEY"
+    );
+  });
+
+  it("项目不存在时启用抛出 404 E-PROJECT-NOT-FOUND", async () => {
+    svc._stubExecFile = async () => ({ stdout: "1.0.80\n", stderr: "", exitCode: 0 });
+    await svc.setGlobalEnabled("claude", true);
+
+    await assert.rejects(
+      async () => {
+        await svc.setProjectEnabled("non-existent-proj", "claude", true);
+      },
+      (err) => {
+        assert.equal(err.code, "E-PROJECT-NOT-FOUND");
+        assert.equal(err.status, 404);
+        return true;
+      }
     );
   });
 });
