@@ -179,7 +179,7 @@
 ## 结论（第一轮）
 
 - [ ] ~~可进入下一阶段~~（第一轮整改后被第二轮重审推翻，见下）
-- [x] 需修复阻塞项后重审 —— 第二轮重审结论：仍不可签收，4 项阻塞 → **第三轮修复后阻塞清零（RE2-1~RE2-4 全部 FIXED，验证见下）；待人重新确认决策后可进 REFLECT**
+- [x] 需修复阻塞项后重审 —— 第二轮：4 项阻塞 → 第三轮修复清零；RE2-5~RE2-10 裁决修复 → **第四轮重审结论：仍不可签收，1 CRITICAL（E-CLI-NOT-ENABLED 契约漂移）+ 2 IMPORTANT（RE2-6 失败恢复缺陷、决策记录失实），见文末第四轮段**
 
 ---
 
@@ -237,6 +237,50 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 ### 关于下方「审查人决策记录」
 
 第二轮 4 项阻塞项（RE2-1~RE2-4）及 5 项非阻塞显性决策项（RE2-5、RE2-6、RE2-8、RE2-9、RE2-10）已全部与用户逐一过完并达成裁决，代码与测试全量修复并通过验证。审查人决策正式更新并确认接受。
+
+**⚠ 第四轮重审（见下）再次推翻「全部清零」的表述：发现 1 项 CRITICAL 契约漂移（RE4-1）与 2 项 IMPORTANT 实现缺陷（RE4-2/RE4-3），且本决策记录本身存在两处失实（RE2-2/RE2-3 编号-内容错位、性能数字无测量依据）。决策需人在处理完 RE4-1~RE4-3 后再次确认。**
+
+---
+
+## 第四轮重审（RE2-5~RE2-10 修复验证，panel 3 specialist，针对 eba45dc..HEAD 共 12 commits）
+
+> 触发：人完成 RE2-5~RE2-10 裁决修复后请求重审。范围：代码+安全 / 测试（含实测运行）/ 契约一致性。
+> **总体结果：FAIL —— 1 项 CRITICAL + 2 项 IMPORTANT 阻塞 REFLECT。** 实测：故事测试 42/42 PASS、E2E 7/7 PASS、全仓回归 298 suites / 1239 tests / 0 fail。ADR-043 修订与代码事实逐点一致、commit 纪律 12 个全抽查通过（[build]×5 仅 src/、[test]×2 仅 tests/、[docs]×5 仅 .aiassist/）。
+
+### 跨层互证
+
+**RE4-1 被三个视角独立命中**（父代理预审 grep + test-engineer F1 + 契约 specialist 发现 1）：RE2-5 选项 B 移除 toolAdapter pre-gate 的同时删掉了 `E-CLI-NOT-ENABLED` 的**唯一产生点**，但契约三层仍锚着它——典型「测试全绿但契约漂移」。
+
+### 阻塞项（必须处理后才能进 REFLECT）
+
+- [ ] **RE4-1 CRITICAL（契约）：REQ-009 AC4 锚定的 `E-CLI-NOT-ENABLED` 错误码已不存在于系统**
+  - 事实链：`src/` 全仓零产生点（0040408 随 pre-gate 整段删除）；策略评估器返回裸字符串 `"deny"`（permissionPolicy.js:176-189），授权层 deny reason 为自然语言无 code 字段；测试只断言 `verdict === "deny"`。但 `requirements.md:239` REQ-009 AC4 硬锁「回传错误码 `E-CLI-NOT-ENABLED`」、`prd.md:123` §8 E5 错误码列、`signoff.md:50` 签核断言均仍在。
+  - 裁决建议（两 specialist 一致）：**改 REQ，不补代码**——RE2-5 选项 B 是人裁决的架构方向，gotgenes 策略层无法产出本应用自定义错误码，补回 = 复活已否决的双重真相（与 ADR-043「替代方案-动态 pre-gate：拒绝」冲突）。
+  - 修复链路：REQ-009 AC4 改写为「权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程」→ 重算 requirements-v1.hash → 同步 8 个测试文件 REQ-VERSION → signoff.md 追加 v1.2 签核段并修订 :50 → prd.md:123 删死错误码（软层对齐）→ prd.md:291 §11 测试决策 item 5（仍写「权限拒绝路径（E5）…spawn stub」）同步修订。
+
+- [ ] **RE4-2 IMPORTANT（code/perf）：RE2-6 选项 C 的失败恢复设计名存实亡（两处联动缺陷）**
+  - (a) `cliService.js:895-909` getService refresh 路径丢弃 stale 缓存：`validCache = !refresh && …` 恒 false 后，`if (cached?.version && !refresh)` 也恒 false——refresh 时即使缓存有可展示的 stale 版本也退化为 unknown，与分支注释「返回 stale 缓存或 unknown」自相矛盾。失败场景：点「重新探测」时断网 → 已有版本号与「可更新」徽标从 UI 消失。修复：去掉 :904 的 `&& !refresh`。
+  - (b) `cliService.js:627-629` 失败负缓存把 unknown 粘住 1 小时：fetch 失败写 `_latestVersionCache {version:"unknown"}`（TTL 1h），此后非 refresh 请求全部命中 valid cache 直接返回，**不再触发后台重拉**——前端 3 次轮询在负缓存有效期内全部空转，轮询机制失效，网络恢复后版本列卡 unknown 长达 1 小时。修复：失败态用短负缓存 TTL（30-60s），或失败时不写缓存（缺缓存时每轮轮询经 in-flight 合并恰好触发一次重试）。
+  - 正面确认：in-flight 合并无竞态无泄漏、轮询可终止且 cleanup 正确、未安装条目跳过外网意图达成。
+
+- [ ] **RE4-3 IMPORTANT（契约/流程）：决策记录与签核文件的事实失实**
+  - (a) 本文件「审查人决策记录」RE2-2/RE2-3 编号-内容错位一条（RE2-2 实为 effectiveConfig 单一真源、RE2-3 实为 SIGKILL 修复；「消除 projectId 硬编码与假数据」不对应任何 RE2 项）；「彻底消除进程泄漏与并发死锁隐患」无诊断依据。REFLECT 会把决策记录当事实沉淀，必须修正。
+  - (b) 「首屏加载耗时从 >1000ms 降至 <100ms」无测量依据（全仓无任何测量产物），建议标注「估算」或改定性描述。
+  - (c) `signoff.md:50` 「执行拦截 `E-CLI-NOT-ENABLED`」已不描述现行测试——随 RE4-1 的 v1.2 签核段一并闭环。
+
+### 需人确认意图（不阻塞，但需显性决策）
+
+- [ ] **RE4-4（code）：`setProjectEnabled` 的 `projectCount > 0` 门对空 projects 表 fail-open**——零项目状态下任意编造 projectId 返回 200 并写入孤儿 enablement 行（契约要求 404）。若该门是为兼容「projects 表外的 session 级 projectId」场景，需在 review.md/ADR 补记豁免理由；否则应无条件校验。
+- [ ] **RE4-5（test）：RE2-6 前端轮询（2s×3 次）零测试覆盖**——规则 8「结构/行为必须有自动化测试」字面违反。补组件级测试（fake timers 断言 2s 后二次调用、3 次后停止），或在此显性登记为已接受缺口。
+- [ ] **RE4-6（安全）：危险 env KEY 黑名单缺口**——建议补 `GIT_SSH_COMMAND`/`GIT_ASKPASS`/`SSH_ASKPASS`（git-over-ssh 任意命令执行，受管 CLI 工作流中 git 高频）、`NODE_PATH`、`LD_AUDIT`、`PERL5LIB`、`PYTHONHOME`。纵深防御性质，不阻塞。
+
+### 小项（SUGGESTION，可随手清理）
+
+- `cliService.js:870,881` `syncVersion` 选项死代码（全仓无调用方）；`setProjectEnabled` 存在性校验的 try/catch 静默吞 DB 异常无日志；TEST-F7 stub 的 `dist-tags` 字段为多余 fixture（真实 /latest 响应无此字段），渠道 404/坏 JSON 错误分支零覆盖；worker gotgenes 装配失败回退模式下 deny 降级为 ask（建议在 ADR-043 补记）；`VAR=1 claude`、带引号 `"claude"` 形态在评估器与 gotgenes 运行时判定分叉（fail-closed，建议 ADR 补记）；单 key 解密跳过后 UI 配置弹窗仍显示「已安全加密」（静默 desync，建议透出到 getConfig 响应）；存量已落库行含黑名单 key 不经 validateEnvMap 拦截（读取侧未过黑名单）。
+
+### 第四轮已验证 PASS 的面
+
+ADR-043 残余风险记录与代码逐点一致（base64 退化实锤 secretStore.js:19,27、单 key fail-closed、黑名单 11 项配置期 400 拦截）；「替代方案-动态 pre-gate：拒绝」与 RE2-5 实现同向自洽；pre-gate 移除后 toolAdapter 无残留死引用、组合命令 `claude --foo; rm -rf` 两侧均命中 deny/ask；E5 改写用例读侧诚实（createPolicyEvaluator 真实读 config.json，fixture 与生产写入器逐字节同构）；TEST-F7 URL/解析断言与实现逐一对应且 stub 对未知 URL 抛错；TEST-F8 引用相等断言非平凡有效；decryptEnvMap 的 warn 不含密文（KEY 名本就明文展示）；404 映射与 PRD §10.4 接口 3 契约一致（createCliError + handleRouteError 双处同步）；哈希链路同步（d33ce03b… = requirements-v1.hash = 8 测试文件 REQ-VERSION）。
 
 ---
 
