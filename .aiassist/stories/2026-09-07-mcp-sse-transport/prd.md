@@ -29,6 +29,7 @@
 | 3 | `probeTools` 按 type 选 transport（sse→SSEClientTransport） | 初衷的一半是探测可信；访谈确认同 story 修 |
 | 4 | 管理页表单 transport 三选 + 列表 badge 展示 sse | 访谈确认 UI 本期；复用现有 seg 控件模式 |
 | 5 | http 取消自动回落（语义变更，显式声明 streamable-http） | 用户明确选择"http 不再回落"，使行为可预期 |
+| 6 | 添加/编辑弹窗内「测试连接」（未落库配置的 ad-hoc 探测，返回工具列表） | req-gap 就地补全（2026-09-07 人裁决）：与初衷"接入结果可预期"同源，验完再存 |
 
 ## 5. 移动块（还在动，暂不入 REQ）
 
@@ -73,6 +74,10 @@
 | 3 | 对 `type:"sse"` 但 URL 指向已关闭端口的条目执行 `probeTools` | 抛错消息以 `连接失败：` 开头 | 既有错误契约（probeTools） |
 | 4 | 表单选 sse | command/args/env 字段隐藏，url/auth/token/headers 字段可见；提交体含 `type:"sse"` | UI 契约 |
 | 4 | 列表行 type 为 sse | badge 文案为 `sse` | UI 契约 |
+| 6 | `POST /api/mcp/probe`，body=`{type:"sse", url:"http://127.0.0.1:<port>/sse"}`（本地 stub，不落库） | 200 + `{tools:[{name:"echo", description:...}]}`；`list()` 仍为空（无持久化副作用） | req-gap 补全（2026-09-07 人裁决） |
+| 6 | `POST /api/mcp/probe`，url 指向已关闭端口 | 业务错误，message 以 `连接失败：` 开头 | 对齐既有探测错误契约 |
+| 6 | `POST /api/mcp/probe`，body=`{type:"ws", url:"ws://h/x"}` | 业务错误 `type 不合法: 仅支持 stdio/http/sse` | 校验与注册同构 |
+| 6 | 弹窗内（未保存）填 sse 表单点「测试连接」 | 结果显示区出现成功态与工具名（如 `echo`）；失败呈 `连接失败：…` 文案 | UI 契约（testid：`mcp-test-conn-button` / `mcp-test-conn-result`） |
 
 ## 7. 表单与输入验证（Form / Input Validation）
 
@@ -191,6 +196,21 @@
 
 **样例（golden values）**：见 §6.3 稳定块 3 两行。
 
+#### 接口名称：mcpService.probeConfig / POST /api/mcp/probe（req-gap 补全，2026-09-07）
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | routes/mcp.js（POST /api/mcp/probe，body 为内联配置）、Mcp.jsx 弹窗「测试连接」按钮 |
+| 被调用方 | mcpService.probeConfig(row) |
+| 输入 | 未落库的内联 server 配置 `{type, command?, args?, env?, url?, headers?, auth?, token?}`（无需 name；校验与 create 同构：stdio→validateStdio，http/sse→validateHttp） |
+| 输出 | `{tools:[{name, description}]}` |
+| 业务错误 | 校验错误字面量同 create（`type 不合法: …`/`URL 不合法: …` 等）；连接失败 `连接失败：…`；超时 `探测超时（Ns）` |
+| 系统错误 | SDK/网络异常统一归入业务错误「连接失败：…」（即连即断管理面语义） |
+| 副作用 | **无持久化**（不写 mcp_servers 表）；bearer token 仅在请求生命周期内使用，不落库、不回显 |
+| 幂等性 | 是 |
+
+**样例（golden values）**：见 §6.3 稳定块 6 四行。
+
 ### 10.5 关键决策
 
 | 决策 | 选项 | 选择理由 | 风险 |
@@ -226,6 +246,7 @@
 | 2 桥接快照 | mcpService.effectiveConfig | 集成 | 真实临时库 + 预置加密 token |
 | 3 探测分派 | mcpService.probeTools | 集成 | 本地 legacy-SSE MCP stub server（**手写最小协议 fixture** `tests/fixtures/mcp-sse-server/`，不依赖 MCP SDK——SDK 在本仓库仅为传递依赖且与生产 client 包跨大版本）；失败用例指向已关闭端口 |
 | 4 UI 三选 | Mcp.jsx 表单结构/行为 | 组件/浏览器结构行为测试（既有 renderer 测试模式） | stub API |
+| 6 测试连接 | POST /api/mcp/probe（handleMcp 路由 seam）+ Mcp.jsx 弹窗按钮 | 集成 + 浏览器 E2E | 本地 SSE stub（复用 fixture）；E2E 真实后端 + spawn fixture |
 | 5 http 不回落 | effectiveConfig 输出断言（httpTransport:"streamable-http"） | 并入块 2 集成测试 | 同上 |
 
 测试目录：`tests/capabilities/plugin-management/mcp-server/2026-09-07-mcp-sse-transport/{api,e2e}`（沿用 2026-08-12-pi-mcp-plugin 的 api/e2e 结构先例）。

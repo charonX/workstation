@@ -73,3 +73,13 @@ capability/entity 与 `business-capabilities.md` 一致（`plugin-management` / 
 - **测试补强（test-F1/F2/F3 修复）**：`mcpSsePage.test.cjs` 用例 3 补 POST 请求体拦截断言（`type:"sse"` 且不含 command/args/env 键，REQ-004 AC3 落点闭合）；用例 2 补 `mcp-headers-input` 可见性断言；`mcpSseProbe.test.js` 补标准 5b stdio 探测回归（REQ-003 AC5 完整化）。均为对既签 AC 的断言补强，未改动任何 expected 值。
 - **挂账**：PRD §11.1 块 4 seam 实际落地为 Electron 真实后端 E2E（高于计划的 stub API 组件测试，置信度更高），已在 review.md 记录。
 - **遗留（非阻塞，后续 story/bug 收口）**：security-F1（bearer 时拒绝大小写变体 `authorization` 用户 header）、F2（probeTools 解密纳入 try / effectiveConfig 单 key fail-closed）、F3（URL userinfo 拦截）。
+
+---
+
+## Assertion v1.2 增量签核（2026-09-07，req-gap 就地补全）
+
+- **触发**：BUG 循环（BUG-001）判定 req-gap——添加/编辑弹窗缺「测试连接」（未落库配置的 ad-hoc 探测）；人裁决就地补全。
+- **增量内容**：PRD 增补稳定块 6 + §6.3 块 6 锚点 + §10.4 probeConfig 接口契约 + §11.1 seam；新增 **REQ-MCP-SSE-005**（未落库配置 ad-hoc 测试连接，6 条 AC）；`requirements-v2.hash` = `514369c508988564fe44bcd04f986f44e029c17fd4db91296f6e3e165e4e852d`。
+- **AI 自检（增量范围）**：REQ-005 六条 AC 全部 trace 到 PRD §6.3 块 6/§10.4 锚点（已逐字核对）；capability/entity = plugin-management/mcp-server 与能力地图一致；新增测试 `api/mcpAdhocProbe.test.js`（5 用例，RED 已证实 5/5 fail：路由未实现）+ `e2e/mcpSsePage.test.cjs` 追加 2 用例；头部要素齐全，无 TODO 占位，无快照预言。
+- **已签核契约不变**：REQ-MCP-SSE-001~004 的 expected 值与锚点未动（v1→v2 为纯追加）。
+- signer：**AI**（auto 增量签核，无升级点）。

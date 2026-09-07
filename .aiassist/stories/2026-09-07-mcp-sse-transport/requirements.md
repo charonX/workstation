@@ -135,6 +135,43 @@
 
 ---
 
-## REFLECT 人工验收备注
+### REQ-MCP-SSE-005: 未落库配置的 ad-hoc 测试连接（req-gap 就地补全，2026-09-07 人裁决）
 
+**分类：** P1
+**优先级：** 必须
+**Scope：** `cross-module`（Mcp.jsx 弹窗 → routes/mcp.js → mcpService）
+**Capability：** `plugin-management`
+**Entity：** `mcp-server`
+**测试类型：** 集成 / 浏览器
+
+#### 接口契约（PRD §10.4 probeConfig / POST /api/mcp/probe）
+
+| 项目 | 说明 |
+|---|---|
+| 调用方 | Mcp.jsx 弹窗「测试连接」按钮 → POST /api/mcp/probe |
+| 被调用方 | mcpService.probeConfig(row) |
+| 输入 | 未落库内联配置 `{type, command?, args?, env?, url?, headers?, auth?, token?}`（无需 name） |
+| 输出 | `{tools:[{name, description}]}` |
+| 业务错误 | 校验字面量同 create；`连接失败：…`；`探测超时（Ns）` |
+| 副作用 | 无持久化；token 不落库不回显 |
+| 幂等性 | 是 |
+
+#### 验收标准
+
+1. `POST /api/mcp/probe`，body=`{type:"sse", url:"http://127.0.0.1:<port>/sse"}`（本地 legacy-SSE stub）→ 200，响应 tools 含 `{name:"echo"}`（description 非空）——EXPECTED-TRACE: PRD §6.3 块 6 row 1。
+2. 探测后 `mcp_servers` 表无新增（`list()` 为空）——无持久化副作用——EXPECTED-TRACE: PRD §6.3 块 6 row 1。
+3. url 指向已关闭端口 → 业务错误，message 以 `连接失败：` 开头——EXPECTED-TRACE: PRD §6.3 块 6 row 2。
+4. body=`{type:"ws", url:"ws://h/x"}` → 业务错误 `type 不合法: 仅支持 stdio/http/sse`（校验与注册同构）——EXPECTED-TRACE: PRD §6.3 块 6 row 3。
+5. sse + auth=bearer 的内联配置探测时携带 `Authorization: Bearer <token>` 头（stub 端断言）；token 不落库——EXPECTED-TRACE: PRD §10.4 probeConfig 副作用行。
+6. 弹窗内（未点保存）填 sse 表单点「测试连接」（`data-testid="mcp-test-conn-button"`）→ 结果显示区（`data-testid="mcp-test-conn-result"`）出现成功态且列出工具名 `echo`；指向不可达端点时呈 `连接失败：` 文案——EXPECTED-TRACE: PRD §6.3 块 6 row 4。
+
+#### 测试可追溯性
+
+- 测试：`api/mcpAdhocProbe.test.js`、`e2e/mcpSsePage.test.cjs`（追加用例）
+- Seam：`src/http/routes/mcp.js` handleMcp（mock req/res，对齐 mcpProbeTools.test.js 先例）+ 管理页弹窗
+- 断言：EXPECTED-TRACE PRD §6.3 块 6, §10.4 probeConfig
+
+---
+
+## REFLECT 人工验收备注
 - 真实 crawl4ai 远程实例端到端连通（§6.1 步骤 3-5）：注册 type:sse + bearer → 探测返回真实 tools → 项目会话 agent 调用 crawl 工具成功。外部依赖不可控，不进自动化断言，由 QA/REFLECT 人工确认。
