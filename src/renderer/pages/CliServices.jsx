@@ -296,8 +296,7 @@ export default function CliServices() {
               services.map((service) => {
                 const projCount = projectMap[service.id]?.size ?? 0;
                 const isInstalled = Boolean(service.installed);
-                const commandName =
-                  service.command || (service.id === "crawl4ai" ? "crwl" : service.id);
+                const commandName = service.command || service.id;
 
                 return (
                   <tr

@@ -39,22 +39,11 @@ export const CLI_REGISTRY = Object.freeze([
     installHint: "npm install -g @openai/codex",
     builtinSkillSlug: "cli-codex",
   },
-  {
-    id: "crawl4ai",
-    displayName: "Crawl4AI",
-    command: "crwl",
-    versionArgs: ["--version"],
-    versionRegex: "(\\d+\\.\\d+\\.\\d+)",
-    channel: "pypi",
-    package: "crawl4ai",
-    installHint: "pip install crawl4ai",
-    builtinSkillSlug: "cli-crawl4ai",
-  },
 ]);
 
 /**
  * 获取完整的内置 CLI 清单
- * @returns {CliRegistryItem[]} 清单条目数组（顺序固定为 claude, codex, crawl4ai）
+ * @returns {CliRegistryItem[]} 清单条目数组（顺序固定为 claude, codex）
  */
 export function getRegistry() {
   return [...CLI_REGISTRY];

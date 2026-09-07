@@ -81,9 +81,7 @@
       "claude *": "ask",
       "claude": "ask",
       "codex *": "ask",
-      "codex": "ask",
-      "crwl *": "ask",
-      "crwl": "ask"
+      "codex": "ask"
     },
     "task list": "allow",
     "task get": "allow",

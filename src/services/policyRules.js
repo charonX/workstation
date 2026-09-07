@@ -250,14 +250,6 @@ export const BASH_RULES = [
     family: "cli-service",
     globs: ["codex *", "codex"],
   },
-  {
-    pattern: "crwl *",
-    action: "ask",
-    decision: "ask",
-    hotPathVisible: true,
-    family: "cli-service",
-    globs: ["crwl *", "crwl"],
-  },
 ];
 
 // 评估器消费面：全部 bash 破坏性模式（无论 hotPathVisible——不可见族在评估层

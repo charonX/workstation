@@ -16,7 +16,7 @@ export function listCliServices({ refresh = false, projectId = null } = {}) {
 
 /**
  * 更新指定 CLI 服务的全局配置（启用态、环境变量、超时等）
- * @param {string} id CLI 服务 ID (claude, codex, crawl4ai)
+ * @param {string} id CLI 服务 ID (claude, codex)
  * @param {Object} body
  * @param {boolean} [body.enabled]
  * @param {Record<string, string>} [body.env]
