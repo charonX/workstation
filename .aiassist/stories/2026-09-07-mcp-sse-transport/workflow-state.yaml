@@ -23,6 +23,7 @@ history:
   - {at: 2026-09-07, from: TEST, to: ASSERTION-SIGNOFF, note: "test-author 完成：api 19 用例（RED 17/绿 2 回归守卫）+ e2e 4 用例 + mcp-sse-server fixture；无升级点；自动链续跑 signoff"}
   - {at: 2026-09-07, from: ASSERTION-SIGNOFF, to: BUILD, note: "门 1 通过：AI 全量自检无升级项（signoff.md），就地补全 PRD 空 url 错误消息字面量 + 探测 description 改非空断言；BUILD 解锁"}
   - {at: 2026-09-07, from: BUILD, to: QA, note: "BUILD 阶段切片全部完成，进入 QA 慢外门验证"}
+  - {at: 2026-09-07, from: QA, to: QA, note: "末端 review FAIL→修复闭环：code-F1 crawl4ai CLI 移除经人裁决确认（ADR-043 修订补记）；test-F1/F2/F3 断言补强（api 20/20 绿）；review.md 决策记录已填，signoff v1.1"}
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
