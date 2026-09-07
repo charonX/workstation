@@ -57,7 +57,7 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
     assert.ok(Array.isArray(BASH_RULES), "BASH_RULES 必须为数组");
 
     // EXPECTED-TRACE: prd.md §10.2, §10.5 决策 1, ADR-043
-    const targets = ["claude", "codex", "crwl"];
+    const targets = ["claude", "codex"];
     for (const cmd of targets) {
       const rule = BASH_RULES.find((r) => r.pattern && r.pattern.startsWith(`${cmd} `));
       assert.ok(rule, `BASH_RULES 必须包含 ${cmd} 命令的出厂规则`);
@@ -71,7 +71,7 @@ describe("REQ-CLI-SERVICE-008/009 权限策略出厂规则、项目覆盖与 ses
 
     // 当项目未启用 codex 时，项目层规则判定为 deny
     const disabledRules = buildProjectBashRules({
-      enabledCliCommands: ["claude"], // 仅 claude 启用，codex 和 crwl 未启用
+      enabledCliCommands: ["claude"], // 仅 claude 启用，codex 未启用
     });
 
     const codexRule = disabledRules.find((r) => r.pattern && r.pattern.startsWith("codex "));

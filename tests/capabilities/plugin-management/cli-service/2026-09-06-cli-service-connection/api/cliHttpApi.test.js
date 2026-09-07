@@ -83,14 +83,14 @@ describe("REQ-CLI-SERVICE-004/005 CLI 服务 HTTP 路由与接口契约", () => 
     // EXPECTED-TRACE: prd.md §10.4 接口 1
     assert.equal(res.statusCode, 200);
     assert.ok(res.body && Array.isArray(res.body.services), "返回 services 数组");
-    assert.equal(res.body.services.length, 3, "列表包含 3 个内置服务");
+    assert.equal(res.body.services.length, 2, "列表包含 2 个内置服务");
 
     const claude = res.body.services.find((s) => s.id === "claude");
     assert.ok(claude, "存在 claude 条目");
     assert.equal(claude.id, "claude");
     assert.equal(typeof claude.installed, "boolean");
     assert.ok(Array.isArray(claude.envKeys), "包含 envKeys 数组且无明文 env");
-    assert.ok(!claude.env, "严禁返回明文 env 字典");
+    assert.ok(!claude.env, "严禁返回明文 env字典");
   });
 
   it("接口 1：GET /api/cli-services?refresh=1 强制刷新探测", async () => {
@@ -99,7 +99,7 @@ describe("REQ-CLI-SERVICE-004/005 CLI 服务 HTTP 路由与接口契约", () => 
 
     await handleCliServices(req, res, req.pathname, req.query);
     assert.equal(res.statusCode, 200);
-    assert.ok(res.body.services.length === 3);
+    assert.ok(res.body.services.length === 2);
   });
 
   it("接口 2：PUT /api/cli-services/:id 配置修改（超时/env）与未知 id 404", async () => {

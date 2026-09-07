@@ -18,17 +18,17 @@ async function loadRegistry() {
 }
 
 describe("REQ-CLI-SERVICE-001 内置 CLI 清单注册表与数据结构", () => {
-  it("清单恰好包含 3 个条目，顺序固定为 claude, codex, crawl4ai", async () => {
+  it("清单恰好包含 2 个条目，顺序固定为 claude, codex", async () => {
     const { getRegistry } = await loadRegistry();
     const registry = getRegistry();
 
     // EXPECTED-TRACE: prd.md §6.3 块 1
     assert.equal(Array.isArray(registry), true, "registry 必须为数组");
-    assert.equal(registry.length, 3, "首批清单恰好 3 个条目");
+    assert.equal(registry.length, 2, "首批清单恰好 2 个条目");
     assert.deepEqual(
       registry.map((item) => item.id),
-      ["claude", "codex", "crawl4ai"],
-      "id 顺序必须固定为 claude, codex, crawl4ai"
+      ["claude", "codex"],
+      "id 顺序必须固定为 claude, codex"
     );
   });
 
@@ -83,20 +83,6 @@ describe("REQ-CLI-SERVICE-001 内置 CLI 清单注册表与数据结构", () => 
     assert.equal(codex.channel, "npm");
     assert.equal(codex.package, "@openai/codex");
     assert.equal(codex.builtinSkillSlug, "cli-codex");
-  });
-
-  it("crawl4ai 条目精确匹配预期规范（CLI 命令为 crwl，PyPI 渠道）", async () => {
-    const { findRegistryItem } = await loadRegistry();
-    const crawl4ai = findRegistryItem("crawl4ai");
-
-    // EXPECTED-TRACE: prd.md §6.3 块 1, §13 官方 CLI 规范
-    assert.ok(crawl4ai, "可查询到 crawl4ai 条目");
-    assert.equal(crawl4ai.id, "crawl4ai");
-    assert.equal(crawl4ai.command, "crwl");
-    assert.deepEqual(crawl4ai.versionArgs, ["--version"]);
-    assert.equal(crawl4ai.channel, "pypi");
-    assert.equal(crawl4ai.package, "crawl4ai");
-    assert.equal(crawl4ai.builtinSkillSlug, "cli-crawl4ai");
   });
 
   it("findRegistryItem 对未知 id 返回 null", async () => {

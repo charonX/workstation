@@ -47,14 +47,14 @@ describe("REQ-CLI-SERVICE-010 产品 CLI cli-service 命令族", () => {
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("opc-workstation cli-service list --json 输出 3 个内置服务条目", () => {
+  it("opc-workstation cli-service list --json 输出 2 个内置服务条目", () => {
     // EXPECTED-TRACE: prd.md §10.4 接口 1, §11.1 Seam 1
     const res = runCliJson(["cli-service", "list", "--json"]);
     assert.ok(Array.isArray(res.services), "返回 services 数组");
-    assert.equal(res.services.length, 3, "包含 3 个内置条目");
+    assert.equal(res.services.length, 2, "包含 2 个内置条目");
     assert.deepEqual(
       res.services.map((s) => s.id),
-      ["claude", "codex", "crawl4ai"]
+      ["claude", "codex"]
     );
   });
 

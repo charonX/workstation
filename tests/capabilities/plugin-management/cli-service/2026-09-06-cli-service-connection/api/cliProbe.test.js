@@ -75,8 +75,8 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
     };
 
     // EXPECTED-TRACE: prd.md §6.2 异常行 2, §8 E2
-    const res = await svc.probe("crawl4ai");
-    assert.equal(res.id, "crawl4ai");
+    const res = await svc.probe("codex");
+    assert.equal(res.id, "codex");
     assert.equal(res.installed, false);
     assert.ok(res.probeError && res.probeError.startsWith("E-CLI-PROBE-FAILED"), "包含 E-CLI-PROBE-FAILED 前缀");
   });
@@ -122,7 +122,6 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
     await Promise.all([
       svc.probe("claude", { refresh: true }),
       svc.probe("codex", { refresh: true }),
-      svc.probe("crawl4ai", { refresh: true }),
     ]);
     assert.ok(maxActiveCalls <= 4, "全局探测并发执行必须 ≤ 4");
 
@@ -171,10 +170,10 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
 
     // EXPECTED-TRACE: prd.md §6.2 异常行 3, §8 E3
     const info = await svc.checkLatestVersion({
-      id: "crawl4ai",
-      channel: "pypi",
-      package: "crawl4ai",
-      version: "0.4.0",
+      id: "codex",
+      channel: "npm",
+      package: "@openai/codex",
+      version: "0.1.0",
       installed: true,
     });
 
@@ -208,7 +207,7 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
           status: 200,
           json: async () => ({
             info: {
-              name: "crawl4ai",
+              name: "example-pkg",
               version: "0.4.8",
             },
           }),
@@ -227,10 +226,10 @@ describe("REQ-CLI-SERVICE-002/003 本机环境实时探测与渠道版本检查"
       );
 
       // 2. 验证 PyPI JSON API URL 与 info.version 解析
-      const pypiVersion = await defaultFetchLatest("crawl4ai", "pypi");
+      const pypiVersion = await defaultFetchLatest("example-pkg", "pypi");
       assert.equal(pypiVersion, "0.4.8", "正确解析 PyPI 的 info.version 字段");
       assert.ok(
-        requestedUrls[1].includes("pypi.org/pypi/crawl4ai/json"),
+        requestedUrls[1].includes("pypi.org/pypi/example-pkg/json"),
         "PyPI 端点需为 /pypi/<pkg>/json"
       );
     } finally {

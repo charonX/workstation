@@ -15,8 +15,8 @@ const STANDARD_SERVICES = [
     command: "claude",
     installed: true,
     version: "1.0.80",
-    latestVersion: "1.0.80",
-    updateAvailable: false,
+    latestVersion: "1.0.95",
+    updateAvailable: true,
     enabled: true,
     envKeys: ["ANTHROPIC_API_KEY"],
     timeoutSec: 120,
@@ -34,19 +34,6 @@ const STANDARD_SERVICES = [
     envKeys: [],
     timeoutSec: 120,
     installHint: "npm i -g @openai/codex",
-  },
-  {
-    id: "crawl4ai",
-    displayName: "Crawl4AI CLI",
-    command: "crwl",
-    installed: true,
-    version: "0.4.0",
-    latestVersion: "0.4.5",
-    updateAvailable: true,
-    enabled: false,
-    envKeys: [],
-    timeoutSec: 120,
-    installHint: "pip install crawl4ai",
   },
 ];
 
@@ -96,15 +83,14 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
     });
   });
 
-  test("导航至 /cli-services 页面并展示 3 个内置清单服务行", async ({ page }) => {
+  test("导航至 /cli-services 页面并展示 2 个内置清单服务行", async ({ page }) => {
     await page.goto("/cli-services");
 
     // EXPECTED-TRACE: prd.md §6.1 流 A
     const items = page.locator("[data-testid^='cli-service-row-']");
-    await expect(items).toHaveCount(3);
+    await expect(items).toHaveCount(2);
     await expect(page.locator("[data-testid='cli-service-row-claude']")).toBeVisible();
     await expect(page.locator("[data-testid='cli-service-row-codex']")).toBeVisible();
-    await expect(page.locator("[data-testid='cli-service-row-crawl4ai']")).toBeVisible();
   });
 
   test("从左侧导航栏点击「CLI 服务」进入页面（AC1）", async ({ page }) => {
@@ -132,10 +118,10 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
   test("检测到新版本可用时展示更新提示徽标", async ({ page }) => {
     await page.goto("/cli-services");
 
-    // crawl4ai updateAvailable: true
-    const crawlRow = page.locator("[data-testid='cli-service-row-crawl4ai']");
-    await expect(crawlRow.locator("[data-testid='update-badge']")).toBeVisible();
-    await expect(crawlRow.locator("[data-testid='update-badge']")).toContainText("可更新至 0.4.5");
+    // claude updateAvailable: true
+    const claudeRow = page.locator("[data-testid='cli-service-row-claude']");
+    await expect(claudeRow.locator("[data-testid='update-badge']")).toBeVisible();
+    await expect(claudeRow.locator("[data-testid='update-badge']")).toContainText("可更新至 1.0.95");
   });
 
   test("未全局启用的 CLI 服务，项目启用按钮处于禁用态（AC6）", async ({ page }) => {
@@ -144,10 +130,6 @@ test.describe("REQ-CLI-SERVICE-006 CLI 服务管理页面渲染与交互行为�
     // codex 未安装且未全局启用
     const codexProjectToggle = page.locator("[data-testid='cli-service-row-codex'] [data-testid='cli-service-project-toggle']");
     await expect(codexProjectToggle).toBeDisabled();
-
-    // crawl4ai 已安装但未全局启用
-    const crawlProjectToggle = page.locator("[data-testid='cli-service-row-crawl4ai'] [data-testid='cli-service-project-toggle']");
-    await expect(crawlProjectToggle).toBeDisabled();
   });
 
   test("打开环境变量与超时配置弹窗（AC7）", async ({ page }) => {
