@@ -1,5 +1,5 @@
-// REQ-TRACE: 2026-09-07-mcp-sse-transport/REQ-MCP-SSE-004
-// REQ-VERSION: v1-hash:9f20ee0db8e336cc1980dc6d6570aef6dcfb5e8fc0c592387ce1c6f12723465f
+// REQ-TRACE: 2026-09-07-mcp-sse-transport/REQ-MCP-SSE-004, 2026-09-07-mcp-sse-transport/REQ-MCP-SSE-005
+// REQ-VERSION: v2-hash:514369c508988564fe44bcd04f986f44e029c17fd4db91296f6e3e165e4e852d
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: mcp-server
 // EXPECTED-TRACE: prd.md §6.3 块 4（row 1-2）、§6.1 步骤 1-2、§8 回归面
@@ -16,10 +16,41 @@
 // 断言语义：元素存在/可见性/提交体形状（经 API 回读观察），不验像素。
 
 const { test, expect } = require("@playwright/test");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
 const { startElectronApp, stopElectronApp } = require("../../../../../e2e/fixtures/electronApp.cjs");
 const { goToAdminRoute } = require("../../../../../e2e/helpers/navigation.cjs");
 
 const MCP_ROUTE = "#/mcp";
+const SSE_FIXTURE_ABS = path.resolve(__dirname, "../../../../../fixtures/mcp-sse-server/server.mjs");
+
+/** spawn legacy-SSE fixture，stdout 报 PORT= 后 resolve {proc, port}。 */
+async function startSseFixture(env = {}) {
+  const proc = spawn(process.execPath, [SSE_FIXTURE_ABS], {
+    env: { ...process.env, ...env },
+  });
+  const port = await new Promise((resolve, reject) => {
+    let buf = "";
+    const timer = setTimeout(() => {
+      proc.kill();
+      reject(new Error("sse fixture 未报 PORT="));
+    }, 10000);
+    proc.stdout.setEncoding("utf8");
+    proc.stdout.on("data", (chunk) => {
+      buf += chunk;
+      const m = /PORT=(\d+)/.exec(buf);
+      if (m) {
+        clearTimeout(timer);
+        resolve(Number(m[1]));
+      }
+    });
+    proc.on("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`sse fixture 提前退出 code=${code}`));
+    });
+  });
+  return { proc, port };
+}
 
 async function seedViaApi(apiBaseUrl, fn) {
   const res = await fetch(`${apiBaseUrl}${fn.path}`, {
@@ -138,5 +169,47 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
     await expect(firstWindow.locator("[data-testid='mcp-url-input']")).toHaveValue(
       "http://10.0.0.7:11235/mcp/sse"
     );
+  });
+
+  // REQ-MCP-SSE-005 标准 6（req-gap 补全，2026-09-07 人裁决）：弹窗内「测试连接」，
+  // 未保存即可探测，返回工具列表即表明 MCP 可用。
+  test("弹窗内（未保存）填 sse 表单点「测试连接」→ 结果显示成功态与工具名 echo", async () => {
+    // EXPECTED-TRACE: prd.md §6.3 块 6 row 4
+    const { proc, port } = await startSseFixture();
+    try {
+      await firstWindow.locator("[data-testid='mcp-add-button']").click();
+      await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
+      await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-adhoc");
+      await firstWindow.locator("[data-testid='mcp-url-input']").fill(`http://127.0.0.1:${port}/sse`);
+
+      await firstWindow.locator("[data-testid='mcp-test-conn-button']").click();
+      const result = firstWindow.locator("[data-testid='mcp-test-conn-result']");
+      await expect(result).toBeVisible();
+      await expect(result).toContainText("echo");
+
+      // 未保存：弹窗不关闭，列表不落该行
+      await expect(firstWindow.locator("[data-testid='mcp-form-modal']")).toBeVisible();
+      await firstWindow.locator("[data-testid='mcp-form-modal'] [aria-label='close']").click();
+      await expect(firstWindow.locator("[data-testid='mcp-row-e2e-adhoc']")).toHaveCount(0);
+    } finally {
+      proc.kill();
+    }
+  });
+
+  test("测试连接指向不可达端点 → 结果区呈「连接失败：」文案", async () => {
+    // EXPECTED-TRACE: prd.md §6.3 块 6 row 2（UI 呈现侧）
+    const { proc, port } = await startSseFixture();
+    proc.kill();
+    await new Promise((resolve) => proc.on("exit", resolve));
+
+    await firstWindow.locator("[data-testid='mcp-add-button']").click();
+    await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
+    await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-adhoc-down");
+    await firstWindow.locator("[data-testid='mcp-url-input']").fill(`http://127.0.0.1:${port}/sse`);
+    await firstWindow.locator("[data-testid='mcp-test-conn-button']").click();
+
+    const result = firstWindow.locator("[data-testid='mcp-test-conn-result']");
+    await expect(result).toBeVisible();
+    await expect(result).toContainText("连接失败：");
   });
 });
