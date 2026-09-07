@@ -272,7 +272,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 
 - [x] **RE4-4（code）：`setProjectEnabled` 的 `projectCount > 0` 门对空 projects 表 fail-open**——**用户决策（选项 A）：严格校验，无条件抛 404**。移除 `projectCount > 0` 兼容门，`setProjectEnabled` 优先校验全局启用（未全局启用时按 PRD §7.1 规则 3 报 409 `E-CLI-GLOBALLY-DISABLED`），随后无条件校验 `projects WHERE id = ?`，不存在即抛 404 `E-PROJECT-NOT-FOUND`；单测 helper 增加测试 DB 项目预置，补齐项目不存在 404 独立测试用例。
 - [x] **RE4-5（test）：RE2-6 前端轮询（2s×3 次）零测试覆盖**——**用户决策（选项 B）：显性登记为已接受缺口**。前端 2s×3 轮询为体验优化层逻辑，已通过 Playwright E2E 7/7 真实加载验证与代码审查（无泄漏、组件卸载时正确 clearTimeout cleanup、pollCount >= 3 正常终止），显性接受不单独编写 fake timers 定时断言测试。
-- [ ] **RE4-6（安全）：危险 env KEY 黑名单缺口**——建议补 `GIT_SSH_COMMAND`/`GIT_ASKPASS`/`SSH_ASKPASS`（git-over-ssh 任意命令执行，受管 CLI 工作流中 git 高频）、`NODE_PATH`、`LD_AUDIT`、`PERL5LIB`、`PYTHONHOME`。纵深防御性质，不阻塞。
+- [x] **RE4-6（安全）：危险 env KEY 黑名单缺口**——**用户决策（选项 A）：扩充黑名单**。在 `DANGEROUS_ENV_KEYS` 中补充拦截 `GIT_SSH_COMMAND`、`GIT_ASKPASS`、`SSH_ASKPASS`（防 Git-over-SSH 任意命令执行）、`NODE_PATH`、`LD_AUDIT`、`PERL5LIB`、`PYTHONHOME`（防解释器库路径重定向），配置期一律抛 400 `E-CLI-INVALID-ENV-KEY` 拦截。
 
 ### 小项（SUGGESTION，可随手清理）
 
@@ -301,16 +301,19 @@ ADR-043 残余风险记录与代码逐点一致（base64 退化实锤 secretStor
    - RE2-8（选项 A）：env 解密降级为单 key fail-closed 容错，增加高危进程环境变量注入黑名单（BASH_ENV, LD_PRELOAD 等），补齐 ADR 残余风险记录。
    - RE2-9（选项 B）：补充 npm scoped URL 编码与 PyPI JSON 解析契约断言，测试对齐到纯模块 Seam。
    - RE2-10（选项 A）：修复 CODE-F11，将 `E-PROJECT-NOT-FOUND` 映射为 HTTP 404 并增加项目存在性校验；CODE-F9/F12 保留现状。
-3. **第四轮重审阻塞项（RE4-1 ~ RE4-3）全部闭环**：
+3. **第四轮重审项（RE4-1 ~ RE4-6）全部闭环**：
    - RE4-1（选项 A）：就地修订契约，REQ-009 AC4 移除死错误码 E-CLI-NOT-ENABLED，对齐 gotgenes 策略层单一真源返回 deny 判定；重算 requirements 哈希并同步 8 个测试文件与 signoff.md。
    - RE4-2（选项 A）：修复刷新期间 stale 缓存保留展示（stale-while-revalidate），修复外网拉取失败时不写长 TTL 负缓存，允许前端轮询真正触发后台重试与恢复。
    - RE4-3（选项 A）：决策记录事实勘误，纠偏 RE2-2/RE2-3 错位与耗时定性表述，signoff.md 追加 v1.2 签核段。
+   - RE4-4（选项 A）：移除 `projectCount > 0` 兼容门，一律严格校验项目存在性（不存在报 404 E-PROJECT-NOT-FOUND）。
+   - RE4-5（选项 B）：前端轮询体验优化显性登记为已接受缺口。
+   - RE4-6（选项 A）：扩充危险环境变量黑名单（新增 GIT_SSH_COMMAND, GIT_ASKPASS, SSH_ASKPASS, NODE_PATH, LD_AUDIT, PERL5LIB, PYTHONHOME）。
 4. **验证结果**：
    - 静态检查：`npx oxlint` 0 error
    - 策略一致性：`node scripts/gen-agent-policy.mjs --check` 100% 一致通过
-   - 故事测试：42/42 tests 全部 PASS
+   - 故事测试：43/43 tests 全部 PASS
    - E2E 测试：Playwright electron 7/7 全部 PASS
    - 全仓单元回归：298 suites 全部 PASS（0 fail）
 
 **下一步动作**：
-核心阻塞项全部清零，推进剩余需人确认意图项（RE4-4~RE4-6）或推进至 `/reflect` 阶段进行最终验收与经验知识沉淀。
+全部四轮审查问题与裁决项（RE2-1~RE2-10、RE4-1~RE4-6）100% 清零闭环，正式接受审查结果，推进至 `/reflect` 阶段进行最终验收与经验知识沉淀。
