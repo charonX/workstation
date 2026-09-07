@@ -245,4 +245,45 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
       proc.kill();
     }
   });
+
+  // BUG-003 回归：
+  // 1. 未填写名称点击保存 → 错误精准呈现在名称字段并标红名称输入框，不得冒充在 URL 字段
+  // 2. 保存成功后表单正常关闭，不自动弹出工具列表弹层
+  test("BUG-003：未填名称点击保存 → 错误呈现在名称字段并标红输入框，URL 字段不冒充报错", async () => {
+    // EXPECTED-TRACE: BUG-003 症状 1（名称缺失时报错错位至 URL 字段）
+    await firstWindow.locator("[data-testid='mcp-add-button']").click();
+    await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
+    await firstWindow.locator("[data-testid='mcp-url-input']").fill("http://192.168.8.132:11235/mcp/sse");
+    await firstWindow.locator("[data-testid='mcp-form-submit']").click();
+
+    const nameField = firstWindow.locator(".field", { has: firstWindow.locator("[data-testid='mcp-name-input']") });
+    const urlField = firstWindow.locator(".field", { has: firstWindow.locator("[data-testid='mcp-url-input']") });
+
+    // 名称字段必须呈现错误态与报错文本
+    await expect(nameField).toHaveClass(/invalid/);
+    const nameErr = nameField.locator(".err");
+    await expect(nameErr).toBeVisible();
+    await expect(nameErr).toContainText("name");
+
+    // URL 字段不得呈现错误态
+    await expect(urlField).not.toHaveClass(/invalid/);
+    await expect(urlField.locator(".err")).toBeHidden();
+  });
+
+  test("BUG-003：保存成功后直接关闭表单回到列表，不自动弹出工具列表弹层", async () => {
+    // EXPECTED-TRACE: BUG-003 症状 2（保存成功后自动弹出 mcp-tools-modal 弹层干扰流）
+    await firstWindow.locator("[data-testid='mcp-add-button']").click();
+    await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
+    await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-no-popup");
+    await firstWindow.locator("[data-testid='mcp-url-input']").fill("http://10.0.0.9:11235/mcp/sse");
+    await firstWindow.locator("[data-testid='mcp-form-submit']").click();
+
+    // 表单弹窗关闭
+    await expect(firstWindow.locator("[data-testid='mcp-form-modal']")).toBeHidden();
+    // 列表出现新增行
+    await expect(firstWindow.locator("[data-testid='mcp-row-e2e-no-popup']")).toBeVisible();
+    // 工具清单弹窗不得自动弹出
+    await expect(firstWindow.locator("[data-testid='mcp-tools-modal']")).toBeHidden();
+  });
 });
+

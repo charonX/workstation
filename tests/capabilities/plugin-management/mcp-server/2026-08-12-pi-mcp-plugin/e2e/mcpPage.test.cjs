@@ -294,14 +294,20 @@ test.describe("REQ-AGENT-084 MCP 服务管理页（E2E，BUG-013 独立页）", 
     await expect(modal.locator("[data-testid='mcp-tools-error-text']")).toContainText("连接失败", { timeout: 15000 });
   });
 
-  test("AC7：保存后自动连接拉取——添加 stdio server → 工具弹窗自动出现", async () => {
+  test("添加 stdio server 保存后表单关闭且列表出现该行，点击「工具」按钮打开工具清单", async () => {
     await firstWindow.locator("[data-testid='mcp-add-button']").click();
     await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-auto");
     await firstWindow.locator("[data-testid='mcp-command-input']").fill(process.execPath);
     await firstWindow.locator("[data-testid='mcp-args-input']").fill(STDIO_FIXTURE_ABS);
     await firstWindow.locator("[data-testid='mcp-form-submit']").click();
 
-    // 保存成功 → 自动连接并弹出工具清单
+    // BUG-003：保存成功后直接关闭表单回到列表，不自动弹出工具弹窗
+    await expect(firstWindow.locator("[data-testid='mcp-form-modal']")).toBeHidden();
+    const row = firstWindow.locator("[data-testid='mcp-row-e2e-auto']");
+    await expect(row).toBeVisible();
+
+    // 点击行内「工具」拉取工具清单
+    await row.locator("[data-testid='mcp-tools-button']").click();
     const modal = firstWindow.locator("[data-testid='mcp-tools-modal']");
     await expect(modal).toBeVisible({ timeout: 15000 });
     await expect(modal.locator("[data-testid='mcp-tools-table']")).toContainText("fixture_ping", { timeout: 15000 });
