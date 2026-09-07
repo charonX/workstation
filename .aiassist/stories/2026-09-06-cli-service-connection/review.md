@@ -10,9 +10,9 @@
 
 ## 审查摘要
 
-- **总体结果**：**FAIL**
-- **阻塞项数量**：23（CRITICAL 10 + 阻塞级 IMPORTANT 13）
-- **警告项数量**：45（非阻塞 IMPORTANT 17 + SUGGESTION 28）
+- **总体结果**：**PASS（第五轮终局）**；第一轮 FAIL → 四轮修复重审收敛
+- **阻塞项数量**：0（历史：第一轮 23，第二轮 4，第四轮 3，均已闭环）
+- **警告项数量**：1 不阻塞 IMPORTANT（R5-1）+ 5 SUGGESTION（R5-2~R5-6，第五轮新增）+ 历史轮次若干（见下文各轮段）
 
 > 注：story 已过门 1 且 QA 全绿。本次末端审查揭示的问题分两类：**(a) 契约裁决类**——PRD/REQ/技术方案之间的语义漂移，需人裁决后回流修订；**(b) 实现/测试缺口类**——QA 全绿但未覆盖到的安全/性能/行为缺口，需修复后重审。两类都建议在 REFLECT 验收前显性处理。
 
@@ -216,7 +216,8 @@
 ### 部分修复 / 需人裁决（不阻塞，但必须显性决策）
 
 - [x] **RE2-5（code）：动态 pre-gate 与 ADR-043「明确拒绝」条目的冲突仍在**——**用户决策（选项 B）：移除 toolAdapter pre-gate**。未启用清单命令拦截全权交由 gotgenes 权限策略层（项目级 deny 覆盖），消灭双重真相；更新 `cliExecutionWiring.test.js` 断言为策略评估器返回 deny。
-- [x] **RE2-6（perf）：PERF-F3 只修了一半**——**用户决策（选项 C）：前端轮询，后台异步**。未安装条目跳过外网查询；冷缓存或 refresh 时直接返回 unknown，外网请求移出主响应关键路径并在后台异步拉取填充缓存（包含 in-flight 合并与失败态负缓存）；前端页面检测到 unknown 状态时在 2s 后自动轮询更新，页面首屏加载实现 0 网络等待（响应耗时从 >1000ms 降至 <100ms）。
+- [x] **RE2-6（perf）：PERF-F3 只修了一半**——**用户决策（选项 C）：前端轮询，后台异步**。未安装条目跳过外网查询；冷缓存或 refresh 时直接返回 unknown，外网请求移出主响应关键路径并在后台异步拉取填充缓存（包含 in-flight 合并与失败态负缓存）；前端页面检测到 unknown 状态时在 2s 后自动轮询更新，页面首屏加载实现 0 网络等待（消除外网同步延迟，响应耗时大幅降低至本地探测级）。
+
 - [x] **RE2-7（契约）：project-enablements 聚合端点契约不全**——**FIXED（第三轮 39b7bf0）**：PRD §10.4 新增「接口 1b」完整契约块（路径 / 输出 schema `{ enablements: { [serviceId]: string[] } }` / 无副作用说明）。
 - [x] **RE2-8（安全）：SEC-4 & SEC-5**——**用户决策（选项 A）：完整加固**。SEC-4：`decryptEnvMap` 实现单 key 级 fail-closed 容错（单个坏 key 记录 warn 日志并跳过，正常 key 继续注入，避免整份快照丢失），ADR-043 补充非 Electron 模式 base64 退化残余风险记录；SEC-5：`validateEnvMap` 增加高危进程注入类变量黑名单（BASH_ENV, LD_PRELOAD, DYLD_INSERT_LIBRARIES, NODE_OPTIONS 等），配置时返回 400 拦截。
 - [x] **RE2-9（test）：TEST-F7 & TEST-F8**——**用户决策（选项 B）：补齐测试与对齐 Seam**。TEST-F7：导出 `defaultFetchLatest` 并在 `cliProbe.test.js` 中增加针对 npm scoped package URL 编码（`%2F`）与 version 解析、PyPI JSON API 与 `info.version` 解析的契约断言；TEST-F8：`cliExecutionWiring.test.js` 将测试导入对齐到 `src/agent/cliEnvResolver.js`，并验证 `agentService` 导出一致性。
@@ -281,6 +282,45 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 ### 第四轮已验证 PASS 的面
 
 ADR-043 残余风险记录与代码逐点一致（base64 退化实锤 secretStore.js:19,27、单 key fail-closed、黑名单 11 项配置期 400 拦截）；「替代方案-动态 pre-gate：拒绝」与 RE2-5 实现同向自洽；pre-gate 移除后 toolAdapter 无残留死引用、组合命令 `claude --foo; rm -rf` 两侧均命中 deny/ask；E5 改写用例读侧诚实（createPolicyEvaluator 真实读 config.json，fixture 与生产写入器逐字节同构）；TEST-F7 URL/解析断言与实现逐一对应且 stub 对未知 URL 抛错；TEST-F8 引用相等断言非平凡有效；decryptEnvMap 的 warn 不含密文（KEY 名本就明文展示）；404 映射与 PRD §10.4 接口 3 契约一致（createCliError + handleRouteError 双处同步）；哈希链路同步（d33ce03b… = requirements-v1.hash = 8 测试文件 REQ-VERSION）。
+
+---
+
+## 第五轮重审（RE4-1~RE4-6 修复验证，panel 3 specialist，针对 f50bdf1..HEAD 共 11 commits）
+
+> 触发：人完成 RE4-1~RE4-6 裁决修复后请求重审。范围：代码+安全 / 测试（含实测运行）/ 契约一致性。
+> **总体结果：PASS —— 零 CRITICAL、零阻塞项。** RE4-1~RE4-6 六项修复全部复核属实，review.md 第四轮闭环声明未发现虚报。
+
+### 核验结果（逐项）
+
+- **RE4-1（契约，PASS）**：REQ-009 AC4 已改写为权限链 deny 表述（requirements.md:239）；prd.md §8 E5 / §11 item 5 零死错误码残留；signoff.md v1.2 签核段在位；**哈希链路亲自重算 MATCH**（SHA-256 全文 = `1f616dc9…593119` = requirements-v1.hash = signoff v1.2 记录值）；8/8 测试文件 REQ-VERSION 逐字符同步；`grep -rn E-CLI-NOT-ENABLED src/ tests/` 零命中，契约-代码-测试三方一致。
+- **RE4-2（代码/性能，PASS）**：`cliService.js:901-924` refresh 期间保留 stale 版本展示（`:910` 不再带 `&& !refresh`），分支注释与行为一致；`:627-645` fetch 失败只 `return "unknown"` 不写 1h 负缓存，前端 2s×3 轮询可真实触发重试；in-flight 合并 + `finally` 删除 + 双 `.catch` 保险，无泄漏/悬挂；`:632` 的 `!== "unknown"` 门顺带挡住伪成功负缓存。
+- **RE4-3（契约/流程，PARTIAL PASS）**：决策记录 RE2-2/RE2-3 编号错位已修正、无依据表述已删除、决策记录内耗时已改为定性+估算；**残留 1 处**：review.md:219（第二轮清单 RE2-6 行）仍保留无测量依据的「响应耗时从 >1000ms 降至 <100ms」，与 :299 已修正表述自相矛盾（见下方新发现 R5-1）。
+- **RE4-4（代码+测试，PASS）**：`cliService.js:699-713` 校验顺序与决策逐字一致（参数形态 → 409 全局禁用 → 无条件 SELECT 404），`projectCount > 0` 门已完全移除；空 projects 表场景无误伤（前端空表不产生调用，CLI 显式传参 404 语义正确）；新增 404 用例（`cliServiceConfig.test.js:253-267`）断言 `E-PROJECT-NOT-FOUND` + 404，变异心算非恒真，项目预置 helper 真实 INSERT 且与 cliService 同库。
+- **RE4-5（测试，PASS）**：前端轮询代码事实核验存在且正确（`CliServices.jsx:74-98`，2s 间隔、上限 3 次、cleanup clearTimeout），「接受缺口」已显性登记（review.md:274/309）。
+- **RE4-6（安全，PASS）**：`DANGEROUS_ENV_KEYS` 原 11 项全保留 + 新增恰好 7 项（GIT_SSH_COMMAND、GIT_ASKPASS、SSH_ASKPASS、NODE_PATH、LD_AUDIT、PERL5LIB、PYTHONHOME），与决策清单逐项一致无拼写错误；拦截路径唯一（validateEnvMap → 400），`ENV_KEY_REGEX` 大写约束先行，无大小写/更新路径绕过；ADR-043 「等」字表述与 18 项代码事实不构成漂移。
+
+### 实测运行（test specialist 亲跑，exit code 全 0）
+
+- 故事测试：**43/43 PASS**（含新增 404 用例）
+- 全仓单元回归：**298 suites / 1240 tests / 0 fail**（87.3s）
+- E2E（Playwright electron）：**7/7 PASS**（2.7s，逐条 ✓ 输出）
+- `npx oxlint src/`：0 error（5 条存量 warning，非本 story 引入）
+- `node scripts/gen-agent-policy.mjs --check`：一致通过
+- commit 纪律：3 个 [build] 仅触 `src/services/cliService.js`，[test] 仅触测试文件，[docs] 仅触 .aiassist/，实现/测试严格分离
+
+### 新发现（均不阻塞）
+
+- [x] **R5-1 IMPORTANT**：review.md:219 RE2-6 清单行已同步修正为定性/估算描述（消除无依据数字）。
+- [ ] **R5-2 SUGGESTION**：`cliService.js:706-713` RE4-4 重写块保留「静默吞 DB 异常」模式：非 `E-PROJECT-NOT-FOUND` 异常（表不存在/IO 错误）被无声吞掉后流程继续 INSERT，DB 故障时 fail-open 产生孤儿 enablement 行且无日志。第 4 轮已登记为 SUGGESTION，本轮 diff 触及该块未修。建议 catch 中非 404 异常加 warn 并重抛（500 语义）。
+- [x] **R5-3 SUGGESTION**：ADR-043:37 已注明「等 18 项，见 `DANGEROUS_ENV_KEYS`」。
+- [ ] **R5-4 SUGGESTION**：signoff.md v1.2 自检行「全仓测试 42/42」与实测「故事测试 43/43 / 全仓 1240」口径与数字均不准（时序可解释：写于 404 用例新增前），建议顺手校正措辞。
+- [ ] **R5-5 SUGGESTION**：`cliServiceConfig.test.js:253` 新增 404 用例缺行内 `// EXPECTED-TRACE` 注释（锚点实际存在于 prd.md:238，文件内其他用例均有）。
+- [x] **R5-6 SUGGESTION**：prd.md:4「最后更新：2026-09-07」已校正并标注已完结。
+
+### 第五轮结论
+
+- [x] **可进入下一阶段** —— 六项 RE4 修复全部复核属实，实测全绿，仅剩 3 项次要 SUGGESTION，全部阻塞项清零。
+
 
 ---
 

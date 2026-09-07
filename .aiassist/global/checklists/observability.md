@@ -70,3 +70,5 @@
 - [ ] "修复未生效"排查：先列分叉 → 找诊断盲区 → 补日志 → 现场实测一轮分叉，不盲猜重试
 - [ ] 侧车日志遥测（`*.traj.jsonl`）：工具入参出参、TTFT/decode 毫秒级时钟、Token 细分必须落盘可查，单行超过 256KB 必须结构化标记 `truncated: true` 并保留预览
 - [ ] 遥测落盘不可靠时优雅降级，记录 `event=trajectory_write_failed` 且不得阻断核心消息流
+- [ ] 受管 CLI 探测与环境变量注入：解密失败时必须记录警告日志（`event=cli_env_decrypt_failed`，标记 `serviceId` 与 `key`），绝不向子进程透传密文或静默无痕
+

@@ -220,4 +220,13 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | 集合截断断言仅准备正好 LIMIT 个样本 | 注入脚本若只抓取 50 个元素，宿主无从知晓是否存在第 51 个，导致 `truncated: true` 永远无法被真实触发 | 测试 stub 数据与探测脚本必须构造 `LIMIT + 1`（如 51 个元素），注入层采集 `LIMIT + 1` 供宿主严谨判定 `truncated` |
 | 跨进程服务注册表测试直接写入真实系统路径 | 测试用例污染本机 `~/.opc-workstation/server.json`，打乱正在运行的其他实例并导致并发测试用例冲突 | 通过 `OPC_SERVER_REGISTRY_FILE` 与 `OPC_WORKSTATION_CONFIG_DIR` 环境变量将注册表读写彻底重定向至临时目录（`os.tmpdir()`），测试结束后清理 |
 
+## 2026-09-07 追加（2026-09-06-cli-service-connection /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| 前端轮询未注入可控 Timer 或未隔离并发探测 | 前端轮询组件在测试中真实等待或共享长负缓存，导致测试耗时飙升或偶发锁死 | 前端组件与 API 探针提供可测试接缝（fake timers / `this._stubFetchLatest` / `refresh: true`），严禁在失败探测路径写长负缓存 |
+| Native 模块编译目标在 Node 与 Electron 间漂移 | `better-sqlite3` 编译为 Electron ABI (NODE_MODULE_VERSION 148) 后导致 `node --test` 运行报 `ERR_DLOPEN_FAILED` (NODE_MODULE_VERSION 137) | 在本地执行原生依赖测试前，若跨越了 Electron 构建或运行，明确执行 `npm rebuild better-sqlite3` 保证 Node 测试运行时匹配 |
+| 权限测试通过绕开策略层的自定义前置门断言 | 在工具适配层自建 pre-gate 掩盖策略层配置缺失（如 policyRules / permissionPolicy），策略层真实评估从未被测到 | 权限断言必须直接针对单一策略真源（`permissionPolicy.evaluate` 返回 deny），测试真实拦截链条而非业务特判 |
+
+
 

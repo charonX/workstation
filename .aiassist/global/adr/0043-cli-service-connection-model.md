@@ -34,7 +34,8 @@ story 2026-09-06-cli-service-connection 把本机 CLI 服务（首批 claude / c
 - 技能库新增「内置来源」目录类型（小扩展，但来源目录模型多一个分支）。
 - worker 内存持有明文密钥（与 MCP bearer 快照同风险级，已接受先例）。
 - 组合命令逃逸面未根除，依赖默认 ask 兜底（显式接受的残余风险）。
-- CLI-only 模式（非 Electron 宿主）下凭据存储退化为 base64 可逆混淆存储（与 MCP 先例保持一致），且解密失败按单 key 粒度 fail-closed 跳过（记警告日志），不向子进程透传密文或阻断健康 key；配置层设高危注入变量黑名单（BASH_ENV/LD_PRELOAD/DYLD_INSERT_LIBRARIES/NODE_OPTIONS 等）防进程劫持。
+- CLI-only 模式（非 Electron 宿主）下凭据存储退化为 base64 可逆混淆存储（与 MCP 先例保持一致），且解密失败按单 key 粒度 fail-closed 跳过（记警告日志），不向子进程透传密文或阻断健康 key；配置层设高危注入变量黑名单（BASH_ENV/LD_PRELOAD/DYLD_INSERT_LIBRARIES/NODE_OPTIONS 等 18 项，见 `DANGEROUS_ENV_KEYS`）防进程劫持。
+
 
 ### 替代方案
 - **动态 pre-gate**（classifyBashToolCall 清单感知，实时查启用态）：动态生效无需新会话，但权限语义分两处表达，且 pre-gate 是 pre-gate、规则是规则，读者要面对两套真相——拒绝。

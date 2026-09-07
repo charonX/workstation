@@ -12,8 +12,8 @@ phase: REFLECT       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 com
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-09-06
-status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
-completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+status: completed    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: "2026-09-07"  # /reflect 标记完成时写入，如 2026-08-17。
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -28,6 +28,8 @@ history:
   - {at: 2026-09-06, from: ASSERTION-SIGNOFF, to: BUILD, note: "AI 全量自检通过，门 1 断言签核锁定，解锁 BUILD 实现"}
   - {at: 2026-09-06, from: BUILD, to: QA, note: "6 个切片实现全量完成，8 个业务测试（40 passed）与 1233 个全量单元回归通过，推进至 QA"}
   - {at: 2026-09-06, from: QA, to: REFLECT, note: "QA 报告落盘（业务测试与 E2E 全绿，无 open bug），进入 REFLECT 最终验收与知识沉淀（门 2）"}
+  - {at: 2026-09-07, from: REFLECT, to: -, note: "最终验收通过，沉淀全局资产并原地归档"}
+
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []

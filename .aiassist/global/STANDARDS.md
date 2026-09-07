@@ -82,6 +82,23 @@
   - 所有查询凭据列表或详情的 API 必须严格执行只读脱敏投影（仅返回 `configured: Boolean(encrypted)`，严禁向下游下发明文或密文 key）。
   - 包含敏感凭据的文件落盘必须保持 `0o600` 权限，密钥通过底层钥匙串加密工具（`secretStore`）加密存储。
 
+## CLI 服务接入与受管执行规范（2026-09-07，2026-09-06-cli-service-connection /reflect）
+
+- **一次性调用与非交互纪律**：
+  - 受管 CLI 调用必须通过内置 SKILL 明确约束为非交互式任务（禁止交互式 REPL、无限等待循环或需要标准输入提示的场景），一次性执行并返回结果。
+- **环境凭据安全注入与单一解密点**：
+  - CLI 服务环境变量（如 API KEY）在配置入库时必须经 `secretStore` 加密存储，API 与 CLI 查询必须强脱敏（仅暴露 `envKeys` 数组，绝不下发明文或密文字典）。
+  - **唯一解密点单点化**：全系统除 `buildConfigMessage` 构造 `session-config` 快照时调用 `cliService.effectiveConfig` 解密外，严禁在其他路径（如 API、日志、外围查询）解密凭据。
+  - **单 key 粒度 Fail-Closed**：解密失败时按单 key 粒度记录警告并跳过，严禁向子进程透传密文或阻断健康 key。
+- **高危环境变量黑名单防御**：
+  - 受管 CLI 配置必须在输入阶段（API / CLI）校验并拦截注入攻击高危环境变量（`DANGEROUS_ENV_KEYS`：`BASH_ENV`, `ENV`, `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `NODE_OPTIONS`, `NODE_PATH`, `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `SSH_ASKPASS`, `PERL5LIB`, `PYTHONHOME`, `PYTHONPATH`, `PROMPT_COMMAND` 等），杜绝子进程劫持。
+- **两层启用与生效生命周期（ADR-043）**：
+  - 权限拦截走 ADR-022 项目层覆盖与 gotgenes 规则层（mtime 热生效，保存即生效）；未启用 CLI 生成 deny 规则，已启用回落默认出厂层（默认 ask，可配置为 allow）。
+  - 环境变量快照与内置 Skill link 基于 session-config 冷注入（新会话生效，确保运行中会话凭据上下文一致）。
+- **内置 Skill 收敛不变量**：
+  - 自动创建/收敛软链时必须严格尊重用户已有自建资产：若项目 `.skills/<slug>` 已经存在且非软链（用户自建目录/文件），绝对不可覆盖或删除；移除软链时同样仅移除自建软链，严禁触碰用户真实目录。
+
+
 
 
 

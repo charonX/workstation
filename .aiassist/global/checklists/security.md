@@ -135,3 +135,11 @@ Referrer-Policy: strict-origin-when-cross-origin
 
 - **第三方凭据一等字段化 + 加密落库**：bearer token 类凭据必须是一等表单/CLI 字段，落库前经 secretStore 加密存 `*_enc` 列；**DB/API 响应/列表/页面/日志永不出现明文**，解密仅发生在快照注入消费方的瞬间（effectiveConfig → 桥 bearerToken）。手填 headers 注入凭据只是 workaround，不是凭据管理。
 - **探测即连即断**：工具探测（probeTools）按库内配置直连第三方服务拉清单，10s 超时、不写库、不影响会话快照；错误呈「连接失败 + 详情」但不回显 token。
+
+## 2026-09-07 追加（2026-09-06-cli-service-connection /reflect）
+
+- **高危环境变量黑名单防御**：受管子进程环境变量注入必须维护高危键黑名单（`BASH_ENV`, `ENV`, `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `NODE_OPTIONS`, `NODE_PATH`, `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `SSH_ASKPASS`, `PERL5LIB`, `PYTHONHOME`, `PYTHONPATH`, `PROMPT_COMMAND` 等），在配置接口即刻拒绝（400），严禁子进程注入劫持。
+- **单 key 粒度 Fail-Closed 解密**：凭据解密失败按单个 key 粒度记录警告并跳过，严禁向子进程透传密文或阻断其余合法 key。
+- **项目存在性与路径穿越防御**：项目级配置与启用接口必须校验项目实际存在性（拒绝空库/不存在的 ID，返回 404），并严防项目 ID 包含 `..`、`/`、`\` 的目录穿越攻击。
+- **受管 CLI 权限单一真源**：未启用 CLI 必须在项目层策略覆盖中生成 `deny` 规则，交由底层权限系统统一裁决拦截，严禁在工具适配层自行实现第二套非标 pre-gate。
+

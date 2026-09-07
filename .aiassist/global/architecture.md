@@ -119,4 +119,5 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-040: server 注册表锚定机器级固定路径（~/.opc-workstation/server.json 与 configDir 解耦，固定 owner 发现）
 - ADR-041: 回合收尾合成泛化（任何终态 stopReason 且无 text_end 均自动合成，消灭 UI 回复中假死）
 - ADR-042: 文件预览面板（HTTP/SSE 数据通道 + 右侧槽位互斥 + 既有图片白名单对齐 + 敏感端点 Loopback 守卫与 CORS 收紧）
+- ADR-043: CLI 服务连接模型（内置清单 + 两层启用静态生成进权限层 + 内置 SKILL.md 缝 + env 快照注入 + 探测缓存并发模型）
 
