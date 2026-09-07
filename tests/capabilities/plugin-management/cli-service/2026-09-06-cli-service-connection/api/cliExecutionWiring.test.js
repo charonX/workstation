@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-008, 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-009
-// REQ-VERSION: v1-hash:d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff
+// REQ-VERSION: v1-hash:1f616dc91b7e8d80569503c5ce12f190ddf066f699394496ea8a815e61593119
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.3 块 5, §8 E5/E6, §10.2, §10.4 接口 4, §10.5 决策 1/4, ADR-043

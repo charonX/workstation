@@ -1,5 +1,5 @@
 // REQ-TRACE: 2026-09-06-cli-service-connection/REQ-CLI-SERVICE-006
-// REQ-VERSION: v1-hash:d33ce03b960d1815a224d214724b10561ef35cafcdca3f08152d5543560b12ff
+// REQ-VERSION: v1-hash:1f616dc91b7e8d80569503c5ce12f190ddf066f699394496ea8a815e61593119
 // CAPABILITY-TRACE: plugin-management
 // ENTITY-TRACE: cli-service
 // EXPECTED-TRACE: prd.md §6.1 流 A/B, §6.3 块 4, §7.1, §8 E1
