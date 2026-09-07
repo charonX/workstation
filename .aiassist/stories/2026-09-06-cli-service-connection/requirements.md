@@ -236,7 +236,7 @@
 1. `src/agent/policyRules.js` 与 `src/services/policyRules.js` 中的 `BASH_RULES` 必须显式包含清单命令规则：涵盖带参形态（`claude *`、`codex *`、`crwl *`）与裸命令形态（`claude`、`codex`、`crwl`），默认权限判定均为 `ask`——EXPECTED-TRACE: PRD §10.2, §10.5 决策 1, ADR-043。
 2. 运行规则生成与配平检测（`gen-agent-policy`），确保出厂规则与部署策略 JSON 配平无漂移。
 3. 项目层权限覆盖生成（ADR-022）：针对项目已启用的 CLI 服务，权限规则回落至默认层（用户可配置为 allow 或 ask）；针对项目未启用的 CLI 服务，生成项目层规则覆盖（包含 `cmd *` 与 `cmd`），权限判定为 `deny`。
-4. 权限执行闭环：当 agent 试图执行未启用的清单命令时，权限链返回拦截判定并回传错误码 `E-CLI-NOT-ENABLED`，不创建任何系统子进程——EXPECTED-TRACE: PRD §6.2 异常行 5, §8 E5。
+4. 权限执行闭环：当 agent 试图执行未启用的清单命令时，权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程——EXPECTED-TRACE: PRD §6.2 异常行 5, §8 E5。
 
 #### 测试可追溯性
 
@@ -277,3 +277,4 @@
 |---|---|---|---|---|
 | v1 | 见 requirements-v1.hash | 2026-09-06 | 初版（10 个 REQ，覆盖全部 5 个稳定块及产品 CLI 接缝，全部 trace 到 PRD v0.1 锚点） | 全部 |
 | v1.1 | 见 requirements-v1.hash | 2026-09-06 | 第一轮 review 后契约修订：REQ-002 AC3 对齐 PRD §8 E2 三独立条件；REQ-008 AC2 快照补 timeoutSec 锚点；REQ-009 归属归位 plugin-management/cli-service；REQ-002 AC4 锚点标注修正为 §6.3 锚点 A5 | REQ-CLI-SERVICE-002 / 008 / 009 |
+| v1.2 | 见 requirements-v1.hash | 2026-09-07 | 第四轮 review RE4-1 契约修订：REQ-009 AC4 移除 E-CLI-NOT-ENABLED 错误码，对齐 gotgenes 策略层单一真源返回 deny 判定 | REQ-CLI-SERVICE-009 |

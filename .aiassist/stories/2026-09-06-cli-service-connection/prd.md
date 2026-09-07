@@ -120,7 +120,7 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 | E2 探测失败 | `--version` 超时 5s / 非零退出 / 输出无法解析出版本 | `E-CLI-PROBE-FAILED:<原因>` | 条目「检测失败」+ 重试 | 缓存记录失败态，TTL 内不反复 spawn |
 | E3 新版本检查失败 | npm/PyPI 请求超时/非 200 | 无错误码（降级） | `latestVersion:"unknown"`，本地状态照常 | 无副作用，不阻塞页面 |
 | E4 输入校验失败 | §7 规则触发 | 字段级内联消息 | 表单标红，保存按钮不可用 | 不落库 |
-| E5 权限拒绝 | agent 调用未启用/未授权 CLI | `E-CLI-NOT-ENABLED` / 权限链拒绝原因 | agent 收到拒绝结果 | 不执行，无进程产生 |
+| E5 权限拒绝 | agent 调用未启用/未授权 CLI | 权限链拒绝原因（verdict: deny） | agent 收到拒绝结果 | 不执行，无进程产生 |
 | E6 执行超时 | 调用超过配置超时（默认 120s） | `E-CLI-TIMEOUT` | agent 收到超时错误 + 已产生的部分输出 | 杀子进程（SIGTERM→SIGKILL） |
 
 ## 9. 复杂度分级
@@ -288,7 +288,7 @@ agent 运行时需要调用本机 CLI 服务来完成任务，但工作台目前
 | 3 配置管理 | HTTP API /api/cli-services（启用/env/超时/项目启用/effectiveConfig/env 掩码）；产品 CLI `cli-service enable/disable/env` 命令族 | 集成（API 级，真实 SQLite） | 真实 DB，对齐 mcpHttpUpdate 先例 |
 | 3 权限接线 | policyRules 出厂规则含清单命令（配平测试锁漂移）；项目层覆盖生成（启用→默认层回落 / 未启用→deny） | 单元 + 集成 | gen-agent-policy 生成产物配平 |
 | 4 管理页 | 产品 CLI 优先；页面结构/行为 E2E（Playwright：列表渲染、标灰+指引、开关 disabled、env 表单校验、刷新） | E2E | 后端 stub 探测结果 |
-| 5 agent 调用面 | 内置 skill link/unlink 随启用收敛（listLinkedSkillPaths）；session-config cliServices 段快照（env 解密仅此点）；worker bash env 合并；权限拒绝路径（E5） | 单元 + 集成 | broker stub；spawn stub |
+| 5 agent 调用面 | 内置 skill link/unlink 随启用收敛（listLinkedSkillPaths）；session-config cliServices 段快照（env 解密仅此点）；worker bash env 合并；权限拒绝路径（E5 deny 拦截） | 单元 + 集成 | broker stub；spawn stub |
 
 ### 11.2 测试策略与先例
 

@@ -253,7 +253,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 
 ### 阻塞项（必须处理后才能进 REFLECT）
 
-- [ ] **RE4-1 CRITICAL（契约）：REQ-009 AC4 锚定的 `E-CLI-NOT-ENABLED` 错误码已不存在于系统**
+- [x] **RE4-1 CRITICAL（契约）：REQ-009 AC4 锚定的 `E-CLI-NOT-ENABLED` 错误码已不存在于系统**——**用户决策（选项 A）：就地修订契约**。保持代码中单一真源不变；REQ-009 AC4 改写为「权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程」；prd.md §8 E5 与 §11 移除死错误码，对齐权限链拒绝（verdict: deny）；重算 requirements-v1.hash（`1f616dc9...`）并同步 8 个测试文件 REQ-VERSION；signoff.md 追加 v1.2 签核段并同步核验行。
   - 事实链：`src/` 全仓零产生点（0040408 随 pre-gate 整段删除）；策略评估器返回裸字符串 `"deny"`（permissionPolicy.js:176-189），授权层 deny reason 为自然语言无 code 字段；测试只断言 `verdict === "deny"`。但 `requirements.md:239` REQ-009 AC4 硬锁「回传错误码 `E-CLI-NOT-ENABLED`」、`prd.md:123` §8 E5 错误码列、`signoff.md:50` 签核断言均仍在。
   - 裁决建议（两 specialist 一致）：**改 REQ，不补代码**——RE2-5 选项 B 是人裁决的架构方向，gotgenes 策略层无法产出本应用自定义错误码，补回 = 复活已否决的双重真相（与 ADR-043「替代方案-动态 pre-gate：拒绝」冲突）。
   - 修复链路：REQ-009 AC4 改写为「权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程」→ 重算 requirements-v1.hash → 同步 8 个测试文件 REQ-VERSION → signoff.md 追加 v1.2 签核段并修订 :50 → prd.md:123 删死错误码（软层对齐）→ prd.md:291 §11 测试决策 item 5（仍写「权限拒绝路径（E5）…spawn stub」）同步修订。

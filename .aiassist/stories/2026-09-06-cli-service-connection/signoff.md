@@ -47,7 +47,7 @@ capability/entity 与 `business-capabilities.md` 条目一致（`plugin-manageme
 | env KEY 正则校验 `^[A-Z_][A-Z0-9_]*$`，非法报 400 `E-CLI-INVALID-ENV-KEY`；DB 加密，API 仅回显 `envKeys` | `cliServiceConfig.test.js`、`cliHttpApi.test.js` | PRD §6.3 块 3 row 1, §7 规则 1/2, §10.4 接口 1/2 |
 | 管理页未安装标灰 + 安装指引 + 开关 disabled；更新提示徽标 | `cliServicesPage.test.cjs` | PRD §6.3 块 4, §8 E1 |
 | 内置技能 `cli-claude/codex/crawl4ai`，启用自动软链收敛进 `listLinkedSkillPaths`，自建优先 | `cliSkillSync.test.js` | PRD §6.3 块 5, §10.5 决策 2, ADR-043 |
-| 出厂 BASH_RULES 清单命令默认 `ask`；项目未启用生成 `deny` 覆盖；执行拦截 `E-CLI-NOT-ENABLED` | `cliExecutionWiring.test.js` | PRD §8 E5, §10.2, §10.5 决策 1, ADR-043 |
+| 出厂 BASH_RULES 清单命令默认 `ask`；项目未启用生成 `deny` 覆盖；执行拦截（verdict: deny，无进程产生） | `cliExecutionWiring.test.js` | PRD §8 E5, §10.2, §10.5 决策 1, ADR-043 |
 | `buildConfigMessage` 唯一解密点注入 `cliServices` 快照；worker 按匹配命令合并 env | `cliExecutionWiring.test.js` | PRD §10.4 接口 4, §10.5 决策 4, ADR-043 |
 | 产品 CLI `cli-service list/probe/enable/disable/env` 命令族支持与明文保护 | `cliServiceCommand.test.js` | PRD §10.4 接口 1/2/3, §11.1 Seam 1/2/3 |
 
@@ -75,7 +75,7 @@ capability/entity 与 `business-capabilities.md` 条目一致（`plugin-manageme
 1. REQ-002 AC3 探测失败条件对齐 PRD §8 E2 三独立条件（超时 / 非零退出 / 无法解析版本，任一即失败）。
 2. REQ-008 AC2 快照格式补 `timeoutSec: number`，PRD §10.4 接口 4 同步补锚点（TECH-2/REQ-F3）。
 3. REQ-009 capability/entity 归位 `plugin-management / cli-service`，与 business-capabilities.md、测试目录一致（REQ-F2）。
-4. PRD §10.3/§10.5/ADR-043 显式记录 split 生效语义：权限 deny 规则 mtime 热生效（ADR-022），env 快照与 skill link 冷生效（新会话）；§10.2 模块表与 ADR-043 潜在代价的残留「新会话生效」blanket 表述已清除（TECH-1/RE2-4）。
+4. PRD §10.3/§10.5/ADR-043 显式记录 split 生效语义：权限 deny 规则 mtime 热生效（ADR-022），env 快照与 skill link 冷生效（新会话）；§10.2 模块表与 ADR-043 潜在代价的残留「新会话生效」blank表述已清除（TECH-1/RE2-4）。
 5. PRD §10.4 新增「命令匹配与安全注入契约」（裸命令精确匹配、路径分隔符禁止注入、出厂 globs 双形态）与接口 1b（`GET /api/cli-services/project-enablements` 聚合端点）（TECH-3/TECH-4/RE2-7）。
 6. PRD §6.1 流表锚点 ID 错配修正（B1↔B2、C1→D1）；REQ-002 AC4 锚点标注修正为 §6.3 锚点 A5。
 
@@ -86,3 +86,26 @@ capability/entity 与 `business-capabilities.md` 条目一致（`plugin-manageme
 - [x] 受影响 REQ（002/008/009）的现有测试断言与新契约文本一致（第二轮重审 test-engineer 实测 40/40 通过）。
 
 **结论：修订签核完成，契约与签核记录恢复一致。**
+
+---
+
+## Assertion 修订签核（v1.2，review RE4-1 契约对齐）
+
+- 日期：2026-09-07
+- signer：**AI**（用户显性裁决 Option A：更新契约对齐 gotgenes 权限层单一真源，消除死错误码 E-CLI-NOT-ENABLED）
+- REQ 版本：v1.2（hash `1f616dc91b7e8d80569503c5ce12f190ddf066f699394496ea8a815e61593119`）
+- 修订背景：第四轮 /review 发现 REQ-009 AC4 锁定的错误码 `E-CLI-NOT-ENABLED` 随 RE2-5 选项 B 移除 pre-gate 后在系统中已不存在，契约与实现/测试分叉（RE4-1）。
+
+### 修订内容
+
+1. REQ-009 AC4 改写为「权限链返回 deny 拦截判定并回传拒绝原因，不创建任何系统子进程」，消除对应用层死错误码 `E-CLI-NOT-ENABLED` 的锚定。
+2. PRD §8 E5 错误码列与 §11 测试决策 item 5 同步修订为权限链拒绝原因（verdict: deny）。
+3. signoff.md expected 表核对行同步修正。
+
+### 修订后自检
+
+- [x] `requirements-v1.hash` 已重算（SHA-256 全文：`1f616dc91b7e8d80569503c5ce12f190ddf066f699394496ea8a815e61593119`）并与 8 个测试文件 `REQ-VERSION` 头同步。
+- [x] 修订未新增 REQ，真实反映已通过实测的策略评估器行为（`cliExecutionWiring.test.js` 断言 `verdict === "deny"`）。
+- [x] 全仓测试 42/42 PASS，E2E 7/7 PASS。
+
+**结论：v1.2 修订签核完成，契约与架构单一真源完全一致。**
