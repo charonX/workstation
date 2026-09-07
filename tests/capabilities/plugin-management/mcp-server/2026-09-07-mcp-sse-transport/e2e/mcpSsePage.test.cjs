@@ -212,4 +212,37 @@ test.describe("REQ-MCP-SSE-004 管理页 transport 三选与 sse 展示", () => 
     await expect(result).toBeVisible();
     await expect(result).toContainText("连接失败：");
   });
+
+  // BUG-002 回归（code-defect，2026-09-07 人裁决）：crawl4ai 式超长工具描述把结果区
+  // 撑爆 modal-footer，保存/取消被推出视口。契约：结果区定界滚动 + footer 按钮恒在视口内。
+  test("BUG-002：超长工具描述不撑爆弹窗——结果区定界且保存按钮在视口内", async () => {
+    // EXPECTED-TRACE: BUG-002 分类记录（code-defect：结果区缺 max-height/滚动定界）
+    const { proc, port } = await startSseFixture({ MCP_FIXTURE_LONG_DESC: "1" });
+    try {
+      await firstWindow.locator("[data-testid='mcp-add-button']").click();
+      await firstWindow.locator("[data-testid='mcp-type-seg'] [data-type='sse']").click();
+      await firstWindow.locator("[data-testid='mcp-name-input']").fill("e2e-long-desc");
+      await firstWindow.locator("[data-testid='mcp-url-input']").fill(`http://127.0.0.1:${port}/sse`);
+      await firstWindow.locator("[data-testid='mcp-test-conn-button']").click();
+
+      const result = firstWindow.locator("[data-testid='mcp-test-conn-result']");
+      await expect(result).toContainText("echo");
+
+      // 结果区定界：有滚动约束且高度有界（不随描述长度无界增长）
+      const box = await result.boundingBox();
+      expect(box, "结果区在文档流中").toBeTruthy();
+      expect(box.height, "结果区高度有界（≤240px）").toBeLessThanOrEqual(240);
+      const overflowY = await result.evaluate((el) => getComputedStyle(el).overflowY);
+      expect(["auto", "scroll"], "结果区可滚动").toContain(overflowY);
+
+      // footer 按钮恒可达：保存按钮完整落在窗口内（Electron 无 viewport 模拟，用 window.innerHeight）
+      const submit = firstWindow.locator("[data-testid='mcp-form-submit']");
+      await expect(submit).toBeVisible();
+      const btnBox = await submit.boundingBox();
+      const winHeight = await firstWindow.evaluate(() => window.innerHeight);
+      expect(btnBox.y + btnBox.height, "保存按钮下沿在窗口内").toBeLessThanOrEqual(winHeight);
+    } finally {
+      proc.kill();
+    }
+  });
 });

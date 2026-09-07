@@ -17,6 +17,10 @@ import crypto from "node:crypto";
 
 const TOKEN = process.env.MCP_FIXTURE_TOKEN || null;
 const AUTH_LOG = process.env.MCP_FIXTURE_AUTH_LOG || null;
+// BUG-002 回归：模拟 crawl4ai 式超长工具描述（Pydantic schema dump 级），验证结果区定界
+const LONG_DESC = process.env.MCP_FIXTURE_LONG_DESC
+  ? "回显输入文本（sse fixture）" + "——超长描述 ".repeat(400) + "Optional[Dict[str, Any]] = None"
+  : "回显输入文本（sse fixture）";
 
 /** sessionId → http.ServerResponse（SSE 流） */
 const sessions = new Map();
@@ -45,7 +49,7 @@ function handleRpc(msg, sessionRes) {
       tools: [
         {
           name: "echo",
-          description: "回显输入文本（sse fixture）",
+          description: LONG_DESC,
           inputSchema: { type: "object", properties: { text: { type: "string" } } },
         },
       ],
