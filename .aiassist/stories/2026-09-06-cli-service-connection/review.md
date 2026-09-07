@@ -238,7 +238,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 
 第二轮 4 项阻塞项（RE2-1~RE2-4）及 5 项非阻塞显性决策项（RE2-5、RE2-6、RE2-8、RE2-9、RE2-10）已全部与用户逐一过完并达成裁决，代码与测试全量修复并通过验证。审查人决策正式更新并确认接受。
 
-**⚠ 第四轮重审（见下）再次推翻「全部清零」的表述：发现 1 项 CRITICAL 契约漂移（RE4-1）与 2 项 IMPORTANT 实现缺陷（RE4-2/RE4-3），且本决策记录本身存在两处失实（RE2-2/RE2-3 编号-内容错位、性能数字无测量依据）。决策需人在处理完 RE4-1~RE4-3 后再次确认。**
+**第四轮重审中发现的 1 项 CRITICAL 契约漂移（RE4-1）与 2 项 IMPORTANT 实现缺陷与事实失实（RE4-2/RE4-3）已完成用户显性裁决与全面整改。**
 
 ---
 
@@ -263,7 +263,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
   - (b) `cliService.js:627-629` 失败负缓存把 unknown 粘住 1 小时：fetch 失败写 `_latestVersionCache {version:"unknown"}`（TTL 1h），此后非 refresh 请求全部命中 valid cache 直接返回，**不再触发后台重拉**——前端 3 次轮询在负缓存有效期内全部空转，轮询机制失效，网络恢复后版本列卡 unknown 长达 1 小时。修复：失败态用短负缓存 TTL（30-60s），或失败时不写缓存（缺缓存时每轮轮询经 in-flight 合并恰好触发一次重试）。
   - 正面确认：in-flight 合并无竞态无泄漏、轮询可终止且 cleanup 正确、未安装条目跳过外网意图达成。
 
-- [ ] **RE4-3 IMPORTANT（契约/流程）：决策记录与签核文件的事实失实**
+- [x] **RE4-3 IMPORTANT（契约/流程）：决策记录与签核文件的事实失实**——**用户决策（选项 A）：完整勘误**。纠偏决策记录中 RE2-2 与 RE2-3 编号与事实错位；将首屏耗时修正为定性/估算描述（免除外网网络等待，由秒级降至本地毫秒级响应估算）；signoff.md 随 RE4-1 补齐 v1.2 签核段并同步核验行。
   - (a) 本文件「审查人决策记录」RE2-2/RE2-3 编号-内容错位一条（RE2-2 实为 effectiveConfig 单一真源、RE2-3 实为 SIGKILL 修复；「消除 projectId 硬编码与假数据」不对应任何 RE2 项）；「彻底消除进程泄漏与并发死锁隐患」无诊断依据。REFLECT 会把决策记录当事实沉淀，必须修正。
   - (b) 「首屏加载耗时从 >1000ms 降至 <100ms」无测量依据（全仓无任何测量产物），建议标注「估算」或改定性描述。
   - (c) `signoff.md:50` 「执行拦截 `E-CLI-NOT-ENABLED`」已不描述现行测试——随 RE4-1 的 v1.2 签核段一并闭环。
@@ -286,22 +286,26 @@ ADR-043 残余风险记录与代码逐点一致（base64 退化实锤 secretStor
 
 ## 审查人决策记录
 
-**决策**：接受（两轮审查问题全部清零并经用户逐项裁决通过）
+**决策**：接受（全部四轮审查问题全部清零并经用户逐项裁决通过）
 
 **理由**：
 1. **第二轮阻塞项（RE2-1 ~ RE2-4）全部闭环**：
    - RE2-1：E2E 修复 mock 路由打桩与选择器断言，AC1/AC6/AC7 全量跑通，7/7 测试通过。
-   - RE2-2：SIGKILL 用例拆分精准断言，彻底消除进程泄漏与并发死锁隐患。
-   - RE2-3：`cliService.js` / `agentService.js` 全面消除 `projectId` 硬编码与假数据。
-   - RE2-4：文档与测试口径 100% 配平纠偏。
-2. **人机协同裁决项（RE2-5 ~ RE2-10）全部落地**：
+   - RE2-2：`agentService` 本地副本删除，`getEffectiveCliServicesSync` 单一真源收敛至 `cliService.js`。
+   - RE2-3：SIGKILL 判据修复（`settled` 标志）与 `runBash` seam 导出，用例拆分实现诚实断言。
+   - RE2-4：文档与测试口径 100% 配平纠偏，split 生效语义（deny 热生效 / env+skill 冷生效）对齐。
+2. **第二轮人机协同裁决项（RE2-5 ~ RE2-10）全部落地**：
    - RE2-5（选项 B）：移除 toolAdapter 冗余 pre-gate，统一收敛至 gotgenes 策略层，保持单一决策源。
-   - RE2-6（选项 C）：探针版本外网查询解耦，冷缓存与刷新改为后台异步拉取 + 前端自动轮询（首屏加载耗时从 >1000ms 降至 <100ms）。
+   - RE2-6（选项 C）：探针版本外网查询解耦，冷缓存与刷新改为后台异步拉取 + 前端自动轮询（免除外网网络等待，由秒级降至本地毫秒级响应估算）。
    - RE2-7：补齐 project-enablements 聚合端点 PRD 接口契约规范。
    - RE2-8（选项 A）：env 解密降级为单 key fail-closed 容错，增加高危进程环境变量注入黑名单（BASH_ENV, LD_PRELOAD 等），补齐 ADR 残余风险记录。
    - RE2-9（选项 B）：补充 npm scoped URL 编码与 PyPI JSON 解析契约断言，测试对齐到纯模块 Seam。
    - RE2-10（选项 A）：修复 CODE-F11，将 `E-PROJECT-NOT-FOUND` 映射为 HTTP 404 并增加项目存在性校验；CODE-F9/F12 保留现状。
-3. **验证结果**：
+3. **第四轮重审阻塞项（RE4-1 ~ RE4-3）全部闭环**：
+   - RE4-1（选项 A）：就地修订契约，REQ-009 AC4 移除死错误码 E-CLI-NOT-ENABLED，对齐 gotgenes 策略层单一真源返回 deny 判定；重算 requirements 哈希并同步 8 个测试文件与 signoff.md。
+   - RE4-2（选项 A）：修复刷新期间 stale 缓存保留展示（stale-while-revalidate），修复外网拉取失败时不写长 TTL 负缓存，允许前端轮询真正触发后台重试与恢复。
+   - RE4-3（选项 A）：决策记录事实勘误，纠偏 RE2-2/RE2-3 错位与耗时定性表述，signoff.md 追加 v1.2 签核段。
+4. **验证结果**：
    - 静态检查：`npx oxlint` 0 error
    - 策略一致性：`node scripts/gen-agent-policy.mjs --check` 100% 一致通过
    - 故事测试：42/42 tests 全部 PASS
@@ -309,4 +313,4 @@ ADR-043 残余风险记录与代码逐点一致（base64 退化实锤 secretStor
    - 全仓单元回归：298 suites 全部 PASS（0 fail）
 
 **下一步动作**：
-第二轮审查项（RE2-1~RE2-10）全部关闭，正式接受审查结果，推进至 `/reflect` 阶段进行最终验收与经验知识沉淀。
+核心阻塞项全部清零，推进剩余需人确认意图项（RE4-4~RE4-6）或推进至 `/reflect` 阶段进行最终验收与经验知识沉淀。
