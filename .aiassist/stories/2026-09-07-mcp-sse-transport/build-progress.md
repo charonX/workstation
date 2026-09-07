@@ -12,7 +12,7 @@
 | 切片 | 名称 | 涉及 REQ | 涉及实现代码 | 覆盖测试 | 状态 |
 |---|---|---|---|---|---|
 | Slice 1 | mcpService SSE transport 注册、快照与探测 | REQ-MCP-SSE-001, REQ-MCP-SSE-002, REQ-MCP-SSE-003 | `src/services/mcpService.js` | `api/mcpSseRegister.test.js`<br>`api/mcpSseBridge.test.js`<br>`api/mcpSseProbe.test.js` | COMPLETED |
-| Slice 2 | Mcp.jsx 管理页 transport 三选与 sse 展示 | REQ-MCP-SSE-004 | `src/renderer/pages/Mcp.jsx` | `e2e/mcpSsePage.test.cjs` | PENDING |
+| Slice 2 | Mcp.jsx 管理页 transport 三选与 sse 展示 | REQ-MCP-SSE-004 | `src/renderer/pages/Mcp.jsx` | `e2e/mcpSsePage.test.cjs` | COMPLETED |
 
 ---
 
@@ -54,3 +54,33 @@
 | REQ-MCP-SSE-003 | AC3: sse 指向已关闭端口抛错以 `连接失败：` 开头 | `mcpSseProbe.test.js` 标准 3 | `src/services/mcpService.js`: `probeTools` 统一 catch 包装 `连接失败：` | PASS |
 | REQ-MCP-SSE-003 | AC4: sse+bearer 探测请求携带 `Authorization: Bearer <token>` | `mcpSseProbe.test.js` 标准 4 | `src/services/mcpService.js`: `probeTools` 在 `eventSourceInit`/`requestInit` 注入 Authorization | PASS |
 | REQ-MCP-SSE-003 | AC5: 回归——http 探测既有 streamable fixture 仍成功 | `mcpSseProbe.test.js` 标准 5 | `src/services/mcpService.js`: `probeTools` http 分支保持 `StreamableHTTPClientTransport` | PASS |
+
+- **验证记录**：
+  - `Slice 1: complete (9682aac..bd50b56, tests green, PRD alignment passed)`
+  - `Slice 1: refactor pass done (bd50b56..bd50b56, tests green, no changes needed)`
+
+### Slice 2: Mcp.jsx 管理页 transport 三选与 sse 展示
+- **状态**：COMPLETED
+- **涉及模块**：`src/renderer/pages/Mcp.jsx`
+- **实现内容**：
+  1. `mcp-type-seg` 控件增加第三项 `data-type="sse"`，按钮文本为 `SSE（流式服务）`；点击重置 url 与 headers。
+  2. 表单字段展示条件调整为 `(mcpForm.type === "http" || mcpForm.type === "sse")`，展示 url、auth、token、headers 字段，隐藏 command、args、env 字段。
+  3. `endpointText(s)`：支持 `s.type === "sse"` 与 `http` 同构展示 URL 与 auth 信息。
+  4. 列表行 badge：支持 `s.type === "sse"` 匹配样式 `badge-git`，文本显示 `sse`。
+  5. 表单提交（`handleMcpSave`）：`mcpForm.type !== "stdio"` 时收集 url、auth、token、headers，排除 command/args/env。
+  6. 编辑回显（`openEditMcp`）：正确回显 `server.type === "sse"`，激活 seg `data-type="sse"` 并回填 url。
+
+#### PRD → 代码可追溯性表 (Slice 2)
+
+| REQ ID | 验收标准 / 预期行为 | 覆盖测试 | 实现代码落点 | 状态 |
+|---|---|---|---|---|
+| REQ-MCP-SSE-004 | AC1: 添加/编辑弹窗 transport seg 含 stdio/http/sse 三选项，sse 项带 `data-type="sse"` | `mcpSsePage.test.cjs` 用例 1 | `src/renderer/pages/Mcp.jsx`: `mcp-type-seg` 新增 `data-type="sse"` 按钮 | PASS |
+| REQ-MCP-SSE-004 | AC2: 选 sse 隐藏 command/args/env，显示 url/auth/token/headers；切回 stdio 恢复 | `mcpSsePage.test.cjs` 用例 2 | `src/renderer/pages/Mcp.jsx`: `(mcpForm.type === "http" \|\| mcpForm.type === "sse")` 条件渲染 | PASS |
+| REQ-MCP-SSE-004 | AC3: 选 sse 填表提交，列表出现 server 且 badge 为 sse，提交体含 `type: "sse"` 且无 command/args/env | `mcpSsePage.test.cjs` 用例 3 | `src/renderer/pages/Mcp.jsx`: `handleMcpSave` 提交分支与 badge 渲染 | PASS |
+| REQ-MCP-SSE-004 | AC4: 编辑既有 sse 条目，seg 激活 sse 且 url 回填 | `mcpSsePage.test.cjs` 用例 4 | `src/renderer/pages/Mcp.jsx`: `openEditMcp` 回填 server.type 与 server.url | PASS |
+| REQ-MCP-SSE-004 | AC5: 回归——stdio/http 原有表单与字段切换行为不回归 | `mcpSsePage.test.cjs` 用例 2 | `src/renderer/pages/Mcp.jsx`: 保持原有 stdio/http 分支逻辑 | PASS |
+
+- **验证记录**：
+  - `Slice 2: complete (e2e 4/4 passed, api 19/19 passed, PRD alignment passed)`
+
+

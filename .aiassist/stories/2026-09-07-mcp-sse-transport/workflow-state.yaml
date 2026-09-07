@@ -26,6 +26,17 @@ history:
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
 
+# 实现切片规划与状态跟踪
+slices:
+  - id: slice-1-service
+    name: "mcpService SSE transport 注册、快照与探测"
+    reqs: ["REQ-MCP-SSE-001", "REQ-MCP-SSE-002", "REQ-MCP-SSE-003"]
+    status: completed
+  - id: slice-2-ui
+    name: "Mcp.jsx 管理页 transport 三选与 sse 展示"
+    reqs: ["REQ-MCP-SSE-004"]
+    status: completed
+
 # 块状态(一挡内按块回流时维护)。
 blocks: {}
 

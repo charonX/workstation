@@ -348,7 +348,7 @@ export default function Mcp() {
             {mcpServers.map((s) => (
               <tr key={s.name} data-testid={`mcp-row-${s.name}`} className="plugin-row">
                 <td className="name-cell">{s.name}</td>
-                <td><span className={`badge badge-${s.type === "http" ? "git" : "local"}`}>{s.type}</span></td>
+                <td><span className={`badge badge-${s.type === "http" || s.type === "sse" ? "git" : "local"}`}>{s.type}</span></td>
                 <td className="mono">{endpointText(s)}</td>
                 <td>
                   <span
@@ -451,7 +451,7 @@ export default function Mcp() {
         </div>
       </div>
 
-      {/* ============ 添加/编辑 MCP 服务弹窗（stdio / http 类型切换） ============ */}
+      {/* ============ 添加/编辑 MCP 服务弹窗（stdio / http / sse 类型切换） ============ */}
       {addMcpOpen && (
         <div className="modal-overlay" data-testid="mcp-form-modal" onClick={() => setAddMcpOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -488,6 +488,14 @@ export default function Mcp() {
                     onClick={() => setMcpForm({ ...mcpForm, type: "http", url: "", headers: "" })}
                   >
                     HTTP（远程服务）
+                  </button>
+                  <button
+                    type="button"
+                    className={mcpForm.type === "sse" ? "active" : ""}
+                    data-type="sse"
+                    onClick={() => setMcpForm({ ...mcpForm, type: "sse", url: "", headers: "" })}
+                  >
+                    SSE（流式服务）
                   </button>
                 </div>
               </div>
@@ -529,7 +537,7 @@ export default function Mcp() {
                 </>
               )}
 
-              {mcpForm.type === "http" && (
+              {(mcpForm.type === "http" || mcpForm.type === "sse") && (
                 <>
                   <div className={`field${mcpFormError ? " invalid" : ""}`}>
                     <label>服务 URL</label>
@@ -672,6 +680,6 @@ function parseKeyValueLines(text) {
 }
 
 function endpointText(s) {
-  if (s.type === "http") return s.url ? `${s.url}${s.auth && s.auth !== "none" ? ` · ${s.auth}` : ""}` : "—";
+  if (s.type === "http" || s.type === "sse") return s.url ? `${s.url}${s.auth && s.auth !== "none" ? ` · ${s.auth}` : ""}` : "—";
   return [s.command, ...(Array.isArray(s.args) ? s.args : [])].filter(Boolean).join(" ");
 }
