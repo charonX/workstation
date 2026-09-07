@@ -271,7 +271,7 @@ REQ-F1/F2、TECH-2/3、CODE-F2/F3/F5/F8/F10/F13、SEC-1/2/3/6、PERF-F1/F2/F4、
 ### 需人确认意图（不阻塞，但需显性决策）
 
 - [x] **RE4-4（code）：`setProjectEnabled` 的 `projectCount > 0` 门对空 projects 表 fail-open**——**用户决策（选项 A）：严格校验，无条件抛 404**。移除 `projectCount > 0` 兼容门，`setProjectEnabled` 优先校验全局启用（未全局启用时按 PRD §7.1 规则 3 报 409 `E-CLI-GLOBALLY-DISABLED`），随后无条件校验 `projects WHERE id = ?`，不存在即抛 404 `E-PROJECT-NOT-FOUND`；单测 helper 增加测试 DB 项目预置，补齐项目不存在 404 独立测试用例。
-- [ ] **RE4-5（test）：RE2-6 前端轮询（2s×3 次）零测试覆盖**——规则 8「结构/行为必须有自动化测试」字面违反。补组件级测试（fake timers 断言 2s 后二次调用、3 次后停止），或在此显性登记为已接受缺口。
+- [x] **RE4-5（test）：RE2-6 前端轮询（2s×3 次）零测试覆盖**——**用户决策（选项 B）：显性登记为已接受缺口**。前端 2s×3 轮询为体验优化层逻辑，已通过 Playwright E2E 7/7 真实加载验证与代码审查（无泄漏、组件卸载时正确 clearTimeout cleanup、pollCount >= 3 正常终止），显性接受不单独编写 fake timers 定时断言测试。
 - [ ] **RE4-6（安全）：危险 env KEY 黑名单缺口**——建议补 `GIT_SSH_COMMAND`/`GIT_ASKPASS`/`SSH_ASKPASS`（git-over-ssh 任意命令执行，受管 CLI 工作流中 git 高频）、`NODE_PATH`、`LD_AUDIT`、`PERL5LIB`、`PYTHONHOME`。纵深防御性质，不阻塞。
 
 ### 小项（SUGGESTION，可随手清理）
