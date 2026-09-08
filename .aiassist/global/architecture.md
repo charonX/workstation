@@ -120,4 +120,6 @@ ADR-013 起见 `.aiassist/global/adr/` 各文件（索引见 `adr/README.md`）�
 - ADR-041: 回合收尾合成泛化（任何终态 stopReason 且无 text_end 均自动合成，消灭 UI 回复中假死）
 - ADR-042: 文件预览面板（HTTP/SSE 数据通道 + 右侧槽位互斥 + 既有图片白名单对齐 + 敏感端点 Loopback 守卫与 CORS 收紧）
 - ADR-043: CLI 服务连接模型（内置清单 + 两层启用静态生成进权限层 + 内置 SKILL.md 缝 + env 快照注入 + 探测缓存并发模型）
+- ADR-044: MCP SSE 传输支持、Ad-hoc 连通探测与运行时权限解析闭环（type 枚举扩充为 stdio/http/sse 三态 + POST /api/mcp/probe 无状态探测 + auto-judge 权力收敛 deny 改 defer + resolveMcpPermission 多候选解析器直通 SQLite DB）
+
 

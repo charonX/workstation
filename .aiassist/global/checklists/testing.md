@@ -228,5 +228,14 @@ loop-workflow 中测试是契约。本清单用于 `/test-author`、`/tdd` 和 `
 | Native 模块编译目标在 Node 与 Electron 间漂移 | `better-sqlite3` 编译为 Electron ABI (NODE_MODULE_VERSION 148) 后导致 `node --test` 运行报 `ERR_DLOPEN_FAILED` (NODE_MODULE_VERSION 137) | 在本地执行原生依赖测试前，若跨越了 Electron 构建或运行，明确执行 `npm rebuild better-sqlite3` 保证 Node 测试运行时匹配 |
 | 权限测试通过绕开策略层的自定义前置门断言 | 在工具适配层自建 pre-gate 掩盖策略层配置缺失（如 policyRules / permissionPolicy），策略层真实评估从未被测到 | 权限断言必须直接针对单一策略真源（`permissionPolicy.evaluate` 返回 deny），测试真实拦截链条而非业务特判 |
 
+## 2026-09-08 追加（2026-09-07-mcp-sse-transport /reflect）
+
+| 反模式 | 问题 | 修复 |
+|---|---|---|
+| SSE/HTTP 探测测试依赖真实网络端点 | 外部网络延迟大、易受网络抖动影响，缺乏对异常状态码/鉴权头的精确受控 | 本地用 `http.createServer` 搭建自足轻量 SSE stub（支持 text/event-stream、Bearer 鉴权校验、模拟已关闭端口），100% 确定性单测与毫秒级反馈 |
+| 权限判断测试使用 mock 掩盖底层规则与库规则读取盲区 | mock 绕过了底层 gotgenes 字符串处理和 DB 用户级配置解析，单元测试绿但真实环境被阻断 | 真实启动 worker 或使用真实数据库连接 + `resolveMcpPermission` 规则候选集进行端到端权限解析与放行断言 |
+| 表单报错测试仅断言全局提交失败 | 字段校验错误未能精准绑定（如名称缺失错误却冒充在 URL 字段），且报错后误触发其他弹窗遮挡 | 细化字段级错误归属断言（断言具体控件标红与文案位置），并断言保存操作不附带非预期的联动弹窗副作用 |
+
+
 
 

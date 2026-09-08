@@ -53,3 +53,5 @@
 | ADR-041 | 回合收尾合成泛化——任何终态 stopReason（stop/length/aborted/error）且本轮无 text_end 均从最终消息合成（content=text 块拼接可空）；toolUse/deferred 中轮不合成；beginTurn 清 lastReplies 消跨轮 reply 残留。不变量：每回合必有收尾事件（reasoning 模型整轮只 thinking 合法，UI 不得永挂「回复中」） | 已接受 | 2026-08-31 | REQ-AGENT-091/108 语义扩展（全局基础设施独立修复） |
 | ADR-042 | 文件预览面板——HTTP/SSE 数据通道（非 IPC，纯数据无 bounds 需求；复用 files/image 先例 + 既有 SSE）+ 右侧槽位互斥（预览 XOR 浏览器，实例保活）+ 图片白名单对齐附件（SVG 拒收）+ 路径识别仅行内 code。2026-09-03 增补决策 5：敏感端点 Loopback 守卫（Host/Origin 强校验 + 动态反射 CORS，无 ACAO:*） | 已接受 | 2026-09-02 | REQ-PREVIEW-001~010（2026-08-31-file-preview 验收 2026-09-03） |
 | ADR-043 | CLI 服务连接模型——内置清单 + 两层启用静态生成进权限层（出厂 ask/项目层 deny 覆盖，新会话生效）+ 内置 SKILL.md 缝（启用⇄自动 link，用户可覆盖）+ env 快照注入（解密点唯一）+ 探测缓存并发模型（TTL 60s/版本检查 1h/in-flight 合并/并发 ≤4） | 已接受 | 2026-09-06 | REQ-CLI-SERVICE-001~010（2026-09-06-cli-service-connection 验收 2026-09-07） |
+| ADR-044 | MCP SSE 传输支持、Ad-hoc 连通探测与运行时权限解析闭环——type 枚举扩充为 stdio/http/sse 三态且取消静默回落 + POST /api/mcp/probe 无状态探测接口（支持未落库临时凭据测试连接）+ auto-judge 权力收敛（deny 改转 defer 弹窗交人工裁决）+ Prompt 边界消歧（放行正常网页读取）+ resolveMcpPermission 多候选解析器（直通 SQLite DB 用户级权限，即改即生效） | 已接受 | 2026-09-08 | REQ-MCP-SSE-001~005（2026-09-07-mcp-sse-transport 验收 2026-09-08） |
+

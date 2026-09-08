@@ -5,13 +5,14 @@ story_id: 2026-09-07-mcp-sse-transport
 intention: >-
   接入只提供 legacy SSE 端点的 MCP 服务(如 crawl4ai /mcp/sse)时无法显式配置 transport,依赖适配器自动回落,探测报假阴性,接入结果不可预期。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
 
-phase: BUG       # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+phase: REFLECT   # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
                   # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
 attempt: 1        # 第几次尝试。归档重做时 +1。
 bug-counter: 3    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
 created: 2026-09-07
-status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
-completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+status: completed # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed: true
+completed_at: "2026-09-08"
 
 # 阶段流转历史。正常前进和回流都记一条。
 history:
@@ -28,6 +29,8 @@ history:
   - {at: 2026-09-07, from: BUG, to: BUG, note: "BUG-001 修复完成：probeConfig + POST /api/mcp/probe + 弹窗测试连接按钮；api 25/25 + 旧 MCP 回归 40/40 绿；[bugfix] BUG-001 已提交"}
   - {at: 2026-09-07, from: BUG, to: BUG, note: "BUG-002 code-defect（人裁决）：测试连接结果区无定界被超长描述撑爆——回归 RED 证实后修复（maxHeight+滚动+断行），story e2e 7/7 绿；[bugfix] BUG-002 已提交"}
   - {at: 2026-09-07, from: BUG, to: BUG, note: "BUG-003 code-defect/UX（人确认）：表单错误绑定到对应输入项（名称报错不再冒充在 URL 字段），移除保存后自动弹出工具列表弹层；e2e 9/9 绿；[bugfix] BUG-003 已提交"}
+  - {at: 2026-09-08, from: BUG, to: REFLECT, note: "最终验收通过（用户确认接受）；沉淀工程经验与 ADR-044，更新全局契约与清单；story 标记完成"}
+
 
 # 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
 archive: []
