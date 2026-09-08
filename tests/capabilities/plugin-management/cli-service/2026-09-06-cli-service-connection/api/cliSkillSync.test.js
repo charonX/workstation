@@ -36,11 +36,11 @@ describe("REQ-CLI-SERVICE-007 内置 Skill 自动收敛与项目链接（真 SKI
     fs.rmSync(workdir, { recursive: true, force: true });
   });
 
-  it("应用内置技能目录包含 2 个只读 SKILL.md 文件且内容包含命令说明", async () => {
+  it("应用内置技能目录包含 3 个只读 SKILL.md 文件且内容包含命令说明", async () => {
     assert.equal(typeof skillSvc.getBuiltinSkillPath, "function", "导出 getBuiltinSkillPath");
 
     // EXPECTED-TRACE: prd.md §6.3 块 5, ADR-043
-    const slugs = ["cli-claude", "cli-codex"];
+    const slugs = ["cli-claude", "cli-codex", "cli-antigravity"];
     for (const slug of slugs) {
       const skillPath = skillSvc.getBuiltinSkillPath(slug);
       assert.ok(skillPath, `内置技能 ${slug} 路径存在`);

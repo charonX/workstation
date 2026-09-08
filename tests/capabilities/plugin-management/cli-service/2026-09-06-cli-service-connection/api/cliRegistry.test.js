@@ -18,17 +18,17 @@ async function loadRegistry() {
 }
 
 describe("REQ-CLI-SERVICE-001 内置 CLI 清单注册表与数据结构", () => {
-  it("清单恰好包含 2 个条目，顺序固定为 claude, codex", async () => {
+  it("清单恰好包含 3 个条目，顺序固定为 claude, codex, antigravity", async () => {
     const { getRegistry } = await loadRegistry();
     const registry = getRegistry();
 
     // EXPECTED-TRACE: prd.md §6.3 块 1
     assert.equal(Array.isArray(registry), true, "registry 必须为数组");
-    assert.equal(registry.length, 2, "首批清单恰好 2 个条目");
+    assert.equal(registry.length, 3, "内置清单包含 3 个条目");
     assert.deepEqual(
       registry.map((item) => item.id),
-      ["claude", "codex"],
-      "id 顺序必须固定为 claude, codex"
+      ["claude", "codex", "antigravity"],
+      "id 顺序必须固定为 claude, codex, antigravity"
     );
   });
 
@@ -53,7 +53,7 @@ describe("REQ-CLI-SERVICE-001 内置 CLI 清单注册表与数据结构", () => 
         assert.ok(item[field] !== undefined && item[field] !== null, `条目 ${item.id} 缺少字段 ${field}`);
       }
       assert.ok(Array.isArray(item.versionArgs), `条目 ${item.id} versionArgs 必须为数组`);
-      assert.ok(["npm", "pypi"].includes(item.channel), `条目 ${item.id} channel 必须为 npm 或 pypi`);
+      assert.ok(["npm", "pypi", "standalone"].includes(item.channel), `条目 ${item.id} channel 必须为 npm, pypi 或 standalone`);
     }
   });
 
@@ -83,6 +83,20 @@ describe("REQ-CLI-SERVICE-001 内置 CLI 清单注册表与数据结构", () => 
     assert.equal(codex.channel, "npm");
     assert.equal(codex.package, "@openai/codex");
     assert.equal(codex.builtinSkillSlug, "cli-codex");
+  });
+
+  it("antigravity 条目精确匹配预期规范", async () => {
+    const { findRegistryItem } = await loadRegistry();
+    const agy = findRegistryItem("antigravity");
+
+    assert.ok(agy, "可查询到 antigravity 条目");
+    assert.equal(agy.id, "antigravity");
+    assert.equal(agy.displayName, "Antigravity CLI");
+    assert.equal(agy.command, "agy");
+    assert.deepEqual(agy.versionArgs, ["--version"]);
+    assert.equal(agy.channel, "standalone");
+    assert.equal(agy.package, "antigravity");
+    assert.equal(agy.builtinSkillSlug, "cli-antigravity");
   });
 
   it("findRegistryItem 对未知 id 返回 null", async () => {
