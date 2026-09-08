@@ -34,7 +34,7 @@
 | 文件预览面板 | File Preview Panel | 会话区右侧可收起的项目内文件**只读**预览视图（React 渲染层，非 WebContentsView——协议白名单不推翻）：Markdown 渲染/源码切换（复用聊天 MarkdownRenderer 管线）、代码高亮、图片直渲；与浏览器面板共享右侧面板容器心智，但内容通道独立（主进程受控读取）；文件外部变更自动刷新（主进程监听） | `src/renderer/components/preview/FilePreviewPanel.jsx` + `filePreviewStore.js` + `format.js` + `/api/agent/files/*` | 预览面板（裸词禁用，与浏览器面板消歧）、文件预览器 |
 | 文件树 | File Tree | 会话区左侧可收起边栏：绑定当前会话项目空间的解析根，懒加载目录树，噪音目录默认隐藏，支持全部展开/收起；点击文件 → 文件预览面板打开；非项目空间无解析根 → 不显示入口 | `src/renderer/components/preview/FileTree.jsx` + `fileTreeStore.js` | 资源管理器、文件浏览器 |
 | 服务凭据 | Service Credentials | 外部服务（如 RSSHub）访问配置的持久化实体：存储服务 Base URL 与加密 AccessKey，支持受控测试连接与只读脱敏读取 | settings.json 的 credentials 字典 + `src/services/credentialsService.js` | 凭据管理、三方服务配置 |
-| CLI 服务 | CLI Service | 工作台纳管的**本机可执行命令行服务**（支持范围由内置清单定义，当前 claude / codex；crawl4ai 于 2026-09-07 移除，改由 MCP SSE 接入——ADR-043 修订）：可环境检测（安装状态/版本/更新提示）、可 env 注入配置、两层启用后供 agent 以一次性任务形态调用 | `cli_services` / `cli_service_project_enablement` 表 + `src/services/cliService.js` + 前端 `/cli-services` 页面 | 外部服务、CLI 工具（裸词） |
+| CLI 服务 | CLI Service | 工作台纳管的**本机可执行命令行服务**（支持范围由内置清单定义，当前 claude / codex / antigravity；crawl4ai 于 2026-09-07 移除，改由 MCP SSE 接入——ADR-043 修订）：可环境检测（安装状态/版本/更新提示）、可 env 注入配置、两层启用后供 agent 以一次性任务形态调用 | `cli_services` / `cli_service_project_enablement` 表 + `src/services/cliService.js` + 前端 `/cli-services` 页面 | 外部服务、CLI 工具（裸词） |
 
 ## 业务概念
 

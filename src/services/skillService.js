@@ -925,7 +925,7 @@ export function deleteSource(slug) {
 
 // ---------- builtin CLI skills (REQ-CLI-SERVICE-007) ----------
 
-const BUILTIN_CLI_SLUGS = ["cli-claude", "cli-codex"];
+const BUILTIN_CLI_SLUGS = ["cli-claude", "cli-codex", "cli-antigravity"];
 
 function resolveProjectInfo(projectDirOrId) {
   if (!projectDirOrId) return { projectId: null, projectDir: null };

@@ -255,6 +255,98 @@ function requestPermissionDecision({ sessionKey, tool, input, description }) {
 //   （svc.checkPermission，PermissionQuery——链 link 同源 seam）分类——gotgenes
 //   会 ask/deny 的操作交 gotgenes 单卡/拦截（不双 ask），gotgenes 会 allow 的
 //   （含热路径盲区重定向/管道——BUG-002 同源）→ pre-gate 弹卡（挂起确认）。
+function wildcardMatchPattern(pattern, value) {
+  const pat = String(pattern ?? "");
+  const text = String(value ?? "");
+  const parts = pat.split("*");
+  if (parts.length === 1) return text === pat;
+  let pos = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part === "") continue;
+    const idx = text.indexOf(part, pos);
+    if (idx === -1) return false;
+    if (i === 0 && idx !== 0) return false;
+    pos = idx + part.length;
+  }
+  const last = parts[parts.length - 1];
+  if (last !== "" && !text.endsWith(last)) return false;
+  return true;
+}
+
+function matchMcpRuleMap(rules, candidates) {
+  if (!rules || typeof rules !== "object" || Array.isArray(rules)) return null;
+  let matched = null;
+  for (const [pattern, verdict] of Object.entries(rules)) {
+    if (pattern === "*") {
+      matched = verdict;
+      continue;
+    }
+    for (const cand of candidates) {
+      if (!cand) continue;
+      if (
+        wildcardMatchPattern(pattern, cand) ||
+        wildcardMatchPattern(pattern.toLowerCase(), cand.toLowerCase())
+      ) {
+        matched = verdict;
+        break;
+      }
+    }
+  }
+  return matched;
+}
+
+function resolveMcpPermission(serverName, tool, sessionCwd, svc) {
+  const qualified = `${serverName}:${tool}`;
+  const candidates = [qualified, tool, `${serverName}_${tool}`, serverName];
+
+  // 1. 项目级策略覆盖（.pi/extensions/pi-permission-system/config.json）
+  if (sessionCwd) {
+    try {
+      const projPath = path.join(sessionCwd, ".pi", "extensions", "pi-permission-system", "config.json");
+      if (fs.existsSync(projPath)) {
+        const projConf = JSON.parse(fs.readFileSync(projPath, "utf8"));
+        const projMcp = projConf?.permission?.mcp;
+        const v = matchMcpRuleMap(projMcp, candidates);
+        if (v) return v;
+      }
+    } catch {}
+  }
+
+  // 2. DB 用户级默认权限（即改即生效）
+  try {
+    const defaults = listMcpPermissionDefaults();
+    const v = matchMcpRuleMap(defaults, candidates);
+    if (v) return v;
+  } catch {}
+
+  // 3. 全局部署策略
+  try {
+    if (fs.existsSync(GOTGENES_GLOBAL_CONFIG_PATH)) {
+      const globalConf = JSON.parse(fs.readFileSync(GOTGENES_GLOBAL_CONFIG_PATH, "utf8"));
+      const globalMcp = globalConf?.permission?.mcp;
+      const v = matchMcpRuleMap(globalMcp, candidates);
+      if (v) return v;
+    }
+  } catch {}
+
+  // 4. gotgenes 服务内部查询
+  if (svc) {
+    try {
+      if (svc.resolver && typeof svc.resolver.resolve === "function") {
+        const res = svc.resolver.resolve({
+          kind: "tool",
+          surface: "mcp",
+          input: { tool: qualified, server: serverName },
+        });
+        if (res?.state && res.state !== "ask") return res.state;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}) {
   const { getMode = () => "auto", autoJudge = null } = mode;
   // 权限服务句柄（permissions:ready 捕获）：strict pre-gate 的 gate 等价查询 +
@@ -269,6 +361,14 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}
   // 发生在会话启动后，已就绪）。
   const mcpBrokerLink = createMcpBrokerLink({
     checkPermission: (surface, value) => {
+      if (surface === "mcp") {
+        const [serverName, ...rest] = String(value ?? "").split(":");
+        const tool = rest.join(":");
+        if (serverName && tool) {
+          const resolved = resolveMcpPermission(serverName, tool, sessionCwd, bridgeService);
+          if (resolved) return resolved;
+        }
+      }
       const svc = bridgeService;
       if (svc && typeof svc.checkPermission === "function") {
         try {
@@ -295,8 +395,8 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}
           // auto 档：模型 link（createAutoJudgeLink.authorize——deny-first + 熔断 +
           // auto-judge review log 与 gotgenes 链共用同一实例）。details 按 gotgenes
           // 原生形态（accessIntent.surface / toolName / input）。
-          decide: async (payload) =>
-            autoJudge.authorize(
+          decide: async (payload) => {
+            const res = await autoJudge.authorize(
               {
                 accessIntent: { surface: "mcp" },
                 toolName: `${payload?.serverName}:${payload?.originalToolName}`,
@@ -304,7 +404,13 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}
               },
               null,
               null
-            ),
+            );
+            // 建议一：auto 模式下模型若判定为 deny，改转为 defer（转人工弹卡确认），不直接扼杀任务
+            if (res?.kind === "deny") {
+              return { kind: "defer", reason: res.reason ?? "auto-judge-defer" };
+            }
+            return res;
+          },
         }
       : {}),
     reviewLog: (record) => {
@@ -348,7 +454,12 @@ function createPermissionBridgeFactory(sessionKey, sessionCwd, handle, mode = {}
       if (autoJudge) {
         svc.registerAuthorizer("auto-judge", async (details, query, log) => {
           if (getMode() !== "auto") return { kind: "defer" };
-          return autoJudge.authorize(details, query, log);
+          const verdict = await autoJudge.authorize(details, query, log);
+          // 建议一：auto 模式下模型若判定为 deny，改转为 defer（转人工弹卡确认），不直接扼杀任务
+          if (verdict?.kind === "deny") {
+            return { kind: "defer", reason: verdict.reason ?? "auto-judge-defer" };
+          }
+          return verdict;
         });
       }
       // 可观测性（tech-design 可观测性节）：授权桥注册留痕（permissions:ready →
@@ -706,10 +817,10 @@ function takeFauxJudgeResult() {
 const AUTO_JUDGE_SYSTEM_PROMPT = [
   "你是 PI agent 的权限判断器（auto 模式）。对一次工具操作判断是否安全直接执行。",
   '只输出一个 JSON（不要任何其他文字/代码围栏）：{"kind":"allow"} 或 {"kind":"deny","reason":"<简短原因>"} 或 {"kind":"defer","reason":"model-unresolved"}。',
-  "- allow：操作明显安全（常见构建/测试/只读命令，如 npm test、git status、ls），直接放行；",
-  "- deny：操作危险/明显违规（删除、覆盖、外发、提权、跨项目访问等），拦截并给出简短原因；",
-  "- defer：无法确定/信息不足/无法评估，交人工确认（deny-first：不确定一律 defer）。",
-  "判断规则：写操作（写文件/删除/覆盖）默认保守；rm/sudo 等危险模式一律 deny；项目目录外的路径访问一律 defer；只读与常规命令可 allow。",
+  "- allow：操作明显安全（常见构建/测试/只读命令，如 npm test、git status、ls；常规网页爬取、外部网页读取与数据获取工具，如 crawl4AI 等），直接放行；",
+  "- deny：仅限破坏性违规操作（格式化磁盘、rm -rf / 根目录、无限制全量删除代码、提权攻击等严重危险动作），给出简短原因；",
+  "- defer：写文件覆盖、无法确定或信息不足的操作，交人工确认（不确定一律 defer）。",
+  "判断规则：常见外部数据获取、网络爬取读取、只读与常规日常开发命令默认倾向 allow；网络爬虫访问外部网页属于合法信息获取，不属于违规外发；写操作与不确定操作交人工 defer；极度危险的破坏性系统命令才 deny。",
 ].join("\n");
 // 模型调用超时兜底（provider 级，早于 link 的 decideTimeoutMs 5s——超时即错误，
 // link 映射 call-failed defer）。
@@ -949,6 +1060,7 @@ function createFreshSessionManager(ref) {
 
 // 新建会话（含 provider/key 变更后的重建路径）：PI AgentSession 创建 + 订阅 + 注册。
 async function createSessionEntry(msg) {
+  deployGlobalPolicy();
   const { sessionKey, provider, model, keyRef, sessionRef, systemPrompt, apiKey } = msg;
   // M2 按空间装配：cwd/skillPaths/permissionProfile 来自主进程 session-config
   // （REQ-AGENT-031/032 IPC 契约）；缺省（旧主进程/直接调试）回落现状默认。

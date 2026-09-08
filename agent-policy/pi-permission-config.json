@@ -81,7 +81,9 @@
       "claude *": "ask",
       "claude": "ask",
       "codex *": "ask",
-      "codex": "ask"
+      "codex": "ask",
+      "agy *": "ask",
+      "agy": "ask"
     },
     "task list": "allow",
     "task get": "allow",

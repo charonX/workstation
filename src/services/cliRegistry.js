@@ -10,7 +10,7 @@
  * @property {string} command - 探测与执行的主命令名
  * @property {string[]} versionArgs - 版本检测参数数组，如 ["--version"]
  * @property {string} versionRegex - 版本号正则提取模式（默认捕获首个 semver）
- * @property {"npm" | "pypi"} channel - 分发渠道
+ * @property {"npm" | "pypi" | "standalone"} channel - 分发渠道
  * @property {string} package - 官方分发包名
  * @property {string} installHint - 安装指引提示命令
  * @property {string} builtinSkillSlug - 对应的内置技能 slug
@@ -39,11 +39,22 @@ export const CLI_REGISTRY = Object.freeze([
     installHint: "npm install -g @openai/codex",
     builtinSkillSlug: "cli-codex",
   },
+  {
+    id: "antigravity",
+    displayName: "Antigravity CLI",
+    command: "agy",
+    versionArgs: ["--version"],
+    versionRegex: "(\\d+\\.\\d+\\.\\d+)",
+    channel: "standalone",
+    package: "antigravity",
+    installHint: "参考官方文档安装：https://antigravity.google/docs",
+    builtinSkillSlug: "cli-antigravity",
+  },
 ]);
 
 /**
  * 获取完整的内置 CLI 清单
- * @returns {CliRegistryItem[]} 清单条目数组（顺序固定为 claude, codex）
+ * @returns {CliRegistryItem[]} 清单条目数组（顺序固定为 claude, codex, antigravity）
  */
 export function getRegistry() {
   return [...CLI_REGISTRY];

@@ -9,7 +9,7 @@ export const BASH_RULES = SERVICE_BASH_RULES.map((rule) => ({
   action: rule.action ?? rule.decision ?? "ask",
 }));
 
-export const SUPPORTED_CLI_COMMANDS = Object.freeze(["claude", "codex"]);
+export const SUPPORTED_CLI_COMMANDS = Object.freeze(["claude", "codex", "agy"]);
 
 /**
  * 构建项目层 Bash 权限覆盖规则

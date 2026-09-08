@@ -231,6 +231,9 @@ async function defaultFetchLatest(pkg, channel) {
     if (!data?.info?.version) throw new Error("Invalid PyPI response");
     return data.info.version;
   }
+  if (channel === "standalone") {
+    return null;
+  }
   throw new Error(`Unsupported channel: ${channel}`);
 }
 

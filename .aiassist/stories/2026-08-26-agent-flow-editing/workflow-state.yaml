@@ -1,0 +1,38 @@
+# Test-as-Contract workflow state
+# 由 /story 创建和维护。本文件是状态机,不归档(回流时更新,不搬进 archive/)。
+
+story_id: 2026-08-26-agent-flow-editing
+intention: >-
+  用户想让 agent 帮忙搭/改流程时，Pi agent 只能建空壳 flow 或整体导入，无法直接增改节点与连线，只能回到 UI 手工编排。   # 一句话痛点,非方案。这是 story 的初衷,方案会变,痛点不会。
+
+phase: THINK      # THINK / PRD / DESIGN / DOMAIN-MODEL / TECH-DESIGN(仅 complex；simple 直接结晶) / CRYSTALLIZE / TEST / ASSERTION-SIGNOFF / BUILD / QA / BUG / REFLECT
+                  # 注：CRYSTALLIZE → TEST → ASSERTION-SIGNOFF 由 /story 自动链一次推进（仅升级点停下；单独调子 skill 也可推进）；其余阶段逐阶段路由。
+attempt: 1        # 第几次尝试。归档重做时 +1。
+bug-counter: 0    # story 内 bug 计数，/bug 每次修复 +1，用于 commit [bugfix] BUG-NNN。
+created: 2026-08-26
+status: active    # active / completed。由 /reflect 收尾时置为 completed，随后整个 story 目录提交删除（进 git 历史）；已完成 story 不回流，spec 不保留（逻辑看代码+测试、意图看全局文档）。
+completed_at: ""  # /reflect 标记完成时写入，如 2026-08-17。
+
+# 阶段流转历史。正常前进和回流都记一条。
+history:
+  - {at: 2026-08-26, from: -, to: THINK, note: "创建 story"}
+
+# 归档记录。每次"归档重做"追加一条;删 story 不记(整个目录删除)。
+archive: []
+
+# 块状态(一挡内按块回流时维护)。
+blocks: {}
+
+# 设计系统绑定(由 /design-system 与 /ux-explore 维护)。
+design_system:
+  slug: ""                  # 主设计系统 slug,对应 _d_meta.json 的 primaryDesignSystem
+  compiled: false           # 是否已跑过 compile-design-system
+  preview: ""               # 当前有效的 preview.html 路径
+
+# story 内已记录的设计资产(由 record-asset.mjs 维护)。
+assets:
+  recorded: []
+
+# 已生成的变体(按需)。
+variants:
+  active: []
